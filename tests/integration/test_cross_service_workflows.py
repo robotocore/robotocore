@@ -50,7 +50,7 @@ class TestSQSLambdaDynamoDBPipeline:
     the result is persisted to DynamoDB.
     """
 
-    def test_sqs_lambda_dynamodb_pipeline(self, make_boto_client):
+    def test_sqs_lambda_dynamodb_pipeline(self, _server_url, make_boto_client):
         suffix = _unique()
         sqs = make_boto_client("sqs")
         lam = make_boto_client("lambda")
@@ -92,11 +92,13 @@ class TestSQSLambdaDynamoDBPipeline:
             # Create Lambda that writes to DynamoDB
             handler_code = f"""
 import json
+import os
 import boto3
 def handler(event, context):
     # In a real setup, Lambda would parse SQS records
     # Here we just write the event to DynamoDB
-    ddb = boto3.client("dynamodb", endpoint_url="http://localhost:4566",
+    endpoint_url = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:4566")
+    ddb = boto3.client("dynamodb", endpoint_url=endpoint_url,
                        region_name="us-east-1",
                        aws_access_key_id="testing",
                        aws_secret_access_key="testing")
@@ -112,6 +114,7 @@ def handler(event, context):
                 Role=role_arn,
                 Handler="lambda_function.handler",
                 Code={"ZipFile": make_lambda_zip(handler_code)},
+                Environment={"Variables": {"AWS_ENDPOINT_URL": _server_url}},
             )
 
             # Create SQS queue
@@ -162,7 +165,7 @@ class TestAPIGatewayLambdaS3:
     web applications.
     """
 
-    def test_apigateway_lambda_s3_workflow(self, make_boto_client):
+    def test_apigateway_lambda_s3_workflow(self, _server_url, make_boto_client):
         suffix = _unique()
         apigw = make_boto_client("apigateway")
         lam = make_boto_client("lambda")
@@ -200,9 +203,11 @@ class TestAPIGatewayLambdaS3:
             # Create Lambda that writes to S3
             handler_code = f"""
 import json
+import os
 import boto3
 def handler(event, context):
-    s3 = boto3.client("s3", endpoint_url="http://localhost:4566",
+    endpoint_url = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:4566")
+    s3 = boto3.client("s3", endpoint_url=endpoint_url,
                       region_name="us-east-1",
                       aws_access_key_id="testing",
                       aws_secret_access_key="testing")
@@ -219,6 +224,7 @@ def handler(event, context):
                 Role=role_arn,
                 Handler="lambda_function.handler",
                 Code={"ZipFile": make_lambda_zip(handler_code)},
+                Environment={"Variables": {"AWS_ENDPOINT_URL": _server_url}},
             )
             func_arn = lam.get_function(FunctionName=func_name)["Configuration"]["FunctionArn"]
 
@@ -634,7 +640,7 @@ class TestSecretsManagerLambda:
     from Secrets Manager.
     """
 
-    def test_lambda_reads_secret(self, make_boto_client):
+    def test_lambda_reads_secret(self, _server_url, make_boto_client):
         suffix = _unique()
         sm = make_boto_client("secretsmanager")
         lam = make_boto_client("lambda")
@@ -670,9 +676,11 @@ class TestSecretsManagerLambda:
             # Create Lambda that reads secret
             handler_code = f"""
 import json
+import os
 import boto3
 def handler(event, context):
-    sm = boto3.client("secretsmanager", endpoint_url="http://localhost:4566",
+    endpoint_url = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:4566")
+    sm = boto3.client("secretsmanager", endpoint_url=endpoint_url,
                       region_name="us-east-1",
                       aws_access_key_id="testing",
                       aws_secret_access_key="testing")
@@ -688,6 +696,7 @@ def handler(event, context):
                 Role=role_arn,
                 Handler="lambda_function.handler",
                 Code={"ZipFile": make_lambda_zip(handler_code)},
+                Environment={"Variables": {"AWS_ENDPOINT_URL": _server_url}},
             )
 
             # Invoke Lambda
