@@ -188,8 +188,19 @@ async def _handle_functions(
             raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
             validate_code_size_zipped(len(raw))
             get_concurrency_tracker().add_code_size(len(raw))
+        # Track DeadLetterConfig in our native store on creation
+        if "DeadLetterConfig" in spec:
+            func_name_from_spec = spec.get("FunctionName", "")
+            if func_name_from_spec:
+                _store_dlq_config(account_id, region, func_name_from_spec, spec["DeadLetterConfig"])
         fn = backend.create_function(spec)
-        return _json(201, _fn_config(fn))
+        result = _fn_config(fn)
+        # Merge DLQ config into response
+        fn_name = spec.get("FunctionName", "")
+        dlq = _get_dlq_config(account_id, region, fn_name)
+        if dlq and isinstance(result, dict):
+            result["DeadLetterConfig"] = dlq
+        return _json(201, result)
 
     if len(parts) < 2:
         return _error("InvalidRequest", "Missing function name", 400)
@@ -827,20 +838,34 @@ def dispatch_to_dlq(
 
     try:
         if ":sqs:" in target_arn:
+            import hashlib
+
+            from robotocore.services.sqs.models import SqsMessage
             from robotocore.services.sqs.provider import _get_store
 
             queue_name = target_arn.rsplit(":", 1)[-1]
             store = _get_store(region, account_id)
             queue = store.get_queue(queue_name)
             if queue:
-                queue.send_message(body=record)
+                msg = SqsMessage(
+                    message_id=str(uuid.uuid4()),
+                    body=record,
+                    md5_of_body=hashlib.md5(record.encode()).hexdigest(),
+                )
+                queue.put(msg)
         elif ":sns:" in target_arn:
+            from robotocore.services.sns.provider import _deliver_to_subscriber, _new_id
             from robotocore.services.sns.provider import _get_store as get_store
 
             store = get_store(region, account_id)
             topic = store.get_topic(target_arn)
             if topic:
-                topic.publish(message=record, subject="Lambda DLQ")
+                message_id = _new_id()
+                for sub in topic.subscriptions:
+                    if sub.confirmed:
+                        _deliver_to_subscriber(
+                            sub, record, "Lambda DLQ", {}, message_id, target_arn, region
+                        )
     except Exception:
         logger.exception("Failed to send to DLQ %s", target_arn)
 
