@@ -3,7 +3,7 @@ Tests for delivery tracking: sending notifications, recording delivery
 records in DynamoDB, status tracking, retries, and bulk sends.
 """
 
-from .models import Channel, DeliveryStatus
+from .models import Channel, DeliveryStatus, UserPreferences
 
 
 class TestSendAndTrack:
@@ -115,8 +115,6 @@ class TestBulkSend:
 
     def test_bulk_send_with_opted_out_users(self, notifier, email_channel, sample_template):
         """Bulk send skips users who opted out of the channel."""
-        from .models import UserPreferences
-
         notifier.set_user_preferences(
             UserPreferences(
                 user_id="user-opted-out",

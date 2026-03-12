@@ -143,7 +143,7 @@ def scheduler(
     metrics_namespace,
 ):
     """Fully-wired TaskScheduler instance."""
-    return TaskScheduler(
+    sched = TaskScheduler(
         dynamodb=dynamodb,
         events=events,
         ssm=ssm,
@@ -160,6 +160,28 @@ def scheduler(
         log_group=log_group,
         metrics_namespace=metrics_namespace,
     )
+
+    yield sched
+
+    # Cleanup: delete all tasks (which removes EventBridge rules and SSM params)
+    try:
+        resp = dynamodb.scan(TableName=tasks_table)
+        for item in resp.get("Items", []):
+            task_id = item["task_id"]["S"]
+            try:
+                sched.delete_task(task_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Cleanup SSM params under config prefix
+    try:
+        resp = ssm.get_parameters_by_path(Path=config_prefix, Recursive=True)
+        for param in resp.get("Parameters", []):
+            ssm.delete_parameter(Name=param["Name"])
+    except Exception:
+        pass
 
 
 @pytest.fixture

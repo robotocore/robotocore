@@ -89,6 +89,14 @@ def pipeline(s3, dynamodb, ssm, sns, sqs, logs, stepfunctions, iam, boto_session
     except Exception:
         pass
 
+    # Cleanup CloudWatch log groups created by the pipeline
+    try:
+        resp = logs.describe_log_groups(logGroupNamePrefix=log_group_prefix)
+        for lg in resp.get("logGroups", []):
+            logs.delete_log_group(logGroupName=lg["logGroupName"])
+    except Exception:
+        pass
+
 
 @pytest.fixture
 def sample_build(pipeline):

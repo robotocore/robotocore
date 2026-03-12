@@ -281,10 +281,11 @@ class ContentManagementSystem:
         if item is None:
             raise ValueError(f"Content not found: {content_id}")
 
-        allowed = VALID_TRANSITIONS.get(item.status, set())
+        old_status = item.status
+        allowed = VALID_TRANSITIONS.get(old_status, set())
         if new_status not in allowed:
             raise ValueError(
-                f"Cannot transition from {item.status} to {new_status}. Allowed: {allowed}"
+                f"Cannot transition from {old_status} to {new_status}. Allowed: {allowed}"
             )
 
         now = _now()
@@ -313,7 +314,7 @@ class ContentManagementSystem:
             f"status_{new_status.lower()}",
             content_id,
             actor,
-            f"from={item.status}",
+            f"from={old_status}",
         )
         return item
 
@@ -476,7 +477,7 @@ class ContentManagementSystem:
 
         # Transition to PUBLISHED (may go through REVIEW first)
         if item.status == DRAFT:
-            self.transition(content_id, REVIEW, actor=actor)
+            item = self.transition(content_id, REVIEW, actor=actor)
         if item.status in (REVIEW, SCHEDULED):
             item = self.transition(content_id, PUBLISHED, actor=actor)
         elif item.status == PUBLISHED:

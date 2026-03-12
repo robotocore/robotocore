@@ -13,8 +13,6 @@ import pytest
 from .app import DataPipeline
 from .models import PipelineConfig, SensorReading
 
-pytestmark = pytest.mark.apps
-
 
 @pytest.fixture
 def unique_suffix():

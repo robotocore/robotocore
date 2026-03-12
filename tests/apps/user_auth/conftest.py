@@ -159,7 +159,7 @@ def auth(
     auth_config,
 ):
     """Fully configured AuthService with all resources created."""
-    return AuthService(
+    svc = AuthService(
         dynamodb=dynamodb,
         s3=s3,
         secretsmanager=secretsmanager,
@@ -175,6 +175,30 @@ def auth(
         metrics_namespace=metrics_namespace,
         audit_log_group=audit_log_group,
     )
+
+    yield svc
+
+    # Cleanup CloudWatch log group (created lazily by _ensure_log_group)
+    try:
+        logs.delete_log_group(logGroupName=audit_log_group)
+    except Exception:
+        pass
+
+    # Cleanup Secrets Manager secrets created by store_jwt_secret / store_oauth_credentials
+    try:
+        secretsmanager.delete_secret(
+            SecretId=f"{secrets_prefix}/jwt", ForceDeleteWithoutRecovery=True
+        )
+    except Exception:
+        pass
+    # Best-effort cleanup of any OAuth secrets
+    for provider in ("google", "github", "facebook"):
+        try:
+            secretsmanager.delete_secret(
+                SecretId=f"{secrets_prefix}/oauth/{provider}", ForceDeleteWithoutRecovery=True
+            )
+        except Exception:
+            pass
 
 
 @pytest.fixture

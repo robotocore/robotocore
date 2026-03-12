@@ -2,9 +2,7 @@
 Tests for data transformation, schema validation, deduplication, and dead-letter handling.
 """
 
-import pytest
-
-pytestmark = pytest.mark.apps
+import json
 
 
 class TestDataTransformation:
@@ -143,8 +141,6 @@ class TestBatchProcessing:
 
         # Read it back
         obj = pipeline.s3.get_object(Bucket=pipeline.bucket_name, Key=key)
-        import json
-
         payload = json.loads(obj["Body"].read())
         assert payload["record"]["sensor_id"] == "bad-sensor"
         assert payload["error"] == "missing required fields"

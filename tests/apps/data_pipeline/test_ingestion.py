@@ -2,11 +2,7 @@
 Tests for Kinesis ingestion: put records, batch put, read back, ordering.
 """
 
-import pytest
-
 from .models import SensorReading
-
-pytestmark = pytest.mark.apps
 
 
 class TestKinesisIngestion:

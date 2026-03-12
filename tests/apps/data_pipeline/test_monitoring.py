@@ -5,11 +5,7 @@ Tests for CloudWatch metrics, alarms, and CloudWatch Logs audit trail.
 import json
 import uuid
 
-import pytest
-
 from .models import AlertConfig, PipelineMetrics
-
-pytestmark = pytest.mark.apps
 
 
 class TestCloudWatchMetrics:

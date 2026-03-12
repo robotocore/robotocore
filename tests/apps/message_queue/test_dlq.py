@@ -8,7 +8,7 @@ configurable redrive policy, and selective DLQ routing.
 import json
 import time
 
-from .models import Message
+from .models import Message, QueueConfig
 
 
 class TestDLQRedrive:
@@ -119,8 +119,6 @@ class TestRedriveConfig:
 
     def test_attach_dlq_changes_redrive_policy(self, broker, sqs, unique_name):
         """attach_dlq wires a DLQ to an existing queue."""
-        from .models import QueueConfig
-
         # Create two standalone queues
         main_config = QueueConfig(name=f"reconf-main-{unique_name}", visibility_timeout=1)
         dlq_config = QueueConfig(name=f"reconf-dlq-{unique_name}", visibility_timeout=5)
