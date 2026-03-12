@@ -1156,7 +1156,12 @@ async def _invoke(
                 )
 
                 docker_exec = get_docker_executor()
-                result, error_type, logs = docker_exec.execute(
+                # Run in thread pool so the ASGI event loop stays free for
+                # Lambda code that calls back to the server (e.g., S3, SQS).
+                import asyncio
+
+                result, error_type, logs = await asyncio.to_thread(
+                    docker_exec.execute,
                     code_zip=code_zip or b"",
                     handler=handler,
                     event=event,
@@ -1172,7 +1177,12 @@ async def _invoke(
                 )
             else:
                 executor = get_executor_for_runtime(runtime)
-                result, error_type, logs = executor.execute(
+                # Run in thread pool so the ASGI event loop stays free for
+                # Lambda code that calls back to the server (e.g., S3, SQS).
+                import asyncio
+
+                result, error_type, logs = await asyncio.to_thread(
+                    executor.execute,
                     code_zip=code_zip or b"",
                     handler=handler,
                     event=event,
