@@ -59,7 +59,7 @@ def _api_request(
     *,
     method: str = "GET",
     data: dict | None = None,
-) -> dict:
+) -> dict | list:
     """Make an HTTP request to the robotocore management API."""
     body = None
     if data is not None:
@@ -323,61 +323,50 @@ def cmd_version(args: argparse.Namespace) -> int:
 
 def cmd_state_save(args: argparse.Namespace) -> int:
     """Save a state snapshot."""
-    base_url = _get_base_url(args)
-    try:
-        data = _api_request(
-            f"{base_url}/_robotocore/state/save",
-            method="POST",
-            data={"name": args.snapshot_name},
-        )
-        _print_json(data)
-        return 0
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"State save failed: {e}", file=sys.stderr)
+    resp = _api_cmd(
+        args,
+        "/_robotocore/state/save",
+        method="POST",
+        data={"name": args.snapshot_name},
+        label="State save",
+    )
+    if resp is None:
         return 1
+    _print_json(resp)
+    return 0
 
 
 def cmd_state_load(args: argparse.Namespace) -> int:
     """Load a state snapshot."""
-    base_url = _get_base_url(args)
-    try:
-        data = _api_request(
-            f"{base_url}/_robotocore/state/load",
-            method="POST",
-            data={"name": args.snapshot_name},
-        )
-        _print_json(data)
-        return 0
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"State load failed: {e}", file=sys.stderr)
+    resp = _api_cmd(
+        args,
+        "/_robotocore/state/load",
+        method="POST",
+        data={"name": args.snapshot_name},
+        label="State load",
+    )
+    if resp is None:
         return 1
+    _print_json(resp)
+    return 0
 
 
 def cmd_state_list(args: argparse.Namespace) -> int:
     """List state snapshots."""
-    base_url = _get_base_url(args)
-    try:
-        data = _api_request(f"{base_url}/_robotocore/state/snapshots")
-        _print_json(data)
-        return 0
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"State list failed: {e}", file=sys.stderr)
+    resp = _api_cmd(args, "/_robotocore/state/snapshots", label="State list")
+    if resp is None:
         return 1
+    _print_json(resp)
+    return 0
 
 
 def cmd_state_reset(args: argparse.Namespace) -> int:
     """Reset all state."""
-    base_url = _get_base_url(args)
-    try:
-        data = _api_request(
-            f"{base_url}/_robotocore/state/reset",
-            method="POST",
-        )
-        _print_json(data)
-        return 0
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"State reset failed: {e}", file=sys.stderr)
+    resp = _api_cmd(args, "/_robotocore/state/reset", method="POST", label="State reset")
+    if resp is None:
         return 1
+    _print_json(resp)
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -511,17 +500,17 @@ def _cmd_chaos_list(args: argparse.Namespace) -> int:
         if not rules:
             print("No chaos rules configured.")
             return 0
-        headers = ["ID", "SERVICE", "ERROR", "STATUS", "OPERATION", "RATE", "LATENCY"]
+        headers = ["ID", "SERVICE", "ERROR", "STATUS", "OPERATION", "PROB", "LATENCY"]
         rows = []
         for r in rules:
             rows.append(
                 [
-                    str(r.get("id", "?")),
+                    str(r.get("rule_id", "?")),
                     r.get("service", "*"),
-                    r.get("error", "?"),
+                    r.get("error_code", "?"),
                     str(r.get("status_code", "?")),
                     r.get("operation", "*"),
-                    str(r.get("rate", 1.0)),
+                    str(r.get("probability", 1.0)),
                     str(r.get("latency_ms", 0)),
                 ]
             )
@@ -532,7 +521,7 @@ def _cmd_chaos_list(args: argparse.Namespace) -> int:
 def _cmd_chaos_add(args: argparse.Namespace) -> int:
     rule: dict = {
         "service": args.service,
-        "error": args.error,
+        "error_code": args.error,
         "status_code": args.status_code,
     }
     if getattr(args, "operation", None):
@@ -540,7 +529,7 @@ def _cmd_chaos_add(args: argparse.Namespace) -> int:
     if getattr(args, "latency", None) is not None:
         rule["latency_ms"] = args.latency
     if getattr(args, "rate", None) is not None:
-        rule["rate"] = args.rate
+        rule["probability"] = args.rate
     resp = _api_cmd(
         args,
         "/_robotocore/chaos/rules",
@@ -601,7 +590,7 @@ def cmd_resources(args: argparse.Namespace) -> int:
         _print_json(resp)
     else:
         # Summary mode: show counts per service
-        resources = resp if isinstance(resp, dict) else {}
+        resources = resp.get("resources", resp) if isinstance(resp, dict) else {}
         headers = ["SERVICE", "COUNT"]
         rows = []
         for svc_name, svc_data in sorted(resources.items()):
@@ -682,14 +671,14 @@ def _cmd_usage_services(args: argparse.Namespace) -> int:
     if fmt == "json":
         _print_json(services)
     else:
-        headers = ["SERVICE", "CALLS", "ERRORS"]
+        headers = ["SERVICE", "REQUESTS", "ERRORS"]
         rows = []
         for s in services:
             rows.append(
                 [
                     s.get("service", "?"),
-                    str(s.get("calls", 0)),
-                    str(s.get("errors", 0)),
+                    str(s.get("request_count", 0)),
+                    str(s.get("error_count", 0)),
                 ]
             )
         rows.sort(key=lambda r: int(r[1]) if r[1].isdigit() else 0, reverse=True)
@@ -756,15 +745,15 @@ def _cmd_pods_list(args: argparse.Namespace) -> int:
         if not pods:
             print("No pods found.")
             return 0
-        headers = ["NAME", "CREATED", "SIZE", "SERVICES"]
+        headers = ["NAME", "CREATED", "SIZE", "VERSIONS"]
         rows = []
         for p in pods:
             rows.append(
                 [
                     p.get("name", "?"),
-                    p.get("created", "?"),
-                    str(p.get("size", "?")),
-                    str(p.get("services", "?")),
+                    p.get("created_at", "?"),
+                    str(p.get("size_bytes", "?")),
+                    str(p.get("version_count", "?")),
                 ]
             )
         _print_table(headers, rows)
@@ -1221,7 +1210,7 @@ def build_parser() -> argparse.ArgumentParser:
 # Dispatch
 # ---------------------------------------------------------------------------
 
-_STATE_DISPATCH: dict[str | None, type[...] | None] = {
+_STATE_DISPATCH = {
     "save": cmd_state_save,
     "load": cmd_state_load,
     "list": cmd_state_list,
@@ -1238,7 +1227,7 @@ def _run(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    dispatch: dict[str, ...] = {
+    dispatch = {
         "start": cmd_start,
         "stop": cmd_stop,
         "status": cmd_status,
