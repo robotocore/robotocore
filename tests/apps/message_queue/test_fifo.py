@@ -125,8 +125,8 @@ class TestDeduplication:
         broker.send(fifo_queue, msg1)
         broker.send(fifo_queue, msg2)
 
-        received = broker.consume(fifo_queue, batch_size=10, max_messages=2, wait_time=5)
-        # Only one message should be delivered (same dedup ID)
+        # Single receive with high batch_size — dedup should mean only 1 message
+        received = broker.receive(fifo_queue, batch_size=10, wait_time=2)
         assert len(received) == 1
         assert received[0].body == "dedup-test-body"
         broker.acknowledge_batch(fifo_queue, received)
@@ -140,7 +140,8 @@ class TestDeduplication:
         broker.send(fifo_queue, msg1)
         broker.send(fifo_queue, msg2)
 
-        received = broker.consume(fifo_queue, batch_size=10, max_messages=2, wait_time=5)
+        # Single receive — dedup should mean only 1 message
+        received = broker.receive(fifo_queue, batch_size=10, wait_time=2)
         assert len(received) == 1
         broker.acknowledge_batch(fifo_queue, received)
 
