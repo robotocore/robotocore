@@ -29,10 +29,13 @@ class TestScheduledStrategyIntegration:
         # Start the scheduler, let it tick once
         manager.start_scheduled_saver()
         try:
-            # Wait for the scheduled save to fire
-            deadline = time.monotonic() + 2.0
+            # Wait for the scheduled save to fire and dirty flag to clear.
+            # Both conditions must be met: file written AND mark_clean() called.
+            # These happen sequentially in the same thread but we poll from
+            # another thread, so we must wait for both.
+            deadline = time.monotonic() + 5.0
             while time.monotonic() < deadline:
-                if (tmp_path / "metadata.json").exists():
+                if (tmp_path / "metadata.json").exists() and not manager.change_tracker.is_dirty:
                     break
                 time.sleep(0.05)
             assert (tmp_path / "metadata.json").exists(), "Scheduled save did not fire"
