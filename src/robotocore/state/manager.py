@@ -135,6 +135,7 @@ class _RestrictedUnpickler(pickle.Unpickler):
         "copy_reg",
         "copyreg",
         "_codecs",
+        "re",
     )
 
     # Dangerous callables that should never appear in pickles
