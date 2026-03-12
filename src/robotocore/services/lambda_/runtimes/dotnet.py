@@ -277,6 +277,16 @@ class DotnetExecutor:
         with open(proj_path, "w") as f:
             f.write(proj_content)
 
+        # Build a clean env for dotnet that inherits system essentials.
+        # The Lambda env may override HOME/DOTNET_ROOT etc. in ways that
+        # break dotnet CLI tooling, so we merge carefully.
+        compile_env = os.environ.copy()
+        # Suppress .NET CLI telemetry and first-run experience which can
+        # hang or write to unexpected locations in CI.
+        compile_env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
+        compile_env["DOTNET_NOLOGO"] = "1"
+        compile_env["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+
         try:
             proc = subprocess.run(
                 [dotnet_bin, "build", "-c", "Release", "-o", code_dir, "--nologo", "-v", "quiet"],
@@ -284,11 +294,21 @@ class DotnetExecutor:
                 text=True,
                 timeout=timeout + 30,  # generous timeout for compilation
                 cwd=code_dir,
-                env=env,
+                env=compile_env,
             )
             if proc.returncode != 0:
+                logger.warning(
+                    "dotnet build failed (rc=%d): stderr=%s stdout=%s",
+                    proc.returncode,
+                    proc.stderr[:500],
+                    proc.stdout[:500],
+                )
                 return None
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        except subprocess.TimeoutExpired:
+            logger.warning("dotnet build timed out after %ds", timeout + 30)
+            return None
+        except FileNotFoundError:
+            logger.warning("dotnet binary not found at %s", dotnet_bin)
             return None
 
         dll_path = os.path.join(code_dir, assembly_name + ".dll")
@@ -320,7 +340,12 @@ class DotnetExecutor:
             with open(os.path.join(bootstrap_dir, "Bootstrap.cs"), "w") as f:
                 f.write(BOOTSTRAP_CS)
 
-            # Build the bootstrap
+            # Build the bootstrap using a clean env (not the Lambda env)
+            # to avoid issues with DOTNET_ROOT, HOME, etc.
+            compile_env = os.environ.copy()
+            compile_env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
+            compile_env["DOTNET_NOLOGO"] = "1"
+            compile_env["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
             try:
                 build_proc = subprocess.run(
                     [
@@ -338,7 +363,7 @@ class DotnetExecutor:
                     text=True,
                     timeout=timeout + 30,
                     cwd=bootstrap_dir,
-                    env=env,
+                    env=compile_env,
                 )
                 if build_proc.returncode != 0:
                     return (
