@@ -40,7 +40,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "cloudformation", ServiceStatus.NATIVE, "query", "CloudFormation engine"
     ),
     "cloudwatch": ServiceInfo(
-        "cloudwatch", ServiceStatus.NATIVE, "query", "CloudWatch Metrics with alarm evaluation"
+        "cloudwatch", ServiceStatus.NATIVE, "json", "CloudWatch Metrics with alarm evaluation"
     ),
     "logs": ServiceInfo("logs", ServiceStatus.NATIVE, "json", "CloudWatch Logs"),
     "kms": ServiceInfo("kms", ServiceStatus.MOTO_BACKED, "json", "Key Management Service"),

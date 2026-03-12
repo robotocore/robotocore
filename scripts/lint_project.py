@@ -93,6 +93,11 @@ def _check_single_test(fpath: Path, node: ast.FunctionDef, findings: list[Findin
             has_assert = True
         if isinstance(child, ast.Attribute) and child.attr == "raises":
             has_assert = True
+        # Recognize helper functions like _assert_ok() as valid assertions
+        if isinstance(child, ast.Call):
+            func = child.func
+            if isinstance(func, ast.Name) and func.id.startswith("_assert"):
+                has_assert = True
         if isinstance(child, ast.Call):
             has_any_call = True
         if isinstance(child, ast.Try):
@@ -420,7 +425,7 @@ def check_provider_import_sync(findings: list[Finding]):
 
     # Find what's imported in app.py
     imported_paths = set()
-    for match in re.finditer(r"from robotocore\.services\.([^.]+)\.", app_src):
+    for match in re.finditer(r"from robotocore\.services\.([^.\n]+)\.", app_src):
         imported_paths.add(match.group(1))
 
     unimported = provider_files - imported_paths
