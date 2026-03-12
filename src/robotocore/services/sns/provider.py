@@ -974,7 +974,8 @@ def _deliver_to_http(
             },
             method="POST",
         )
-        urllib.request.urlopen(req, timeout=5)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp.read()  # consume response to ensure connection is closed
         logger.debug("SNS: Delivered to HTTP endpoint %s", sub.endpoint)
     except Exception as e:
         logger.warning(
@@ -1061,7 +1062,8 @@ def _send_subscription_confirmation(sub: SnsSubscription, topic_arn: str, region
             },
             method="POST",
         )
-        urllib.request.urlopen(req, timeout=5)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp.read()  # consume response to ensure connection is closed
     except Exception as e:
         logger.debug(
             "SNS: Failed to send subscription confirmation to %s: %s",

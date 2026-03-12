@@ -12,6 +12,7 @@ Rewrites the ASGI scope so that downstream handlers see a path-style request.
 
 import os
 import re
+import threading
 
 # Default hostname bases for S3 virtual-hosted-style requests
 DEFAULT_S3_HOSTNAME = "s3.localhost.robotocore.cloud"
@@ -31,6 +32,7 @@ _VHOST_RE = re.compile(
 
 # Cached (pattern, hostname_base) tuple for configurable hostname: <bucket>.s3.<hostname_base>
 _VHOST_CUSTOM_CACHE: tuple[re.Pattern, str] | None = None
+_VHOST_CACHE_LOCK = threading.Lock()
 
 # Pre-compiled pattern for the localstack.cloud backwards-compatible alias
 _VHOST_LOCALSTACK_RE = re.compile(
@@ -49,12 +51,14 @@ def _get_custom_pattern() -> tuple[re.Pattern, str]:
     global _VHOST_CUSTOM_CACHE
     base = _get_s3_hostname()
     if _VHOST_CUSTOM_CACHE is None or _VHOST_CUSTOM_CACHE[1] != base:
-        escaped = re.escape(base)
-        pattern = re.compile(
-            r"^(?P<bucket>[a-zA-Z0-9][a-zA-Z0-9.\-]{1,61}[a-zA-Z0-9])"
-            rf"\.{escaped}(?::\d+)?$"
-        )
-        _VHOST_CUSTOM_CACHE = (pattern, base)
+        with _VHOST_CACHE_LOCK:
+            if _VHOST_CUSTOM_CACHE is None or _VHOST_CUSTOM_CACHE[1] != base:
+                escaped = re.escape(base)
+                pattern = re.compile(
+                    r"^(?P<bucket>[a-zA-Z0-9][a-zA-Z0-9.\-]{1,61}[a-zA-Z0-9])"
+                    rf"\.{escaped}(?::\d+)?$"
+                )
+                _VHOST_CUSTOM_CACHE = (pattern, base)
     return _VHOST_CUSTOM_CACHE
 
 
