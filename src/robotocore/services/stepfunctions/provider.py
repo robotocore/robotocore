@@ -4,6 +4,7 @@ Wraps Moto for state machine CRUD, uses native ASL interpreter for execution.
 Supports STANDARD and EXPRESS workflow types, callback patterns, and execution history.
 """
 
+import asyncio
 import json
 import logging
 import threading
@@ -85,7 +86,13 @@ async def handle_stepfunctions_request(request: Request, region: str, account_id
         return await forward_to_moto(request, "stepfunctions", account_id=account_id)
 
     try:
-        result = handler(params, region, account_id)
+        # StartExecution and StartSyncExecution can block for a long time
+        # (state machine execution, including Lambda invocations that call back
+        # to the server). Run them in a thread to avoid blocking the event loop.
+        if operation in ("StartExecution", "StartSyncExecution"):
+            result = await asyncio.to_thread(handler, params, region, account_id)
+        else:
+            result = handler(params, region, account_id)
         return _json(200, result)
     except SfnError as e:
         return _error(e.code, e.message, e.status)
