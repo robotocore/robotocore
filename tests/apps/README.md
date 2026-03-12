@@ -4,13 +4,21 @@ These tests simulate real applications using AWS services. They are **completely
 
 ## What's tested
 
-| Test file | Services | Pattern |
-|-----------|----------|---------|
-| `test_file_processing_app.py` | S3, DynamoDB | File upload, metadata storage, versioning, multipart |
-| `test_message_queue_app.py` | SQS | Producer/consumer, FIFO ordering, DLQ, batch ops |
-| `test_event_driven_app.py` | EventBridge, SNS, SQS | Event routing, pattern filtering, fan-out |
-| `test_secrets_rotation_app.py` | Secrets Manager | Create/read/update, versions, delete/restore, tags |
-| `test_serverless_api_app.py` | DynamoDB, Lambda, IAM, API Gateway, Step Functions | CRUD, invoke, roles, REST API, state machines |
+| App directory | Services | What it simulates |
+|---------------|----------|-------------------|
+| `file_processing/` | S3, DynamoDB | Document management: uploads, versioning, search, lifecycle, presigned URLs |
+| `message_queue/` | SQS | Distributed message broker: standard/FIFO queues, DLQ, routing, batch ops |
+| `event_driven/` | EventBridge, SNS, SQS, DynamoDB | Event-driven microservices: routing, fan-out, schemas, pattern matching |
+| `secrets_rotation/` | Secrets Manager, DynamoDB | Secrets management: rotation, audit logging, schema validation, namespaces |
+| `serverless_api/` | API Gateway, Lambda, DynamoDB, IAM, Step Functions | Serverless REST API: CRUD, workflows, deployments |
+| `cicd_pipeline/` | S3, DynamoDB, SSM, SNS, SQS, CloudWatch Logs, Step Functions | CI/CD build pipeline: artifacts, build history, notifications, orchestration |
+| `content_mgmt/` | S3, DynamoDB, SQS, SNS, CloudWatch Logs, EventBridge | Headless CMS: content lifecycle, media, publishing, versioning, audit |
+| `data_pipeline/` | Kinesis, S3, DynamoDB, SSM, Secrets Manager, CloudWatch | IoT sensor pipeline: ingestion, storage, processing, monitoring |
+| `ecommerce_order/` | SQS FIFO, DynamoDB, S3, SNS, Secrets Manager | E-commerce orders: queue processing, payments, inventory, receipts, coupons |
+| `multitenant_saas/` | DynamoDB, S3, SSM, Secrets Manager, SQS, CloudWatch | Multi-tenant SaaS: tenant isolation, quotas, onboarding, usage tracking |
+| `notification_dispatch/` | SNS, SQS, S3, DynamoDB, CloudWatch | Multi-channel notifications: templates, preferences, delivery tracking, scheduling |
+| `scheduled_tasks/` | EventBridge, DynamoDB, S3, SNS, CloudWatch | Task scheduler: cron jobs, execution tracking, dependencies, retry, alerts |
+| `user_auth/` | DynamoDB, S3, Secrets Manager, SSM, CloudWatch | Auth & identity: registration, sessions, passwords, MFA, audit logging |
 
 ## Running
 
