@@ -77,9 +77,10 @@ class TestThrottlingException:
         )
         assert raw.status_code == 429
         assert raw.headers.get("x-robotocore-chaos") == rule_id
-        body = raw.json()
-        assert body["__type"] == "ThrottlingException"
-        assert "Injected by chaos rule" in body["message"]
+        # S3 uses rest-xml protocol, so chaos errors come back as XML
+        body = raw.text
+        assert "ThrottlingException" in body
+        assert "Injected by chaos rule" in body
 
     def test_dynamodb_throttling_via_boto3(self):
         """Add ThrottlingException for DynamoDB (JSON protocol), verify via boto3."""
@@ -248,7 +249,8 @@ class TestServiceSpecificRules:
             },
         )
         assert raw.status_code == 429
-        assert raw.json()["__type"] == "ThrottlingException"
+        # S3 uses rest-xml, so chaos errors come back as XML
+        assert "ThrottlingException" in raw.text
 
         # DynamoDB should succeed (no rule targeting it)
         ddb = _make_client("dynamodb")
