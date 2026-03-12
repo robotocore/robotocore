@@ -16,6 +16,7 @@ Only depends on boto3 and stdlib. No robotocore/moto imports.
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import string
 import time
@@ -30,6 +31,8 @@ from .models import (
     SecretPolicy,
     SecretTemplate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
@@ -119,16 +122,16 @@ class SecretsVault:
                     **tbl,
                     BillingMode="PAY_PER_REQUEST",
                 )
-            except self._ddb.exceptions.ResourceInUseException:
-                pass  # table already exists
+            except self._ddb.exceptions.ResourceInUseException as exc:
+                logger.debug("table already exists: %s", exc)
 
     def delete_tables(self) -> None:
         """Remove DynamoDB tables (cleanup)."""
         for name in [self._audit_table, self._rotation_table, self._policy_table]:
             try:
                 self._ddb.delete_table(TableName=name)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring error: %s", exc)
 
     # ------------------------------------------------------------------
     # Secret CRUD
@@ -435,8 +438,8 @@ class SecretsVault:
                     {"Key": "EmergencyRotatedBy", "Value": rotated_by},
                 ],
             )
-        except Exception:
-            pass  # best-effort tagging
+        except Exception as exc:
+            logger.debug("best-effort tagging: %s", exc)
 
         return record
 
@@ -464,8 +467,8 @@ class SecretsVault:
                     rotated_by=rotated_by,
                 )
                 records.append(record)
-            except Exception:
-                pass  # skip secrets that fail rotation
+            except Exception as exc:
+                logger.debug("skip secrets that fail rotation: %s", exc)
         return records
 
     def get_rotation_history(self, name: str, namespace: str) -> list[RotationRecord]:

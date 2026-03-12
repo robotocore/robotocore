@@ -21,6 +21,7 @@ Only stdlib + boto3 are imported.  No robotocore / moto internals.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -33,6 +34,8 @@ from .models import (
     TenantConfig,
     TenantEntity,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class QuotaExceededError(Exception):
@@ -210,8 +213,8 @@ class SaaSPlatform:
         secret_name = f"{self._secret_prefix}/{tenant_id}/db-credentials"
         try:
             self._sm.delete_secret(SecretId=secret_name, ForceDeleteWithoutRecovery=True)
-        except self._sm.exceptions.ResourceNotFoundException:
-            pass
+        except self._sm.exceptions.ResourceNotFoundException as exc:
+            logger.debug("Ignoring error: %s", exc)
 
         # 4. Delete S3 objects under tenant prefix
         self._delete_tenant_files(tenant_id)

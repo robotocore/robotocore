@@ -27,12 +27,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable
 from typing import Any
 
 from .models import DeliveryResult, Message, QueueConfig, QueueStats, ReceivedMessage
+
+logger = logging.getLogger(__name__)
 
 
 class MessageBroker:
@@ -403,8 +406,8 @@ class MessageBroker:
                 parsed = json.loads(msg.body)
                 if isinstance(parsed, dict) and "group" in parsed:
                     group_key = str(parsed["group"])
-            except (json.JSONDecodeError, KeyError):
-                pass
+            except (json.JSONDecodeError, KeyError) as exc:
+                logger.debug("Ignoring error: %s", exc)
             groups.setdefault(group_key, []).append(msg)
         return groups
 

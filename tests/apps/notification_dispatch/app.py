@@ -10,6 +10,7 @@ Only depends on boto3 — no robotocore/moto imports.
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -27,6 +28,8 @@ from .models import (
     Template,
     UserPreferences,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationService:
@@ -840,8 +843,8 @@ class NotificationService:
                     }
                 ],
             )
-        except Exception:
-            pass  # Don't fail the operation if logging fails
+        except Exception as exc:
+            logger.debug("Don't fail the operation if logging fails: %s", exc)
 
     def get_audit_logs(self, start_from_head: bool = True) -> list[dict]:
         """Retrieve audit log events."""
@@ -854,8 +857,8 @@ class NotificationService:
         for evt in resp.get("events", []):
             try:
                 results.append(json.loads(evt["message"]))
-            except (json.JSONDecodeError, KeyError):
-                pass
+            except (json.JSONDecodeError, KeyError) as exc:
+                logger.debug("Ignoring error: %s", exc)
         return results
 
     def filter_audit_logs(self, filter_pattern: str) -> list[dict]:
@@ -868,8 +871,8 @@ class NotificationService:
         for evt in resp.get("events", []):
             try:
                 results.append(json.loads(evt["message"]))
-            except (json.JSONDecodeError, KeyError):
-                pass
+            except (json.JSONDecodeError, KeyError) as exc:
+                logger.debug("Ignoring error: %s", exc)
         return results
 
     # -----------------------------------------------------------------------
@@ -887,19 +890,19 @@ class NotificationService:
             for obj in resp.get("Contents", []):
                 self.s3.delete_object(Bucket=self.template_bucket, Key=obj["Key"])
             self.s3.delete_bucket(Bucket=self.template_bucket)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring error: %s", exc)
 
         # Clean up DynamoDB tables
         for table in [self.delivery_table, self.preferences_table, self.schedule_table]:
             try:
                 self.dynamodb.delete_table(TableName=table)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring error: %s", exc)
 
         # Clean up CloudWatch Logs
         try:
             self.logs.delete_log_stream(logGroupName=self.log_group, logStreamName=self.log_stream)
             self.logs.delete_log_group(logGroupName=self.log_group)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring error: %s", exc)
