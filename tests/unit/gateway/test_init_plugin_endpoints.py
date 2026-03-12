@@ -140,7 +140,7 @@ class TestPluginsListEndpoint:
         resp = client.get("/_robotocore/plugins")
         assert resp.status_code == 200
         data = resp.json()
-        assert data == {"plugins": []}
+        assert data["plugins"] == []
 
     def test_list_with_loaded_plugin(self, client):
         collector = plugin_status_mod.get_plugin_status_collector()

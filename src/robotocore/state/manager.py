@@ -925,6 +925,8 @@ class StateManager:
                             backend = backend_dict[account_id][region]
                             account_state[region] = backend
                         service_state[account_id] = account_state
+                    # Verify this service is picklable before including it
+                    pickle.dumps(service_state, protocol=pickle.HIGHEST_PROTOCOL)
                     state[service_name] = service_state
                 except Exception:
                     logger.debug(
@@ -1092,6 +1094,8 @@ class StateManager:
                             backend = backend_dict[account_id][region]
                             account_state[region] = backend
                         service_state[account_id] = account_state
+                    # Verify this service is picklable before including it
+                    pickle.dumps(service_state, protocol=pickle.HIGHEST_PROTOCOL)
                     moto_state[service_name] = service_state
                 except Exception:
                     logger.debug("Could not capture Moto state for %s", service_name, exc_info=True)

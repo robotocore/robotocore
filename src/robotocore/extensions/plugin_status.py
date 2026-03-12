@@ -32,17 +32,21 @@ class PluginInfo:
     description: str
     source: str  # "entrypoint", "env_var", "directory"
     state: str  # "active", "failed", "disabled"
+    api_version: str = "1.0"
     hooks: list[str] = field(default_factory=list)
     load_time: float = 0.0
     error: str | None = None
     service_overrides: list[str] = field(default_factory=list)
     custom_routes: list[str] = field(default_factory=list)
+    capabilities: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     config: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d: dict = {
             "name": self.name,
             "version": self.version,
+            "api_version": self.api_version,
             "description": self.description,
             "source": self.source,
             "state": self.state,
@@ -50,6 +54,8 @@ class PluginInfo:
             "load_time": self.load_time,
             "service_overrides": self.service_overrides,
             "custom_routes": self.custom_routes,
+            "capabilities": self.capabilities,
+            "dependencies": self.dependencies,
         }
         if self.error is not None:
             d["error"] = self.error
@@ -75,9 +81,13 @@ class PluginStatusCollector:
         overrides = list(plugin.get_service_overrides().keys())
         routes = [r[0] for r in plugin.get_custom_routes()]
 
+        capabilities = sorted(plugin.get_capabilities())
+        dependencies = getattr(plugin, "dependencies", [])
+
         self._plugins[plugin.name] = PluginInfo(
             name=plugin.name,
             version=plugin.version,
+            api_version=plugin.api_version,
             description=plugin.description,
             source=source,
             state="active",
@@ -85,6 +95,8 @@ class PluginStatusCollector:
             load_time=load_time,
             service_overrides=overrides,
             custom_routes=routes,
+            capabilities=capabilities,
+            dependencies=dependencies,
         )
 
     def record_failed(
