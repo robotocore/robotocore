@@ -1130,6 +1130,11 @@ async def _invoke(
     timeout = int(getattr(fn, "timeout", 3) or 3)
     memory_size = int(getattr(fn, "memory_size", 128) or 128)
 
+    # Extract layer zips for Python in-process execution
+    from robotocore.services.lambda_.executor import get_layer_zips
+
+    layer_zips = get_layer_zips(fn, account_id, region)
+
     # Hot reload: check for mounted code directory
     code_dir = get_mount_path(func_name)
     use_hot_reload = False
@@ -1192,6 +1197,7 @@ async def _invoke(
                     env_vars=env_vars,
                     region=region,
                     account_id=account_id,
+                    layer_zips=layer_zips or None,
                     code_dir=code_dir,
                     hot_reload=use_hot_reload,
                 )
@@ -1232,7 +1238,7 @@ async def _invoke(
     # RequestResponse
     if result is None:
         payload = b"null"
-    elif isinstance(result, (dict, list)):
+    elif isinstance(result, (dict, list, bool, int, float)):
         payload = json.dumps(result).encode()
     elif isinstance(result, str):
         payload = json.dumps(result).encode()
@@ -1308,7 +1314,7 @@ async def _invoke_with_response_stream(
 
     if result is None:
         payload = b"null"
-    elif isinstance(result, (dict, list)):
+    elif isinstance(result, (dict, list, bool, int, float)):
         payload = json.dumps(result).encode()
     elif isinstance(result, str):
         payload = json.dumps(result).encode()
