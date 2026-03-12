@@ -185,7 +185,7 @@ class CloudPodsManager:
         # Extract and load
         with tempfile.TemporaryDirectory() as tmpdir:
             with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as tar:
-                tar.extractall(tmpdir)  # noqa: S202
+                tar.extractall(tmpdir, filter="data")
 
             tmp_path = Path(tmpdir)
             moto_path = tmp_path / "moto_state.pkl"
