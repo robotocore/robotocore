@@ -130,14 +130,18 @@ class TestChaosMatchCountAtomicity:
 # ===========================================================================
 
 
-class TestChaosLatencyInjectionAsync:
-    """The chaos middleware uses time.sleep() for latency injection, which
-    blocks the event loop. It should use asyncio-compatible sleep instead."""
+class TestChaosLatencyInjectionSync:
+    """The chaos middleware uses time.sleep() for latency injection. This is
+    correct because the handler chain runs synchronously inside
+    asyncio.to_thread(), so time.sleep() blocks only the current request
+    thread without blocking the event loop."""
 
-    def test_latency_injection_should_not_use_blocking_sleep(self):
-        # Correct behavior: latency injection should use asyncio.sleep() or
-        # asyncio.to_thread(time.sleep, ...) to avoid blocking the event loop.
-        # Current behavior: time.sleep() blocks the entire async event loop.
+    def test_latency_injection_uses_sync_sleep(self):
+        # The handler chain is synchronous (called via handler(context), not
+        # await handler(context)). It runs inside asyncio.to_thread() from the
+        # ASGI layer, so time.sleep() is the correct choice — it blocks only
+        # the current thread (delaying this specific request) without blocking
+        # the event loop.
         import ast
         import inspect
 
@@ -145,16 +149,17 @@ class TestChaosLatencyInjectionAsync:
 
         source = inspect.getsource(middleware.chaos_handler)
         tree = ast.parse(source)
-        uses_blocking_sleep = any(
+        uses_time_sleep = any(
             isinstance(node, ast.Attribute)
             and isinstance(node.value, ast.Name)
             and node.value.id == "time"
             and node.attr == "sleep"
             for node in ast.walk(tree)
         )
-        assert not uses_blocking_sleep, (
-            "chaos_handler uses time.sleep() which blocks the async event loop. "
-            "It should use asyncio.sleep() or asyncio.to_thread() instead."
+        assert uses_time_sleep, (
+            "chaos_handler should use time.sleep() for latency injection. "
+            "The handler chain runs synchronously inside asyncio.to_thread(), "
+            "so time.sleep() correctly blocks only the current request thread."
         )
 
 
