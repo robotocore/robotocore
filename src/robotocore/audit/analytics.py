@@ -227,13 +227,16 @@ class UsageAnalytics:
 
 # Singleton
 _analytics: UsageAnalytics | None = None
+_analytics_lock = threading.Lock()
 
 
 def get_usage_analytics() -> UsageAnalytics:
     """Get or create the global UsageAnalytics singleton."""
     global _analytics
     if _analytics is None:
-        _analytics = UsageAnalytics()
+        with _analytics_lock:
+            if _analytics is None:
+                _analytics = UsageAnalytics()
     return _analytics
 
 

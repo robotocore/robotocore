@@ -237,6 +237,7 @@ def compute_aggregate_summary(state_dir: Path) -> dict:
 
 _UNCHECKED = object()  # sentinel: CI detection has not run yet
 _analytics: CIAnalytics | None | object = _UNCHECKED
+_ci_analytics_lock = threading.Lock()
 
 
 def get_ci_analytics(force_enable: bool = False) -> CIAnalytics | None:
@@ -253,25 +254,33 @@ def get_ci_analytics(force_enable: bool = False) -> CIAnalytics | None:
         # Already checked; not in a CI environment.
         return None
 
-    # Session ID from explicit env var
-    session_id = os.environ.get("ROBOTOCORE_CI_SESSION", "").strip()
-    ci_provider, build_id = detect_ci_provider()
+    with _ci_analytics_lock:
+        # Double-check after acquiring lock
+        if isinstance(_analytics, CIAnalytics):
+            return _analytics
 
-    if not session_id and not ci_provider and not force_enable:
-        _analytics = None
-        return None
+        if _analytics is None and not force_enable:
+            return None
 
-    if not session_id:
-        session_id = str(uuid.uuid4())
+        # Session ID from explicit env var
+        session_id = os.environ.get("ROBOTOCORE_CI_SESSION", "").strip()
+        ci_provider, build_id = detect_ci_provider()
 
-    _analytics = CIAnalytics(
-        session=CISession(
-            session_id=session_id,
-            ci_provider=ci_provider,
-            build_id=build_id,
+        if not session_id and not ci_provider and not force_enable:
+            _analytics = None
+            return None
+
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        _analytics = CIAnalytics(
+            session=CISession(
+                session_id=session_id,
+                ci_provider=ci_provider,
+                build_id=build_id,
+            )
         )
-    )
-    return _analytics
+        return _analytics
 
 
 def reset_ci_analytics() -> None:
