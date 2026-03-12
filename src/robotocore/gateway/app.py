@@ -1211,7 +1211,7 @@ management_routes = [
     Route("/_robotocore/ci/sessions/{session_id}", ci_session_detail, methods=["GET"]),
     Route("/_robotocore/ci/summary", ci_summary, methods=["GET"]),
     # Endpoint strategies
-    Route("/_robotocore/endpoints/config", lambda r: _endpoints_config(r), methods=["GET"]),
+    Route("/_robotocore/endpoints/config", _endpoints_config, methods=["GET"]),
     # S3 routing config
     Route("/_robotocore/s3/routing", s3_routing_config, methods=["GET"]),
     # SES SMTP email inspection
