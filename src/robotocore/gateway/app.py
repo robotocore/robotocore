@@ -1,5 +1,6 @@
 """ASGI application -- the main HTTP entry point for Robotocore."""
 
+import asyncio
 import json
 import os
 import re
@@ -1014,7 +1015,7 @@ async def handle_aws_request(request: Request) -> Response:
     # access it via request._body for form-encoded Action parsing.
     await request.body()
 
-    _handler_chain.handle(context)
+    await asyncio.to_thread(_handler_chain.handle, context)
 
     # If a handler already set a response (e.g. CORS preflight), return it
     if context.response is not None:
