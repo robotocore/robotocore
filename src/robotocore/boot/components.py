@@ -226,12 +226,14 @@ def background_engines_component() -> ServiceComponent:
         nonlocal _ready
         from robotocore.services.cloudwatch.alarm_scheduler import get_alarm_scheduler
         from robotocore.services.dynamodb.ttl import get_ttl_scanner
+        from robotocore.services.events.rule_scheduler import get_rule_scheduler
         from robotocore.services.lambda_.event_source import get_engine
         from robotocore.services.sqs.metrics import get_sqs_metrics_publisher
         from robotocore.services.synthetics.scheduler import get_canary_scheduler
 
         get_engine().start()
         get_alarm_scheduler().start()
+        get_rule_scheduler().start()
         get_canary_scheduler().start()
         get_sqs_metrics_publisher().start()
         get_ttl_scanner().start()

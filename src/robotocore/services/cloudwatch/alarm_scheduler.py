@@ -186,7 +186,11 @@ class AlarmScheduler:
                 if not self._dimensions_match(datum.dimensions, alarm_dimensions):
                     continue
                 # Check timestamp is within the period
-                if datum.timestamp < start_time or datum.timestamp >= end_time:
+                # Moto may store timestamps as naive (UTC-assumed) datetimes
+                ts = datum.timestamp
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=UTC)
+                if ts < start_time or ts >= end_time:
                     continue
                 # Get the value
                 if hasattr(datum, "value"):
@@ -370,7 +374,11 @@ class AlarmScheduler:
         account_id: str,
         region_name: str,
     ) -> None:
-        """Publish a message to an SNS topic via Moto's backend."""
+        """Publish a message to an SNS topic via our native SNS provider.
+
+        Uses our provider's delivery path so that subscriptions (SQS, Lambda, etc.)
+        are properly triggered, rather than going through Moto's backend directly.
+        """
         # Parse region from the topic ARN (arn:aws:sns:REGION:ACCOUNT:TOPIC)
         arn_match = re.match(r"arn:aws:sns:([^:]+):([^:]+):(.+)", topic_arn)
         if not arn_match:
@@ -381,16 +389,32 @@ class AlarmScheduler:
         sns_account = arn_match.group(2)
 
         try:
-            sns_backend = get_backend("sns")[sns_account][sns_region]
-        except (KeyError, TypeError):
-            logger.warning("SNS backend not found for %s/%s", sns_account, sns_region)
-            return
+            from robotocore.services.sns.provider import (
+                _deliver_to_subscriber,
+                _get_store,
+                _new_id,
+            )
 
-        sns_backend.publish(
-            message=message,
-            arn=topic_arn,
-            subject=subject,
-        )
+            store = _get_store(sns_region, sns_account)
+            topic = store.get_topic(topic_arn)
+            if not topic:
+                logger.warning("SNS topic not found: %s", topic_arn)
+                return
+
+            message_id = _new_id()
+            for sub in topic.subscriptions:
+                if sub.confirmed:
+                    _deliver_to_subscriber(
+                        sub,
+                        message,
+                        subject,
+                        {},
+                        message_id,
+                        topic_arn,
+                        sns_region,
+                    )
+        except Exception:
+            logger.exception("Failed to publish to SNS topic %s", topic_arn)
 
     @staticmethod
     def _execute_autoscaling_action(

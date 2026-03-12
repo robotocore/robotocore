@@ -526,12 +526,27 @@ class TestBuildAlarmMessage:
 
 class TestPublishToSns:
     def test_publishes_to_correct_sns_backend(self):
-        mock_sns_backend = MagicMock()
-        mock_backend_dict = {"123456789012": {"us-east-1": mock_sns_backend}}
+        mock_topic = MagicMock()
+        mock_sub = MagicMock()
+        mock_sub.confirmed = True
+        mock_topic.subscriptions = [mock_sub]
+        mock_store = MagicMock()
+        mock_store.get_topic.return_value = mock_topic
+        mock_deliver = MagicMock()
 
-        with patch(
-            "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
-            return_value=mock_backend_dict,
+        with (
+            patch(
+                "robotocore.services.sns.provider._get_store",
+                return_value=mock_store,
+            ),
+            patch(
+                "robotocore.services.sns.provider._deliver_to_subscriber",
+                mock_deliver,
+            ),
+            patch(
+                "robotocore.services.sns.provider._new_id",
+                return_value="test-msg-id",
+            ),
         ):
             AlarmScheduler._publish_to_sns(
                 "arn:aws:sns:us-east-1:123456789012:my-topic",
@@ -541,20 +556,28 @@ class TestPublishToSns:
                 "us-east-1",
             )
 
-        mock_sns_backend.publish.assert_called_once_with(
-            message="message body",
-            arn="arn:aws:sns:us-east-1:123456789012:my-topic",
-            subject="ALARM: test",
+        mock_store.get_topic.assert_called_once_with("arn:aws:sns:us-east-1:123456789012:my-topic")
+        mock_deliver.assert_called_once_with(
+            mock_sub,
+            "message body",
+            "ALARM: test",
+            {},
+            "test-msg-id",
+            "arn:aws:sns:us-east-1:123456789012:my-topic",
+            "us-east-1",
         )
 
     def test_invalid_arn_does_not_raise(self):
         # Should log a warning but not raise
         AlarmScheduler._publish_to_sns("not-an-arn", "msg", "subj", "123", "us-east-1")
 
-    def test_missing_sns_backend_does_not_raise(self):
+    def test_missing_sns_topic_does_not_raise(self):
+        mock_store = MagicMock()
+        mock_store.get_topic.return_value = None
+
         with patch(
-            "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
-            return_value={},
+            "robotocore.services.sns.provider._get_store",
+            return_value=mock_store,
         ):
             AlarmScheduler._publish_to_sns(
                 "arn:aws:sns:us-east-1:123456789012:topic",

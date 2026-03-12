@@ -109,35 +109,53 @@ class TestAlarmWithBothSNSAndASGActions:
             state_value="OK",
         )
 
-        mock_sns_backend = MagicMock()
         mock_asg_backend = MagicMock()
+        mock_topic = MagicMock()
+        mock_sub = MagicMock()
+        mock_sub.confirmed = True
+        mock_topic.subscriptions = [mock_sub]
+        mock_store = MagicMock()
+        mock_store.get_topic.return_value = mock_topic
+        mock_deliver = MagicMock()
 
         def mock_get_backend_fn(service):
             backends = MagicMock()
-            if service == "sns":
-                backends.__getitem__ = lambda s, k: MagicMock(
-                    __getitem__=lambda s2, k2: mock_sns_backend
-                )
-            elif service == "autoscaling":
+            if service == "autoscaling":
                 backends.__getitem__ = lambda s, k: MagicMock(
                     __getitem__=lambda s2, k2: mock_asg_backend
                 )
             return backends
 
-        with patch(
-            "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
-            side_effect=mock_get_backend_fn,
+        with (
+            patch(
+                "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
+                side_effect=mock_get_backend_fn,
+            ),
+            patch("robotocore.services.sns.provider._get_store", return_value=mock_store),
+            patch("robotocore.services.sns.provider._deliver_to_subscriber", mock_deliver),
+            patch("robotocore.services.sns.provider._new_id", return_value="test-id"),
         ):
             scheduler._dispatch_actions(
                 alarm, "OK", "ALARM", "threshold crossed", "123456789012", "us-east-1"
             )
 
-        mock_sns_backend.publish.assert_called_once()
+        mock_deliver.assert_called_once()
         mock_asg_backend.execute_policy.assert_called_once_with("asg1", "scale-out")
 
 
 class TestAlarmStateTransitions:
     """Alarm state transitions: OK -> ALARM -> OK, actions fire on each transition."""
+
+    def _mock_sns_provider(self):
+        """Create mock patches for the SNS provider used by _publish_to_sns."""
+        mock_topic = MagicMock()
+        mock_sub = MagicMock()
+        mock_sub.confirmed = True
+        mock_topic.subscriptions = [mock_sub]
+        mock_store = MagicMock()
+        mock_store.get_topic.return_value = mock_topic
+        mock_deliver = MagicMock()
+        return mock_store, mock_deliver, mock_sub
 
     def test_ok_to_alarm_fires_alarm_actions(self):
         scheduler = AlarmScheduler()
@@ -145,15 +163,17 @@ class TestAlarmStateTransitions:
             alarm_actions=["arn:aws:sns:us-east-1:123456789012:alarm-topic"],
             ok_actions=["arn:aws:sns:us-east-1:123456789012:ok-topic"],
         )
-        mock_backend = MagicMock()
-        with patch("robotocore.services.cloudwatch.alarm_scheduler.get_backend") as mock_gb:
-            mock_gb.return_value.__getitem__.return_value.__getitem__.return_value = mock_backend
+        mock_store, mock_deliver, _ = self._mock_sns_provider()
+        with (
+            patch("robotocore.services.sns.provider._get_store", return_value=mock_store),
+            patch("robotocore.services.sns.provider._deliver_to_subscriber", mock_deliver),
+            patch("robotocore.services.sns.provider._new_id", return_value="test-id"),
+        ):
             scheduler._dispatch_actions(
                 alarm, "OK", "ALARM", "breaching", "123456789012", "us-east-1"
             )
-        mock_backend.publish.assert_called_once()
-        pub_call = mock_backend.publish.call_args
-        assert pub_call[1]["arn"] == "arn:aws:sns:us-east-1:123456789012:alarm-topic"
+        mock_deliver.assert_called_once()
+        mock_store.get_topic.assert_called_with("arn:aws:sns:us-east-1:123456789012:alarm-topic")
 
     def test_alarm_to_ok_fires_ok_actions(self):
         scheduler = AlarmScheduler()
@@ -161,15 +181,17 @@ class TestAlarmStateTransitions:
             alarm_actions=["arn:aws:sns:us-east-1:123456789012:alarm-topic"],
             ok_actions=["arn:aws:sns:us-east-1:123456789012:ok-topic"],
         )
-        mock_backend = MagicMock()
-        with patch("robotocore.services.cloudwatch.alarm_scheduler.get_backend") as mock_gb:
-            mock_gb.return_value.__getitem__.return_value.__getitem__.return_value = mock_backend
+        mock_store, mock_deliver, _ = self._mock_sns_provider()
+        with (
+            patch("robotocore.services.sns.provider._get_store", return_value=mock_store),
+            patch("robotocore.services.sns.provider._deliver_to_subscriber", mock_deliver),
+            patch("robotocore.services.sns.provider._new_id", return_value="test-id"),
+        ):
             scheduler._dispatch_actions(
                 alarm, "ALARM", "OK", "not breaching", "123456789012", "us-east-1"
             )
-        mock_backend.publish.assert_called_once()
-        pub_call = mock_backend.publish.call_args
-        assert pub_call[1]["arn"] == "arn:aws:sns:us-east-1:123456789012:ok-topic"
+        mock_deliver.assert_called_once()
+        mock_store.get_topic.assert_called_with("arn:aws:sns:us-east-1:123456789012:ok-topic")
 
     def test_full_cycle_ok_alarm_ok(self):
         """Full cycle: OK -> ALARM -> OK. Each transition dispatches appropriate actions."""
@@ -183,44 +205,50 @@ class TestAlarmStateTransitions:
             ok_actions=["arn:aws:sns:us-east-1:123456789012:ok-topic"],
         )
         mock_asg = MagicMock()
-        mock_sns = MagicMock()
+        mock_store, mock_deliver, _ = self._mock_sns_provider()
 
         def mock_get_backend_fn(service):
             backends = MagicMock()
             if service == "autoscaling":
                 backends.__getitem__ = lambda s, k: MagicMock(__getitem__=lambda s2, k2: mock_asg)
-            elif service == "sns":
-                backends.__getitem__ = lambda s, k: MagicMock(__getitem__=lambda s2, k2: mock_sns)
             return backends
 
-        with patch(
-            "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
-            side_effect=mock_get_backend_fn,
+        with (
+            patch(
+                "robotocore.services.cloudwatch.alarm_scheduler.get_backend",
+                side_effect=mock_get_backend_fn,
+            ),
+            patch("robotocore.services.sns.provider._get_store", return_value=mock_store),
+            patch("robotocore.services.sns.provider._deliver_to_subscriber", mock_deliver),
+            patch("robotocore.services.sns.provider._new_id", return_value="test-id"),
         ):
-            # OK -> ALARM
+            # OK -> ALARM (fires ASG action)
             scheduler._dispatch_actions(
                 alarm, "OK", "ALARM", "breaching", "123456789012", "us-east-1"
             )
-            # ALARM -> OK
+            # ALARM -> OK (fires SNS action)
             scheduler._dispatch_actions(
                 alarm, "ALARM", "OK", "not breaching", "123456789012", "us-east-1"
             )
 
         mock_asg.execute_policy.assert_called_once()
-        mock_sns.publish.assert_called_once()
+        mock_deliver.assert_called_once()
 
     def test_insufficient_data_fires_insufficient_actions(self):
         scheduler = AlarmScheduler()
         alarm = _make_alarm(
             insufficient_data_actions=["arn:aws:sns:us-east-1:123456789012:insuff-topic"],
         )
-        mock_backend = MagicMock()
-        with patch("robotocore.services.cloudwatch.alarm_scheduler.get_backend") as mock_gb:
-            mock_gb.return_value.__getitem__.return_value.__getitem__.return_value = mock_backend
+        mock_store, mock_deliver, _ = self._mock_sns_provider()
+        with (
+            patch("robotocore.services.sns.provider._get_store", return_value=mock_store),
+            patch("robotocore.services.sns.provider._deliver_to_subscriber", mock_deliver),
+            patch("robotocore.services.sns.provider._new_id", return_value="test-id"),
+        ):
             scheduler._dispatch_actions(
                 alarm, "OK", "INSUFFICIENT_DATA", "no data", "123456789012", "us-east-1"
             )
-        mock_backend.publish.assert_called_once()
+        mock_deliver.assert_called_once()
 
 
 class TestAlarmMessageFormat:
