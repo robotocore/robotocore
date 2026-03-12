@@ -1370,6 +1370,74 @@ async def _invoke_async(
     return Response(content=b'{"Status": 202}', status_code=202, media_type="application/json")
 
 
+def _execute_function(
+    func_name: str,
+    event: dict,
+    region: str,
+    account_id: str,
+) -> tuple:
+    """Execute a Lambda function synchronously and return (result, error_type, logs).
+
+    This is a helper for retry logic — it re-invokes the function without going
+    through the full HTTP request path.
+    """
+    backend = _get_moto_backend(account_id, region)
+    fn = backend.get_function(func_name)
+
+    runtime = getattr(fn, "run_time", "") or ""
+    code_zip = None
+    if hasattr(fn, "code") and fn.code:
+        code_zip = fn.code.get("ZipFile")
+        if isinstance(code_zip, str):
+            code_zip = base64.b64decode(code_zip)
+    if not code_zip:
+        code_zip = getattr(fn, "code_bytes", None)
+
+    env_vars = getattr(fn, "environment_vars", {}) or {}
+    handler = getattr(fn, "handler", "lambda_function.handler")
+    timeout = int(getattr(fn, "timeout", 3) or 3)
+    memory_size = int(getattr(fn, "memory_size", 128) or 128)
+
+    if not code_zip:
+        return "Simple Lambda happy path OK", None, ""
+
+    from robotocore.services.lambda_.docker_executor import get_executor_mode
+
+    if get_executor_mode() == "docker":
+        from robotocore.services.lambda_.docker_executor import get_docker_executor
+
+        docker_exec = get_docker_executor()
+        return docker_exec.execute(
+            code_zip=code_zip,
+            handler=handler,
+            event=event,
+            function_name=func_name,
+            runtime=runtime,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+        )
+    else:
+        executor = get_executor_for_runtime(runtime)
+        from robotocore.services.lambda_.executor import get_layer_zips
+
+        layer_zips = get_layer_zips(fn, account_id, region)
+        return executor.execute(
+            code_zip=code_zip,
+            handler=handler,
+            event=event,
+            function_name=func_name,
+            timeout=timeout,
+            memory_size=memory_size,
+            env_vars=env_vars,
+            region=region,
+            account_id=account_id,
+            layer_zips=layer_zips or None,
+        )
+
+
 def _dispatch_async_result(
     func_name: str,
     event: dict,
@@ -1377,8 +1445,13 @@ def _dispatch_async_result(
     error_type: str | None,
     region: str,
     account_id: str,
+    _retry_attempt: int = 0,
 ) -> None:
-    """After async invocation, dispatch to destinations and/or DLQ."""
+    """After async invocation, dispatch to destinations and/or DLQ.
+
+    AWS retries failed async invocations up to MaximumRetryAttempts (default 2)
+    before sending to the DLQ or OnFailure destination.
+    """
     func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
 
     # Try to get event invoke config from Moto
@@ -1390,23 +1463,67 @@ def _dispatch_async_result(
 
     is_success = error_type is None
 
+    # Get max retry attempts (AWS default is 2)
+    max_retries = 2
     if invoke_config:
-        dest_config = invoke_config.get("DestinationConfig", {})
-        if is_success and dest_config.get("OnSuccess", {}).get("Destination"):
-            dest_arn = dest_config["OnSuccess"]["Destination"]
-            from robotocore.services.lambda_.destinations import dispatch_destination
+        configured = invoke_config.get("MaximumRetryAttempts", -1)
+        if configured >= 0:
+            max_retries = configured
 
-            dispatch_destination(
-                destination_arn=dest_arn,
-                function_arn=func_arn,
-                payload=event,
-                is_success=True,
-                result=result,
-                error=None,
+    # On success: dispatch to OnSuccess destination
+    if is_success:
+        if invoke_config:
+            dest_config = invoke_config.get("DestinationConfig", {})
+            if dest_config.get("OnSuccess", {}).get("Destination"):
+                dest_arn = dest_config["OnSuccess"]["Destination"]
+                from robotocore.services.lambda_.destinations import dispatch_destination
+
+                dispatch_destination(
+                    destination_arn=dest_arn,
+                    function_arn=func_arn,
+                    payload=event,
+                    is_success=True,
+                    result=result,
+                    error=None,
+                    region=region,
+                    account_id=account_id,
+                )
+        return
+
+    # On failure: retry if attempts remain
+    if _retry_attempt < max_retries:
+        logger.info(
+            "Retrying async invocation of %s (attempt %d/%d)",
+            func_name,
+            _retry_attempt + 1,
+            max_retries,
+        )
+        try:
+            retry_result, retry_error_type, _retry_logs = _execute_function(
+                func_name=func_name,
+                event=event,
                 region=region,
                 account_id=account_id,
             )
-        elif not is_success and dest_config.get("OnFailure", {}).get("Destination"):
+            # Recurse with incremented attempt
+            _dispatch_async_result(
+                func_name=func_name,
+                event=event,
+                result=retry_result,
+                error_type=retry_error_type,
+                region=region,
+                account_id=account_id,
+                _retry_attempt=_retry_attempt + 1,
+            )
+            return
+        except Exception:
+            logger.exception("Retry %d failed for %s", _retry_attempt + 1, func_name)
+            # Fall through to DLQ / OnFailure
+
+    # Retries exhausted — dispatch to OnFailure destination
+    if invoke_config:
+        dest_config = invoke_config.get("DestinationConfig", {})
+        if dest_config.get("OnFailure", {}).get("Destination"):
             dest_arn = dest_config["OnFailure"]["Destination"]
             from robotocore.services.lambda_.destinations import dispatch_destination
 
@@ -1421,15 +1538,14 @@ def _dispatch_async_result(
                 account_id=account_id,
             )
 
-    # DLQ on failure
-    if not is_success:
-        dispatch_to_dlq(
-            func_name=func_name,
-            payload=event,
-            error=error_type,
-            region=region,
-            account_id=account_id,
-        )
+    # Retries exhausted — dispatch to DLQ
+    dispatch_to_dlq(
+        func_name=func_name,
+        payload=event,
+        error=error_type,
+        region=region,
+        account_id=account_id,
+    )
 
 
 # --- Helpers ---
