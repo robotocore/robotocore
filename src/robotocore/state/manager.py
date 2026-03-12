@@ -17,12 +17,14 @@ Configuration via environment variables:
 from __future__ import annotations
 
 import base64
+import copy
 import enum
 import io
 import json
 import logging
 import os
 import pickle
+import sys
 import tarfile
 import threading
 import time
@@ -135,6 +137,7 @@ class _RestrictedUnpickler(pickle.Unpickler):
         "copy_reg",
         "copyreg",
         "_codecs",
+        "re",
     )
 
     # Dangerous callables that should never appear in pickles
@@ -254,6 +257,10 @@ class StateManager:
 
         # Lazy-load tracking for on_request load strategy
         self._lazy_loaded = False
+
+        # Versioned in-memory snapshots: {name: {versions: {N: {...}}, latest: N}}
+        self._versioned_snapshots: dict[str, dict[str, Any]] = {}
+        self._snapshot_lock = threading.Lock()
 
         # Parse strategies from env
         save_str = os.environ.get("SNAPSHOT_SAVE_STRATEGY")
@@ -1057,6 +1064,298 @@ class StateManager:
         if services:
             return [s for s in all_services if s in services]
         return all_services
+
+    # ------------------------------------------------------------------
+    # Versioned in-memory snapshots
+    # ------------------------------------------------------------------
+
+    def _capture_state(self, services: list[str] | None = None) -> dict[str, Any]:
+        """Capture the current emulator state as a serializable dict.
+
+        This pickles Moto backends and collects native handler state, storing
+        everything in a dict suitable for in-memory versioned snapshots.
+        """
+        state: dict[str, Any] = {}
+
+        # Capture Moto state via pickle round-trip into bytes
+        try:
+            from moto.backends import get_backend
+
+            moto_state: dict = {}
+            for service_name in self._list_moto_services(services):
+                try:
+                    backend_dict = get_backend(service_name)
+                    service_state: dict = {}
+                    for account_id in list(backend_dict.keys()):
+                        account_state: dict = {}
+                        for region in list(backend_dict[account_id].keys()):
+                            backend = backend_dict[account_id][region]
+                            account_state[region] = backend
+                        service_state[account_id] = account_state
+                    moto_state[service_name] = service_state
+                except Exception:
+                    logger.debug("Could not capture Moto state for %s", service_name, exc_info=True)
+            state["moto"] = pickle.dumps(moto_state, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            logger.debug("Could not capture Moto state", exc_info=True)
+            state["moto"] = b""
+
+        # Capture native provider state
+        native: dict = {}
+        for service, (save_fn, _) in self._native_handlers.items():
+            if services and service not in services:
+                continue
+            try:
+                native[service] = copy.deepcopy(save_fn())
+            except Exception:
+                logger.debug("Could not capture native state for %s", service, exc_info=True)
+        state["native"] = native
+
+        return state
+
+    def _restore_state(self, state: dict[str, Any], services: list[str] | None = None) -> None:
+        """Restore emulator state from a previously captured dict."""
+        # Restore Moto state
+        moto_bytes = state.get("moto", b"")
+        if moto_bytes:
+            try:
+                from moto.backends import get_backend
+
+                moto_state = _RestrictedUnpickler(io.BytesIO(moto_bytes)).load()
+                for service_name, service_state in moto_state.items():
+                    if services and service_name not in services:
+                        continue
+                    try:
+                        backend_dict = get_backend(service_name)
+                        for account_id, account_state in service_state.items():
+                            for region, backend in account_state.items():
+                                backend_dict[account_id][region] = backend
+                    except Exception:
+                        logger.debug(
+                            "Could not restore Moto state for %s",
+                            service_name,
+                            exc_info=True,
+                        )
+            except Exception:
+                logger.debug("Could not restore Moto state", exc_info=True)
+
+        # Restore native provider state
+        native = state.get("native", {})
+        for service, (_, load_fn) in self._native_handlers.items():
+            if services and service not in services:
+                continue
+            if service in native:
+                try:
+                    load_fn(copy.deepcopy(native[service]))
+                except Exception:
+                    logger.debug("Could not restore native state for %s", service, exc_info=True)
+
+    def _estimate_size(self, state: dict[str, Any]) -> int:
+        """Estimate size of a captured state dict in bytes."""
+        size = len(state.get("moto", b""))
+        try:
+            native_json = json.dumps(state.get("native", {}), default=str)
+            size += len(native_json.encode())
+        except Exception:
+            size += sys.getsizeof(state.get("native", {}))
+        return size
+
+    def save_versioned(
+        self,
+        name: str,
+        services: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Save the current state as a new version of a named snapshot.
+
+        Auto-increments the version number. Returns metadata dict with
+        name, version, timestamp, services, and size.
+        """
+        _validate_snapshot_name(name)
+
+        captured = self._capture_state(services=services)
+        ts = time.time()
+        size = self._estimate_size(captured)
+
+        # Determine which services are included
+        included_services: list[str] = []
+        if services:
+            included_services = list(services)
+        else:
+            included_services = self._list_moto_services()
+            included_services.extend(self._native_handlers.keys())
+            included_services = sorted(set(included_services))
+
+        with self._snapshot_lock:
+            if name not in self._versioned_snapshots:
+                self._versioned_snapshots[name] = {"versions": {}, "latest": 0}
+
+            entry = self._versioned_snapshots[name]
+            new_version = entry["latest"] + 1
+            entry["versions"][new_version] = {
+                "data": captured,
+                "timestamp": ts,
+                "services": included_services,
+                "size": size,
+            }
+            entry["latest"] = new_version
+
+        logger.info("Saved versioned snapshot '%s' v%d (%d bytes)", name, new_version, size)
+        return {
+            "name": name,
+            "version": new_version,
+            "timestamp": ts,
+            "services": included_services,
+            "size": size,
+        }
+
+    def load_versioned(
+        self,
+        name: str,
+        version: int | None = None,
+        services: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Load a versioned snapshot into the emulator.
+
+        Args:
+            name: Snapshot name.
+            version: Version number to load. None means latest.
+            services: If provided, only restore these services.
+
+        Returns metadata dict. Raises ValueError if not found.
+        """
+        with self._snapshot_lock:
+            if name not in self._versioned_snapshots:
+                raise ValueError(f"Snapshot '{name}' not found")
+
+            entry = self._versioned_snapshots[name]
+
+            if version is None:
+                version = entry["latest"]
+
+            if version not in entry["versions"]:
+                raise ValueError(f"Snapshot '{name}' version {version} not found")
+
+            ver_data = entry["versions"][version]
+
+        self._restore_state(ver_data["data"], services=services)
+
+        logger.info("Loaded versioned snapshot '%s' v%d", name, version)
+        return {
+            "name": name,
+            "version": version,
+            "timestamp": ver_data["timestamp"],
+            "services": ver_data["services"],
+            "size": ver_data["size"],
+        }
+
+    def list_versioned(self) -> list[dict[str, Any]]:
+        """List all versioned snapshots with their metadata.
+
+        Returns a list of dicts, each with name, latest version, version count,
+        and per-version metadata.
+        """
+        result: list[dict[str, Any]] = []
+        with self._snapshot_lock:
+            for name, entry in sorted(self._versioned_snapshots.items()):
+                versions_meta: list[dict[str, Any]] = []
+                for ver_num in sorted(entry["versions"]):
+                    ver = entry["versions"][ver_num]
+                    versions_meta.append(
+                        {
+                            "version": ver_num,
+                            "timestamp": ver["timestamp"],
+                            "services": ver["services"],
+                            "size": ver["size"],
+                        }
+                    )
+                result.append(
+                    {
+                        "name": name,
+                        "latest": entry["latest"],
+                        "version_count": len(entry["versions"]),
+                        "versions": versions_meta,
+                    }
+                )
+        return result
+
+    def versions_for_snapshot(self, name: str) -> list[dict[str, Any]]:
+        """Return version history for a specific named snapshot.
+
+        Raises ValueError if the snapshot does not exist.
+        """
+        with self._snapshot_lock:
+            if name not in self._versioned_snapshots:
+                raise ValueError(f"Snapshot '{name}' not found")
+
+            entry = self._versioned_snapshots[name]
+            versions_meta: list[dict[str, Any]] = []
+            for ver_num in sorted(entry["versions"]):
+                ver = entry["versions"][ver_num]
+                versions_meta.append(
+                    {
+                        "version": ver_num,
+                        "timestamp": ver["timestamp"],
+                        "services": ver["services"],
+                        "size": ver["size"],
+                    }
+                )
+        return versions_meta
+
+    def delete_versioned(
+        self,
+        name: str,
+        version: int | None = None,
+    ) -> dict[str, Any]:
+        """Delete a versioned snapshot or a specific version.
+
+        Args:
+            name: Snapshot name.
+            version: If provided, delete only this version. If None, delete all.
+
+        Returns a summary dict. Raises ValueError if not found.
+        """
+        with self._snapshot_lock:
+            if name not in self._versioned_snapshots:
+                raise ValueError(f"Snapshot '{name}' not found")
+
+            entry = self._versioned_snapshots[name]
+
+            if version is not None:
+                if version not in entry["versions"]:
+                    raise ValueError(f"Snapshot '{name}' version {version} not found")
+                del entry["versions"][version]
+
+                # If no versions remain, remove the whole entry
+                if not entry["versions"]:
+                    del self._versioned_snapshots[name]
+                    logger.info("Deleted snapshot '%s' (last version removed)", name)
+                    return {"name": name, "deleted_version": version, "remaining": 0}
+
+                # Update latest if we deleted the latest
+                if version == entry["latest"]:
+                    entry["latest"] = max(entry["versions"])
+
+                remaining = len(entry["versions"])
+                logger.info(
+                    "Deleted version %d of snapshot '%s' (%d remaining)",
+                    version,
+                    name,
+                    remaining,
+                )
+                return {
+                    "name": name,
+                    "deleted_version": version,
+                    "remaining": remaining,
+                }
+            else:
+                version_count = len(entry["versions"])
+                del self._versioned_snapshots[name]
+                logger.info("Deleted all %d versions of snapshot '%s'", version_count, name)
+                return {
+                    "name": name,
+                    "deleted_versions": version_count,
+                    "remaining": 0,
+                }
 
 
 # Singleton
