@@ -159,10 +159,12 @@ class TestExtensionRegistry:
         p1 = MagicMock(spec=RobotocorePlugin)
         p1.name = "p1"
         p1.priority = 100
+        p1.api_version = "1.0"
         p1.get_service_overrides.return_value = {}
         p2 = MagicMock(spec=RobotocorePlugin)
         p2.name = "p2"
         p2.priority = 100
+        p2.api_version = "1.0"
         p2.get_service_overrides.return_value = {}
         reg.register(p1)
         reg.register(p2)
