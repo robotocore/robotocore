@@ -1127,8 +1127,23 @@ async def _invoke(
     func_name: str, body: bytes, request: Request, region: str, account_id: str
 ) -> Response:
     """Invoke a Lambda function — uses in-process execution for Python runtimes."""
+    from robotocore.services.lambda_.recursion import (
+        RecursiveInvocationException,
+        check_recursion,
+        decrement_depth,
+        get_recursion_config,
+        increment_depth,
+    )
+
     backend = _get_moto_backend(account_id, region)
     fn = backend.get_function(func_name)
+
+    # Check recursion detection before executing
+    recursive_loop = get_recursion_config(account_id, region, func_name)
+    try:
+        check_recursion(account_id, region, func_name, recursive_loop)
+    except RecursiveInvocationException as exc:
+        return _error("RecursiveInvocationException", str(exc), 400)
 
     invocation_type = request.headers.get("x-amz-invocation-type", "RequestResponse")
     log_type = request.headers.get("x-amz-log-type", "None")
@@ -1171,6 +1186,9 @@ async def _invoke(
                 get_code_cache().invalidate(func_name)
 
     result, error_type, logs = None, None, ""
+
+    # Track recursion depth for this invocation
+    increment_depth(account_id, region, func_name)
 
     # Acquire concurrency slot
     function_key = f"{account_id}:{region}:{func_name}"
@@ -1231,6 +1249,7 @@ async def _invoke(
             result, error_type, logs = "Simple Lambda happy path OK", None, ""
     finally:
         tracker.release(function_key)
+        decrement_depth(account_id, region, func_name)
 
     # Handle async invocation with destinations and DLQ
     if invocation_type == "Event":

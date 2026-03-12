@@ -58,6 +58,13 @@ def _invoke_lambda_sync(
 ) -> tuple[dict | str | None, str | None, str]:
     """Internal: execute a Lambda function synchronously (runs in thread pool)."""
     from robotocore.services.lambda_.executor import get_layer_zips
+    from robotocore.services.lambda_.recursion import (
+        RecursiveInvocationException,
+        check_recursion,
+        decrement_depth,
+        get_recursion_config,
+        increment_depth,
+    )
 
     # Parse function name from ARN
     arn_parts = function_arn.split(":")
@@ -70,81 +77,95 @@ def _invoke_lambda_sync(
     if len(arn_parts) >= 5:
         account_id = arn_parts[4]
 
+    # Check recursion detection
+    recursive_loop = get_recursion_config(account_id, region, function_name)
     try:
-        from moto.backends import get_backend
-        from moto.core import DEFAULT_ACCOUNT_ID
+        check_recursion(account_id, region, function_name, recursive_loop)
+    except RecursiveInvocationException as exc:
+        logger.warning("Recursive invocation blocked for %s: %s", function_name, exc)
+        return None, "RecursiveInvocationException", str(exc)
 
-        acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
-        backend = get_backend("lambda")[acct][region]
-        fn = backend.get_function(function_name)
-    except Exception as e:
-        logger.error("Lambda invoke: function not found: %s (%s)", function_name, e)
-        return None, "ResourceNotFoundException", f"Function not found: {function_name}"
+    # Track recursion depth
+    increment_depth(account_id, region, function_name)
 
-    runtime = getattr(fn, "run_time", "") or ""
-
-    # Get code zip
-    code_zip = getattr(fn, "code_bytes", None)
-    if not code_zip:
-        raw = (fn.code or {}).get("ZipFile") if hasattr(fn, "code") else None
-        if raw:
-            code_zip = base64.b64decode(raw) if isinstance(raw, str) else raw
-
-    if not code_zip:
-        logger.error("Lambda invoke: no code for %s", function_name)
-        return None, "InvalidCodeException", f"No code found for {function_name}"
-
-    handler = getattr(fn, "handler", "lambda_function.handler")
-    timeout = int(getattr(fn, "timeout", 3) or 3)
-    memory_size = int(getattr(fn, "memory_size", 128) or 128)
-    env_vars = getattr(fn, "environment_vars", {}) or {}
-    layer_zips = get_layer_zips(fn, account_id, region)
-
-    from robotocore.services.lambda_.docker_executor import get_executor_mode
-
-    if get_executor_mode() == "docker":
-        from robotocore.services.lambda_.docker_executor import get_docker_executor
-
-        docker_exec = get_docker_executor()
-        result, error_type, logs = docker_exec.execute(
-            code_zip=code_zip,
-            handler=handler,
-            event=payload,
-            function_name=function_name,
-            runtime=runtime,
-            timeout=timeout,
-            memory_size=memory_size,
-            env_vars=env_vars,
-            region=region,
-            account_id=account_id,
-            layer_zips=layer_zips if layer_zips else None,
-        )
-    else:
-        from robotocore.services.lambda_.runtimes import get_executor_for_runtime
-
-        executor = get_executor_for_runtime(runtime)
-        result, error_type, logs = executor.execute(
-            code_zip=code_zip,
-            handler=handler,
-            event=payload,
-            function_name=function_name,
-            timeout=timeout,
-            memory_size=memory_size,
-            env_vars=env_vars,
-            region=region,
-            account_id=account_id,
-            layer_zips=layer_zips if layer_zips else None,
-        )
-
-    if callback:
+    try:
         try:
-            callback(result, error_type, logs)
-        except Exception:
-            logger.exception("Lambda invoke callback failed for %s", function_name)
+            from moto.backends import get_backend
+            from moto.core import DEFAULT_ACCOUNT_ID
 
-    if error_type:
-        logger.warning("Lambda %s returned error %s", function_name, error_type)
-    else:
-        logger.debug("Lambda %s invoked successfully", function_name)
+            acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
+            backend = get_backend("lambda")[acct][region]
+            fn = backend.get_function(function_name)
+        except Exception as e:
+            logger.error("Lambda invoke: function not found: %s (%s)", function_name, e)
+            return None, "ResourceNotFoundException", f"Function not found: {function_name}"
 
-    return result, error_type, logs
+        runtime = getattr(fn, "run_time", "") or ""
+
+        # Get code zip
+        code_zip = getattr(fn, "code_bytes", None)
+        if not code_zip:
+            raw = (fn.code or {}).get("ZipFile") if hasattr(fn, "code") else None
+            if raw:
+                code_zip = base64.b64decode(raw) if isinstance(raw, str) else raw
+
+        if not code_zip:
+            logger.error("Lambda invoke: no code for %s", function_name)
+            return None, "InvalidCodeException", f"No code found for {function_name}"
+
+        handler = getattr(fn, "handler", "lambda_function.handler")
+        timeout = int(getattr(fn, "timeout", 3) or 3)
+        memory_size = int(getattr(fn, "memory_size", 128) or 128)
+        env_vars = getattr(fn, "environment_vars", {}) or {}
+        layer_zips = get_layer_zips(fn, account_id, region)
+
+        from robotocore.services.lambda_.docker_executor import get_executor_mode
+
+        if get_executor_mode() == "docker":
+            from robotocore.services.lambda_.docker_executor import get_docker_executor
+
+            docker_exec = get_docker_executor()
+            result, error_type, logs = docker_exec.execute(
+                code_zip=code_zip,
+                handler=handler,
+                event=payload,
+                function_name=function_name,
+                runtime=runtime,
+                timeout=timeout,
+                memory_size=memory_size,
+                env_vars=env_vars,
+                region=region,
+                account_id=account_id,
+                layer_zips=layer_zips if layer_zips else None,
+            )
+        else:
+            from robotocore.services.lambda_.runtimes import get_executor_for_runtime
+
+            executor = get_executor_for_runtime(runtime)
+            result, error_type, logs = executor.execute(
+                code_zip=code_zip,
+                handler=handler,
+                event=payload,
+                function_name=function_name,
+                timeout=timeout,
+                memory_size=memory_size,
+                env_vars=env_vars,
+                region=region,
+                account_id=account_id,
+                layer_zips=layer_zips if layer_zips else None,
+            )
+
+        if callback:
+            try:
+                callback(result, error_type, logs)
+            except Exception:
+                logger.exception("Lambda invoke callback failed for %s", function_name)
+
+        if error_type:
+            logger.warning("Lambda %s returned error %s", function_name, error_type)
+        else:
+            logger.debug("Lambda %s invoked successfully", function_name)
+
+        return result, error_type, logs
+    finally:
+        decrement_depth(account_id, region, function_name)
