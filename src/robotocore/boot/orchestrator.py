@@ -118,10 +118,13 @@ class BootOrchestrator:
     def register(self, component: ServiceComponent) -> None:
         """Register a component for boot orchestration.
 
-        Raises ValueError if a component with the same name already exists.
+        If a component with the same name is already registered, it is
+        silently skipped. This makes registration idempotent, which is
+        needed when the server is restarted between test modules.
         """
         if component.name in self._components:
-            raise ValueError(f"Component already registered: {component.name}")
+            logger.debug("Component already registered, skipping: %s", component.name)
+            return
         self._components[component.name] = component
         self._status[component.name] = ComponentStatus(
             name=component.name,
