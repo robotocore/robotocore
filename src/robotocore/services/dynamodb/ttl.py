@@ -236,7 +236,7 @@ def _emit_ttl_stream_event(
             if table.range_key_attr:
                 keys[table.range_key_attr] = key_json
 
-        store = get_store(region)
+        store = get_store(region, account_id)
 
         # Build the dynamodb payload with userIdentity for TTL-triggered removal
         seq = 0

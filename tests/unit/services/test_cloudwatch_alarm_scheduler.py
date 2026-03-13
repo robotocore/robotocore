@@ -347,12 +347,29 @@ class TestEvaluateAlarm:
         scheduler._evaluate_alarm(backend, alarm, "123456789012", "us-east-1")
         backend.set_alarm_state.assert_not_called()
 
-    def test_skips_alarm_with_actions_disabled(self):
+    def test_alarm_transitions_state_when_actions_disabled(self):
+        """Alarms with actions_enabled=False should still evaluate and transition state."""
         scheduler = AlarmScheduler()
-        alarm = _make_alarm(actions_enabled=False)
+        now = datetime.now(tz=UTC)
+        alarm = _make_alarm(
+            actions_enabled=False,
+            state_value="OK",
+            comparison_operator="GreaterThanThreshold",
+            threshold=50.0,
+            period=60,
+            evaluation_periods=1,
+            alarm_actions=["arn:aws:sns:us-east-1:123456789012:my-topic"],
+        )
+        datum = _make_metric_datum("AWS/EC2", "CPUUtilization", 90.0, now - timedelta(seconds=30))
         backend = MagicMock()
+        backend.metric_data = [datum]
+        backend.aws_metric_data = []
+
         scheduler._evaluate_alarm(backend, alarm, "123456789012", "us-east-1")
-        backend.set_alarm_state.assert_not_called()
+
+        # State should transition even with actions disabled
+        backend.set_alarm_state.assert_called_once()
+        assert backend.set_alarm_state.call_args[0][3] == "ALARM"
 
     def test_transitions_ok_to_alarm(self):
         scheduler = AlarmScheduler()
@@ -472,6 +489,32 @@ class TestDispatchActions:
                 alarm, "OK", "INSUFFICIENT_DATA", "reason", "123456789012", "us-east-1"
             )
         mock_publish.assert_called_once()
+
+    def test_alarm_dispatches_to_lambda_action(self):
+        """Alarm actions with Lambda ARNs should invoke _invoke_lambda_action."""
+        scheduler = AlarmScheduler()
+        alarm = _make_alarm(
+            alarm_actions=["arn:aws:lambda:us-east-1:123456789012:function:my-func"],
+        )
+        with patch.object(scheduler, "_invoke_lambda_action") as mock_lambda:
+            scheduler._dispatch_actions(alarm, "OK", "ALARM", "reason", "123456789012", "us-east-1")
+        mock_lambda.assert_called_once()
+        assert "my-func" in mock_lambda.call_args[0][0]
+
+    def test_alarm_ec2_automate_action_noop(self):
+        """Alarm actions with :automate: ARNs should be no-ops (no error)."""
+        scheduler = AlarmScheduler()
+        alarm = _make_alarm(
+            alarm_actions=["arn:aws:automate:us-east-1:ec2:stop"],
+        )
+        with (
+            patch.object(scheduler, "_publish_to_sns") as mock_sns,
+            patch.object(scheduler, "_execute_autoscaling_action") as mock_asg,
+        ):
+            # Should not raise, and should not route to SNS or ASG
+            scheduler._dispatch_actions(alarm, "OK", "ALARM", "reason", "123456789012", "us-east-1")
+        mock_sns.assert_not_called()
+        mock_asg.assert_not_called()
 
     def test_no_actions_does_not_publish(self):
         scheduler = AlarmScheduler()

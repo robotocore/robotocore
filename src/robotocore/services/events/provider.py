@@ -816,7 +816,8 @@ def _invoke_sqs_target(arn: str, payload: str, region: str, account_id: str):
     # to support cross-region delivery
     arn_parts = arn.split(":")
     queue_region = arn_parts[3] if len(arn_parts) >= 6 else region
-    store = _get_store(queue_region)
+    queue_account = arn_parts[4] if len(arn_parts) >= 6 else account_id
+    store = _get_store(queue_region, queue_account)
     queue = store.get_queue(queue_name)
     if not queue:
         logger.error("EventBridge: SQS queue not found: %s", queue_name)
@@ -836,7 +837,10 @@ def _invoke_sns_target(arn: str, payload: str, region: str, account_id: str):
     """Publish to an SNS topic from EventBridge."""
     from robotocore.services.sns.provider import _get_store
 
-    store = _get_store(region, account_id)
+    arn_parts = arn.split(":")
+    target_region = arn_parts[3] if len(arn_parts) >= 6 else region
+    target_account = arn_parts[4] if len(arn_parts) >= 6 else account_id
+    store = _get_store(target_region, target_account)
     topic = store.get_topic(arn)
     if not topic:
         logger.error("EventBridge: SNS topic not found: %s", arn)

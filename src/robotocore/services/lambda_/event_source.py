@@ -189,6 +189,9 @@ class EventSourceEngine:
         self._lock = threading.Lock()
         # Track retry counts: mapping_uuid -> {batch_key -> retry_count}
         self._retry_counts: dict[str, dict[str, int]] = {}
+        # Stream position tracking
+        self._kinesis_positions: dict[str, str] = {}
+        self._dynamo_stream_positions: dict[str, int] = {}
 
     def start(self):
         with self._lock:
@@ -404,9 +407,6 @@ class EventSourceEngine:
         if not stream:
             return
 
-        if not hasattr(self, "_kinesis_positions"):
-            self._kinesis_positions = {}
-
         for shard in stream.shards:
             position_key = f"{stream_arn}:{shard.shard_id}"
             last_seq = self._kinesis_positions.get(position_key, "")
@@ -484,10 +484,7 @@ class EventSourceEngine:
             get_store as get_ddb_streams_store,
         )
 
-        store = get_ddb_streams_store(region)
-
-        if not hasattr(self, "_dynamo_stream_positions"):
-            self._dynamo_stream_positions = {}
+        store = get_ddb_streams_store(region, account_id)
 
         position_key = stream_arn
         last_idx = self._dynamo_stream_positions.get(position_key, 0)
@@ -595,9 +592,11 @@ class EventSourceEngine:
 
 
 def _extract_function_name(arn: str) -> str:
-    """Extract function name from ARN or return as-is if already a name."""
+    """Extract function name (with optional qualifier) from ARN or return as-is."""
     if arn.startswith("arn:"):
         parts = arn.split(":")
+        if len(parts) >= 8:
+            return f"{parts[6]}:{parts[7]}"  # name:qualifier
         if len(parts) >= 7:
             return parts[6]
     return arn

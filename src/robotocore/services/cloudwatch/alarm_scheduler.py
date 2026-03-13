@@ -110,8 +110,6 @@ class AlarmScheduler:
             return
         if not alarm.statistic:
             return
-        if not alarm.actions_enabled:
-            return
 
         period = alarm.period or 60
         evaluation_periods = alarm.evaluation_periods or 1
@@ -144,8 +142,9 @@ class AlarmScheduler:
             new_state,
         )
 
-        # Dispatch actions based on the new state
-        self._dispatch_actions(alarm, old_state, new_state, reason, account_id, region_name)
+        # Dispatch actions based on the new state (only if actions are enabled)
+        if alarm.actions_enabled:
+            self._dispatch_actions(alarm, old_state, new_state, reason, account_id, region_name)
 
     def _collect_metric_values(
         self, backend, alarm, period: int, evaluation_periods: int
@@ -325,6 +324,10 @@ class AlarmScheduler:
             try:
                 if ":autoscaling:" in action_arn:
                     self._execute_autoscaling_action(action_arn, account_id, region_name)
+                elif ":lambda:" in action_arn:
+                    self._invoke_lambda_action(action_arn, message, region_name, account_id)
+                elif ":automate:" in action_arn:
+                    logger.info("EC2 automate action (no-op): %s", action_arn)
                 else:
                     self._publish_to_sns(action_arn, message, subject, account_id, region_name)
             except Exception:
@@ -365,6 +368,29 @@ class AlarmScheduler:
             },
         }
         return json.dumps(message)
+
+    @staticmethod
+    def _invoke_lambda_action(
+        function_arn: str,
+        message: str,
+        region: str,
+        account_id: str,
+    ) -> None:
+        """Invoke a Lambda function as a CloudWatch alarm action."""
+        try:
+            import json as _json
+
+            from robotocore.services.lambda_.invoke import invoke_lambda_async
+
+            payload = _json.loads(message)
+            # Parse region/account from the Lambda ARN
+            arn_parts = function_arn.split(":")
+            target_region = arn_parts[3] if len(arn_parts) >= 7 else region
+            target_account = arn_parts[4] if len(arn_parts) >= 7 else account_id
+            invoke_lambda_async(function_arn, payload, target_region, target_account)
+            logger.info("CloudWatch alarm -> Lambda: %s", function_arn)
+        except Exception:
+            logger.exception("Failed to invoke Lambda action: %s", function_arn)
 
     @staticmethod
     def _publish_to_sns(

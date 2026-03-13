@@ -188,7 +188,10 @@ def _build_event_record(
 
 
 def _deliver_to_sqs(queue_arn: str, message: str, region: str) -> None:
-    sqs_store = get_sqs_store(region)
+    arn_parts = queue_arn.split(":")
+    target_region = arn_parts[3] if len(arn_parts) >= 6 else region
+    target_account = arn_parts[4] if len(arn_parts) >= 6 else "123456789012"
+    sqs_store = get_sqs_store(target_region, target_account)
     queue_name = queue_arn.rsplit(":", 1)[-1]
     queue = sqs_store.get_queue(queue_name)
     if not queue:
@@ -202,7 +205,10 @@ def _deliver_to_sqs(queue_arn: str, message: str, region: str) -> None:
 
 
 def _deliver_to_sns(topic_arn: str, message: str, region: str) -> None:
-    sns_store = get_sns_store(region)
+    arn_parts = topic_arn.split(":")
+    target_region = arn_parts[3] if len(arn_parts) >= 6 else region
+    target_account = arn_parts[4] if len(arn_parts) >= 6 else "123456789012"
+    sns_store = get_sns_store(target_region, target_account)
     topic = sns_store.get_topic(topic_arn)
     if not topic:
         return

@@ -809,7 +809,8 @@ def _deliver_to_sqs(
     # to support cross-region delivery
     arn_parts = sub.endpoint.split(":")
     queue_region = arn_parts[3] if len(arn_parts) >= 6 else region
-    sqs_store = get_sqs_store(queue_region)
+    queue_account = arn_parts[4] if len(arn_parts) >= 6 else "123456789012"
+    sqs_store = get_sqs_store(queue_region, queue_account)
     # Endpoint is queue ARN -- extract queue name
     queue_name = sub.endpoint.rsplit(":", 1)[-1]
     queue = sqs_store.get_queue(queue_name)

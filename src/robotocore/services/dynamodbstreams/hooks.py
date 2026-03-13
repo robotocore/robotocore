@@ -14,15 +14,16 @@ from robotocore.services.dynamodbstreams.models import DynamoDBStreamsStore
 
 logger = logging.getLogger(__name__)
 
-_stores: dict[str, DynamoDBStreamsStore] = {}
+_stores: dict[tuple[str, str], DynamoDBStreamsStore] = {}
 _stores_lock = threading.Lock()
 
 
-def get_store(region: str = "us-east-1") -> DynamoDBStreamsStore:
+def get_store(region: str = "us-east-1", account_id: str = "123456789012") -> DynamoDBStreamsStore:
     with _stores_lock:
-        if region not in _stores:
-            _stores[region] = DynamoDBStreamsStore()
-        return _stores[region]
+        key = (account_id, region)
+        if key not in _stores:
+            _stores[key] = DynamoDBStreamsStore()
+        return _stores[key]
 
 
 def notify_table_change(
@@ -59,7 +60,7 @@ def notify_table_change(
         stream_arn = f"{table.table_arn}/stream/{table.latest_stream_label}"
         view_type = table.stream_specification.get("StreamViewType", "NEW_AND_OLD_IMAGES")
 
-        store = get_store(region)
+        store = get_store(region, account_id)
         store.record_change(
             table_name=table_name,
             event_name=event_name,
