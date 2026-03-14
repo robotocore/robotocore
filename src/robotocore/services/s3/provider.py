@@ -1,6 +1,7 @@
 """Enhanced S3 provider — wraps Moto's S3 with event notifications, CORS,
 versioning, lifecycle, object lock, multipart support, and presigned URLs."""
 
+import logging
 import re
 import threading
 import xml.etree.ElementTree as ET
@@ -71,6 +72,8 @@ _lifecycle_store: dict[str, list[dict]] = {}
 _object_lock_store: dict[str, dict] = {}
 _object_legal_hold_store: dict[str, dict[str, str]] = {}
 _logging_store: dict[str, dict] = {}
+# Directory bucket metadata (bucket_name -> metadata dict)
+_directory_bucket_store: dict[str, dict] = {}
 _store_lock = threading.Lock()
 
 S3_NS = "http://s3.amazonaws.com/doc/2006-03-01/"
@@ -512,6 +515,8 @@ _S3_SUBRESOURCES = {
     "legal-hold",
     "uploads",
     "uploadId",
+    "session",
+    "renameObject",
 }
 
 
@@ -532,6 +537,7 @@ def _cleanup_bucket_stores(bucket: str) -> None:
         _lifecycle_store.pop(bucket, None)
         _object_lock_store.pop(bucket, None)
         _logging_store.pop(bucket, None)
+        _directory_bucket_store.pop(bucket, None)
         # Legal hold uses compound keys "bucket/key" — remove all for this bucket
         prefix = f"{bucket}/"
         keys_to_remove = [k for k in _object_legal_hold_store if k.startswith(prefix)]
@@ -555,19 +561,6 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
     """Handle S3 request: delegate to Moto, then fire notifications."""
     path = request.url.path
     method = request.method.upper()
-
-    # Handle ListDirectoryBuckets (S3 Express) — return empty list
-    if method == "GET" and path == "/" and "s3express" in request.headers.get("authorization", ""):
-        return Response(
-            content=(
-                '<?xml version="1.0" encoding="UTF-8"?>'
-                "<ListDirectoryBucketsResult>"
-                "<Buckets/>"
-                "</ListDirectoryBucketsResult>"
-            ),
-            status_code=200,
-            media_type="application/xml",
-        )
 
     # Handle OPTIONS (CORS preflight)
     if method == "OPTIONS":
@@ -617,6 +610,14 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
     # Versioning: ?versioning and ?versionId= are forwarded to Moto directly
     # These are native Moto operations and need no interception.
 
+    # CreateSession (S3 Express) — forward to Moto
+    if sub == "session":
+        return await forward_to_moto(request, "s3", account_id=account_id)
+
+    # RenameObject (S3 Express — directory buckets only) — forward to Moto
+    if sub == "renameObject":
+        return await forward_to_moto(request, "s3", account_id=account_id)
+
     # Forward to Moto for actual S3 operation
     response = await forward_to_moto(request, "s3", account_id=account_id)
 
@@ -630,6 +631,21 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
             # Clean up all module-level stores when a bucket is deleted
             if method == "DELETE" and not key and not query:
                 _cleanup_bucket_stores(bucket)
+
+            # Track directory bucket creation for local metadata lookup
+            if method == "PUT" and not key and not query:
+                try:
+                    body = await request.body()
+                    body_str = body.decode() if body else ""
+                    if "<Type>Directory</Type>" in body_str:
+                        with _store_lock:
+                            _directory_bucket_store[bucket] = {
+                                "type": "Directory",
+                                "location_type": "AvailabilityZone",
+                            }
+                except Exception:
+                    # Best-effort tracking — body may already be consumed
+                    logging.debug("Failed to detect directory bucket type from request body")
 
             if method == "PUT" and key:
                 content_length = 0
