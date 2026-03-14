@@ -2224,3 +2224,160 @@ class TestCloudFrontWebACL:
         """ListDistributionsByWebACLId returns a DistributionList."""
         resp = cf.list_distributions_by_web_acl_id(WebACLId="fake-acl-id")
         assert "DistributionList" in resp
+
+    def test_list_distributions_by_web_acl_id_empty(self, cf):
+        """ListDistributionsByWebACLId with nonexistent ACL returns empty list."""
+        resp = cf.list_distributions_by_web_acl_id(WebACLId="nonexistent-acl")
+        dl = resp["DistributionList"]
+        assert dl["Quantity"] == 0
+        assert dl["IsTruncated"] is False
+
+
+class TestCloudFrontDistributionWebACLAssociation:
+    """Tests for associating/disassociating WebACLs with distributions."""
+
+    def test_associate_distribution_web_acl(self, cf):
+        """AssociateDistributionWebACL returns 200."""
+        create_resp = cf.create_distribution(DistributionConfig=_dist_config("assoc-wacl"))
+        dist_id = create_resp["Distribution"]["Id"]
+        etag = create_resp["ETag"]
+
+        resp = cf.associate_distribution_web_acl(
+            Id=dist_id,
+            WebACLArn="arn:aws:wafv2:us-east-1:123456789012:global/webacl/test/abc",
+            IfMatch=etag,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_distribution_web_acl(self, cf):
+        """DisassociateDistributionWebACL returns 200."""
+        create_resp = cf.create_distribution(DistributionConfig=_dist_config("disassoc-wacl"))
+        dist_id = create_resp["Distribution"]["Id"]
+        etag = create_resp["ETag"]
+
+        # Associate first
+        cf.associate_distribution_web_acl(
+            Id=dist_id,
+            WebACLArn="arn:aws:wafv2:us-east-1:123456789012:global/webacl/test/abc",
+            IfMatch=etag,
+        )
+
+        # Get new etag
+        get_resp = cf.get_distribution(Id=dist_id)
+        new_etag = get_resp["ETag"]
+
+        resp = cf.disassociate_distribution_web_acl(Id=dist_id, IfMatch=new_etag)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontTenantWebACLAssociation:
+    """Tests for associating/disassociating WebACLs with distribution tenants."""
+
+    def test_associate_distribution_tenant_web_acl(self, cf):
+        """AssociateDistributionTenantWebACL returns 200."""
+        resp = cf.associate_distribution_tenant_web_acl(
+            Id="fake-tenant-id",
+            WebACLArn="arn:aws:wafv2:us-east-1:123456789012:global/webacl/test/abc",
+            IfMatch="fake-etag",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_distribution_tenant_web_acl(self, cf):
+        """DisassociateDistributionTenantWebACL returns 200."""
+        resp = cf.disassociate_distribution_tenant_web_acl(
+            Id="fake-tenant-id",
+            IfMatch="fake-etag",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontResourcePolicy:
+    """Tests for CloudFront resource policy operations."""
+
+    def test_delete_resource_policy(self, cf):
+        """DeleteResourcePolicy returns 200 or 204."""
+        create_resp = cf.create_distribution(DistributionConfig=_dist_config("rp-test"))
+        arn = create_resp["Distribution"]["ARN"]
+
+        resp = cf.delete_resource_policy(ResourceArn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestCloudFrontAnycastIpList:
+    """Tests for CloudFront AnycastIpList operations."""
+
+    def test_get_anycast_ip_list_nonexistent(self, cf):
+        """GetAnycastIpList with a nonexistent ID returns NoSuchResource."""
+        with pytest.raises(ClientError) as exc_info:
+            cf.get_anycast_ip_list(Id="nonexistent-anycast-id")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchResource"
+
+    def test_update_anycast_ip_list_nonexistent(self, cf):
+        """UpdateAnycastIpList with a nonexistent ID returns NoSuchResource."""
+        with pytest.raises(ClientError) as exc_info:
+            cf.update_anycast_ip_list(
+                Id="nonexistent-anycast-id", IpAddressType="IPv4", IfMatch="fake-etag"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchResource"
+
+    def test_delete_anycast_ip_list_nonexistent(self, cf):
+        """DeleteAnycastIpList with a nonexistent ID returns 204 (idempotent)."""
+        resp = cf.delete_anycast_ip_list(Id="nonexistent-anycast-id", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestCloudFrontConnectionFunction:
+    """Tests for CloudFront ConnectionFunction operations."""
+
+    def test_get_connection_function(self, cf):
+        """GetConnectionFunction returns ConnectionFunctionCode."""
+        resp = cf.get_connection_function(Identifier="fake-function-id")
+        assert "ConnectionFunctionCode" in resp
+        assert "ETag" in resp
+
+    def test_delete_connection_function_nonexistent(self, cf):
+        """DeleteConnectionFunction with nonexistent ID returns 204."""
+        resp = cf.delete_connection_function(Id="nonexistent-cf-id", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestCloudFrontConnectionGroup:
+    """Tests for CloudFront ConnectionGroup operations."""
+
+    def test_delete_connection_group_nonexistent(self, cf):
+        """DeleteConnectionGroup with nonexistent ID returns 204."""
+        resp = cf.delete_connection_group(Id="nonexistent-cg-id", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestCloudFrontDistributionTenant:
+    """Tests for CloudFront DistributionTenant operations."""
+
+    def test_delete_distribution_tenant_nonexistent(self, cf):
+        """DeleteDistributionTenant with nonexistent ID returns 204."""
+        resp = cf.delete_distribution_tenant(Id="nonexistent-tenant-id", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestCloudFrontTrustStore:
+    """Tests for CloudFront TrustStore operations."""
+
+    def test_delete_trust_store_nonexistent(self, cf):
+        """DeleteTrustStore with nonexistent ID returns 204."""
+        resp = cf.delete_trust_store(Id="nonexistent-ts-id", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+
+class TestCloudFrontVpcOrigin:
+    """Tests for CloudFront VpcOrigin operations."""
+
+    def test_get_vpc_origin_nonexistent(self, cf):
+        """GetVpcOrigin with nonexistent ID returns NoSuchResource."""
+        with pytest.raises(ClientError) as exc_info:
+            cf.get_vpc_origin(Id="nonexistent-vpc-origin-id")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchResource"
+
+    def test_delete_vpc_origin_nonexistent(self, cf):
+        """DeleteVpcOrigin with nonexistent ID returns 202."""
+        resp = cf.delete_vpc_origin(Id="nonexistent-vpc-origin-id", IfMatch="fake-etag")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 202

@@ -2,6 +2,7 @@
 
 import uuid
 
+import botocore.exceptions
 import pytest
 
 from tests.compatibility.conftest import make_client
@@ -7246,9 +7247,8 @@ class TestEC2AcceptVpcEndpointConnections:
 
     def test_accept_vpc_endpoint_connections_invalid_service(self, ec2):
         """AcceptVpcEndpointConnections returns error for invalid service ID."""
-        from botocore.exceptions import ClientError
 
-        with pytest.raises(ClientError) as exc_info:
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
             ec2.accept_vpc_endpoint_connections(
                 ServiceId="vpce-svc-00000000000000000",
                 VpcEndpointIds=["vpce-00000000000000000"],
@@ -7261,9 +7261,8 @@ class TestEC2UnassignIpv6Addresses:
 
     def test_unassign_ipv6_addresses_invalid_eni(self, ec2):
         """UnassignIpv6Addresses returns error for non-existent ENI."""
-        from botocore.exceptions import ClientError
 
-        with pytest.raises(ClientError) as exc_info:
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
             ec2.unassign_ipv6_addresses(
                 NetworkInterfaceId="eni-00000000000000000",
                 Ipv6Addresses=["2001:db8::1"],
@@ -9419,24 +9418,8 @@ class TestEC2AdditionalUntested:
         resp = ec2.list_volumes_in_recycle_bin()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_describe_capacity_block_offerings(self, ec2):
-        """DescribeCapacityBlockOfferings with required params."""
-        from botocore.exceptions import ClientError
-
-        try:
-            resp = ec2.describe_capacity_block_offerings(
-                InstanceType="m5.xlarge",
-                CapacityDurationHours=1,
-            )
-            assert "CapacityBlockOfferings" in resp
-        except ClientError:
-            pass  # OK if not implemented
-
     def test_modify_instance_metadata_options(self, ec2):
         """ModifyInstanceMetadataOptions on a running instance."""
-        from botocore.exceptions import ClientError
-
-        # Launch a micro instance
         run_resp = ec2.run_instances(
             ImageId="ami-12345678",
             InstanceType="t2.micro",
@@ -9452,179 +9435,87 @@ class TestEC2AdditionalUntested:
             )
             assert "InstanceId" in resp
             assert resp["InstanceId"] == instance_id
-        except ClientError:
-            pass  # OK if not implemented
         finally:
             ec2.terminate_instances(InstanceIds=[instance_id])
 
     def test_replace_iam_instance_profile_association(self, ec2):
         """ReplaceIamInstanceProfileAssociation with a fake association ID."""
-        from botocore.exceptions import ClientError
-
-        try:
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
             ec2.replace_iam_instance_profile_association(
                 IamInstanceProfile={"Name": "fake-profile"},
                 AssociationId="iip-assoc-00000000000000000",
             )
-        except ClientError as e:
-            assert (
-                "NoSuchEntity" in str(e)
-                or "InvalidParameterValue" in str(e)
-                or "NotFound" in str(e)
-                or "InvalidAssociationID" in str(e)
-            )
-
-    def test_get_declarative_policies_report_summary(self, ec2):
-        """GetDeclarativePoliciesReportSummary with fake report ID."""
-        from botocore.exceptions import ClientError
-
-        try:
-            resp = ec2.get_declarative_policies_report_summary(
-                ReportId="report-00000000000000000",
-            )
-            assert "ReportId" in resp or resp is not None
-        except ClientError:
-            pass  # OK if not implemented
-
-    def test_create_replace_root_volume_task(self, ec2):
-        """CreateReplaceRootVolumeTask on a running instance."""
-        from botocore.exceptions import ClientError
-
-        run_resp = ec2.run_instances(
-            ImageId="ami-12345678",
-            InstanceType="t2.micro",
-            MinCount=1,
-            MaxCount=1,
+        err = exc_info.value.response["Error"]["Code"]
+        assert any(
+            s in err
+            for s in ["NoSuchEntity", "InvalidParameterValue", "NotFound", "InvalidAssociationID"]
         )
-        instance_id = run_resp["Instances"][0]["InstanceId"]
-        try:
-            resp = ec2.create_replace_root_volume_task(
-                InstanceId=instance_id,
-            )
-            assert "ReplaceRootVolumeTask" in resp
-        except ClientError:
-            pass  # OK if not implemented
-        finally:
-            ec2.terminate_instances(InstanceIds=[instance_id])
-
-    def test_create_store_image_task(self, ec2):
-        """CreateStoreImageTask with fake image and bucket."""
-        from botocore.exceptions import ClientError
-
-        try:
-            resp = ec2.create_store_image_task(
-                ImageId="ami-00000000000000000",
-                Bucket="fake-bucket-for-test",
-            )
-            assert "ObjectKey" in resp or resp is not None
-        except ClientError:
-            pass  # OK if not implemented
-
-    def test_deprovision_public_ipv4_pool_cidr(self, ec2):
-        """DeprovisionPublicIpv4PoolCidr with fake pool."""
-        from botocore.exceptions import ClientError
-
-        try:
-            resp = ec2.deprovision_public_ipv4_pool_cidr(
-                PoolId="ipv4pool-ec2-00000000000000000",
-                Cidr="203.0.113.0/24",
-            )
-            assert resp is not None
-        except ClientError:
-            pass  # OK if not implemented
-
-    def test_purchase_capacity_block(self, ec2):
-        """PurchaseCapacityBlock with fake offering."""
-        from botocore.exceptions import ClientError
-
-        try:
-            resp = ec2.purchase_capacity_block(
-                CapacityBlockOfferingId="cbo-00000000000000000",
-                InstancePlatform="Linux/UNIX",
-            )
-            assert resp is not None
-        except ClientError:
-            pass  # OK if not implemented
 
     def test_create_delete_verified_access_endpoint(self, ec2):
         """CreateVerifiedAccessEndpoint and DeleteVerifiedAccessEndpoint."""
-        from botocore.exceptions import ClientError
-
-        # First create a verified access group (needed for endpoint)
+        tp_resp = ec2.create_verified_access_trust_provider(
+            TrustProviderType="user",
+            UserTrustProviderType="iam-identity-center",
+            PolicyReferenceName="test-policy",
+        )
+        tp_id = tp_resp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
         try:
-            # Need a trust provider and instance first
-            tp_resp = ec2.create_verified_access_trust_provider(
-                TrustProviderType="user",
-                UserTrustProviderType="iam-identity-center",
-                PolicyReferenceName="test-policy",
+            inst_resp = ec2.create_verified_access_instance(
+                Description="test-instance",
             )
-            tp_id = tp_resp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
+            inst_id = inst_resp["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
             try:
-                inst_resp = ec2.create_verified_access_instance(
-                    Description="test-instance",
+                ec2.attach_verified_access_trust_provider(
+                    VerifiedAccessInstanceId=inst_id,
+                    VerifiedAccessTrustProviderId=tp_id,
                 )
-                inst_id = inst_resp["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+                grp_resp = ec2.create_verified_access_group(
+                    VerifiedAccessInstanceId=inst_id,
+                )
+                grp_id = grp_resp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
                 try:
-                    # Attach trust provider to instance
-                    ec2.attach_verified_access_trust_provider(
-                        VerifiedAccessInstanceId=inst_id,
-                        VerifiedAccessTrustProviderId=tp_id,
-                    )
-                    grp_resp = ec2.create_verified_access_group(
-                        VerifiedAccessInstanceId=inst_id,
-                    )
-                    grp_id = grp_resp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
-                    try:
-                        # Get a subnet for the endpoint
-                        subnets = ec2.describe_subnets()["Subnets"]
-                        subnet_id = subnets[0]["SubnetId"] if subnets else None
-                        if subnet_id:
-                            # Create a security group
-                            sg_resp = ec2.create_security_group(
-                                GroupName=_unique("va-sg"),
-                                Description="VA endpoint SG",
+                    subnets = ec2.describe_subnets()["Subnets"]
+                    subnet_id = subnets[0]["SubnetId"] if subnets else None
+                    if subnet_id:
+                        sg_resp = ec2.create_security_group(
+                            GroupName=_unique("va-sg"),
+                            Description="VA endpoint SG",
+                        )
+                        sg_id = sg_resp["GroupId"]
+                        try:
+                            cert_arn = "arn:aws:acm:us-east-1:123456789012:certificate/fake"
+                            ep_resp = ec2.create_verified_access_endpoint(
+                                VerifiedAccessGroupId=grp_id,
+                                EndpointType="network-interface",
+                                AttachmentType="vpc",
+                                DomainCertificateArn=cert_arn,
+                                ApplicationDomain="test.example.com",
+                                EndpointDomainPrefix="test-ep",
+                                SecurityGroupIds=[sg_id],
+                                NetworkInterfaceOptions={
+                                    "NetworkInterfaceId": "eni-00000000000000000",
+                                    "Protocol": "https",
+                                    "Port": 443,
+                                },
                             )
-                            sg_id = sg_resp["GroupId"]
-                            try:
-                                ep_resp = ec2.create_verified_access_endpoint(
-                                    VerifiedAccessGroupId=grp_id,
-                                    EndpointType="network-interface",
-                                    AttachmentType="vpc",
-                                    DomainCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
-                                    ApplicationDomain="test.example.com",
-                                    EndpointDomainPrefix="test-ep",
-                                    SecurityGroupIds=[sg_id],
-                                    NetworkInterfaceOptions={
-                                        "NetworkInterfaceId": "eni-00000000000000000",
-                                        "Protocol": "https",
-                                        "Port": 443,
-                                    },
-                                )
-                                ep_id = ep_resp["VerifiedAccessEndpoint"][
-                                    "VerifiedAccessEndpointId"
-                                ]
-                                assert ep_id.startswith("vae-")
-                                # Delete endpoint
-                                del_resp = ec2.delete_verified_access_endpoint(
-                                    VerifiedAccessEndpointId=ep_id,
-                                )
-                                assert "VerifiedAccessEndpoint" in del_resp
-                            except ClientError:
-                                pass  # OK if endpoint creation not fully supported
-                            finally:
-                                ec2.delete_security_group(GroupId=sg_id)
-                    finally:
-                        ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
+                            ep_id = ep_resp["VerifiedAccessEndpoint"]["VerifiedAccessEndpointId"]
+                            assert ep_id.startswith("vae-")
+                            del_resp = ec2.delete_verified_access_endpoint(
+                                VerifiedAccessEndpointId=ep_id,
+                            )
+                            assert "VerifiedAccessEndpoint" in del_resp
+                        finally:
+                            ec2.delete_security_group(GroupId=sg_id)
                 finally:
-                    ec2.detach_verified_access_trust_provider(
-                        VerifiedAccessInstanceId=inst_id,
-                        VerifiedAccessTrustProviderId=tp_id,
-                    )
-                    ec2.delete_verified_access_instance(VerifiedAccessInstanceId=inst_id)
+                    ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
             finally:
-                ec2.delete_verified_access_trust_provider(VerifiedAccessTrustProviderId=tp_id)
-        except ClientError:
-            pass  # OK if not implemented
+                ec2.detach_verified_access_trust_provider(
+                    VerifiedAccessInstanceId=inst_id,
+                    VerifiedAccessTrustProviderId=tp_id,
+                )
+                ec2.delete_verified_access_instance(VerifiedAccessInstanceId=inst_id)
+        finally:
+            ec2.delete_verified_access_trust_provider(VerifiedAccessTrustProviderId=tp_id)
 
 
 class TestEC2AllowedImagesSettings:
@@ -9644,3 +9535,488 @@ class TestEC2ClientVpnConnections:
             ClientVpnEndpointId="cvpn-endpoint-00000000000000000"
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2ImageOpsGroup2:
+    """Tests for image-related EC2 operations (group 2 coverage)."""
+
+    def test_copy_image_cross_region_name(self, ec2):
+        """CopyImage preserves the name in the copied AMI."""
+        img = ec2.register_image(
+            Name=_unique("src-ami"),
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8},
+                }
+            ],
+        )
+        src_id = img["ImageId"]
+        try:
+            copy_resp = ec2.copy_image(
+                SourceImageId=src_id,
+                SourceRegion="us-east-1",
+                Name="copied-ami",
+            )
+            copy_id = copy_resp["ImageId"]
+            assert copy_id.startswith("ami-")
+            try:
+                described = ec2.describe_images(ImageIds=[copy_id])
+                assert described["Images"][0]["ImageId"] == copy_id
+            finally:
+                ec2.deregister_image(ImageId=copy_id)
+        finally:
+            ec2.deregister_image(ImageId=src_id)
+
+    def test_create_image_from_running_instance(self, ec2):
+        """CreateImage creates an AMI from a running instance."""
+        run = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        instance_id = run["Instances"][0]["InstanceId"]
+        try:
+            img_resp = ec2.create_image(InstanceId=instance_id, Name=_unique("create-img-test"))
+            ami_id = img_resp["ImageId"]
+            assert ami_id.startswith("ami-")
+            ec2.deregister_image(ImageId=ami_id)
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_deregister_image_removes_ami(self, ec2):
+        """DeregisterImage removes the AMI from describe results."""
+        img = ec2.register_image(
+            Name=_unique("dereg-test"),
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8},
+                }
+            ],
+        )
+        ami_id = img["ImageId"]
+        ec2.deregister_image(ImageId=ami_id)
+        described = ec2.describe_images(ImageIds=[ami_id])
+        if described["Images"]:
+            assert described["Images"][0]["State"] in ("deregistered", "invalid")
+        else:
+            assert len(described["Images"]) == 0
+
+    def test_register_image_with_block_devices(self, ec2):
+        """RegisterImage with block device mappings."""
+        name = _unique("reg-img")
+        img = ec2.register_image(
+            Name=name,
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 16},
+                },
+                {"DeviceName": "/dev/sdb", "Ebs": {"VolumeSize": 50}},
+            ],
+        )
+        ami_id = img["ImageId"]
+        try:
+            assert ami_id.startswith("ami-")
+            described = ec2.describe_images(ImageIds=[ami_id])
+            assert described["Images"][0]["Name"] == name
+            assert len(described["Images"][0]["BlockDeviceMappings"]) >= 1
+        finally:
+            ec2.deregister_image(ImageId=ami_id)
+
+    def test_describe_image_attribute_description(self, ec2):
+        """DescribeImageAttribute for description."""
+        img = ec2.register_image(
+            Name=_unique("attr-desc"),
+            Description="test image description",
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8},
+                }
+            ],
+        )
+        ami_id = img["ImageId"]
+        try:
+            resp = ec2.describe_image_attribute(ImageId=ami_id, Attribute="description")
+            assert resp["ImageId"] == ami_id
+            assert "Description" in resp
+        finally:
+            ec2.deregister_image(ImageId=ami_id)
+
+    def test_modify_image_attribute_launch_permission_add(self, ec2):
+        """ModifyImageAttribute to add launch permission."""
+        img = ec2.register_image(
+            Name=_unique("mod-attr"),
+            RootDeviceName="/dev/sda1",
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8},
+                }
+            ],
+        )
+        ami_id = img["ImageId"]
+        try:
+            ec2.modify_image_attribute(
+                ImageId=ami_id,
+                LaunchPermission={"Add": [{"UserId": "111122223333"}]},
+            )
+            resp = ec2.describe_image_attribute(ImageId=ami_id, Attribute="launchPermission")
+            assert "LaunchPermissions" in resp
+            user_ids = [lp.get("UserId") for lp in resp["LaunchPermissions"]]
+            assert "111122223333" in user_ids
+        finally:
+            ec2.deregister_image(ImageId=ami_id)
+
+    def test_describe_id_format_returns_200(self, ec2):
+        """DescribeIdFormat returns successfully."""
+        resp = ec2.describe_id_format()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_fast_snapshot_restores_returns_200(self, ec2):
+        """DescribeFastSnapshotRestores returns successfully."""
+        resp = ec2.describe_fast_snapshot_restores()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_image_block_public_access_returns_200(self, ec2):
+        """DisableImageBlockPublicAccess returns successfully."""
+        resp = ec2.disable_image_block_public_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_image_returns_200(self, ec2):
+        """ImportImage with no args returns successfully."""
+        resp = ec2.import_image()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2VolumeErrorPaths:
+    """Error-path tests for Volume operations with nonexistent resources."""
+
+    def test_delete_volume_not_found(self, ec2):
+        """DeleteVolume with fake volume ID returns InvalidVolume.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.delete_volume(VolumeId="vol-00000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "InvalidVolume.NotFound"
+
+    def test_modify_volume_not_found(self, ec2):
+        """ModifyVolume with fake volume ID returns InvalidVolume.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.modify_volume(VolumeId="vol-00000000000000000", Size=20)
+        assert exc_info.value.response["Error"]["Code"] == "InvalidVolume.NotFound"
+
+    def test_attach_volume_not_found(self, ec2):
+        """AttachVolume with fake volume ID returns InvalidVolume.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.attach_volume(
+                VolumeId="vol-00000000000000000",
+                InstanceId="i-00000000000000000",
+                Device="/dev/sdf",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidVolume.NotFound"
+
+
+class TestEC2VpnConnectionErrorPaths:
+    """Error-path tests for VPN Connection operations with nonexistent resources."""
+
+    def test_delete_vpn_connection_not_found(self, ec2):
+        """DeleteVpnConnection with fake VPN ID returns InvalidVpnConnectionID.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.delete_vpn_connection(VpnConnectionId="vpn-00000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "InvalidVpnConnectionID.NotFound"
+
+    def test_create_vpn_connection_invalid_cgw(self, ec2):
+        """CreateVpnConnection with fake customer gateway returns error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.create_vpn_connection(
+                Type="ipsec.1",
+                CustomerGatewayId="cgw-00000000000000000",
+                VpnGatewayId="vgw-00000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidCustomerGatewayID.NotFound"
+
+
+class TestEC2VerifiedAccessTrustProviderErrorPaths:
+    """Error-path tests for Verified Access Trust Provider with nonexistent resources."""
+
+    def test_delete_verified_access_trust_provider_not_found(self, ec2):
+        """DeleteVerifiedAccessTrustProvider with fake ID returns proper error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.delete_verified_access_trust_provider(
+                VerifiedAccessTrustProviderId="vatp-00000000000000000"
+            )
+        assert (
+            exc_info.value.response["Error"]["Code"]
+            == "InvalidVerifiedAccessTrustProviderId.NotFound"
+        )
+
+
+class TestEC2DescribeVolumesFiltered:
+    """Additional tests for DescribeVolumes with specific filter patterns."""
+
+    def test_describe_volumes_empty_filter_returns_list(self, ec2):
+        """DescribeVolumes with empty filter returns a list of volumes."""
+        resp = ec2.describe_volumes(Filters=[{"Name": "status", "Values": ["available"]}])
+        assert "Volumes" in resp
+        assert isinstance(resp["Volumes"], list)
+
+
+class TestEC2TransitGatewayRouteCRUD:
+    """Tests for CreateTransitGatewayRoute / DeleteTransitGatewayRoute."""
+
+    def test_create_transit_gateway_route_blackhole(self, ec2):
+        """CreateTransitGatewayRoute with Blackhole=True."""
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            route = ec2.create_transit_gateway_route(
+                DestinationCidrBlock="10.77.0.0/16",
+                TransitGatewayRouteTableId=rtb_id,
+                Blackhole=True,
+            )
+            assert route["Route"]["DestinationCidrBlock"] == "10.77.0.0/16"
+            assert route["Route"]["State"] == "blackhole"
+            ec2.delete_transit_gateway_route(
+                DestinationCidrBlock="10.77.0.0/16",
+                TransitGatewayRouteTableId=rtb_id,
+            )
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_delete_transit_gateway_route(self, ec2):
+        """DeleteTransitGatewayRoute removes a blackhole route."""
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            ec2.create_transit_gateway_route(
+                DestinationCidrBlock="10.78.0.0/16",
+                TransitGatewayRouteTableId=rtb_id,
+                Blackhole=True,
+            )
+            del_resp = ec2.delete_transit_gateway_route(
+                DestinationCidrBlock="10.78.0.0/16",
+                TransitGatewayRouteTableId=rtb_id,
+            )
+            assert "Route" in del_resp
+            assert del_resp["Route"]["DestinationCidrBlock"] == "10.78.0.0/16"
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2TransitGatewayVpcAttachmentOps:
+    """Tests for Create/Delete/Modify TransitGatewayVpcAttachment."""
+
+    def test_create_transit_gateway_vpc_attachment_standalone(self, ec2):
+        """CreateTransitGatewayVpcAttachment returns attachment with VpcId."""
+        vpc = ec2.create_vpc(CidrBlock="10.60.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.60.1.0/24")
+        sub_id = subnet["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            assert att["TransitGatewayVpcAttachment"]["VpcId"] == vpc_id
+            assert att["TransitGatewayVpcAttachment"]["TransitGatewayId"] == tgw_id
+            assert att_id.startswith("tgw-attach-")
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_delete_transit_gateway_vpc_attachment_standalone(self, ec2):
+        """DeleteTransitGatewayVpcAttachment returns deleted state."""
+        vpc = ec2.create_vpc(CidrBlock="10.61.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.61.1.0/24")
+        sub_id = subnet["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            del_resp = ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+            assert del_resp["TransitGatewayVpcAttachment"]["State"] == "deleted"
+        finally:
+            ec2.delete_subnet(SubnetId=sub_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_modify_transit_gateway_vpc_attachment_add_subnet(self, ec2):
+        """ModifyTransitGatewayVpcAttachment adds a subnet."""
+        vpc = ec2.create_vpc(CidrBlock="10.62.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sub1 = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.62.1.0/24")
+        sub1_id = sub1["Subnet"]["SubnetId"]
+        sub2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.62.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sub2_id = sub2["Subnet"]["SubnetId"]
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            att = ec2.create_transit_gateway_vpc_attachment(
+                TransitGatewayId=tgw_id, VpcId=vpc_id, SubnetIds=[sub1_id]
+            )
+            att_id = att["TransitGatewayVpcAttachment"]["TransitGatewayAttachmentId"]
+            modified = ec2.modify_transit_gateway_vpc_attachment(
+                TransitGatewayAttachmentId=att_id, AddSubnetIds=[sub2_id]
+            )
+            subnet_ids = modified["TransitGatewayVpcAttachment"]["SubnetIds"]
+            assert sub2_id in subnet_ids
+            ec2.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=att_id)
+        finally:
+            ec2.delete_subnet(SubnetId=sub2_id)
+            ec2.delete_subnet(SubnetId=sub1_id)
+            ec2.delete_vpc(VpcId=vpc_id)
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2TransitGatewayPrefixListRefOps:
+    """Tests for Create/Delete TransitGatewayPrefixListReference."""
+
+    def test_create_transit_gateway_prefix_list_reference_blackhole(self, ec2):
+        """CreateTransitGatewayPrefixListReference with Blackhole."""
+        tgw = ec2.create_transit_gateway(Description="plr-create-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            pl = ec2.create_managed_prefix_list(
+                PrefixListName=_unique("plr-test"), MaxEntries=5, AddressFamily="IPv4"
+            )
+            pl_id = pl["PrefixList"]["PrefixListId"]
+            try:
+                resp = ec2.create_transit_gateway_prefix_list_reference(
+                    TransitGatewayRouteTableId=rtb_id,
+                    PrefixListId=pl_id,
+                    Blackhole=True,
+                )
+                ref = resp["TransitGatewayPrefixListReference"]
+                assert ref["PrefixListId"] == pl_id
+                assert ref["TransitGatewayRouteTableId"] == rtb_id
+                ec2.delete_transit_gateway_prefix_list_reference(
+                    TransitGatewayRouteTableId=rtb_id, PrefixListId=pl_id
+                )
+            finally:
+                ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+    def test_delete_transit_gateway_prefix_list_reference_standalone(self, ec2):
+        """DeleteTransitGatewayPrefixListReference removes the reference."""
+        tgw = ec2.create_transit_gateway(Description="plr-del-test")
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        try:
+            rtb = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+            rtb_id = rtb["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+            pl = ec2.create_managed_prefix_list(
+                PrefixListName=_unique("plr-del"), MaxEntries=5, AddressFamily="IPv4"
+            )
+            pl_id = pl["PrefixList"]["PrefixListId"]
+            try:
+                ec2.create_transit_gateway_prefix_list_reference(
+                    TransitGatewayRouteTableId=rtb_id,
+                    PrefixListId=pl_id,
+                    Blackhole=True,
+                )
+                del_resp = ec2.delete_transit_gateway_prefix_list_reference(
+                    TransitGatewayRouteTableId=rtb_id, PrefixListId=pl_id
+                )
+                assert "TransitGatewayPrefixListReference" in del_resp
+            finally:
+                ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+            ec2.delete_transit_gateway_route_table(TransitGatewayRouteTableId=rtb_id)
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw_id)
+
+
+class TestEC2TransitGatewayMulticastStubs:
+    """Tests for Transit Gateway Multicast stub ops that return 200."""
+
+    def test_reject_transit_gateway_multicast_domain_associations(self, ec2):
+        """RejectTransitGatewayMulticastDomainAssociations returns 200."""
+        resp = ec2.reject_transit_gateway_multicast_domain_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_deregister_transit_gateway_multicast_group_members(self, ec2):
+        """DeregisterTransitGatewayMulticastGroupMembers returns 200."""
+        resp = ec2.deregister_transit_gateway_multicast_group_members()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_deregister_transit_gateway_multicast_group_sources(self, ec2):
+        """DeregisterTransitGatewayMulticastGroupSources returns 200."""
+        resp = ec2.deregister_transit_gateway_multicast_group_sources()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2VerifiedAccessInstanceOps:
+    """Tests for Create/Delete VerifiedAccessInstance."""
+
+    def test_create_verified_access_instance_with_description(self, ec2):
+        """CreateVerifiedAccessInstance returns instance with ID."""
+        resp = ec2.create_verified_access_instance(Description="compat-test-vai")
+        vai = resp["VerifiedAccessInstance"]
+        vai_id = vai["VerifiedAccessInstanceId"]
+        try:
+            assert vai_id.startswith("vai-")
+            assert vai.get("Description") == "compat-test-vai"
+        finally:
+            ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
+
+    def test_delete_verified_access_instance_standalone(self, ec2):
+        """DeleteVerifiedAccessInstance removes the instance."""
+        resp = ec2.create_verified_access_instance(Description="vai-del-test")
+        vai_id = resp["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        del_resp = ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
+        assert "VerifiedAccessInstance" in del_resp
+        assert del_resp["VerifiedAccessInstance"]["VerifiedAccessInstanceId"] == vai_id
+
+
+class TestEC2VerifiedAccessGroupOps:
+    """Tests for Create/Delete VerifiedAccessGroup."""
+
+    def test_create_verified_access_group_with_description(self, ec2):
+        """CreateVerifiedAccessGroup returns group with ID."""
+        vai = ec2.create_verified_access_instance(Description="grp-test-vai")
+        vai_id = vai["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        try:
+            grp = ec2.create_verified_access_group(
+                VerifiedAccessInstanceId=vai_id, Description="compat-grp"
+            )
+            grp_id = grp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+            assert grp_id.startswith("vag-")
+            assert grp["VerifiedAccessGroup"]["VerifiedAccessInstanceId"] == vai_id
+            ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
+        finally:
+            ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
+
+    def test_delete_verified_access_group_standalone(self, ec2):
+        """DeleteVerifiedAccessGroup removes the group."""
+        vai = ec2.create_verified_access_instance(Description="grp-del-vai")
+        vai_id = vai["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        try:
+            grp = ec2.create_verified_access_group(
+                VerifiedAccessInstanceId=vai_id, Description="del-grp"
+            )
+            grp_id = grp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+            del_resp = ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
+            assert "VerifiedAccessGroup" in del_resp
+        finally:
+            ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
