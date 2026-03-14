@@ -95,12 +95,43 @@ Key lessons:
 | Lambda | `services/lambda_/provider.py` | Module-level dicts + moto backend |
 | Step Functions | `services/stepfunctions/provider.py` | `_state_machines`, `_versions`, `_aliases` |
 | ECS | `services/ecs/provider.py` | `EcsStore` per region/account |
+| Rekognition | `services/rekognition/provider.py` | `_collections` per (account, region) |
+| IoT | `services/iot/provider.py` | Forwards unmatched to Moto |
+| ECR | `services/ecr/provider.py` | Forwards unmatched to Moto |
 | EventBridge | `services/events/provider.py` | - |
+
+## Additional learnings from batches 4-7
+
+### Response shape mismatches
+Agents often return responses in a wrong structure. Always check botocore output shapes:
+```python
+import botocore.session
+s = botocore.session.get_session()
+model = s.get_service_model('service_name')
+op = model.operation_model('OperationName')
+print(op.output_shape.members.keys())
+```
+Common mistakes: nesting fields under a wrapper key when botocore expects top-level, using wrong field names.
+
+### Some botocore output shapes are empty
+New AWS APIs (OSS Index, Batch ConsumableResource create) have nearly empty output shapes. Botocore strips any extra fields from the response. Only assert on fields present in the botocore output shape.
+
+### NamedTuple models are immutable
+IdentityStore uses NamedTuples for Group and User. Update operations must create new instances with `._replace()` or constructor.
+
+### Services already have some implementations
+Always check existing code before implementing. Batch had ConsumableResource fully done. Run `gen_moto_impl.py --list-nouns` which reports partial gaps (e.g., missing just Update when CRUD exists).
+
+### Direct implementation is faster than agents for small ops
+For 1-3 simple operations, implementing directly is faster than spawning subagents. Reserve agents for services with 3+ nouns or complex patterns.
 
 ## Test count
 
-44 lifecycle tests pass across 15 services:
-- Batch 1 (pilots): IoT (2), Glue (4), Connect (6)
-- Batch 2: CloudTrail (4), LakeFormation (4), Organizations (2), Backup (4)
-- Batch 3 (moto): EMR (2), EKS (1), OpenSearch (2), Cognito-IDP (2)
-- Batch 4 (native+moto): SFN (2), DynamoDB (3), Lambda (2), ECS (3)
+66+ lifecycle tests pass across 25+ services:
+- Batch 1 (pilots): IoT (2), Glue (4), Connect (6) = 12
+- Batch 2: CloudTrail (4), LakeFormation (4), Organizations (2), Backup (4) = 14  
+- Batch 3: SFN (2), DynamoDB (3), Lambda (2), ECS (3) = 10
+- Batch 4: IoT encryption (1), IoT connectivity (2), Config (2), Rekognition (2), ECR (1) = 8
+- Batch 5: Athena (1), Route53Resolver (2), DataBrew (4), OSS (2) = 9
+- Batch 6: IVS (2), MediaPackage (2), DataSync (1), SES (1) = 6
+- Batch 7: IdentityStore (4), Batch (1) = 5
