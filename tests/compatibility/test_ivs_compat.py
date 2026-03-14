@@ -394,6 +394,13 @@ class TestIVSStreamKeyBatchOperations:
         finally:
             ivs.delete_channel(arn=ch_arn)
 
+    def test_untag_resource_not_found(self, ivs):
+        """untag_resource raises ResourceNotFoundException for missing ARN."""
+        fake = "arn:aws:ivs:us-east-1:123456789012:channel/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.untag_resource(resourceArn=fake, tagKeys=["env"])
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_batch_get_stream_key_with_errors(self, ivs):
         """batch_get_stream_key returns errors for nonexistent keys."""
         fake_arn = "arn:aws:ivs:us-east-1:123456789012:stream-key/nonexistent"
