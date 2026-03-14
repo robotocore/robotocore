@@ -324,3 +324,11 @@ class TestIVSTags:
             assert tags_resp["tags"]["stage"] == "qa"
         finally:
             ivs.delete_channel(arn=channel_arn)
+
+    def test_untag_resource_not_found(self, ivs):
+        """untag_resource raises ResourceNotFoundException for missing ARN."""
+        fake = "arn:aws:ivs:us-east-1:123456789012:channel/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.untag_resource(resourceArn=fake, tagKeys=["env"])
+        err = exc_info.value.response["Error"]["Code"]
+        assert err == "ResourceNotFoundException"
