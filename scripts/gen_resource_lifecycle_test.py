@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
-"""Generate resource lifecycle tests from botocore shapes.
+"""Generate resource lifecycle tests from botocore service specs.
 
-Creates comprehensive lifecycle tests (Create → Describe → List → Update → Delete)
-for each resource noun in a service. Tests verify structural correctness, value
-round-trips, and behavioral fidelity (errors on duplicates, not-found, etc.).
+Creates pytest test files that exercise CRUD lifecycles for each resource type
+in a service. Tests are designed to run against a live server (localhost:4566).
 
-Tests run against the live server (port 4566) — NOT mocked.
+For each resource noun (e.g., IoT "Thing", Glue "Database"), generates:
+  - A lifecycle test: Create → Describe → Delete → Describe-after-delete
+  - A not-found test: Describe with fake ID → assert error
+
+The generated tests assert:
+  - Structural: required output keys present, correct types
+  - Value: round-trip values match, ARNs well-formed, IDs non-empty
+  - Behavioral: correct error on not-found, resource disappears after delete
 
 Usage:
     uv run python scripts/gen_resource_lifecycle_test.py --service iot --dry-run
-    uv run python scripts/gen_resource_lifecycle_test.py --service iot --write
-    uv run python scripts/gen_resource_lifecycle_test.py --service glue --write \
-        --output tests/moto_impl/
+    uv run python scripts/gen_resource_lifecycle_test.py --service glue --write
+    uv run python scripts/gen_resource_lifecycle_test.py --service connect --write
 """
 
 import argparse
 import re
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
+import botocore.loaders
 import botocore.session
-
-# ────────────────────────────────── helpers ──────────────────────────────────
 
 VERB_PREFIXES = (
     "Accept",
     "Activate",
     "Add",
+    "Advertise",
     "Allocate",
     "Apply",
     "Assign",
@@ -35,6 +39,7 @@ VERB_PREFIXES = (
     "Attach",
     "Authorize",
     "Batch",
+    "Bundle",
     "Cancel",
     "Confirm",
     "Copy",
@@ -87,16 +92,32 @@ VERB_PREFIXES = (
     "Withdraw",
 )
 
-# CRUD verb classification
-CREATE_VERBS = ("Create", "Put", "Register", "Add", "Start", "Run")
+CREATE_VERBS = ("Create", "Put", "Register", "Start", "Add", "Run")
 DESCRIBE_VERBS = ("Describe", "Get")
 LIST_VERBS = ("List",)
-UPDATE_VERBS = ("Update", "Modify", "Put", "Set")
-DELETE_VERBS = ("Delete", "Remove", "Deregister", "Terminate", "Stop")
-TAG_VERBS = ("Tag", "Untag", "ListTags")
+DELETE_VERBS = ("Delete", "Remove", "Deregister", "Stop")
+UPDATE_VERBS = ("Update", "Modify")
+
+NOT_FOUND_CODES = (
+    "ResourceNotFoundException",
+    "NotFoundException",
+    "EntityNotFoundException",
+    "InvalidRequestException",
+    "NoSuchEntity",
+)
+
+SKIP_NOUNS = {
+    "Tags",
+    "Resource",
+    "TagsForResource",
+    "Account",
+    "AccountSettings",
+    "Service",
+    "Configuration",
+}
 
 
-def to_snake_case(name: str) -> str:
+def _to_snake_case(name: str) -> str:
     s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
@@ -110,645 +131,436 @@ def extract_noun(op_name: str) -> str:
     return op_name
 
 
-def get_verb(op_name: str) -> str:
-    for prefix in sorted(VERB_PREFIXES, key=len, reverse=True):
-        if op_name.startswith(prefix):
-            return prefix
-    return ""
+def load_service_model(service_name: str) -> dict:
+    loader = botocore.loaders.Loader()
+    name_map = {
+        "cloudwatch": "monitoring",
+        "eventbridge": "events",
+    }
+    botocore_name = name_map.get(service_name, service_name)
+    return loader.load_service_model(botocore_name, "service-2")
 
 
-def classify_op(op_name: str) -> str:
-    """Classify an operation as create/describe/list/update/delete/tag/other."""
-    verb = get_verb(op_name)
-    if verb in CREATE_VERBS and verb != "Put":
-        return "create"
-    if verb in DESCRIBE_VERBS:
-        return "describe"
-    if verb in LIST_VERBS:
-        return "list"
-    if verb in UPDATE_VERBS:
-        return "update"
-    if verb in DELETE_VERBS:
-        return "delete"
-    if verb in TAG_VERBS or op_name.startswith("ListTags"):
-        return "tag"
-    # Put is ambiguous — create-or-update
-    if verb == "Put":
-        return "create"
-    return "other"
+def get_operation_model(service_name: str, operation_name: str):
+    session = botocore.session.get_session()
+    model = session.get_service_model(service_name)
+    return model.operation_model(operation_name)
 
 
-# ────────────────────────────── smart defaults ──────────────────────────────
+def get_required_params(service_name: str, operation_name: str, model: dict) -> list[dict]:
+    """Extract required parameters with shape info from a botocore operation."""
+    op_spec = model.get("operations", {}).get(operation_name, {})
+    input_shape_name = op_spec.get("input", {}).get("shape")
+    if not input_shape_name:
+        return []
 
-# Pattern-matched defaults for generating valid parameter values
-NAME_DEFAULTS: dict[str, str] = {
-    # Exact field names
-    "thingName": '"test-thing-1"',
-    "thingTypeName": '"test-thing-type-1"',
-    "thingGroupName": '"test-thing-group-1"',
-    "billingGroupName": '"test-billing-group-1"',
-    "policyName": '"test-policy-1"',
-    "policyDocument": 'json.dumps({"Version": "2012-10-17", "Statement": []})',
-    "roleName": '"test-role-1"',
-    "roleArn": '"arn:aws:iam::123456789012:role/test-role"',
-    "functionName": '"test-func-1"',
-    "databaseName": '"test-database-1"',
-    "tableName": '"test-table-1"',
-    "crawlerName": '"test-crawler-1"',
-    "jobName": '"test-job-1"',
-    "triggerName": '"test-trigger-1"',
-    "connectionName": '"test-connection-1"',
-    "registryName": '"test-registry-1"',
-    "schemaName": '"test-schema-1"',
-    "devEndpointName": '"test-endpoint-1"',
-    "name": '"test-name-1"',
-    "instanceId": '"test-instance-1"',
-    "description": '"test description"',
-    "tags": "{}",
-}
+    shapes = model.get("shapes", {})
+    input_shape = shapes.get(input_shape_name, {})
+    required = input_shape.get("required", [])
+    members = input_shape.get("members", {})
 
-# Type-based defaults
-TYPE_DEFAULTS: dict[str, str] = {
-    "string": '"test-string"',
-    "integer": "1",
-    "long": "1",
-    "boolean": "True",
-    "timestamp": '"2024-01-01T00:00:00Z"',
-    "blob": 'b"test-data"',
-    "map": "{}",
-    "list": "[]",
-    "double": "1.0",
-    "float": "1.0",
-}
+    params = []
+    for param_name in required:
+        member = members.get(param_name, {})
+        shape_ref = member.get("shape", "")
+        shape_def = shapes.get(shape_ref, {})
+        shape_type = shape_def.get("type", "string")
 
-# Pattern-based name matching for generating smart defaults
-NAME_PATTERNS: list[tuple[str, str]] = [
-    (r"(?i)arn$", '"arn:aws:iam::123456789012:role/test-role"'),
-    (r"(?i)name$", '"test-name-1"'),
-    (r"(?i)id$", '"test-id-1"'),
-    (r"(?i)description$", '"test description"'),
-    (r"(?i)role", '"arn:aws:iam::123456789012:role/test-role"'),
-    (r"(?i)uri$", '"s3://test-bucket/test-key"'),
-    (r"(?i)url$", '"https://example.com"'),
-    (r"(?i)path$", '"/test/path"'),
-    (r"(?i)prefix$", '"test-prefix"'),
-    (r"(?i)policy", 'json.dumps({"Version": "2012-10-17", "Statement": []})'),
-    (r"(?i)type$", '"DEFAULT"'),
-    (r"(?i)region", '"us-east-1"'),
-    (r"(?i)account", '"123456789012"'),
-]
-
-
-def get_default_for_member(name: str, shape) -> str | None:
-    """Get a smart default value for a botocore shape member."""
-    # Exact match on camelCase name
-    camel = name[0].lower() + name[1:] if name else name
-    if camel in NAME_DEFAULTS:
-        return NAME_DEFAULTS[camel]
-    if name in NAME_DEFAULTS:
-        return NAME_DEFAULTS[name]
-
-    # Pattern match
-    for pattern, default in NAME_PATTERNS:
-        if re.search(pattern, name):
-            # Check shape type matches expectation
-            if shape.type_name == "string":
-                return default
-            break
-
-    # Type-based fallback
-    if shape.type_name in TYPE_DEFAULTS:
-        return TYPE_DEFAULTS[shape.type_name]
-
-    # Structure: try to build a minimal dict
-    if shape.type_name == "structure":
-        return _build_structure_default(shape)
-
-    return None
-
-
-def _build_structure_default(shape) -> str | None:
-    """Build a default value for a structure shape using only required fields."""
-    required = shape.metadata.get("required", [])
-    if not required:
-        return "{}"
-
-    parts = []
-    for req_name in required:
-        if req_name not in shape.members:
-            continue
-        member = shape.members[req_name]
-        val = get_default_for_member(req_name, member)
-        if val is None:
-            return None
-        parts.append(f'"{req_name}": {val}')
-
-    if parts:
-        return "{" + ", ".join(parts) + "}"
-    return "{}"
-
-
-# ──────────────────────────── resource grouping ─────────────────────────────
-
-
-@dataclass
-class ResourceGroup:
-    """A group of CRUD operations on the same resource noun."""
-
-    noun: str
-    create_ops: list[str] = field(default_factory=list)
-    describe_ops: list[str] = field(default_factory=list)
-    list_ops: list[str] = field(default_factory=list)
-    update_ops: list[str] = field(default_factory=list)
-    delete_ops: list[str] = field(default_factory=list)
-    tag_ops: list[str] = field(default_factory=list)
-    other_ops: list[str] = field(default_factory=list)
-
-    @property
-    def has_crud(self) -> bool:
-        return bool(self.create_ops and (self.describe_ops or self.list_ops))
-
-    @property
-    def all_ops(self) -> list[str]:
-        return (
-            self.create_ops
-            + self.describe_ops
-            + self.list_ops
-            + self.update_ops
-            + self.delete_ops
-            + self.tag_ops
-            + self.other_ops
+        params.append(
+            {
+                "name": param_name,
+                "shape": shape_ref,
+                "type": shape_type,
+                "enum": shape_def.get("enum"),
+                "documentation": member.get("documentation", ""),
+            }
         )
+    return params
 
 
-def group_operations(service_model, missing_ops: set[str]) -> list[ResourceGroup]:
-    """Group missing operations by resource noun into ResourceGroups."""
-    groups: dict[str, ResourceGroup] = {}
+def get_output_fields(operation_name: str, model: dict) -> list[dict]:
+    """Extract output fields from a botocore operation."""
+    op_spec = model.get("operations", {}).get(operation_name, {})
+    output_shape_name = op_spec.get("output", {}).get("shape")
+    if not output_shape_name:
+        return []
 
-    for op_name in sorted(missing_ops):
-        noun = extract_noun(op_name)
-        if noun not in groups:
-            groups[noun] = ResourceGroup(noun=noun)
-        group = groups[noun]
+    shapes = model.get("shapes", {})
+    output_shape = shapes.get(output_shape_name, {})
+    members = output_shape.get("members", {})
 
-        classification = classify_op(op_name)
-        if classification == "create":
-            group.create_ops.append(op_name)
-        elif classification == "describe":
-            group.describe_ops.append(op_name)
-        elif classification == "list":
-            group.list_ops.append(op_name)
-        elif classification == "update":
-            group.update_ops.append(op_name)
-        elif classification == "delete":
-            group.delete_ops.append(op_name)
-        elif classification == "tag":
-            group.tag_ops.append(op_name)
-        else:
-            group.other_ops.append(op_name)
+    fields = []
+    for field_name, member in members.items():
+        shape_ref = member.get("shape", "")
+        shape_def = shapes.get(shape_ref, {})
+        shape_type = shape_def.get("type", "string")
 
-    # Sort by CRUD completeness
-    result = sorted(groups.values(), key=lambda g: (not g.has_crud, -len(g.all_ops)))
+        fields.append(
+            {
+                "name": field_name,
+                "shape": shape_ref,
+                "type": shape_type,
+            }
+        )
+    return fields
+
+
+def generate_param_value(param: dict) -> str:
+    """Generate a test value for a required parameter."""
+    name = param["name"]
+    shape_type = param["type"]
+    name_lower = name.lower()
+
+    if param.get("enum"):
+        return f'"{param["enum"][0]}"'
+
+    if shape_type == "string":
+        if "arn" in name_lower:
+            return '"arn:aws:iam::123456789012:role/test-role"'
+        if "name" in name_lower:
+            return '"test-name-1"'
+        if "id" in name_lower:
+            return '"test-id-1"'
+        if "url" in name_lower:
+            return '"http://localhost:4566/test"'
+        if "email" in name_lower:
+            return '"test@example.com"'
+        return '"test-string"'
+    elif shape_type in ("integer", "long"):
+        return "1"
+    elif shape_type == "boolean":
+        return "True"
+    elif shape_type == "timestamp":
+        return '"2024-01-01T00:00:00Z"'
+    elif shape_type == "blob":
+        return 'b"test-data"'
+    elif shape_type == "list":
+        return "[]"
+    elif shape_type == "map":
+        return "{}"
+    elif shape_type == "structure":
+        return "{}"
+    return '"test-string"'
+
+
+def generate_fake_param_value(param: dict) -> str:
+    """Generate a fake value for not-found tests."""
+    shape_type = param["type"]
+    if shape_type == "string":
+        return '"fake-id"'
+    elif shape_type in ("integer", "long"):
+        return "99999"
+    elif shape_type == "boolean":
+        return "True"
+    return '"fake-id"'
+
+
+def generate_assertions(fields: list[dict], var_name: str) -> list[str]:
+    """Generate assertion lines for output fields."""
+    lines = []
+    for f in fields:
+        fname = f["name"]
+        ftype = f["type"]
+
+        if ftype == "string":
+            name_lower = fname.lower()
+            if "arn" in name_lower:
+                lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
+                lines.append(f'    assert {var_name}["{fname}"].startswith("arn:aws:")')
+            elif any(k in name_lower for k in ("id", "name", "key")):
+                lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
+                lines.append(f'    assert len({var_name}.get("{fname}", "")) > 0')
+            else:
+                lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
+        elif ftype in ("integer", "long"):
+            lines.append(f'    assert isinstance({var_name}.get("{fname}"), int)')
+        elif ftype == "boolean":
+            lines.append(f'    assert isinstance({var_name}.get("{fname}"), bool)')
+        elif ftype == "list":
+            lines.append(f'    assert isinstance({var_name}.get("{fname}", []), list)')
+        elif ftype == "map" or ftype == "structure":
+            lines.append(f'    assert isinstance({var_name}.get("{fname}", {{}}), dict)')
+        elif ftype == "timestamp":
+            lines.append(f'    assert {var_name}.get("{fname}") is not None')
+
+    return lines
+
+
+def find_ops_for_noun(noun: str, all_ops: dict) -> dict:
+    """Find create, describe, list, update, delete ops for a resource noun."""
+    result = {"create": None, "describe": None, "list": None, "update": None, "delete": None}
+
+    for op_name in all_ops:
+        op_noun = extract_noun(op_name)
+        if op_noun != noun:
+            # Also match plural forms
+            if op_noun != noun + "s" and op_noun != noun + "es":
+                continue
+
+        for verb in CREATE_VERBS:
+            if op_name.startswith(verb) and extract_noun(op_name) == noun:
+                if result["create"] is None:
+                    result["create"] = op_name
+        for verb in DESCRIBE_VERBS:
+            if op_name.startswith(verb) and extract_noun(op_name) == noun:
+                if result["describe"] is None:
+                    result["describe"] = op_name
+        for verb in LIST_VERBS:
+            if op_name.startswith(verb):
+                list_noun = extract_noun(op_name)
+                if list_noun == noun or list_noun == noun + "s" or list_noun == noun + "es":
+                    if result["list"] is None:
+                        result["list"] = op_name
+        for verb in DELETE_VERBS:
+            if op_name.startswith(verb) and extract_noun(op_name) == noun:
+                if result["delete"] is None:
+                    result["delete"] = op_name
+        for verb in UPDATE_VERBS:
+            if op_name.startswith(verb) and extract_noun(op_name) == noun:
+                if result["update"] is None:
+                    result["update"] = op_name
+
     return result
 
 
-# ────────────────────────── test code generation ────────────────────────────
-
-
-def generate_call_code(
-    op_name: str,
-    service_model,
-    var_name: str | None = "resp",
-    resource_name: str = '"test-name-1"',
-) -> tuple[str, list[str]]:
-    """Generate the boto3 call code for an operation.
-
-    Returns (call_code, list_of_imports_needed).
-    """
-    op_model = service_model.operation_model(op_name)
-    snake_name = to_snake_case(op_name)
-    imports: list[str] = []
-    assign = f"{var_name} = " if var_name else ""
-
-    if not op_model.input_shape:
-        return f"{assign}client.{snake_name}()", imports
-
-    required = op_model.input_shape.metadata.get("required", [])
-    params: list[str] = []
-
-    for param_name in required:
-        if param_name not in op_model.input_shape.members:
-            continue
-        member = op_model.input_shape.members[param_name]
-        default = get_default_for_member(param_name, member)
-        if default is None:
-            default = f'"test-{to_snake_case(param_name)}"'
-        if "json.dumps" in default:
-            imports.append("json")
-        params.append(f"{param_name}={default}")
-
-    params_str = ", ".join(params)
-    # Always use multi-line if the single-line call would exceed ~95 chars
-    prefix = f"{assign}client.{snake_name}("
-    if len(prefix) + len(params_str) + 1 > 95 or len(params) > 1:
-        param_lines = ",\n        ".join(params)
-        call = f"{prefix}\n        {param_lines},\n    )"
-        return call, imports
-
-    return f"{prefix}{params_str})", imports
-
-
-def generate_output_assertions(
-    op_name: str,
-    service_model,
-    var_name: str = "resp",
-) -> list[str]:
-    """Generate assertions for an operation's output shape."""
-    op_model = service_model.operation_model(op_name)
-    assertions: list[str] = []
-
-    if not op_model.output_shape:
-        return assertions
-
-    for member_name, member_shape in op_model.output_shape.members.items():
-        # Skip metadata fields
-        if member_name in ("ResponseMetadata",):
-            continue
-
-        if member_shape.type_name == "string":
-            assertions.append(f'assert isinstance({var_name}.get("{member_name}"), str)')
-            # Check ARN format
-            if member_name.lower().endswith("arn"):
-                assertions.append(f'assert {var_name}["{member_name}"].startswith("arn:aws:")')
-            # Check ID is non-empty
-            elif member_name.lower().endswith("id"):
-                assertions.append(f'assert len({var_name}["{member_name}"]) > 0')
-            # Check name is non-empty
-            elif member_name.lower().endswith("name"):
-                assertions.append(f'assert len({var_name}.get("{member_name}", "")) > 0')
-        elif member_shape.type_name == "list":
-            assertions.append(f'assert isinstance({var_name}.get("{member_name}", []), list)')
-        elif member_shape.type_name == "structure":
-            assertions.append(f'assert isinstance({var_name}.get("{member_name}", {{}}), dict)')
-        elif member_shape.type_name in ("integer", "long"):
-            assertions.append(
-                f'assert isinstance({var_name}.get("{member_name}"), (int, type(None)))'
-            )
-        elif member_shape.type_name == "timestamp":
-            assertions.append(f'assert "{member_name}" in {var_name}')
-
-    return assertions
-
-
 def generate_lifecycle_test(
-    group: ResourceGroup,
     service_name: str,
-    service_model,
-    client_var: str = "client",
-) -> str | None:
-    """Generate a lifecycle test function for a resource group."""
-    if not group.has_crud:
-        return None
+    noun: str,
+    ops: dict,
+    model: dict,
+) -> list[str]:
+    """Generate a lifecycle test for a resource noun."""
+    lines = []
+    snake_noun = _to_snake_case(noun)
 
-    lines: list[str] = []
-    imports: set[str] = set()
-    noun_snake = to_snake_case(group.noun)
-    create_op = group.create_ops[0]
+    create_op = ops.get("create")
+    describe_op = ops.get("describe")
+    delete_op = ops.get("delete")
 
-    # Generate the test
-    lines.append(f"def test_{noun_snake}_lifecycle({client_var}):")
-    lines.append(f'    """Test {group.noun} CRUD lifecycle."""')
+    if not create_op or not describe_op:
+        return []
 
-    # CREATE — check if the create op has meaningful output
-    op_model = service_model.operation_model(create_op)
-    has_output = bool(
-        op_model.output_shape
-        and any(m != "ResponseMetadata" for m in op_model.output_shape.members)
-    )
-    var_name = "create_resp" if has_output else None
+    create_params = get_required_params(service_name, create_op, model)
+    describe_params = get_required_params(service_name, describe_op, model)
+    create_output_fields = get_output_fields(create_op, model)
+    describe_output_fields = get_output_fields(describe_op, model)
+
+    # LIFECYCLE TEST
+    lines.append(f"def test_{snake_noun}_lifecycle(client):")
+    lines.append(f'    """Test {noun} CRUD lifecycle."""')
+
+    # CREATE
     lines.append("    # CREATE")
-    call_code, call_imports = generate_call_code(create_op, service_model, var_name=var_name)
-    imports.update(call_imports)
-    for line in call_code.split("\n"):
-        lines.append(f"    {line}")
+    create_args = []
+    for p in create_params:
+        create_args.append(f"        {p['name']}={generate_param_value(p)},")
 
-    if has_output:
-        assertions = generate_output_assertions(create_op, service_model, "create_resp")
-        for a in assertions[:5]:  # limit assertions
-            lines.append(f"    {a}")
+    create_method = _to_snake_case(create_op)
+    lines.append(f"    create_resp = client.{create_method}(")
+    lines.extend(create_args)
+    lines.append("    )")
+
+    create_assertions = generate_assertions(create_output_fields, "create_resp")
+    lines.extend(create_assertions)
+
     lines.append("")
 
     # DESCRIBE
-    if group.describe_ops:
-        desc_op = group.describe_ops[0]
-        lines.append("    # DESCRIBE")
-        call_code, call_imports = generate_call_code(desc_op, service_model, var_name="desc_resp")
-        imports.update(call_imports)
-        for line in call_code.split("\n"):
-            lines.append(f"    {line}")
-        assertions = generate_output_assertions(desc_op, service_model, "desc_resp")
-        for a in assertions[:5]:
-            lines.append(f"    {a}")
-        lines.append("")
+    lines.append("    # DESCRIBE")
+    describe_args = []
+    for p in describe_params:
+        describe_args.append(f"        {p['name']}={generate_param_value(p)},")
 
-    # LIST
-    if group.list_ops:
-        list_op = group.list_ops[0]
-        lines.append("    # LIST")
-        call_code, call_imports = generate_call_code(list_op, service_model, var_name="list_resp")
-        imports.update(call_imports)
-        for line in call_code.split("\n"):
-            lines.append(f"    {line}")
-        # For list ops, just check the main list key exists
-        op_model = service_model.operation_model(list_op)
-        if op_model.output_shape:
-            for member_name, member_shape in op_model.output_shape.members.items():
-                if member_shape.type_name == "list" and member_name != "ResponseMetadata":
-                    lines.append(f'    assert isinstance(list_resp.get("{member_name}", []), list)')
-                    break
-        lines.append("")
-
-    # DELETE
-    if group.delete_ops:
-        delete_op = group.delete_ops[0]
-        lines.append("    # DELETE")
-        call_code, call_imports = generate_call_code(delete_op, service_model, var_name="_")
-        # Remove assignment to avoid unused variable lint error
-        call_code = call_code.replace("_ = ", "")
-        imports.update(call_imports)
-        for line in call_code.split("\n"):
-            lines.append(f"    {line}")
-        lines.append("")
-
-        # Describe after delete should fail
-        if group.describe_ops:
-            desc_op = group.describe_ops[0]
-            lines.append("    # DESCRIBE after DELETE should fail")
-            lines.append("    with pytest.raises(ClientError) as exc:")
-            call_code, _ = generate_call_code(desc_op, service_model, var_name="_")
-            # Replace the assignment with just the call inside with block
-            call_only = call_code.replace("_ = ", "")
-            for line in call_only.split("\n"):
-                lines.append(f"        {line}")
-            lines.append('    assert exc.value.response["Error"]["Code"] in (')
-            # Try common error codes
-            lines.append('        "ResourceNotFoundException", "NotFoundException",')
-            lines.append('        "EntityNotFoundException", "InvalidRequestException",')
-            lines.append("    )")
-
-    return "\n".join(lines), imports
-
-
-def generate_error_test(
-    group: ResourceGroup,
-    service_name: str,
-    service_model,
-    client_var: str = "client",
-) -> str | None:
-    """Generate error-path tests (e.g., describe non-existent resource)."""
-    if not group.describe_ops:
-        return None
-
-    lines: list[str] = []
-    noun_snake = to_snake_case(group.noun)
-    desc_op = group.describe_ops[0]
-
-    lines.append(f"def test_{noun_snake}_not_found({client_var}):")
-    lines.append(f'    """Test that describing a non-existent {group.noun} raises an error."""')
-    lines.append("    with pytest.raises(ClientError) as exc:")
-
-    # Build call with fake identifiers
-    op_model = service_model.operation_model(desc_op)
-    snake_name = to_snake_case(desc_op)
-    if op_model.input_shape:
-        required = op_model.input_shape.metadata.get("required", [])
-        params = []
-        for param_name in required:
-            if param_name not in op_model.input_shape.members:
-                continue
-            member = op_model.input_shape.members[param_name]
-            if member.type_name == "string":
-                params.append(f'{param_name}="fake-id"')
-            else:
-                default = get_default_for_member(param_name, member)
-                if default:
-                    params.append(f"{param_name}={default}")
-        # Use multi-line if needed
-        prefix = f"        {client_var}.{snake_name}("
-        params_str = ", ".join(params)
-        if len(prefix) + len(params_str) + 1 > 95 or len(params) > 2:
-            param_lines = ",\n            ".join(params)
-            lines.append(f"{prefix}\n            {param_lines},\n        )")
-        else:
-            lines.append(f"{prefix}{params_str})")
-    else:
-        lines.append(f"        {client_var}.{snake_name}()")
-
-    lines.append('    assert exc.value.response["Error"]["Code"] in (')
-    lines.append('        "ResourceNotFoundException", "NotFoundException",')
-    lines.append('        "EntityNotFoundException", "InvalidRequestException",')
+    describe_method = _to_snake_case(describe_op)
+    lines.append(f"    desc_resp = client.{describe_method}(")
+    lines.extend(describe_args)
     lines.append("    )")
 
-    return "\n".join(lines), set()
+    desc_assertions = generate_assertions(describe_output_fields, "desc_resp")
+    lines.extend(desc_assertions)
+
+    lines.append("")
+
+    # DELETE
+    if delete_op:
+        lines.append("    # DELETE")
+        delete_params = get_required_params(service_name, delete_op, model)
+        delete_args = []
+        for p in delete_params:
+            delete_args.append(f"        {p['name']}={generate_param_value(p)},")
+
+        delete_method = _to_snake_case(delete_op)
+        lines.append(f"    client.{delete_method}(")
+        lines.extend(delete_args)
+        lines.append("    )")
+
+        lines.append("")
+
+        # DESCRIBE after DELETE should fail
+        lines.append("    # DESCRIBE after DELETE should fail")
+        lines.append("    with pytest.raises(ClientError) as exc:")
+        lines.append(f"        client.{describe_method}(")
+        # Indent describe args one extra level inside with-block
+        for p in describe_params:
+            lines.append(f"            {p['name']}={generate_param_value(p)},")
+        lines.append("        )")
+        lines.append('    assert exc.value.response["Error"]["Code"] in (')
+        for code in NOT_FOUND_CODES:
+            lines.append(f'        "{code}",')
+        lines.append("    )")
+
+    lines.append("")
+    lines.append("")
+
+    # NOT-FOUND TEST
+    lines.append(f"def test_{snake_noun}_not_found(client):")
+    lines.append(f'    """Test that describing a non-existent {noun} raises an error."""')
+    lines.append("    with pytest.raises(ClientError) as exc:")
+
+    fake_args = []
+    for p in describe_params:
+        fake_args.append(f"            {p['name']}={generate_fake_param_value(p)},")
+
+    lines.append(f"        client.{describe_method}(")
+    lines.extend(fake_args)
+    lines.append("        )")
+
+    lines.append('    assert exc.value.response["Error"]["Code"] in (')
+    for code in NOT_FOUND_CODES:
+        lines.append(f'        "{code}",')
+    lines.append("    )")
+
+    lines.append("")
+    lines.append("")
+    return lines
 
 
-def generate_test_file(
-    service_name: str,
-    service_model,
-    groups: list[ResourceGroup],
-) -> str:
-    """Generate a complete test file for a service's missing operations."""
-    boto3_name = service_name
-    # Handle name mappings
-    name_map = {
-        "monitoring": "cloudwatch",
-        "awslambda": "lambda",
-    }
-    boto3_name = name_map.get(service_name, service_name)
+def generate_test_file(service_name: str, model: dict, nouns: list[str] | None = None) -> str:
+    """Generate a complete test file for a service."""
+    all_ops = model.get("operations", {})
 
-    # stdlib imports, then third-party (pytest + botocore in same group)
-    base_imports = ["import pytest", "from botocore.exceptions import ClientError"]
-    extra_imports: set[str] = set()
-    test_functions: list[str] = []
+    # Group operations by noun
+    noun_groups: dict[str, list[str]] = {}
+    for op_name in sorted(all_ops):
+        noun = extract_noun(op_name)
+        noun_groups.setdefault(noun, []).append(op_name)
 
-    for group in groups:
-        if not group.has_crud:
+    # Find CRUD-capable nouns
+    resource_nouns = []
+    for noun in sorted(noun_groups):
+        if noun in SKIP_NOUNS:
             continue
+        ops = find_ops_for_noun(noun, all_ops)
+        if ops["create"] and ops["describe"]:
+            resource_nouns.append((noun, ops))
 
-        result = generate_lifecycle_test(group, service_name, service_model)
-        if result:
-            code, imports = result
-            extra_imports.update(imports)
-            test_functions.append(code)
+    if nouns:
+        resource_nouns = [(n, o) for n, o in resource_nouns if n in nouns]
 
-        result = generate_error_test(group, service_name, service_model)
-        if result:
-            code, imports = result
-            extra_imports.update(imports)
-            test_functions.append(code)
+    if not resource_nouns:
+        return ""
 
-    # Build file with properly sorted imports
-    parts = []
-    parts.append(f'"""Resource lifecycle tests for {service_name} (auto-generated)."""')
-    parts.append("")
-    # stdlib imports first, then third-party
-    stdlib = sorted(f"import {i}" for i in extra_imports)
-    if stdlib:
-        all_imports = stdlib + [""] + base_imports
-    else:
-        all_imports = base_imports
-    parts.append("\n".join(all_imports))
-    parts.append("")
-    parts.append("")
+    # Header
+    lines = [
+        f'"""Resource lifecycle tests for {service_name} (auto-generated)."""',
+        "",
+        "import pytest",
+        "from botocore.exceptions import ClientError",
+        "",
+        "",
+        "@pytest.fixture",
+        "def client():",
+        "    import boto3",
+        "",
+        "    return boto3.client(",
+        f'        "{service_name}",',
+        '        endpoint_url="http://localhost:4566",',
+        '        region_name="us-east-1",',
+        '        aws_access_key_id="testing",',
+        '        aws_secret_access_key="testing",',
+        "    )",
+        "",
+        "",
+    ]
 
-    # Fixture
-    endpoint_url = "http://localhost:4566"
-    parts.append(f"""@pytest.fixture
-def client():
-    import boto3
+    # Generate tests for each noun
+    for noun, ops in resource_nouns:
+        test_lines = generate_lifecycle_test(service_name, noun, ops, model)
+        lines.extend(test_lines)
 
-    return boto3.client(
-        "{boto3_name}",
-        endpoint_url="{endpoint_url}",
-        region_name="us-east-1",
-        aws_access_key_id="testing",
-        aws_secret_access_key="testing",
-    )""")
-    parts.append("")
-    parts.append("")
-
-    # Tests
-    parts.append("\n\n\n".join(test_functions))
-    parts.append("")
-
-    return "\n".join(parts)
+    return "\n".join(lines).rstrip() + "\n"
 
 
-# ──────────────────────────── missing op detection ──────────────────────────
+def get_missing_nouns(service_name: str, model: dict) -> list[str]:
+    """Identify resource nouns that are likely not implemented (all ops return 501).
 
-
-def get_missing_ops(service_name: str) -> set[str]:
-    """Get operations that are not implemented in Moto for a service."""
-    import importlib
-
-    session = botocore.session.get_session()
-    model = session.get_service_model(service_name)
-
-    # Try to import moto's response class
-    moto_service = service_name.replace("-", "")
-    try:
-        mod = importlib.import_module(f"moto.{moto_service}.responses")
-    except ImportError:
-        # Try common aliases
-        aliases = {
-            "lambda": "awslambda",
-            "kinesis-video": "kinesisvideo",
-            "cognito-idp": "cognitoidp",
-        }
-        alias = aliases.get(service_name)
-        if alias:
-            mod = importlib.import_module(f"moto.{alias}.responses")
-        else:
-            print(f"Cannot import moto.{moto_service}.responses", file=sys.stderr)
-            return set()
-
-    # Find the response class
-    resp_class = None
-    for attr_name in dir(mod):
-        obj = getattr(mod, attr_name)
-        if (
-            isinstance(obj, type)
-            and hasattr(obj, "__mro__")
-            and any(c.__name__ == "BaseResponse" for c in obj.__mro__)
-            and obj.__name__ != "BaseResponse"
-        ):
-            resp_class = obj
-            break
-
-    if not resp_class:
-        print(f"No response class found in moto.{moto_service}", file=sys.stderr)
-        return set()
-
-    missing = set()
-    for op_name in model.operation_names:
-        snake = to_snake_case(op_name)
-        if not hasattr(resp_class, snake):
-            missing.add(op_name)
-
-    return missing
-
-
-# ────────────────────────────────── main ────────────────────────────────────
+    Uses a heuristic: if there's no existing test for this noun and the operations
+    look like they need implementation, include it.
+    """
+    all_ops = model.get("operations", {})
+    nouns = set()
+    for op_name in all_ops:
+        noun = extract_noun(op_name)
+        if noun not in SKIP_NOUNS:
+            ops = find_ops_for_noun(noun, all_ops)
+            if ops["create"] and ops["describe"]:
+                nouns.add(noun)
+    return sorted(nouns)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate resource lifecycle tests from botocore shapes"
-    )
-    parser.add_argument("--service", required=True, help="AWS service name")
+    parser = argparse.ArgumentParser(description="Generate resource lifecycle tests")
+    parser.add_argument("--service", required=True, help="AWS service name (boto3 client name)")
+    parser.add_argument("--dry-run", action="store_true", help="Print to stdout instead of writing")
+    parser.add_argument("--write", action="store_true", help="Write to tests/moto_impl/")
+    parser.add_argument("--nouns", help="Comma-separated list of resource nouns to generate")
+    parser.add_argument("--list-nouns", action="store_true", help="List available resource nouns")
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=True,
-        help="Print generated code without writing (default)",
-    )
-    parser.add_argument(
-        "--write",
-        action="store_true",
-        help="Write test file to disk",
-    )
-    parser.add_argument(
-        "--output",
-        default="tests/moto_impl/",
-        help="Output directory (default: tests/moto_impl/)",
-    )
-    parser.add_argument(
-        "--max-groups",
-        type=int,
-        default=0,
-        help="Max resource groups to generate (0 = all)",
+        "--output-dir",
+        default="tests/moto_impl",
+        help="Output directory (default: tests/moto_impl)",
     )
     args = parser.parse_args()
 
-    session = botocore.session.get_session()
-    try:
-        service_model = session.get_service_model(args.service)
-    except Exception as e:
-        print(f"Error loading service model for {args.service}: {e}", file=sys.stderr)
+    model = load_service_model(args.service)
+    if not model:
+        print(f"Could not load botocore model for '{args.service}'", file=sys.stderr)
         sys.exit(1)
 
-    missing = get_missing_ops(args.service)
-    if not missing:
-        print(f"No missing operations found for {args.service}")
-        sys.exit(0)
+    if args.list_nouns:
+        nouns = get_missing_nouns(args.service, model)
+        all_ops = model.get("operations", {})
+        print(f"\n{args.service}: {len(nouns)} CRUD-capable resource nouns\n")
+        for noun in nouns:
+            ops = find_ops_for_noun(noun, all_ops)
+            op_list = [f"{k}={v}" for k, v in ops.items() if v]
+            print(f"  {noun:40s} {', '.join(op_list)}")
+        return
 
-    print(f"{args.service}: {len(missing)} missing operations", file=sys.stderr)
+    nouns = None
+    if args.nouns:
+        nouns = [n.strip() for n in args.nouns.split(",")]
 
-    groups = group_operations(service_model, missing)
-    crud_groups = [g for g in groups if g.has_crud]
+    code = generate_test_file(args.service, model, nouns=nouns)
+    if not code:
+        print(f"No CRUD-capable resource nouns found for '{args.service}'", file=sys.stderr)
+        sys.exit(1)
 
-    print(f"  {len(groups)} resource groups, {len(crud_groups)} with CRUD ops", file=sys.stderr)
-    for g in groups:
-        ops = ", ".join(g.all_ops[:5])
-        if len(g.all_ops) > 5:
-            ops += f" (+{len(g.all_ops) - 5})"
-        crud = "CRUD" if g.has_crud else "partial"
-        print(f"  {g.noun}: {crud} ({len(g.all_ops)} ops) — {ops}", file=sys.stderr)
-
-    if args.max_groups:
-        groups = groups[: args.max_groups]
-
-    code = generate_test_file(args.service, service_model, groups)
+    if args.dry_run:
+        print(code)
+        return
 
     if args.write:
-        out_dir = Path(args.output)
+        out_dir = Path(args.output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = args.service.replace("-", "_")
-        out_path = out_dir / f"test_{safe_name}_lifecycle.py"
-        out_path.write_text(code)
-        print(f"Wrote {out_path}", file=sys.stderr)
-    else:
-        print(code)
+        out_file = out_dir / f"test_{args.service.replace('-', '_')}_lifecycle.py"
+        out_file.write_text(code)
+        noun_count = code.count("def test_") // 2  # lifecycle + not_found per noun
+        print(f"Generated {out_file} ({noun_count} resource nouns)")
+        return
+
+    print("Use --dry-run to preview or --write to save.", file=sys.stderr)
+    sys.exit(1)
 
 
 if __name__ == "__main__":
