@@ -13,6 +13,7 @@ alwaysApply: false
 - Not-found tests pass reliably — the implementations raise correct exceptions
 - Three protocol patterns are well-understood: JSON (Glue), rest-json catchall (OpenSearch), rest-json explicit URLs (Connect/EKS)
 - Service fixtures (SERVICE_FIXTURES) work well for prerequisite resources
+- **Manual test files** work better than auto-generated for non-CRUD ops (standalone describes, deployment/revision lookups)
 
 ## Critical agent pitfalls
 
@@ -29,6 +30,12 @@ It reports nouns as "missing" if ANY CRUD op is unimplemented. Many services (EK
 - The moto module name differs from the boto3 service name (e.g., `emrserverless` vs `emr-serverless`)
 
 Always verify with `probe_service.py` before implementing.
+
+### Native providers have separate state from Moto
+Robotocore has native providers for Lambda, SFN, ECS, etc. that maintain their own in-memory state (e.g., `_state_machines`, `EcsStore`). Operations NOT in the native provider's `_ACTION_MAP` are forwarded to Moto, which has a completely separate state store. If a resource was created by the native provider, Moto can't see it. When implementing new operations, check if the service has a native provider at `src/robotocore/services/{svc}/provider.py` and add the new ops there instead of (or in addition to) Moto.
+
+### Moto lockfile update requires cache clear
+After pushing moto changes, `uv lock --upgrade-package moto` may return the cached old commit. Use `uv cache clean moto --force` first, then `uv lock --upgrade-package moto`. Also push to the correct remote branch name (`robotocore/all-fixes:robotocore/all-fixes`).
 
 ## Test generator features (implemented)
 
@@ -81,7 +88,19 @@ Key lessons:
 5. Restart server: `make stop && make start`
 6. Verify: `python3 -c "from moto.{svc}.models import BackendClass; print(hasattr(BackendClass, 'new_method'))"`
 
+## Services with native providers (must add ops there, not just Moto)
+
+| Service | Provider file | State store |
+|---------|--------------|-------------|
+| Lambda | `services/lambda_/provider.py` | Module-level dicts + moto backend |
+| Step Functions | `services/stepfunctions/provider.py` | `_state_machines`, `_versions`, `_aliases` |
+| ECS | `services/ecs/provider.py` | `EcsStore` per region/account |
+| EventBridge | `services/events/provider.py` | - |
+
 ## Test count
 
-33 lifecycle tests pass across 11 services:
-- IoT (2), Glue (4), Connect (6), CloudTrail (4), LakeFormation (4), Organizations (2), Backup (4), EMR (2), EKS (1), OpenSearch (2), Cognito-IDP (2)
+44 lifecycle tests pass across 15 services:
+- Batch 1 (pilots): IoT (2), Glue (4), Connect (6)
+- Batch 2: CloudTrail (4), LakeFormation (4), Organizations (2), Backup (4)
+- Batch 3 (moto): EMR (2), EKS (1), OpenSearch (2), Cognito-IDP (2)
+- Batch 4 (native+moto): SFN (2), DynamoDB (3), Lambda (2), ECS (3)
