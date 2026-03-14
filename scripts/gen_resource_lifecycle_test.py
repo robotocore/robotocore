@@ -116,6 +116,26 @@ SKIP_NOUNS = {
     "Configuration",
 }
 
+SERVICE_FIXTURES: dict[str, str] = {
+    "connect": """
+@pytest.fixture
+def instance_id(client):
+    resp = client.create_instance(
+        IdentityManagementType="CONNECT_MANAGED",
+        InboundCallsEnabled=True,
+        OutboundCallsEnabled=True,
+    )
+    iid = resp["Id"]
+    yield iid
+    try:
+        client.delete_instance(InstanceId=iid)
+    except Exception:
+        pass
+""",
+}
+
+INSTANCE_ID_SERVICES = {"connect"}
+
 
 def _to_snake_case(name: str) -> str:
     s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
@@ -205,11 +225,15 @@ def get_output_fields(operation_name: str, model: dict) -> list[dict]:
     return fields
 
 
-def generate_param_value(param: dict) -> str:
+def generate_param_value(param: dict, service_name: str = "") -> str:
     """Generate a test value for a required parameter."""
     name = param["name"]
     shape_type = param["type"]
     name_lower = name.lower()
+
+    # Use fixture for Connect InstanceId
+    if name == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
+        return "instance_id"
 
     if param.get("enum"):
         return f'"{param["enum"][0]}"'
@@ -255,33 +279,45 @@ def generate_fake_param_value(param: dict) -> str:
     return '"fake-id"'
 
 
-def generate_assertions(fields: list[dict], var_name: str) -> list[str]:
-    """Generate assertion lines for output fields."""
+def generate_assertions(fields: list[dict], var_name: str, strict: bool = False) -> list[str]:
+    """Generate assertion lines for output fields.
+
+    If strict=True (for create responses), assert required fields are present.
+    If strict=False (for describe responses), only assert on identity fields
+    (ARN, ID, Name) and use tolerant checks for optional fields.
+    """
     lines = []
     for f in fields:
         fname = f["name"]
         ftype = f["type"]
+        name_lower = fname.lower()
+
+        # Identity fields — always assert strictly
+        is_identity = any(k in name_lower for k in ("arn", "id", "name", "key"))
 
         if ftype == "string":
-            name_lower = fname.lower()
             if "arn" in name_lower:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
                 lines.append(f'    assert {var_name}["{fname}"].startswith("arn:aws:")')
-            elif any(k in name_lower for k in ("id", "name", "key")):
+            elif is_identity:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
                 lines.append(f'    assert len({var_name}.get("{fname}", "")) > 0')
-            else:
+            elif strict:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
+            # Skip optional string fields in non-strict mode
         elif ftype in ("integer", "long"):
-            lines.append(f'    assert isinstance({var_name}.get("{fname}"), int)')
+            if strict or is_identity:
+                lines.append(f'    assert isinstance({var_name}.get("{fname}"), int)')
         elif ftype == "boolean":
-            lines.append(f'    assert isinstance({var_name}.get("{fname}"), bool)')
+            if strict:
+                lines.append(f'    assert isinstance({var_name}.get("{fname}"), bool)')
         elif ftype == "list":
             lines.append(f'    assert isinstance({var_name}.get("{fname}", []), list)')
-        elif ftype == "map" or ftype == "structure":
+        elif ftype in ("map", "structure"):
             lines.append(f'    assert isinstance({var_name}.get("{fname}", {{}}), dict)')
         elif ftype == "timestamp":
-            lines.append(f'    assert {var_name}.get("{fname}") is not None')
+            if strict or is_identity:
+                lines.append(f'    assert {var_name}.get("{fname}") is not None')
 
     return lines
 
@@ -345,22 +381,26 @@ def generate_lifecycle_test(
     create_output_fields = get_output_fields(create_op, model)
     describe_output_fields = get_output_fields(describe_op, model)
 
+    # Determine if we need fixture params
+    needs_instance = service_name in INSTANCE_ID_SERVICES
+    fixture_args = "client, instance_id" if needs_instance else "client"
+
     # LIFECYCLE TEST
-    lines.append(f"def test_{snake_noun}_lifecycle(client):")
+    lines.append(f"def test_{snake_noun}_lifecycle({fixture_args}):")
     lines.append(f'    """Test {noun} CRUD lifecycle."""')
 
     # CREATE
     lines.append("    # CREATE")
     create_args = []
     for p in create_params:
-        create_args.append(f"        {p['name']}={generate_param_value(p)},")
+        create_args.append(f"        {p['name']}={generate_param_value(p, service_name)},")
 
     create_method = _to_snake_case(create_op)
     lines.append(f"    create_resp = client.{create_method}(")
     lines.extend(create_args)
     lines.append("    )")
 
-    create_assertions = generate_assertions(create_output_fields, "create_resp")
+    create_assertions = generate_assertions(create_output_fields, "create_resp", strict=True)
     lines.extend(create_assertions)
 
     lines.append("")
@@ -369,7 +409,7 @@ def generate_lifecycle_test(
     lines.append("    # DESCRIBE")
     describe_args = []
     for p in describe_params:
-        describe_args.append(f"        {p['name']}={generate_param_value(p)},")
+        describe_args.append(f"        {p['name']}={generate_param_value(p, service_name)},")
 
     describe_method = _to_snake_case(describe_op)
     lines.append(f"    desc_resp = client.{describe_method}(")
@@ -387,7 +427,7 @@ def generate_lifecycle_test(
         delete_params = get_required_params(service_name, delete_op, model)
         delete_args = []
         for p in delete_params:
-            delete_args.append(f"        {p['name']}={generate_param_value(p)},")
+            delete_args.append(f"        {p['name']}={generate_param_value(p, service_name)},")
 
         delete_method = _to_snake_case(delete_op)
         lines.append(f"    client.{delete_method}(")
@@ -402,7 +442,7 @@ def generate_lifecycle_test(
         lines.append(f"        client.{describe_method}(")
         # Indent describe args one extra level inside with-block
         for p in describe_params:
-            lines.append(f"            {p['name']}={generate_param_value(p)},")
+            lines.append(f"            {p['name']}={generate_param_value(p, service_name)},")
         lines.append("        )")
         lines.append('    assert exc.value.response["Error"]["Code"] in (')
         for code in NOT_FOUND_CODES:
@@ -413,13 +453,17 @@ def generate_lifecycle_test(
     lines.append("")
 
     # NOT-FOUND TEST
-    lines.append(f"def test_{snake_noun}_not_found(client):")
+    lines.append(f"def test_{snake_noun}_not_found({fixture_args}):")
     lines.append(f'    """Test that describing a non-existent {noun} raises an error."""')
     lines.append("    with pytest.raises(ClientError) as exc:")
 
     fake_args = []
     for p in describe_params:
-        fake_args.append(f"            {p['name']}={generate_fake_param_value(p)},")
+        # Use instance_id fixture for InstanceId even in not-found tests
+        if p["name"] == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
+            fake_args.append(f"            {p['name']}=instance_id,")
+        else:
+            fake_args.append(f"            {p['name']}={generate_fake_param_value(p)},")
 
     lines.append(f"        client.{describe_method}(")
     lines.extend(fake_args)
@@ -482,6 +526,13 @@ def generate_test_file(service_name: str, model: dict, nouns: list[str] | None =
         "",
         "",
     ]
+
+    # Add service-specific fixtures
+    if service_name in SERVICE_FIXTURES:
+        fixture_code = SERVICE_FIXTURES[service_name].strip()
+        lines.extend(fixture_code.split("\n"))
+        lines.append("")
+        lines.append("")
 
     # Generate tests for each noun
     for noun, ops in resource_nouns:
