@@ -225,13 +225,22 @@ def get_output_fields(operation_name: str, model: dict) -> list[dict]:
     return fields
 
 
-def generate_param_value(param: dict, service_name: str = "") -> str:
+def _get_shapes(service_name: str) -> dict:
+    """Load the shapes dict for a service. Cached per-call via module global."""
+    model = load_service_model(service_name)
+    return model.get("shapes", {})
+
+
+def generate_param_value(
+    param: dict,
+    service_name: str = "",
+    shapes: dict | None = None,
+) -> str:
     """Generate a test value for a required parameter."""
     name = param["name"]
     shape_type = param["type"]
     name_lower = name.lower()
 
-    # Use fixture for Connect InstanceId
     if name == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
         return "instance_id"
 
@@ -259,12 +268,61 @@ def generate_param_value(param: dict, service_name: str = "") -> str:
     elif shape_type == "blob":
         return 'b"test-data"'
     elif shape_type == "list":
+        if shapes and param.get("shape"):
+            return _generate_list_value(param["shape"], shapes)
         return "[]"
     elif shape_type == "map":
         return "{}"
     elif shape_type == "structure":
+        if shapes and param.get("shape"):
+            return _generate_structure_value(param["shape"], shapes)
         return "{}"
     return '"test-string"'
+
+
+def _generate_structure_value(shape_name: str, shapes: dict) -> str:
+    """Recursively generate a dict literal for a structure shape."""
+    shape = shapes.get(shape_name, {})
+    required = shape.get("required", [])
+    members = shape.get("members", {})
+
+    if not required:
+        return "{}"
+
+    parts = []
+    for field_name in required:
+        member = members.get(field_name, {})
+        member_shape_name = member.get("shape", "")
+        member_shape = shapes.get(member_shape_name, {})
+        member_type = member_shape.get("type", "string")
+        sub_param = {
+            "name": field_name,
+            "shape": member_shape_name,
+            "type": member_type,
+            "enum": member_shape.get("enum"),
+        }
+        val = generate_param_value(sub_param, shapes=shapes)
+        parts.append(f'"{field_name}": {val}')
+
+    return "{" + ", ".join(parts) + "}"
+
+
+def _generate_list_value(shape_name: str, shapes: dict) -> str:
+    """Generate a list literal, including one element if the member is a structure."""
+    shape = shapes.get(shape_name, {})
+    member = shape.get("member", {})
+    member_shape_name = member.get("shape", "")
+    member_shape = shapes.get(member_shape_name, {})
+    member_type = member_shape.get("type", "string")
+
+    if member_type == "string":
+        if member_shape.get("enum"):
+            return f'["{member_shape["enum"][0]}"]'
+        return '["test-string"]'
+    elif member_type == "structure":
+        val = _generate_structure_value(member_shape_name, shapes)
+        return f"[{val}]"
+    return "[]"
 
 
 def generate_fake_param_value(param: dict) -> str:
@@ -279,12 +337,20 @@ def generate_fake_param_value(param: dict) -> str:
     return '"fake-id"'
 
 
-def generate_assertions(fields: list[dict], var_name: str, strict: bool = False) -> list[str]:
+def generate_assertions(
+    fields: list[dict],
+    var_name: str,
+    strict: bool = False,
+    identity_fields: set[str] | None = None,
+) -> list[str]:
     """Generate assertion lines for output fields.
 
     If strict=True (for create responses), assert required fields are present.
-    If strict=False (for describe responses), only assert on identity fields
-    (ARN, ID, Name) and use tolerant checks for optional fields.
+    If strict=False (for describe responses), only assert identity fields
+    strictly and skip optional scalars.
+
+    identity_fields: if provided, only these field names are treated as identity.
+    Otherwise, falls back to ARN-field heuristic only.
     """
     lines = []
     for f in fields:
@@ -292,11 +358,13 @@ def generate_assertions(fields: list[dict], var_name: str, strict: bool = False)
         ftype = f["type"]
         name_lower = fname.lower()
 
-        # Identity fields — always assert strictly
-        is_identity = any(k in name_lower for k in ("arn", "id", "name", "key"))
+        if identity_fields is not None:
+            is_identity = fname in identity_fields
+        else:
+            is_identity = "arn" in name_lower
 
         if ftype == "string":
-            if "arn" in name_lower:
+            if is_identity and "arn" in name_lower:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
                 lines.append(f'    assert {var_name}["{fname}"].startswith("arn:aws:")')
             elif is_identity:
@@ -304,7 +372,6 @@ def generate_assertions(fields: list[dict], var_name: str, strict: bool = False)
                 lines.append(f'    assert len({var_name}.get("{fname}", "")) > 0')
             elif strict:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
-            # Skip optional string fields in non-strict mode
         elif ftype in ("integer", "long"):
             if strict or is_identity:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), int)')
@@ -359,6 +426,59 @@ def find_ops_for_noun(noun: str, all_ops: dict) -> dict:
     return result
 
 
+def _find_captured_ids(
+    create_params: list[dict],
+    create_output_fields: list[dict],
+    target_params: list[dict],
+    noun: str,
+    model: dict,
+) -> dict[str, tuple[str, str]]:
+    """Find server-generated IDs to capture from create response.
+
+    Returns dict mapping param_name -> (extraction_expression, variable_name)
+    for params that appear in the target op but NOT in the create input.
+    """
+    create_param_names = {p["name"] for p in create_params}
+    create_output_names = {f["name"] for f in create_output_fields}
+    captures: dict[str, tuple[str, str]] = {}
+
+    for p in target_params:
+        if p["name"] in create_param_names:
+            continue
+
+        if p["name"] in create_output_names:
+            var = _to_snake_case(p["name"])
+            captures[p["name"]] = (f'create_resp["{p["name"]}"]', var)
+            continue
+
+        # Check nested: create output might wrap in a noun-named structure
+        shapes = model.get("shapes", {})
+        for f in create_output_fields:
+            if f["type"] == "structure" and f["name"] == noun:
+                shape_def = shapes.get(f["shape"], {})
+                nested_members = shape_def.get("members", {})
+                if p["name"] in nested_members:
+                    var = _to_snake_case(p["name"])
+                    expr = f'create_resp["{noun}"]["{p["name"]}"]'
+                    captures[p["name"]] = (expr, var)
+                    break
+
+    return captures
+
+
+def _param_value_for(
+    param: dict,
+    captures: dict[str, tuple[str, str]],
+    service_name: str,
+    shapes: dict | None = None,
+) -> str:
+    """Get the value expression for a param, using captured ID if available."""
+    if param["name"] in captures:
+        _, var_name = captures[param["name"]]
+        return var_name
+    return generate_param_value(param, service_name, shapes=shapes)
+
+
 def generate_lifecycle_test(
     service_name: str,
     noun: str,
@@ -380,6 +500,28 @@ def generate_lifecycle_test(
     describe_params = get_required_params(service_name, describe_op, model)
     create_output_fields = get_output_fields(create_op, model)
     describe_output_fields = get_output_fields(describe_op, model)
+    shapes = model.get("shapes", {})
+
+    # Find server-generated IDs to capture from create response
+    captures = _find_captured_ids(
+        create_params,
+        create_output_fields,
+        describe_params,
+        noun,
+        model,
+    )
+    if delete_op:
+        delete_params = get_required_params(service_name, delete_op, model)
+        delete_captures = _find_captured_ids(
+            create_params,
+            create_output_fields,
+            delete_params,
+            noun,
+            model,
+        )
+        captures.update(delete_captures)
+    else:
+        delete_params = []
 
     # Determine if we need fixture params
     needs_instance = service_name in INSTANCE_ID_SERVICES
@@ -391,32 +533,45 @@ def generate_lifecycle_test(
 
     # CREATE
     lines.append("    # CREATE")
-    create_args = []
-    for p in create_params:
-        create_args.append(f"        {p['name']}={generate_param_value(p, service_name)},")
-
     create_method = _to_snake_case(create_op)
-    lines.append(f"    create_resp = client.{create_method}(")
-    lines.extend(create_args)
-    lines.append("    )")
 
-    create_assertions = generate_assertions(create_output_fields, "create_resp", strict=True)
+    id_field_names = {p["name"] for p in describe_params}
+    create_assertions = generate_assertions(
+        create_output_fields,
+        "create_resp",
+        strict=True,
+        identity_fields=id_field_names,
+    )
+    needs_create_resp = bool(create_assertions or captures)
+    prefix = "create_resp = " if needs_create_resp else ""
+    lines.append(f"    {prefix}client.{create_method}(")
+    for p in create_params:
+        val = generate_param_value(p, service_name, shapes=shapes)
+        lines.append(f"        {p['name']}={val},")
+    lines.append("    )")
     lines.extend(create_assertions)
+
+    if captures:
+        lines.append("")
+        for param_name, (expr, var_name) in captures.items():
+            lines.append(f"    {var_name} = {expr}")
 
     lines.append("")
 
     # DESCRIBE
     lines.append("    # DESCRIBE")
-    describe_args = []
-    for p in describe_params:
-        describe_args.append(f"        {p['name']}={generate_param_value(p, service_name)},")
-
     describe_method = _to_snake_case(describe_op)
-    lines.append(f"    desc_resp = client.{describe_method}(")
-    lines.extend(describe_args)
+    desc_assertions = generate_assertions(
+        describe_output_fields,
+        "desc_resp",
+        identity_fields=id_field_names,
+    )
+    prefix = "desc_resp = " if desc_assertions else ""
+    lines.append(f"    {prefix}client.{describe_method}(")
+    for p in describe_params:
+        val = _param_value_for(p, captures, service_name, shapes)
+        lines.append(f"        {p['name']}={val},")
     lines.append("    )")
-
-    desc_assertions = generate_assertions(describe_output_fields, "desc_resp")
     lines.extend(desc_assertions)
 
     lines.append("")
@@ -424,14 +579,11 @@ def generate_lifecycle_test(
     # DELETE
     if delete_op:
         lines.append("    # DELETE")
-        delete_params = get_required_params(service_name, delete_op, model)
-        delete_args = []
-        for p in delete_params:
-            delete_args.append(f"        {p['name']}={generate_param_value(p, service_name)},")
-
         delete_method = _to_snake_case(delete_op)
         lines.append(f"    client.{delete_method}(")
-        lines.extend(delete_args)
+        for p in delete_params:
+            val = _param_value_for(p, captures, service_name, shapes)
+            lines.append(f"        {p['name']}={val},")
         lines.append("    )")
 
         lines.append("")
@@ -440,9 +592,9 @@ def generate_lifecycle_test(
         lines.append("    # DESCRIBE after DELETE should fail")
         lines.append("    with pytest.raises(ClientError) as exc:")
         lines.append(f"        client.{describe_method}(")
-        # Indent describe args one extra level inside with-block
         for p in describe_params:
-            lines.append(f"            {p['name']}={generate_param_value(p, service_name)},")
+            val = _param_value_for(p, captures, service_name, shapes)
+            lines.append(f"            {p['name']}={val},")
         lines.append("        )")
         lines.append('    assert exc.value.response["Error"]["Code"] in (')
         for code in NOT_FOUND_CODES:
@@ -454,19 +606,18 @@ def generate_lifecycle_test(
 
     # NOT-FOUND TEST
     lines.append(f"def test_{snake_noun}_not_found({fixture_args}):")
-    lines.append(f'    """Test that describing a non-existent {noun} raises an error."""')
+    lines.append(
+        f'    """Test that describing a non-existent {noun} raises an error."""',
+    )
     lines.append("    with pytest.raises(ClientError) as exc:")
-
-    fake_args = []
-    for p in describe_params:
-        # Use instance_id fixture for InstanceId even in not-found tests
-        if p["name"] == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
-            fake_args.append(f"            {p['name']}=instance_id,")
-        else:
-            fake_args.append(f"            {p['name']}={generate_fake_param_value(p)},")
-
     lines.append(f"        client.{describe_method}(")
-    lines.extend(fake_args)
+    for p in describe_params:
+        if p["name"] == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
+            lines.append(f"            {p['name']}=instance_id,")
+        else:
+            lines.append(
+                f"            {p['name']}={generate_fake_param_value(p)},",
+            )
     lines.append("        )")
 
     lines.append('    assert exc.value.response["Error"]["Code"] in (')

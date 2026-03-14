@@ -1,0 +1,53 @@
+---
+description: Strategy and learnings for implementing missing Moto operations
+globs: vendor/moto/moto/**/models.py, vendor/moto/moto/**/responses.py, scripts/gen_*.py, tests/moto_impl/**
+alwaysApply: false
+---
+
+# Moto Implementation Strategy
+
+## What works
+
+- **gen_resource_lifecycle_test.py** generates good test skeletons from botocore shapes
+- **gen_moto_impl.py** generates ~80% correct scaffolding for models + responses
+- Not-found tests pass reliably — the implementations raise correct exceptions
+- Three protocol patterns are well-understood: JSON (Glue), rest-json catchall (IoT), rest-json explicit URLs (Connect)
+
+## Critical test generation fix needed
+
+Tests must capture IDs from create responses and use them in describe/delete calls:
+
+```python
+# WRONG (hardcoded ID):
+create_resp = client.create_workspace(InstanceId=iid, Name="test")
+desc_resp = client.describe_workspace(InstanceId=iid, WorkspaceId="test-id-1")
+
+# RIGHT (captured ID):
+create_resp = client.create_workspace(InstanceId=iid, Name="test")
+workspace_id = create_resp["WorkspaceId"]
+desc_resp = client.describe_workspace(InstanceId=iid, WorkspaceId=workspace_id)
+```
+
+## Connect requires instance_id fixture
+
+All Connect sub-resources need a valid instance. Create one in a fixture and pass `instance_id` to tests.
+
+## Botocore strips empty strings from responses
+
+When a model returns `""` for optional string fields, the botocore serializer omits them. Tests should not assert `isinstance(resp.get("displayName"), str)` for optional fields — use `strict=False` for describe assertions.
+
+## Protocol-specific patterns
+
+| Protocol | Params from | Returns | URL changes |
+|----------|------------|---------|-------------|
+| JSON (Glue) | `self.parameters` | `ActionResult(dict)` / `EmptyResult()` | None |
+| rest-json catchall (IoT) | `self._get_param()` | `ActionResult(dict)` / `EmptyResult()` | None |
+| rest-json explicit (Connect) | `self._get_param()`, `json.loads(self.body)` | `json.dumps(dict)` / `"{}"` | Add URL entries to urls.py |
+
+## Moto update flow
+
+1. Edit vendor/moto/moto/{service}/models.py + responses.py
+2. Push: `cd vendor/moto && git push jackdanger robotocore/all-fixes:robotocore/all-fixes`
+3. Lock: `cd ../.. && uv lock --upgrade-package moto`
+4. Sync: `uv sync`
+5. Restart server: `make stop && make start`
