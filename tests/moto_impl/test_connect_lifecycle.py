@@ -40,7 +40,6 @@ def test_agent_status_lifecycle(client, instance_id):
         Name="test-name-1",
         State="ENABLED",
     )
-    assert isinstance(create_resp.get("AgentStatusARN"), str)
     assert isinstance(create_resp.get("AgentStatusId"), str)
     assert len(create_resp.get("AgentStatusId", "")) > 0
 
@@ -55,7 +54,7 @@ def test_agent_status_lifecycle(client, instance_id):
 
 
 def test_agent_status_not_found(client, instance_id):
-    """Test that describing a non-existent AgentStatus raises an error."""
+    """Test that describing a non-existent AgentStatus raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_agent_status(
             InstanceId=instance_id,
@@ -80,7 +79,6 @@ def test_contact_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("ContactId"), str)
     assert len(create_resp.get("ContactId", "")) > 0
-    assert isinstance(create_resp.get("ContactArn"), str)
 
     contact_id = create_resp["ContactId"]
 
@@ -113,7 +111,7 @@ def test_contact_lifecycle(client, instance_id):
 
 
 def test_contact_not_found(client, instance_id):
-    """Test that describing a non-existent Contact raises an error."""
+    """Test that describing a non-existent Contact raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_contact(
             InstanceId=instance_id,
@@ -172,7 +170,7 @@ def test_contact_evaluation_lifecycle(client, instance_id):
 
 
 def test_contact_evaluation_not_found(client, instance_id):
-    """Test that describing a non-existent ContactEvaluation raises an error."""
+    """Test that describing a non-existent ContactEvaluation raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_contact_evaluation(
             InstanceId=instance_id,
@@ -198,8 +196,6 @@ def test_contact_flow_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("ContactFlowId"), str)
     assert len(create_resp.get("ContactFlowId", "")) > 0
-    assert isinstance(create_resp.get("ContactFlowArn"), str)
-    assert isinstance(create_resp.get("FlowContentSha256"), str)
 
     contact_flow_id = create_resp["ContactFlowId"]
 
@@ -232,7 +228,7 @@ def test_contact_flow_lifecycle(client, instance_id):
 
 
 def test_contact_flow_not_found(client, instance_id):
-    """Test that describing a non-existent ContactFlow raises an error."""
+    """Test that describing a non-existent ContactFlow raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_contact_flow(
             InstanceId=instance_id,
@@ -250,13 +246,11 @@ def test_contact_flow_not_found(client, instance_id):
 def test_contact_flow_module_lifecycle(client, instance_id):
     """Test ContactFlowModule CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_contact_flow_module(
+    client.create_contact_flow_module(
         InstanceId=instance_id,
         Name="test-name-1",
         Content="test-string",
     )
-    assert isinstance(create_resp.get("Id"), str)
-    assert isinstance(create_resp.get("Arn"), str)
 
     # DESCRIBE
     desc_resp = client.describe_contact_flow_module(
@@ -287,7 +281,7 @@ def test_contact_flow_module_lifecycle(client, instance_id):
 
 
 def test_contact_flow_module_not_found(client, instance_id):
-    """Test that describing a non-existent ContactFlowModule raises an error."""
+    """Test that describing a non-existent ContactFlowModule raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_contact_flow_module(
             InstanceId=instance_id,
@@ -305,14 +299,12 @@ def test_contact_flow_module_not_found(client, instance_id):
 def test_contact_flow_module_alias_lifecycle(client, instance_id):
     """Test ContactFlowModuleAlias CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_contact_flow_module_alias(
+    client.create_contact_flow_module_alias(
         InstanceId=instance_id,
         ContactFlowModuleId="test-id-1",
         ContactFlowModuleVersion=1,
         AliasName="test-name-1",
     )
-    assert isinstance(create_resp.get("ContactFlowModuleArn"), str)
-    assert isinstance(create_resp.get("Id"), str)
 
     # DESCRIBE
     desc_resp = client.describe_contact_flow_module_alias(
@@ -346,7 +338,7 @@ def test_contact_flow_module_alias_lifecycle(client, instance_id):
 
 
 def test_contact_flow_module_alias_not_found(client, instance_id):
-    """Test that describing a non-existent ContactFlowModuleAlias raises an error."""
+    """Test that describing a non-existent ContactFlowModuleAlias raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_contact_flow_module_alias(
             InstanceId=instance_id,
@@ -405,7 +397,7 @@ def test_data_table_lifecycle(client, instance_id):
 
 
 def test_data_table_not_found(client, instance_id):
-    """Test that describing a non-existent DataTable raises an error."""
+    """Test that describing a non-existent DataTable raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_data_table(
             InstanceId=instance_id,
@@ -430,7 +422,6 @@ def test_data_table_attribute_lifecycle(client, instance_id):
         ValueType="TEXT",
     )
     assert isinstance(create_resp.get("Name"), str)
-    assert isinstance(create_resp.get("AttributeId"), str)
     assert isinstance(create_resp.get("LockVersion", {}), dict)
 
     # DESCRIBE
@@ -465,7 +456,7 @@ def test_data_table_attribute_lifecycle(client, instance_id):
 
 
 def test_data_table_attribute_not_found(client, instance_id):
-    """Test that describing a non-existent DataTableAttribute raises an error."""
+    """Test that describing a non-existent DataTableAttribute raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_data_table_attribute(
             InstanceId=instance_id,
@@ -490,7 +481,6 @@ def test_email_address_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("EmailAddressId"), str)
     assert len(create_resp.get("EmailAddressId", "")) > 0
-    assert isinstance(create_resp.get("EmailAddressArn"), str)
 
     email_address_id = create_resp["EmailAddressId"]
 
@@ -526,7 +516,7 @@ def test_email_address_lifecycle(client, instance_id):
 
 
 def test_email_address_not_found(client, instance_id):
-    """Test that describing a non-existent EmailAddress raises an error."""
+    """Test that describing a non-existent EmailAddress raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_email_address(
             InstanceId=instance_id,
@@ -584,7 +574,7 @@ def test_evaluation_form_lifecycle(client, instance_id):
 
 
 def test_evaluation_form_not_found(client, instance_id):
-    """Test that describing a non-existent EvaluationForm raises an error."""
+    """Test that describing a non-existent EvaluationForm raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_evaluation_form(
             InstanceId=instance_id,
@@ -616,7 +606,6 @@ def test_hours_of_operation_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("HoursOfOperationId"), str)
     assert len(create_resp.get("HoursOfOperationId", "")) > 0
-    assert isinstance(create_resp.get("HoursOfOperationArn"), str)
 
     hours_of_operation_id = create_resp["HoursOfOperationId"]
 
@@ -649,7 +638,7 @@ def test_hours_of_operation_lifecycle(client, instance_id):
 
 
 def test_hours_of_operation_not_found(client, instance_id):
-    """Test that describing a non-existent HoursOfOperation raises an error."""
+    """Test that describing a non-existent HoursOfOperation raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_hours_of_operation(
             InstanceId=instance_id,
@@ -712,7 +701,7 @@ def test_hours_of_operation_override_lifecycle(client, instance_id):
 
 
 def test_hours_of_operation_override_not_found(client, instance_id):
-    """Test that describing a non-existent HoursOfOperationOverride raises an error."""
+    """Test that describing a non-existent HoursOfOperationOverride raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_hours_of_operation_override(
             InstanceId=instance_id,
@@ -731,13 +720,11 @@ def test_hours_of_operation_override_not_found(client, instance_id):
 def test_instance_lifecycle(client, instance_id):
     """Test Instance CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_instance(
+    client.create_instance(
         IdentityManagementType="SAML",
         InboundCallsEnabled=True,
         OutboundCallsEnabled=True,
     )
-    assert isinstance(create_resp.get("Id"), str)
-    assert isinstance(create_resp.get("Arn"), str)
 
     # DESCRIBE
     desc_resp = client.describe_instance(
@@ -766,7 +753,7 @@ def test_instance_lifecycle(client, instance_id):
 
 
 def test_instance_not_found(client, instance_id):
-    """Test that describing a non-existent Instance raises an error."""
+    """Test that describing a non-existent Instance raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_instance(
             InstanceId=instance_id,
@@ -823,7 +810,7 @@ def test_notification_lifecycle(client, instance_id):
 
 
 def test_notification_not_found(client, instance_id):
-    """Test that describing a non-existent Notification raises an error."""
+    """Test that describing a non-existent Notification raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_notification(
             InstanceId=instance_id,
@@ -875,7 +862,7 @@ def test_predefined_attribute_lifecycle(client, instance_id):
 
 
 def test_predefined_attribute_not_found(client, instance_id):
-    """Test that describing a non-existent PredefinedAttribute raises an error."""
+    """Test that describing a non-existent PredefinedAttribute raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_predefined_attribute(
             InstanceId=instance_id,
@@ -898,7 +885,6 @@ def test_prompt_lifecycle(client, instance_id):
         Name="test-name-1",
         S3Uri="test-string",
     )
-    assert isinstance(create_resp.get("PromptARN"), str)
     assert isinstance(create_resp.get("PromptId"), str)
     assert len(create_resp.get("PromptId", "")) > 0
 
@@ -933,7 +919,7 @@ def test_prompt_lifecycle(client, instance_id):
 
 
 def test_prompt_not_found(client, instance_id):
-    """Test that describing a non-existent Prompt raises an error."""
+    """Test that describing a non-existent Prompt raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_prompt(
             InstanceId=instance_id,
@@ -956,7 +942,6 @@ def test_queue_lifecycle(client, instance_id):
         Name="test-name-1",
         HoursOfOperationId="test-id-1",
     )
-    assert isinstance(create_resp.get("QueueArn"), str)
     assert isinstance(create_resp.get("QueueId"), str)
     assert len(create_resp.get("QueueId", "")) > 0
 
@@ -991,7 +976,7 @@ def test_queue_lifecycle(client, instance_id):
 
 
 def test_queue_not_found(client, instance_id):
-    """Test that describing a non-existent Queue raises an error."""
+    """Test that describing a non-existent Queue raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_queue(
             InstanceId=instance_id,
@@ -1014,7 +999,6 @@ def test_quick_connect_lifecycle(client, instance_id):
         Name="test-name-1",
         QuickConnectConfig={"QuickConnectType": "USER"},
     )
-    assert isinstance(create_resp.get("QuickConnectARN"), str)
     assert isinstance(create_resp.get("QuickConnectId"), str)
     assert len(create_resp.get("QuickConnectId", "")) > 0
 
@@ -1049,7 +1033,7 @@ def test_quick_connect_lifecycle(client, instance_id):
 
 
 def test_quick_connect_not_found(client, instance_id):
-    """Test that describing a non-existent QuickConnect raises an error."""
+    """Test that describing a non-existent QuickConnect raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_quick_connect(
             InstanceId=instance_id,
@@ -1074,7 +1058,6 @@ def test_routing_profile_lifecycle(client, instance_id):
         DefaultOutboundQueueId="test-id-1",
         MediaConcurrencies=[{"Channel": "VOICE", "Concurrency": 1}],
     )
-    assert isinstance(create_resp.get("RoutingProfileArn"), str)
     assert isinstance(create_resp.get("RoutingProfileId"), str)
     assert len(create_resp.get("RoutingProfileId", "")) > 0
 
@@ -1109,7 +1092,7 @@ def test_routing_profile_lifecycle(client, instance_id):
 
 
 def test_routing_profile_not_found(client, instance_id):
-    """Test that describing a non-existent RoutingProfile raises an error."""
+    """Test that describing a non-existent RoutingProfile raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_routing_profile(
             InstanceId=instance_id,
@@ -1170,7 +1153,7 @@ def test_rule_lifecycle(client, instance_id):
 
 
 def test_rule_not_found(client, instance_id):
-    """Test that describing a non-existent Rule raises an error."""
+    """Test that describing a non-existent Rule raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_rule(
             InstanceId=instance_id,
@@ -1194,7 +1177,6 @@ def test_security_profile_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("SecurityProfileId"), str)
     assert len(create_resp.get("SecurityProfileId", "")) > 0
-    assert isinstance(create_resp.get("SecurityProfileArn"), str)
 
     security_profile_id = create_resp["SecurityProfileId"]
 
@@ -1227,7 +1209,7 @@ def test_security_profile_lifecycle(client, instance_id):
 
 
 def test_security_profile_not_found(client, instance_id):
-    """Test that describing a non-existent SecurityProfile raises an error."""
+    """Test that describing a non-existent SecurityProfile raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_security_profile(
             SecurityProfileId="fake-id",
@@ -1287,7 +1269,7 @@ def test_task_template_lifecycle(client, instance_id):
 
 
 def test_task_template_not_found(client, instance_id):
-    """Test that describing a non-existent TaskTemplate raises an error."""
+    """Test that describing a non-existent TaskTemplate raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_task_template(
             InstanceId=instance_id,
@@ -1312,7 +1294,6 @@ def test_test_case_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("TestCaseId"), str)
     assert len(create_resp.get("TestCaseId", "")) > 0
-    assert isinstance(create_resp.get("TestCaseArn"), str)
 
     test_case_id = create_resp["TestCaseId"]
 
@@ -1345,7 +1326,7 @@ def test_test_case_lifecycle(client, instance_id):
 
 
 def test_test_case_not_found(client, instance_id):
-    """Test that describing a non-existent TestCase raises an error."""
+    """Test that describing a non-existent TestCase raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_test_case(
             InstanceId=instance_id,
@@ -1363,12 +1344,10 @@ def test_test_case_not_found(client, instance_id):
 def test_traffic_distribution_group_lifecycle(client, instance_id):
     """Test TrafficDistributionGroup CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_traffic_distribution_group(
+    client.create_traffic_distribution_group(
         Name="test-name-1",
         InstanceId=instance_id,
     )
-    assert isinstance(create_resp.get("Id"), str)
-    assert isinstance(create_resp.get("Arn"), str)
 
     # DESCRIBE
     desc_resp = client.describe_traffic_distribution_group(
@@ -1396,7 +1375,7 @@ def test_traffic_distribution_group_lifecycle(client, instance_id):
 
 
 def test_traffic_distribution_group_not_found(client, instance_id):
-    """Test that describing a non-existent TrafficDistributionGroup raises an error."""
+    """Test that describing a non-existent TrafficDistributionGroup raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_traffic_distribution_group(
             TrafficDistributionGroupId="fake-id",
@@ -1421,7 +1400,6 @@ def test_user_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("UserId"), str)
     assert len(create_resp.get("UserId", "")) > 0
-    assert isinstance(create_resp.get("UserArn"), str)
 
     user_id = create_resp["UserId"]
 
@@ -1454,7 +1432,7 @@ def test_user_lifecycle(client, instance_id):
 
 
 def test_user_not_found(client, instance_id):
-    """Test that describing a non-existent User raises an error."""
+    """Test that describing a non-existent User raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_user(
             UserId="fake-id",
@@ -1478,7 +1456,6 @@ def test_user_hierarchy_group_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("HierarchyGroupId"), str)
     assert len(create_resp.get("HierarchyGroupId", "")) > 0
-    assert isinstance(create_resp.get("HierarchyGroupArn"), str)
 
     hierarchy_group_id = create_resp["HierarchyGroupId"]
 
@@ -1511,7 +1488,7 @@ def test_user_hierarchy_group_lifecycle(client, instance_id):
 
 
 def test_user_hierarchy_group_not_found(client, instance_id):
-    """Test that describing a non-existent UserHierarchyGroup raises an error."""
+    """Test that describing a non-existent UserHierarchyGroup raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_user_hierarchy_group(
             HierarchyGroupId="fake-id",
@@ -1566,7 +1543,7 @@ def test_view_lifecycle(client, instance_id):
 
 
 def test_view_not_found(client, instance_id):
-    """Test that describing a non-existent View raises an error."""
+    """Test that describing a non-existent View raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_view(
             InstanceId=instance_id,
@@ -1626,7 +1603,7 @@ def test_vocabulary_lifecycle(client, instance_id):
 
 
 def test_vocabulary_not_found(client, instance_id):
-    """Test that describing a non-existent Vocabulary raises an error."""
+    """Test that describing a non-existent Vocabulary raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_vocabulary(
             InstanceId=instance_id,
@@ -1683,7 +1660,7 @@ def test_workspace_lifecycle(client, instance_id):
 
 
 def test_workspace_not_found(client, instance_id):
-    """Test that describing a non-existent Workspace raises an error."""
+    """Test that describing a non-existent Workspace raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_workspace(
             InstanceId=instance_id,

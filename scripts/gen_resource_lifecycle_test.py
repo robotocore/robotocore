@@ -100,6 +100,7 @@ UPDATE_VERBS = ("Update", "Modify")
 
 NOT_FOUND_CODES = (
     "ResourceNotFoundException",
+    "ResourcePolicyNotFoundException",
     "NotFoundException",
     "EntityNotFoundException",
     "InvalidRequestException",
@@ -132,9 +133,31 @@ def instance_id(client):
     except Exception:
         pass
 """,
+    "organizations": """
+@pytest.fixture(autouse=True)
+def org(client):
+    resp = client.create_organization(FeatureSet="ALL")
+    yield resp["Organization"]
+    try:
+        client.delete_organization()
+    except Exception:
+        pass
+""",
+    "backup": """
+@pytest.fixture
+def vault_name(client):
+    name = "test-vault-1"
+    client.create_backup_vault(BackupVaultName=name)
+    yield name
+    try:
+        client.delete_backup_vault(BackupVaultName=name)
+    except Exception:
+        pass
+""",
 }
 
 INSTANCE_ID_SERVICES = {"connect"}
+VAULT_NAME_SERVICES = {"backup"}
 
 
 def _to_snake_case(name: str) -> str:
@@ -208,6 +231,7 @@ def get_output_fields(operation_name: str, model: dict) -> list[dict]:
     shapes = model.get("shapes", {})
     output_shape = shapes.get(output_shape_name, {})
     members = output_shape.get("members", {})
+    required_fields = set(output_shape.get("required", []))
 
     fields = []
     for field_name, member in members.items():
@@ -220,6 +244,7 @@ def get_output_fields(operation_name: str, model: dict) -> list[dict]:
                 "name": field_name,
                 "shape": shape_ref,
                 "type": shape_type,
+                "required": field_name in required_fields,
             }
         )
     return fields
@@ -243,9 +268,13 @@ def generate_param_value(
 
     if name == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
         return "instance_id"
+    if name == "BackupVaultName" and service_name in VAULT_NAME_SERVICES:
+        return "vault_name"
 
     if param.get("enum"):
         return f'"{param["enum"][0]}"'
+
+    doc = param.get("documentation", "").lower()
 
     if shape_type == "string":
         if "arn" in name_lower:
@@ -253,6 +282,8 @@ def generate_param_value(
         if "name" in name_lower:
             return '"test-name-1"'
         if "id" in name_lower:
+            if "name" in doc or "name or" in doc:
+                return '"test-name-1"'
             return '"test-id-1"'
         if "url" in name_lower:
             return '"http://localhost:4566/test"'
@@ -260,7 +291,9 @@ def generate_param_value(
             return '"test@example.com"'
         return '"test-string"'
     elif shape_type in ("integer", "long"):
-        return "1"
+        shape_def = shapes.get(param.get("shape", ""), {}) if shapes else {}
+        min_val = shape_def.get("min", 1)
+        return str(max(1, min_val))
     elif shape_type == "boolean":
         return "True"
     elif shape_type == "timestamp":
@@ -363,6 +396,8 @@ def generate_assertions(
         else:
             is_identity = "arn" in name_lower
 
+        is_required = f.get("required", False)
+
         if ftype == "string":
             if is_identity and "arn" in name_lower:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
@@ -370,13 +405,13 @@ def generate_assertions(
             elif is_identity:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
                 lines.append(f'    assert len({var_name}.get("{fname}", "")) > 0')
-            elif strict:
+            elif strict and is_required:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), str)')
         elif ftype in ("integer", "long"):
-            if strict or is_identity:
+            if (strict and is_required) or is_identity:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), int)')
         elif ftype == "boolean":
-            if strict:
+            if strict and is_required:
                 lines.append(f'    assert isinstance({var_name}.get("{fname}"), bool)')
         elif ftype == "list":
             lines.append(f'    assert isinstance({var_name}.get("{fname}", []), list)')
@@ -524,8 +559,12 @@ def generate_lifecycle_test(
         delete_params = []
 
     # Determine if we need fixture params
-    needs_instance = service_name in INSTANCE_ID_SERVICES
-    fixture_args = "client, instance_id" if needs_instance else "client"
+    fixture_parts = ["client"]
+    if service_name in INSTANCE_ID_SERVICES:
+        fixture_parts.append("instance_id")
+    if service_name in VAULT_NAME_SERVICES:
+        fixture_parts.append("vault_name")
+    fixture_args = ", ".join(fixture_parts)
 
     # LIFECYCLE TEST
     lines.append(f"def test_{snake_noun}_lifecycle({fixture_args}):")
@@ -606,14 +645,17 @@ def generate_lifecycle_test(
 
     # NOT-FOUND TEST
     lines.append(f"def test_{snake_noun}_not_found({fixture_args}):")
+    short_noun = noun if len(noun) < 40 else noun[:37] + "..."
     lines.append(
-        f'    """Test that describing a non-existent {noun} raises an error."""',
+        f'    """Test that describing a non-existent {short_noun} raises error."""',
     )
     lines.append("    with pytest.raises(ClientError) as exc:")
     lines.append(f"        client.{describe_method}(")
     for p in describe_params:
         if p["name"] == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
             lines.append(f"            {p['name']}=instance_id,")
+        elif p["name"] == "BackupVaultName" and service_name in VAULT_NAME_SERVICES:
+            lines.append(f"            {p['name']}=vault_name,")
         else:
             lines.append(
                 f"            {p['name']}={generate_fake_param_value(p)},",

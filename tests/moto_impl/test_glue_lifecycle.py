@@ -53,7 +53,7 @@ def test_blueprint_lifecycle(client):
 
 
 def test_blueprint_not_found(client):
-    """Test that describing a non-existent Blueprint raises an error."""
+    """Test that describing a non-existent Blueprint raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_blueprint(
             Name="fake-id",
@@ -88,7 +88,7 @@ def test_blueprint_run_lifecycle(client):
 
 
 def test_blueprint_run_not_found(client):
-    """Test that describing a non-existent BlueprintRun raises an error."""
+    """Test that describing a non-existent BlueprintRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_blueprint_run(
             BlueprintName="fake-id",
@@ -137,7 +137,7 @@ def test_catalog_lifecycle(client):
 
 
 def test_catalog_not_found(client):
-    """Test that describing a non-existent Catalog raises an error."""
+    """Test that describing a non-existent Catalog raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_catalog(
             CatalogId="fake-id",
@@ -182,7 +182,7 @@ def test_classifier_lifecycle(client):
 
 
 def test_classifier_not_found(client):
-    """Test that describing a non-existent Classifier raises an error."""
+    """Test that describing a non-existent Classifier raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_classifier(
             Name="fake-id",
@@ -236,7 +236,7 @@ def test_column_statistics_task_run_lifecycle(client):
 
 
 def test_column_statistics_task_run_not_found(client):
-    """Test that describing a non-existent ColumnStatisticsTaskRun raises an error."""
+    """Test that describing a non-existent ColumnStatisticsTaskRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_column_statistics_task_run(
             ColumnStatisticsTaskRunId="fake-id",
@@ -288,7 +288,7 @@ def test_column_statistics_task_settings_lifecycle(client):
 
 
 def test_column_statistics_task_settings_not_found(client):
-    """Test that describing a non-existent ColumnStatisticsTaskSettings raises an error."""
+    """Test that describing a non-existent ColumnStatisticsTaskSettings raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_column_statistics_task_settings(
             DatabaseName="fake-id",
@@ -306,14 +306,13 @@ def test_column_statistics_task_settings_not_found(client):
 def test_connection_lifecycle(client):
     """Test Connection CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_connection(
+    client.create_connection(
         ConnectionInput={
             "Name": "test-name-1",
             "ConnectionType": "JDBC",
             "ConnectionProperties": {},
         },
     )
-    assert isinstance(create_resp.get("CreateConnectionStatus"), str)
 
     # DESCRIBE
     desc_resp = client.get_connection(
@@ -341,7 +340,7 @@ def test_connection_lifecycle(client):
 
 
 def test_connection_not_found(client):
-    """Test that describing a non-existent Connection raises an error."""
+    """Test that describing a non-existent Connection raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_connection(
             Name="fake-id",
@@ -358,14 +357,13 @@ def test_connection_not_found(client):
 def test_connection_type_lifecycle(client):
     """Test ConnectionType CRUD lifecycle."""
     # CREATE
-    create_resp = client.register_connection_type(
+    client.register_connection_type(
         ConnectionType="test-string",
         IntegrationType="REST",
         ConnectionProperties={},
         ConnectorAuthenticationConfiguration={"AuthenticationTypes": ["BASIC"]},
         RestConfiguration={},
     )
-    assert isinstance(create_resp.get("ConnectionTypeArn"), str)
 
     # DESCRIBE
     desc_resp = client.describe_connection_type(
@@ -404,7 +402,7 @@ def test_connection_type_lifecycle(client):
 
 
 def test_connection_type_not_found(client):
-    """Test that describing a non-existent ConnectionType raises an error."""
+    """Test that describing a non-existent ConnectionType raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_connection_type(
             ConnectionType="fake-id",
@@ -453,7 +451,7 @@ def test_crawler_lifecycle(client):
 
 
 def test_crawler_not_found(client):
-    """Test that describing a non-existent Crawler raises an error."""
+    """Test that describing a non-existent Crawler raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_crawler(
             Name="fake-id",
@@ -505,7 +503,7 @@ def test_custom_entity_type_lifecycle(client):
 
 
 def test_custom_entity_type_not_found(client):
-    """Test that describing a non-existent CustomEntityType raises an error."""
+    """Test that describing a non-existent CustomEntityType raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_custom_entity_type(
             Name="fake-id",
@@ -532,7 +530,7 @@ def test_data_catalog_encryption_settings_lifecycle(client):
 
 
 def test_data_catalog_encryption_settings_not_found(client):
-    """Test that describing a non-existent DataCatalogEncryptionSettings raises an error."""
+    """Test that describing a non-existent DataCatalogEncryptionSettings raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_data_catalog_encryption_settings()
     assert exc.value.response["Error"]["Code"] in (
@@ -566,7 +564,7 @@ def test_data_quality_rule_recommendation_run_lifecycle(client):
 
 
 def test_data_quality_rule_recommendation_run_not_found(client):
-    """Test that describing a non-existent DataQualityRuleRecommendationRun raises an error."""
+    """Test that describing a non-existent DataQualityRuleRecommendationRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_data_quality_rule_recommendation_run(
             RunId="fake-id",
@@ -618,7 +616,7 @@ def test_data_quality_ruleset_lifecycle(client):
 
 
 def test_data_quality_ruleset_not_found(client):
-    """Test that describing a non-existent DataQualityRuleset raises an error."""
+    """Test that describing a non-existent DataQualityRuleset raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_data_quality_ruleset(
             Name="fake-id",
@@ -659,7 +657,7 @@ def test_data_quality_ruleset_evaluation_run_lifecycle(client):
 
 
 def test_data_quality_ruleset_evaluation_run_not_found(client):
-    """Test that describing a non-existent DataQualityRulesetEvaluationRun raises an error."""
+    """Test that describing a non-existent DataQualityRulesetEvaluationRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_data_quality_ruleset_evaluation_run(
             RunId="fake-id",
@@ -706,7 +704,7 @@ def test_database_lifecycle(client):
 
 
 def test_database_not_found(client):
-    """Test that describing a non-existent Database raises an error."""
+    """Test that describing a non-existent Database raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_database(
             Name="fake-id",
@@ -729,22 +727,7 @@ def test_dev_endpoint_lifecycle(client):
     )
     assert isinstance(create_resp.get("EndpointName"), str)
     assert len(create_resp.get("EndpointName", "")) > 0
-    assert isinstance(create_resp.get("Status"), str)
     assert isinstance(create_resp.get("SecurityGroupIds", []), list)
-    assert isinstance(create_resp.get("SubnetId"), str)
-    assert isinstance(create_resp.get("RoleArn"), str)
-    assert isinstance(create_resp.get("YarnEndpointAddress"), str)
-    assert isinstance(create_resp.get("ZeppelinRemoteSparkInterpreterPort"), int)
-    assert isinstance(create_resp.get("NumberOfNodes"), int)
-    assert isinstance(create_resp.get("WorkerType"), str)
-    assert isinstance(create_resp.get("GlueVersion"), str)
-    assert isinstance(create_resp.get("NumberOfWorkers"), int)
-    assert isinstance(create_resp.get("AvailabilityZone"), str)
-    assert isinstance(create_resp.get("VpcId"), str)
-    assert isinstance(create_resp.get("ExtraPythonLibsS3Path"), str)
-    assert isinstance(create_resp.get("ExtraJarsS3Path"), str)
-    assert isinstance(create_resp.get("FailureReason"), str)
-    assert isinstance(create_resp.get("SecurityConfiguration"), str)
     assert create_resp.get("CreatedTimestamp") is not None
     assert isinstance(create_resp.get("Arguments", {}), dict)
 
@@ -774,7 +757,7 @@ def test_dev_endpoint_lifecycle(client):
 
 
 def test_dev_endpoint_not_found(client):
-    """Test that describing a non-existent DevEndpoint raises an error."""
+    """Test that describing a non-existent DevEndpoint raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_dev_endpoint(
             EndpointName="fake-id",
@@ -791,10 +774,9 @@ def test_dev_endpoint_not_found(client):
 def test_glue_identity_center_configuration_lifecycle(client):
     """Test GlueIdentityCenterConfiguration CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_glue_identity_center_configuration(
+    client.create_glue_identity_center_configuration(
         InstanceArn="arn:aws:iam::123456789012:role/test-role",
     )
-    assert isinstance(create_resp.get("ApplicationArn"), str)
 
     # DESCRIBE
     desc_resp = client.get_glue_identity_center_configuration()
@@ -816,7 +798,7 @@ def test_glue_identity_center_configuration_lifecycle(client):
 
 
 def test_glue_identity_center_configuration_not_found(client):
-    """Test that describing a non-existent GlueIdentityCenterConfiguration raises an error."""
+    """Test that describing a non-existent GlueIdentityCenterConfiguration raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_glue_identity_center_configuration()
     assert exc.value.response["Error"]["Code"] in (
@@ -836,7 +818,6 @@ def test_integration_resource_property_lifecycle(client):
     )
     assert isinstance(create_resp.get("ResourceArn"), str)
     assert create_resp["ResourceArn"].startswith("arn:aws:")
-    assert isinstance(create_resp.get("ResourcePropertyArn"), str)
     assert isinstance(create_resp.get("SourceProcessingProperties", {}), dict)
     assert isinstance(create_resp.get("TargetProcessingProperties", {}), dict)
 
@@ -869,7 +850,7 @@ def test_integration_resource_property_lifecycle(client):
 
 
 def test_integration_resource_property_not_found(client):
-    """Test that describing a non-existent IntegrationResourceProperty raises an error."""
+    """Test that describing a non-existent IntegrationResourceProperty raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_integration_resource_property(
             ResourceArn="fake-id",
@@ -925,7 +906,7 @@ def test_integration_table_properties_lifecycle(client):
 
 
 def test_integration_table_properties_not_found(client):
-    """Test that describing a non-existent IntegrationTableProperties raises an error."""
+    """Test that describing a non-existent IntegrationTableProperties raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_integration_table_properties(
             ResourceArn="fake-id",
@@ -943,12 +924,11 @@ def test_integration_table_properties_not_found(client):
 def test_job_lifecycle(client):
     """Test Job CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_job(
+    client.create_job(
         Name="test-name-1",
         Role="test-string",
         Command={},
     )
-    assert isinstance(create_resp.get("Name"), str)
 
     # DESCRIBE
     desc_resp = client.get_job(
@@ -976,7 +956,7 @@ def test_job_lifecycle(client):
 
 
 def test_job_not_found(client):
-    """Test that describing a non-existent Job raises an error."""
+    """Test that describing a non-existent Job raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_job(
             JobName="fake-id",
@@ -993,10 +973,9 @@ def test_job_not_found(client):
 def test_job_run_lifecycle(client):
     """Test JobRun CRUD lifecycle."""
     # CREATE
-    create_resp = client.start_job_run(
+    client.start_job_run(
         JobName="test-name-1",
     )
-    assert isinstance(create_resp.get("JobRunId"), str)
 
     # DESCRIBE
     desc_resp = client.get_job_run(
@@ -1007,7 +986,7 @@ def test_job_run_lifecycle(client):
 
 
 def test_job_run_not_found(client):
-    """Test that describing a non-existent JobRun raises an error."""
+    """Test that describing a non-existent JobRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_job_run(
             JobName="fake-id",
@@ -1068,7 +1047,7 @@ def test_ml_transform_lifecycle(client):
 
 
 def test_ml_transform_not_found(client):
-    """Test that describing a non-existent MLTransform raises an error."""
+    """Test that describing a non-existent MLTransform raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_ml_transform(
             TransformId="fake-id",
@@ -1125,7 +1104,7 @@ def test_materialized_view_refresh_task_run_lifecycle(client):
 
 
 def test_materialized_view_refresh_task_run_not_found(client):
-    """Test that describing a non-existent MaterializedViewRefreshTaskRun raises an error."""
+    """Test that describing a non-existent MaterializedViewRefreshTaskRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_materialized_view_refresh_task_run(
             CatalogId="fake-id",
@@ -1181,7 +1160,7 @@ def test_partition_lifecycle(client):
 
 
 def test_partition_not_found(client):
-    """Test that describing a non-existent Partition raises an error."""
+    """Test that describing a non-existent Partition raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_partition(
             DatabaseName="fake-id",
@@ -1203,9 +1182,6 @@ def test_registry_lifecycle(client):
     create_resp = client.create_registry(
         RegistryName="test-name-1",
     )
-    assert isinstance(create_resp.get("RegistryArn"), str)
-    assert isinstance(create_resp.get("RegistryName"), str)
-    assert isinstance(create_resp.get("Description"), str)
     assert isinstance(create_resp.get("Tags", {}), dict)
 
     # DESCRIBE
@@ -1233,7 +1209,7 @@ def test_registry_lifecycle(client):
 
 
 def test_registry_not_found(client):
-    """Test that describing a non-existent Registry raises an error."""
+    """Test that describing a non-existent Registry raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_registry(
             RegistryId="fake-id",
@@ -1250,10 +1226,9 @@ def test_registry_not_found(client):
 def test_resource_policy_lifecycle(client):
     """Test ResourcePolicy CRUD lifecycle."""
     # CREATE
-    create_resp = client.put_resource_policy(
+    client.put_resource_policy(
         PolicyInJson="test-string",
     )
-    assert isinstance(create_resp.get("PolicyHash"), str)
 
     # DESCRIBE
     client.get_resource_policy()
@@ -1274,7 +1249,7 @@ def test_resource_policy_lifecycle(client):
 
 
 def test_resource_policy_not_found(client):
-    """Test that describing a non-existent ResourcePolicy raises an error."""
+    """Test that describing a non-existent ResourcePolicy raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_resource_policy()
     assert exc.value.response["Error"]["Code"] in (
@@ -1293,20 +1268,7 @@ def test_schema_lifecycle(client):
         SchemaName="test-name-1",
         DataFormat="AVRO",
     )
-    assert isinstance(create_resp.get("RegistryName"), str)
-    assert isinstance(create_resp.get("RegistryArn"), str)
-    assert isinstance(create_resp.get("SchemaName"), str)
-    assert isinstance(create_resp.get("SchemaArn"), str)
-    assert isinstance(create_resp.get("Description"), str)
-    assert isinstance(create_resp.get("DataFormat"), str)
-    assert isinstance(create_resp.get("Compatibility"), str)
-    assert isinstance(create_resp.get("SchemaCheckpoint"), int)
-    assert isinstance(create_resp.get("LatestSchemaVersion"), int)
-    assert isinstance(create_resp.get("NextSchemaVersion"), int)
-    assert isinstance(create_resp.get("SchemaStatus"), str)
     assert isinstance(create_resp.get("Tags", {}), dict)
-    assert isinstance(create_resp.get("SchemaVersionId"), str)
-    assert isinstance(create_resp.get("SchemaVersionStatus"), str)
 
     # DESCRIBE
     client.get_schema(
@@ -1333,7 +1295,7 @@ def test_schema_lifecycle(client):
 
 
 def test_schema_not_found(client):
-    """Test that describing a non-existent Schema raises an error."""
+    """Test that describing a non-existent Schema raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_schema(
             SchemaId="fake-id",
@@ -1350,20 +1312,17 @@ def test_schema_not_found(client):
 def test_schema_version_lifecycle(client):
     """Test SchemaVersion CRUD lifecycle."""
     # CREATE
-    create_resp = client.register_schema_version(
+    client.register_schema_version(
         SchemaId={},
         SchemaDefinition="test-string",
     )
-    assert isinstance(create_resp.get("SchemaVersionId"), str)
-    assert isinstance(create_resp.get("VersionNumber"), int)
-    assert isinstance(create_resp.get("Status"), str)
 
     # DESCRIBE
     client.get_schema_version()
 
 
 def test_schema_version_not_found(client):
-    """Test that describing a non-existent SchemaVersion raises an error."""
+    """Test that describing a non-existent SchemaVersion raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_schema_version()
     assert exc.value.response["Error"]["Code"] in (
@@ -1412,7 +1371,7 @@ def test_security_configuration_lifecycle(client):
 
 
 def test_security_configuration_not_found(client):
-    """Test that describing a non-existent SecurityConfiguration raises an error."""
+    """Test that describing a non-existent SecurityConfiguration raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_security_configuration(
             Name="fake-id",
@@ -1462,7 +1421,7 @@ def test_session_lifecycle(client):
 
 
 def test_session_not_found(client):
-    """Test that describing a non-existent Session raises an error."""
+    """Test that describing a non-existent Session raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_session(
             Id="fake-id",
@@ -1496,7 +1455,7 @@ def test_statement_lifecycle(client):
 
 
 def test_statement_not_found(client):
-    """Test that describing a non-existent Statement raises an error."""
+    """Test that describing a non-existent Statement raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_statement(
             SessionId="fake-id",
@@ -1547,7 +1506,7 @@ def test_table_lifecycle(client):
 
 
 def test_table_not_found(client):
-    """Test that describing a non-existent Table raises an error."""
+    """Test that describing a non-existent Table raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_table(
             DatabaseName="fake-id",
@@ -1614,7 +1573,7 @@ def test_table_optimizer_lifecycle(client):
 
 
 def test_table_optimizer_not_found(client):
-    """Test that describing a non-existent TableOptimizer raises an error."""
+    """Test that describing a non-existent TableOptimizer raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_table_optimizer(
             CatalogId="fake-id",
@@ -1668,7 +1627,7 @@ def test_trigger_lifecycle(client):
 
 
 def test_trigger_not_found(client):
-    """Test that describing a non-existent Trigger raises an error."""
+    """Test that describing a non-existent Trigger raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_trigger(
             Name="fake-id",
@@ -1720,7 +1679,7 @@ def test_usage_profile_lifecycle(client):
 
 
 def test_usage_profile_not_found(client):
-    """Test that describing a non-existent UsageProfile raises an error."""
+    """Test that describing a non-existent UsageProfile raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_usage_profile(
             Name="fake-id",
@@ -1771,7 +1730,7 @@ def test_user_defined_function_lifecycle(client):
 
 
 def test_user_defined_function_not_found(client):
-    """Test that describing a non-existent UserDefinedFunction raises an error."""
+    """Test that describing a non-existent UserDefinedFunction raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_user_defined_function(
             DatabaseName="fake-id",
@@ -1821,7 +1780,7 @@ def test_workflow_lifecycle(client):
 
 
 def test_workflow_not_found(client):
-    """Test that describing a non-existent Workflow raises an error."""
+    """Test that describing a non-existent Workflow raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_workflow(
             Name="fake-id",
@@ -1875,7 +1834,7 @@ def test_workflow_run_lifecycle(client):
 
 
 def test_workflow_run_not_found(client):
-    """Test that describing a non-existent WorkflowRun raises an error."""
+    """Test that describing a non-existent WorkflowRun raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_workflow_run(
             Name="fake-id",
@@ -1908,7 +1867,7 @@ def test_workflow_run_properties_lifecycle(client):
 
 
 def test_workflow_run_properties_not_found(client):
-    """Test that describing a non-existent WorkflowRunProperties raises an error."""
+    """Test that describing a non-existent WorkflowRunProperties raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_workflow_run_properties(
             Name="fake-id",

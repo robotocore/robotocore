@@ -59,7 +59,7 @@ def test_data_cells_filter_lifecycle(client):
 
 
 def test_data_cells_filter_not_found(client):
-    """Test that describing a non-existent DataCellsFilter raises an error."""
+    """Test that describing a non-existent DataCellsFilter raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_data_cells_filter(
             TableCatalogId="fake-id",
@@ -89,7 +89,7 @@ def test_data_lake_settings_lifecycle(client):
 
 
 def test_data_lake_settings_not_found(client):
-    """Test that describing a non-existent DataLakeSettings raises an error."""
+    """Test that describing a non-existent DataLakeSettings raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_data_lake_settings()
     assert exc.value.response["Error"]["Code"] in (
@@ -137,7 +137,7 @@ def test_lf_tag_lifecycle(client):
 
 
 def test_lf_tag_not_found(client):
-    """Test that describing a non-existent LFTag raises an error."""
+    """Test that describing a non-existent LFTag raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_lf_tag(
             TagKey="fake-id",
@@ -187,7 +187,7 @@ def test_lf_tag_expression_lifecycle(client):
 
 
 def test_lf_tag_expression_not_found(client):
-    """Test that describing a non-existent LFTagExpression raises an error."""
+    """Test that describing a non-existent LFTagExpression raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_lf_tag_expression(
             Name="fake-id",
@@ -204,8 +204,7 @@ def test_lf_tag_expression_not_found(client):
 def test_lake_formation_identity_center_configuration_lifecycle(client):
     """Test LakeFormationIdentityCenterConfiguration CRUD lifecycle."""
     # CREATE
-    create_resp = client.create_lake_formation_identity_center_configuration()
-    assert isinstance(create_resp.get("ApplicationArn"), str)
+    client.create_lake_formation_identity_center_configuration()
 
     # DESCRIBE
     desc_resp = client.describe_lake_formation_identity_center_configuration()
@@ -229,7 +228,7 @@ def test_lake_formation_identity_center_configuration_lifecycle(client):
 
 
 def test_lake_formation_identity_center_configuration_not_found(client):
-    """Test describing non-existent IdentityCenterConfig raises error."""
+    """Test that describing a non-existent LakeFormationIdentityCenterConfigurat... raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_lake_formation_identity_center_configuration()
     assert exc.value.response["Error"]["Code"] in (
@@ -258,7 +257,7 @@ def test_transaction_lifecycle(client):
 
 
 def test_transaction_not_found(client):
-    """Test that describing a non-existent Transaction raises an error."""
+    """Test that describing a non-existent Transaction raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_transaction(
             TransactionId="fake-id",

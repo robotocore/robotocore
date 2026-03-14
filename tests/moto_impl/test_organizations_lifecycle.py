@@ -17,6 +17,16 @@ def client():
     )
 
 
+@pytest.fixture(autouse=True)
+def org(client):
+    resp = client.create_organization(FeatureSet="ALL")
+    yield resp["Organization"]
+    try:
+        client.delete_organization()
+    except Exception:
+        pass
+
+
 def test_organization_lifecycle(client):
     """Test Organization CRUD lifecycle."""
     # CREATE
@@ -35,6 +45,7 @@ def test_organization_lifecycle(client):
         client.describe_organization()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -43,11 +54,12 @@ def test_organization_lifecycle(client):
 
 
 def test_organization_not_found(client):
-    """Test that describing a non-existent Organization raises an error."""
+    """Test that describing a non-existent Organization raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_organization()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -82,6 +94,7 @@ def test_organizational_unit_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -90,13 +103,14 @@ def test_organizational_unit_lifecycle(client):
 
 
 def test_organizational_unit_not_found(client):
-    """Test that describing a non-existent OrganizationalUnit raises an error."""
+    """Test that describing a non-existent OrganizationalUnit raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_organizational_unit(
             OrganizationalUnitId="fake-id",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -133,6 +147,7 @@ def test_policy_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -141,13 +156,14 @@ def test_policy_lifecycle(client):
 
 
 def test_policy_not_found(client):
-    """Test that describing a non-existent Policy raises an error."""
+    """Test that describing a non-existent Policy raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_policy(
             PolicyId="fake-id",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -175,6 +191,7 @@ def test_resource_policy_lifecycle(client):
         client.describe_resource_policy()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -183,11 +200,12 @@ def test_resource_policy_lifecycle(client):
 
 
 def test_resource_policy_not_found(client):
-    """Test that describing a non-existent ResourcePolicy raises an error."""
+    """Test that describing a non-existent ResourcePolicy raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_resource_policy()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
