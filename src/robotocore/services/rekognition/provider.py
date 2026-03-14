@@ -834,6 +834,16 @@ def _get_face_liveness_session_results(params: dict, region: str, account_id: st
     }
 
 
+def _list_users(params: dict, region: str, account_id: str) -> dict:
+    collection_id = params.get("CollectionId", "")
+    store = _get_collections(account_id, region)
+
+    if collection_id not in store:
+        return _not_found(f"The collection id: {collection_id} does not exist")
+
+    return {"Users": [], "NextToken": None}
+
+
 # ---------------------------------------------------------------------------
 # Action map
 # ---------------------------------------------------------------------------
@@ -885,4 +895,6 @@ _ACTION_MAP = {
     # Face Liveness
     "CreateFaceLivenessSession": _create_face_liveness_session,
     "GetFaceLivenessSessionResults": _get_face_liveness_session_results,
+    # Users
+    "ListUsers": _list_users,
 }
