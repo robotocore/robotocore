@@ -51,6 +51,7 @@ def test_data_cells_filter_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -69,6 +70,7 @@ def test_data_cells_filter_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -94,6 +96,7 @@ def test_data_lake_settings_not_found(client):
         client.get_data_lake_settings()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -129,6 +132,7 @@ def test_lf_tag_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -144,6 +148,7 @@ def test_lf_tag_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -179,6 +184,7 @@ def test_lf_tag_expression_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -194,6 +200,7 @@ def test_lf_tag_expression_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -220,6 +227,7 @@ def test_lake_formation_identity_center_configuration_lifecycle(client):
         client.describe_lake_formation_identity_center_configuration()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -233,6 +241,7 @@ def test_lake_formation_identity_center_configuration_not_found(client):
         client.describe_lake_formation_identity_center_configuration()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -264,6 +273,7 @@ def test_transaction_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",

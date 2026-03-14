@@ -45,6 +45,7 @@ def test_blueprint_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -60,6 +61,7 @@ def test_blueprint_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -96,6 +98,7 @@ def test_blueprint_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -129,6 +132,7 @@ def test_catalog_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -144,6 +148,7 @@ def test_catalog_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -174,6 +179,7 @@ def test_classifier_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -189,6 +195,7 @@ def test_classifier_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -228,6 +235,7 @@ def test_column_statistics_task_run_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -243,6 +251,7 @@ def test_column_statistics_task_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -280,6 +289,7 @@ def test_column_statistics_task_settings_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -296,6 +306,7 @@ def test_column_statistics_task_settings_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -332,6 +343,7 @@ def test_connection_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -347,6 +359,7 @@ def test_connection_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -394,6 +407,7 @@ def test_connection_type_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -409,6 +423,7 @@ def test_connection_type_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -443,6 +458,7 @@ def test_crawler_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -458,6 +474,7 @@ def test_crawler_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -495,6 +512,7 @@ def test_custom_entity_type_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -510,6 +528,7 @@ def test_custom_entity_type_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -535,6 +554,7 @@ def test_data_catalog_encryption_settings_not_found(client):
         client.get_data_catalog_encryption_settings()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -571,6 +591,7 @@ def test_data_quality_rule_recommendation_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -608,6 +629,7 @@ def test_data_quality_ruleset_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -623,6 +645,7 @@ def test_data_quality_ruleset_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -664,6 +687,7 @@ def test_data_quality_ruleset_evaluation_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -696,6 +720,7 @@ def test_database_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -711,6 +736,7 @@ def test_database_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -749,6 +775,7 @@ def test_dev_endpoint_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -764,6 +791,7 @@ def test_dev_endpoint_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -790,6 +818,7 @@ def test_glue_identity_center_configuration_lifecycle(client):
         client.get_glue_identity_center_configuration()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -803,6 +832,7 @@ def test_glue_identity_center_configuration_not_found(client):
         client.get_glue_identity_center_configuration()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -842,6 +872,7 @@ def test_integration_resource_property_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -857,6 +888,7 @@ def test_integration_resource_property_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -898,6 +930,7 @@ def test_integration_table_properties_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -914,6 +947,7 @@ def test_integration_table_properties_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -948,6 +982,7 @@ def test_job_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -963,6 +998,7 @@ def test_job_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -994,6 +1030,7 @@ def test_job_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1039,6 +1076,7 @@ def test_ml_transform_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1054,6 +1092,7 @@ def test_ml_transform_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1096,6 +1135,7 @@ def test_materialized_view_refresh_task_run_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1112,6 +1152,7 @@ def test_materialized_view_refresh_task_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1152,6 +1193,7 @@ def test_partition_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1169,6 +1211,7 @@ def test_partition_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1201,6 +1244,7 @@ def test_registry_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1216,6 +1260,7 @@ def test_registry_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1241,6 +1286,7 @@ def test_resource_policy_lifecycle(client):
         client.get_resource_policy()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1254,6 +1300,7 @@ def test_resource_policy_not_found(client):
         client.get_resource_policy()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1287,6 +1334,7 @@ def test_schema_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1302,6 +1350,7 @@ def test_schema_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1327,6 +1376,7 @@ def test_schema_version_not_found(client):
         client.get_schema_version()
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1363,6 +1413,7 @@ def test_security_configuration_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1378,6 +1429,7 @@ def test_security_configuration_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1413,6 +1465,7 @@ def test_session_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1428,6 +1481,7 @@ def test_session_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1463,6 +1517,7 @@ def test_statement_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1498,6 +1553,7 @@ def test_table_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1514,6 +1570,7 @@ def test_table_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1565,6 +1622,7 @@ def test_table_optimizer_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1583,6 +1641,7 @@ def test_table_optimizer_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1619,6 +1678,7 @@ def test_trigger_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1634,6 +1694,7 @@ def test_trigger_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1671,6 +1732,7 @@ def test_usage_profile_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1686,6 +1748,7 @@ def test_usage_profile_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1722,6 +1785,7 @@ def test_user_defined_function_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1738,6 +1802,7 @@ def test_user_defined_function_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1772,6 +1837,7 @@ def test_workflow_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1787,6 +1853,7 @@ def test_workflow_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1826,6 +1893,7 @@ def test_workflow_run_lifecycle(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1842,6 +1910,7 @@ def test_workflow_run_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -1875,6 +1944,7 @@ def test_workflow_run_properties_not_found(client):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",

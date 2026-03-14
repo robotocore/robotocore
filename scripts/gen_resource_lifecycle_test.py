@@ -154,10 +154,65 @@ def vault_name(client):
     except Exception:
         pass
 """,
+    "eks": """
+@pytest.fixture
+def cluster_name(client):
+    import boto3
+
+    iam = boto3.client(
+        "iam",
+        endpoint_url="http://localhost:4566",
+        region_name="us-east-1",
+        aws_access_key_id="testing",
+        aws_secret_access_key="testing",
+    )
+    try:
+        iam.create_role(
+            RoleName="eks-test-role",
+            AssumeRolePolicyDocument="{}",
+            Path="/",
+        )
+    except Exception:
+        pass
+    name = "test-cluster-1"
+    try:
+        client.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-test-role",
+            resourcesVpcConfig={"subnetIds": ["subnet-12345"], "securityGroupIds": ["sg-12345"]},
+        )
+    except Exception:
+        pass
+    yield name
+""",
+    "opensearch": """
+@pytest.fixture
+def domain_name(client):
+    name = "test-domain-1"
+    try:
+        client.create_domain(DomainName=name)
+    except Exception:
+        pass
+    yield name
+""",
+    "cognito-idp": """
+@pytest.fixture
+def user_pool_id(client):
+    resp = client.create_user_pool(PoolName="test-pool-1")
+    pool_id = resp["UserPool"]["Id"]
+    yield pool_id
+    try:
+        client.delete_user_pool(UserPoolId=pool_id)
+    except Exception:
+        pass
+""",
 }
 
 INSTANCE_ID_SERVICES = {"connect"}
 VAULT_NAME_SERVICES = {"backup"}
+CLUSTER_NAME_SERVICES = {"eks"}
+DOMAIN_NAME_SERVICES = {"opensearch"}
+USER_POOL_ID_SERVICES = {"cognito-idp"}
 
 
 def _to_snake_case(name: str) -> str:
@@ -270,6 +325,12 @@ def generate_param_value(
         return "instance_id"
     if name == "BackupVaultName" and service_name in VAULT_NAME_SERVICES:
         return "vault_name"
+    if name in ("ClusterName", "clusterName") and service_name in CLUSTER_NAME_SERVICES:
+        return "cluster_name"
+    if name == "DomainName" and service_name in DOMAIN_NAME_SERVICES:
+        return "domain_name"
+    if name == "UserPoolId" and service_name in USER_POOL_ID_SERVICES:
+        return "user_pool_id"
 
     if param.get("enum"):
         return f'"{param["enum"][0]}"'
@@ -318,6 +379,25 @@ def _generate_structure_value(shape_name: str, shapes: dict) -> str:
     shape = shapes.get(shape_name, {})
     required = shape.get("required", [])
     members = shape.get("members", {})
+    is_union = shape.get("union", False)
+
+    if is_union and members:
+        first_member = next(iter(members))
+        member = members[first_member]
+        member_shape_name = member.get("shape", "")
+        member_shape = shapes.get(member_shape_name, {})
+        member_type = member_shape.get("type", "string")
+        if member_type == "structure":
+            val = _generate_structure_value(member_shape_name, shapes)
+        else:
+            sub_param = {
+                "name": first_member,
+                "shape": member_shape_name,
+                "type": member_type,
+                "enum": member_shape.get("enum"),
+            }
+            val = generate_param_value(sub_param, shapes=shapes)
+        return "{" + f'"{first_member}": {val}' + "}"
 
     if not required:
         return "{}"
@@ -564,6 +644,12 @@ def generate_lifecycle_test(
         fixture_parts.append("instance_id")
     if service_name in VAULT_NAME_SERVICES:
         fixture_parts.append("vault_name")
+    if service_name in CLUSTER_NAME_SERVICES:
+        fixture_parts.append("cluster_name")
+    if service_name in DOMAIN_NAME_SERVICES:
+        fixture_parts.append("domain_name")
+    if service_name in USER_POOL_ID_SERVICES:
+        fixture_parts.append("user_pool_id")
     fixture_args = ", ".join(fixture_parts)
 
     # LIFECYCLE TEST
@@ -651,12 +737,22 @@ def generate_lifecycle_test(
     )
     lines.append("    with pytest.raises(ClientError) as exc:")
     lines.append(f"        client.{describe_method}(")
+    fixture_params = [
+        ("InstanceId", INSTANCE_ID_SERVICES, "instance_id"),
+        ("BackupVaultName", VAULT_NAME_SERVICES, "vault_name"),
+        ("ClusterName", CLUSTER_NAME_SERVICES, "cluster_name"),
+        ("clusterName", CLUSTER_NAME_SERVICES, "cluster_name"),
+        ("DomainName", DOMAIN_NAME_SERVICES, "domain_name"),
+        ("UserPoolId", USER_POOL_ID_SERVICES, "user_pool_id"),
+    ]
     for p in describe_params:
-        if p["name"] == "InstanceId" and service_name in INSTANCE_ID_SERVICES:
-            lines.append(f"            {p['name']}=instance_id,")
-        elif p["name"] == "BackupVaultName" and service_name in VAULT_NAME_SERVICES:
-            lines.append(f"            {p['name']}=vault_name,")
-        else:
+        used_fixture = False
+        for pname, svcs, var in fixture_params:
+            if p["name"] == pname and service_name in svcs:
+                lines.append(f"            {p['name']}={var},")
+                used_fixture = True
+                break
+        if not used_fixture:
             lines.append(
                 f"            {p['name']}={generate_fake_param_value(p)},",
             )

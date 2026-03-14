@@ -65,6 +65,7 @@ def test_backup_job_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -80,6 +81,7 @@ def test_backup_job_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -125,6 +127,7 @@ def test_backup_plan_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -140,6 +143,7 @@ def test_backup_plan_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -190,6 +194,7 @@ def test_backup_selection_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -206,6 +211,7 @@ def test_backup_selection_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -243,6 +249,7 @@ def test_backup_vault_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -258,6 +265,7 @@ def test_backup_vault_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -291,6 +299,7 @@ def test_backup_vault_access_policy_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -306,6 +315,7 @@ def test_backup_vault_access_policy_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -342,6 +352,7 @@ def test_backup_vault_notifications_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -357,6 +368,7 @@ def test_backup_vault_notifications_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -394,6 +406,7 @@ def test_copy_job_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -431,6 +444,7 @@ def test_framework_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -446,6 +460,7 @@ def test_framework_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -484,6 +499,7 @@ def test_legal_hold_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -517,6 +533,7 @@ def test_report_job_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -554,6 +571,7 @@ def test_report_plan_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -569,6 +587,7 @@ def test_report_plan_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -605,6 +624,7 @@ def test_restore_job_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -647,6 +667,7 @@ def test_restore_testing_plan_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -662,6 +683,7 @@ def test_restore_testing_plan_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -710,6 +732,7 @@ def test_restore_testing_selection_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -726,6 +749,7 @@ def test_restore_testing_selection_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -768,6 +792,7 @@ def test_scan_job_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -815,6 +840,7 @@ def test_tiering_configuration_lifecycle(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
@@ -830,6 +856,7 @@ def test_tiering_configuration_not_found(client, vault_name):
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
+        "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
         "InvalidRequestException",
