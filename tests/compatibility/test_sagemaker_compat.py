@@ -5529,9 +5529,6 @@ class TestSageMakerInferenceExperimentCRUD:
         assert exc.value.response["Error"]["Code"] == "ValidationException"
 
 
-LAMBDA_ARN = "arn:aws:lambda:us-east-1:123456789012:function:post"
-
-
 class TestSageMakerLabelingJobCRUD:
     """LabelingJob CRUD tests."""
 
@@ -5552,7 +5549,11 @@ class TestSageMakerLabelingJobCRUD:
                 "TaskDescription": "Test labeling",
                 "NumberOfHumanWorkersPerDataObject": 1,
                 "TaskTimeLimitInSeconds": 3600,
-                "AnnotationConsolidationConfig": {"AnnotationConsolidationLambdaArn": LAMBDA_ARN},
+                "AnnotationConsolidationConfig": {
+                    "AnnotationConsolidationLambdaArn": (
+                        "arn:aws:lambda:us-east-1:123456789012:function:post"
+                    )
+                },
             },
         )
 

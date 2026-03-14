@@ -3003,52 +3003,6 @@ class TestIoTThingTypeUpdateOperations:
             iot.delete_thing_type(thingTypeName=name)
 
 
-class TestIoTTagOperations:
-    """Tests for TagResource, UntagResource, ListTagsForResource."""
-
-    def test_tag_and_list_tags_for_thing_group(self, iot):
-        """Tag a thing group and verify via ListTagsForResource."""
-        name = _unique("grp")
-        resp = iot.create_thing_group(thingGroupName=name)
-        arn = resp["thingGroupArn"]
-        iot.tag_resource(
-            resourceArn=arn,
-            tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "iot"}],
-        )
-        tags_resp = iot.list_tags_for_resource(resourceArn=arn)
-        assert "tags" in tags_resp
-        tag_map = {t["Key"]: t["Value"] for t in tags_resp["tags"]}
-        assert tag_map["env"] == "test"
-        assert tag_map["team"] == "iot"
-        iot.delete_thing_group(thingGroupName=name)
-
-    def test_untag_resource(self, iot):
-        """Untag a resource and verify the tag is removed."""
-        name = _unique("grp")
-        resp = iot.create_thing_group(thingGroupName=name)
-        arn = resp["thingGroupArn"]
-        iot.tag_resource(
-            resourceArn=arn,
-            tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "iot"}],
-        )
-        iot.untag_resource(resourceArn=arn, tagKeys=["env"])
-        tags_resp = iot.list_tags_for_resource(resourceArn=arn)
-        tag_keys = [t["Key"] for t in tags_resp["tags"]]
-        assert "env" not in tag_keys
-        assert "team" in tag_keys
-        iot.delete_thing_group(thingGroupName=name)
-
-    def test_list_tags_for_resource_empty(self, iot):
-        """ListTagsForResource on a resource with no tags returns empty list."""
-        name = _unique("grp")
-        resp = iot.create_thing_group(thingGroupName=name)
-        arn = resp["thingGroupArn"]
-        tags_resp = iot.list_tags_for_resource(resourceArn=arn)
-        assert "tags" in tags_resp
-        assert isinstance(tags_resp["tags"], list)
-        iot.delete_thing_group(thingGroupName=name)
-
-
 class TestIoTCACertificateCrud:
     """Tests for RegisterCACertificate, DescribeCACertificate, UpdateCACertificate,
     DeleteCACertificate, ListCACertificates."""
@@ -3158,6 +3112,32 @@ class TestIoTCertificateTransferOperations:
         iot.update_certificate(certificateId=cert_id, newStatus="INACTIVE")
         iot.delete_certificate(certificateId=cert_id)
 
+    def test_accept_certificate_transfer(self, iot):
+        """Accept a pending certificate transfer."""
+        cert = iot.create_keys_and_certificate(setAsActive=True)
+        cert_id = cert["certificateId"]
+        iot.transfer_certificate(
+            certificateId=cert_id,
+            targetAwsAccount="987654321098",
+        )
+        resp = iot.accept_certificate_transfer(certificateId=cert_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        iot.update_certificate(certificateId=cert_id, newStatus="INACTIVE")
+        iot.delete_certificate(certificateId=cert_id)
+
+    def test_reject_certificate_transfer(self, iot):
+        """Reject a pending certificate transfer."""
+        cert = iot.create_keys_and_certificate(setAsActive=True)
+        cert_id = cert["certificateId"]
+        iot.transfer_certificate(
+            certificateId=cert_id,
+            targetAwsAccount="987654321098",
+        )
+        resp = iot.reject_certificate_transfer(certificateId=cert_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        iot.update_certificate(certificateId=cert_id, newStatus="INACTIVE")
+        iot.delete_certificate(certificateId=cert_id)
+
 
 class TestIoTDescribeEventConfigurationsExpanded:
     """Tests for DescribeEventConfigurations and GetRegistrationCode."""
@@ -3174,6 +3154,24 @@ class TestIoTDescribeEventConfigurationsExpanded:
         assert "registrationCode" in resp
         assert isinstance(resp["registrationCode"], str)
         assert len(resp["registrationCode"]) > 0
+
+
+class TestIoTUpdateEventConfigurations:
+    """Tests for UpdateEventConfigurations."""
+
+    def test_update_event_configurations(self, iot):
+        """UpdateEventConfigurations can enable/disable event types."""
+        resp = iot.update_event_configurations(
+            eventConfigurations={
+                "THING": {"Enabled": True},
+                "THING_GROUP": {"Enabled": False},
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify via describe
+        desc = iot.describe_event_configurations()
+        assert "eventConfigurations" in desc
+        assert "THING" in desc["eventConfigurations"]
 
 
 class TestIoTRegisterCertificateWithoutCAExpanded:
@@ -3226,22 +3224,3 @@ class TestIoTThingCrud:
         with pytest.raises(ClientError) as exc:
             iot.describe_thing(thingName=name)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-
-class TestIoTClearDefaultAuthorizer:
-    """Tests for ClearDefaultAuthorizer."""
-
-    def test_clear_default_authorizer(self, iot):
-        """Set a default authorizer and then clear it."""
-        auth_name = _unique("auth")
-        iot.create_authorizer(
-            authorizerName=auth_name,
-            authorizerFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:fake",
-        )
-        iot.set_default_authorizer(authorizerName=auth_name)
-        resp = iot.clear_default_authorizer()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # After clearing, describe_default_authorizer should fail
-        with pytest.raises(ClientError):
-            iot.describe_default_authorizer()
-        iot.delete_authorizer(authorizerName=auth_name)

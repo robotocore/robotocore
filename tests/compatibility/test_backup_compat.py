@@ -1484,8 +1484,8 @@ class TestBackupReportJobOperations:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
-class TestBackupLegalHoldCRUD:
-    """Tests for CreateLegalHold, CancelLegalHold, ListLegalHolds."""
+class TestBackupLegalHoldExtended:
+    """Extended tests for CreateLegalHold, CancelLegalHold fields."""
 
     def test_create_legal_hold_returns_fields(self, backup):
         """CreateLegalHold returns LegalHoldId, Title, Status, LegalHoldArn."""
@@ -1503,8 +1503,8 @@ class TestBackupLegalHoldCRUD:
         # cleanup
         backup.cancel_legal_hold(LegalHoldId=resp["LegalHoldId"], CancelDescription="cleanup")
 
-    def test_cancel_legal_hold(self, backup):
-        """CancelLegalHold cancels an active hold."""
+    def test_cancel_legal_hold_status_code(self, backup):
+        """CancelLegalHold returns 200 or 201."""
         title = _unique("hold")
         resp = backup.create_legal_hold(
             Title=title,
@@ -1816,7 +1816,7 @@ class TestBackupLogicallyAirGappedVault:
         backup.delete_backup_vault(BackupVaultName=name)
 
 
-class TestBackupLegalHoldCRUDExpanded:
+class TestBackupLegalHoldCRUD:
     """Tests for legal hold CRUD operations."""
 
     def test_create_legal_hold(self, backup):

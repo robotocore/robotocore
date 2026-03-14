@@ -4808,3 +4808,595 @@ class TestIAMMFADeviceExtended:
                 AuthenticationCode2="654321",
             )
         assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+
+
+# ---------------------------------------------------------------------------
+# Explicit tests for missing ops coverage
+# ---------------------------------------------------------------------------
+
+
+SAML_METADATA_EXPLICIT = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"'
+    ' entityID="https://idp.example.com/metadata">'
+    "<IDPSSODescriptor"
+    ' protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+    '<KeyDescriptor use="signing">'
+    '<KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">'
+    "<X509Data><X509Certificate>"
+    "MIIDpDCCAoygAwIBAgIGAXpJOXwHMA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEG"
+    "A1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEU"
+    "MBIGA1UECwwLU1NPUHJvdmlkZXIxEzARBgNVBAMMCmRldi04NDMyNTMxHDAaBgkqhkiG9w0BCQEW"
+    "DWluZm9Ab2t0YS5jb20wHhcNMjEwNjIyMTgxNjQzWhcNMzEwNjIyMTgxNzQzWjCBkjELMAkGA1UE"
+    "BhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xDTALBgNV"
+    "BAoMBE9rdGExFDASBgNVBAsMC1NTT1Byb3ZpZGVyMRMwEQYDVQQDDApkZXYtODQzMjUzMRwwGgYJ"
+    "KoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA"
+    "</X509Certificate></X509Data>"
+    "</KeyInfo></KeyDescriptor>"
+    "<SingleSignOnService"
+    ' Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"'
+    ' Location="https://idp.example.com/sso"/>'
+    "</IDPSSODescriptor></EntityDescriptor>"
+)
+
+SSH_PUBLIC_KEY_EXPLICIT = (
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDxTjc0tZ5zKnR7u1/gG6V3Z1t0gXWqE0Eq4m4kL2Iu"
+    "FcxZqafJCFHIkCPTwaJCNj8HHlxcXyAwz9UtFR8nCDgHzXYKkW+JpI1W/I6y/KhWlZJWGGWIbeRlBVH"
+    "wVvf4kTtCIoW/8M6eA4UJERdI7LhWJWCyNqYKp5F3g6eK0xSA9FxRBVbNq6fkerY2fG/qYfgGH1ALhf"
+    "JOa2DqE5D2F9cZi8EelI0KXNM test@test"
+)
+
+
+class TestIAMOIDCProviderExplicit:
+    """Explicit coverage tests for OIDC provider operations."""
+
+    def test_create_open_id_connect_provider(self, iam):
+        """CreateOpenIDConnectProvider creates a new provider."""
+        url = f"https://oidc-{_unique('prov')}.example.com"
+        thumbprint = "a" * 40
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=[thumbprint],
+            ClientIDList=["client-1"],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        assert arn is not None
+        iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_get_open_id_connect_provider(self, iam):
+        """GetOpenIDConnectProvider returns provider details."""
+        url = f"https://oidc-{_unique('get')}.example.com"
+        thumbprint = "b" * 40
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=[thumbprint],
+            ClientIDList=["get-client"],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert thumbprint in get_resp["ThumbprintList"]
+            assert "get-client" in get_resp["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_delete_open_id_connect_provider(self, iam):
+        """DeleteOpenIDConnectProvider removes the provider."""
+        url = f"https://oidc-{_unique('del')}.example.com"
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=["c" * 40],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+        providers = iam.list_open_id_connect_providers()["OpenIDConnectProviderList"]
+        arns = [p["Arn"] for p in providers]
+        assert arn not in arns
+
+    def test_tag_open_id_connect_provider(self, iam):
+        """TagOpenIDConnectProvider adds tags."""
+        url = f"https://oidc-{_unique('tag')}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["d" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.tag_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            tags_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["env"] == "test"
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_untag_open_id_connect_provider(self, iam):
+        """UntagOpenIDConnectProvider removes tags."""
+        url = f"https://oidc-{_unique('untag')}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["e" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.tag_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn,
+                Tags=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "remove", "Value": "yes"},
+                ],
+            )
+            iam.untag_open_id_connect_provider(OpenIDConnectProviderArn=arn, TagKeys=["remove"])
+            tags_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "remove" not in keys
+            assert "keep" in keys
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_list_open_id_connect_providers(self, iam):
+        """ListOpenIDConnectProviders returns list of providers."""
+        url = f"https://oidc-{_unique('list')}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["f" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            list_resp = iam.list_open_id_connect_providers()
+            arns = [p["Arn"] for p in list_resp["OpenIDConnectProviderList"]]
+            assert arn in arns
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_list_open_id_connect_provider_tags(self, iam):
+        """ListOpenIDConnectProviderTags returns empty list when no tags."""
+        url = f"https://oidc-{_unique('ltag')}.example.com"
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=["a" * 40])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            tags_resp = iam.list_open_id_connect_provider_tags(OpenIDConnectProviderArn=arn)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], list)
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_update_open_id_connect_provider_thumbprint(self, iam):
+        """UpdateOpenIDConnectProviderThumbprint replaces thumbprint list."""
+        url = f"https://oidc-{_unique('thumb')}.example.com"
+        old_thumb = "a" * 40
+        new_thumb = "b" * 40
+        resp = iam.create_open_id_connect_provider(Url=url, ThumbprintList=[old_thumb])
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.update_open_id_connect_provider_thumbprint(
+                OpenIDConnectProviderArn=arn,
+                ThumbprintList=[new_thumb],
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert new_thumb in get_resp["ThumbprintList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_add_client_id_to_open_id_connect_provider(self, iam):
+        """AddClientIDToOpenIDConnectProvider adds a client ID."""
+        url = f"https://oidc-{_unique('addcid')}.example.com"
+        resp = iam.create_open_id_connect_provider(
+            Url=url, ThumbprintList=["a" * 40], ClientIDList=["orig-client"]
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.add_client_id_to_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn, ClientID="new-client"
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "new-client" in get_resp["ClientIDList"]
+            assert "orig-client" in get_resp["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+    def test_remove_client_id_from_open_id_connect_provider(self, iam):
+        """RemoveClientIDFromOpenIDConnectProvider removes a client ID."""
+        url = f"https://oidc-{_unique('rmcid')}.example.com"
+        resp = iam.create_open_id_connect_provider(
+            Url=url,
+            ThumbprintList=["a" * 40],
+            ClientIDList=["keep-client", "remove-client"],
+        )
+        arn = resp["OpenIDConnectProviderArn"]
+        try:
+            iam.remove_client_id_from_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn, ClientID="remove-client"
+            )
+            get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "remove-client" not in get_resp["ClientIDList"]
+            assert "keep-client" in get_resp["ClientIDList"]
+        finally:
+            iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+
+
+class TestIAMSAMLProviderExplicit:
+    """Explicit coverage tests for SAML provider operations."""
+
+    def test_create_saml_provider(self, iam):
+        """CreateSAMLProvider creates a provider."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        assert arn is not None
+        iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_get_saml_provider(self, iam):
+        """GetSAMLProvider returns metadata."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
+            assert "SAMLMetadataDocument" in get_resp
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_delete_saml_provider(self, iam):
+        """DeleteSAMLProvider removes the provider."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        iam.delete_saml_provider(SAMLProviderArn=arn)
+        providers = iam.list_saml_providers()["SAMLProviderList"]
+        arns = [p["Arn"] for p in providers]
+        assert arn not in arns
+
+    def test_list_saml_providers(self, iam):
+        """ListSAMLProviders includes created provider."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            list_resp = iam.list_saml_providers()
+            arns = [p["Arn"] for p in list_resp["SAMLProviderList"]]
+            assert arn in arns
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_update_saml_provider(self, iam):
+        """UpdateSAMLProvider updates metadata document."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            upd = iam.update_saml_provider(
+                SAMLProviderArn=arn,
+                SAMLMetadataDocument=SAML_METADATA_EXPLICIT,
+            )
+            assert upd["SAMLProviderArn"] == arn
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_tag_saml_provider(self, iam):
+        """TagSAMLProvider adds tags."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            iam.tag_saml_provider(
+                SAMLProviderArn=arn,
+                Tags=[{"Key": "team", "Value": "platform"}],
+            )
+            tags_resp = iam.list_saml_provider_tags(SAMLProviderArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["team"] == "platform"
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_untag_saml_provider(self, iam):
+        """UntagSAMLProvider removes tags."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            iam.tag_saml_provider(
+                SAMLProviderArn=arn,
+                Tags=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "drop", "Value": "yes"},
+                ],
+            )
+            iam.untag_saml_provider(SAMLProviderArn=arn, TagKeys=["drop"])
+            tags_resp = iam.list_saml_provider_tags(SAMLProviderArn=arn)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "drop" not in keys
+            assert "keep" in keys
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+    def test_list_saml_provider_tags(self, iam):
+        """ListSAMLProviderTags returns tags list."""
+        name = _unique("saml")
+        resp = iam.create_saml_provider(SAMLMetadataDocument=SAML_METADATA_EXPLICIT, Name=name)
+        arn = resp["SAMLProviderArn"]
+        try:
+            tags_resp = iam.list_saml_provider_tags(SAMLProviderArn=arn)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], list)
+        finally:
+            iam.delete_saml_provider(SAMLProviderArn=arn)
+
+
+class TestIAMVirtualMFAExplicit:
+    """Explicit tests for Virtual MFA device operations."""
+
+    def test_create_virtual_mfa_device(self, iam):
+        """CreateVirtualMFADevice creates a virtual MFA device."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        device = resp["VirtualMFADevice"]
+        serial = device["SerialNumber"]
+        assert serial is not None
+        assert "Base32StringSeed" in device or "QRCodePNG" in device
+        iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_delete_virtual_mfa_device(self, iam):
+        """DeleteVirtualMFADevice removes the device."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        iam.delete_virtual_mfa_device(SerialNumber=serial)
+        listed = iam.list_virtual_mfa_devices()
+        serials = [d["SerialNumber"] for d in listed["VirtualMFADevices"]]
+        assert serial not in serials
+
+    def test_list_virtual_mfa_devices(self, iam):
+        """ListVirtualMFADevices returns device list."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            listed = iam.list_virtual_mfa_devices()
+            assert "VirtualMFADevices" in listed
+            serials = [d["SerialNumber"] for d in listed["VirtualMFADevices"]]
+            assert serial in serials
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_enable_mfa_device(self, iam):
+        """EnableMFADevice enables a virtual MFA for a user."""
+        user_name = _unique("mfa-usr")
+        mfa_name = _unique("vmfa")
+        iam.create_user(UserName=user_name)
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.enable_mfa_device(
+                UserName=user_name,
+                SerialNumber=serial,
+                AuthenticationCode1="123456",
+                AuthenticationCode2="654321",
+            )
+            devices = iam.list_mfa_devices(UserName=user_name)
+            serials = [d["SerialNumber"] for d in devices["MFADevices"]]
+            assert serial in serials
+        finally:
+            try:
+                iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            except Exception:
+                pass  # cleanup best effort
+            try:
+                iam.delete_virtual_mfa_device(SerialNumber=serial)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_deactivate_mfa_device(self, iam):
+        """DeactivateMFADevice removes MFA device from user."""
+        user_name = _unique("mfa-usr")
+        mfa_name = _unique("vmfa")
+        iam.create_user(UserName=user_name)
+        mfa_resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=mfa_name)
+        serial = mfa_resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.enable_mfa_device(
+                UserName=user_name,
+                SerialNumber=serial,
+                AuthenticationCode1="123456",
+                AuthenticationCode2="654321",
+            )
+            iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
+            devices = iam.list_mfa_devices(UserName=user_name)
+            serials = [d["SerialNumber"] for d in devices["MFADevices"]]
+            assert serial not in serials
+        finally:
+            try:
+                iam.delete_virtual_mfa_device(SerialNumber=serial)
+            except Exception:
+                pass
+            iam.delete_user(UserName=user_name)
+
+    def test_list_mfa_devices(self, iam):
+        """ListMFADevices returns empty list for user with no MFA."""
+        user_name = _unique("mfa-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.list_mfa_devices(UserName=user_name)
+            assert "MFADevices" in resp
+            assert isinstance(resp["MFADevices"], list)
+            assert len(resp["MFADevices"]) == 0
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_tag_mfa_device(self, iam):
+        """TagMFADevice adds tags to a virtual MFA device."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.tag_mfa_device(
+                SerialNumber=serial,
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+            tags_resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+            assert tag_map["env"] == "test"
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_untag_mfa_device(self, iam):
+        """UntagMFADevice removes tags from a virtual MFA device."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            iam.tag_mfa_device(
+                SerialNumber=serial,
+                Tags=[
+                    {"Key": "keep", "Value": "yes"},
+                    {"Key": "drop", "Value": "yes"},
+                ],
+            )
+            iam.untag_mfa_device(SerialNumber=serial, TagKeys=["drop"])
+            tags_resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            keys = [t["Key"] for t in tags_resp["Tags"]]
+            assert "drop" not in keys
+            assert "keep" in keys
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_list_mfa_device_tags(self, iam):
+        """ListMFADeviceTags returns tags for a virtual MFA device."""
+        name = _unique("vmfa")
+        resp = iam.create_virtual_mfa_device(VirtualMFADeviceName=name)
+        serial = resp["VirtualMFADevice"]["SerialNumber"]
+        try:
+            tags_resp = iam.list_mfa_device_tags(SerialNumber=serial)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], list)
+        finally:
+            iam.delete_virtual_mfa_device(SerialNumber=serial)
+
+    def test_get_mfa_device(self, iam):
+        """GetMFADevice raises NoSuchEntity for nonexistent device."""
+        with pytest.raises(ClientError) as exc:
+            iam.get_mfa_device(SerialNumber="arn:aws:iam::123456789012:mfa/nonexistent-dev-x")
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+
+    def test_resync_mfa_device(self, iam):
+        """ResyncMFADevice raises NoSuchEntity for nonexistent user."""
+        with pytest.raises(ClientError) as exc:
+            iam.resync_mfa_device(
+                UserName="fake-user-resync-xyz",
+                SerialNumber="arn:aws:iam::123456789012:mfa/fake-resync",
+                AuthenticationCode1="123456",
+                AuthenticationCode2="654321",
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchEntity"
+
+
+class TestIAMSSHPublicKeyExplicit:
+    """Explicit coverage tests for SSH public key operations."""
+
+    def test_upload_ssh_public_key(self, iam):
+        """UploadSSHPublicKey uploads a key."""
+        user_name = _unique("ssh-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.upload_ssh_public_key(
+                UserName=user_name, SSHPublicKeyBody=SSH_PUBLIC_KEY_EXPLICIT
+            )
+            key = resp["SSHPublicKey"]
+            assert key["UserName"] == user_name
+            assert "SSHPublicKeyId" in key
+            assert key["Status"] == "Active"
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key["SSHPublicKeyId"])
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_list_ssh_public_keys(self, iam):
+        """ListSSHPublicKeys returns key list."""
+        user_name = _unique("ssh-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            upload_resp = iam.upload_ssh_public_key(
+                UserName=user_name, SSHPublicKeyBody=SSH_PUBLIC_KEY_EXPLICIT
+            )
+            key_id = upload_resp["SSHPublicKey"]["SSHPublicKeyId"]
+            list_resp = iam.list_ssh_public_keys(UserName=user_name)
+            assert "SSHPublicKeys" in list_resp
+            key_ids = [k["SSHPublicKeyId"] for k in list_resp["SSHPublicKeys"]]
+            assert key_id in key_ids
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_get_ssh_public_key(self, iam):
+        """GetSSHPublicKey returns key details."""
+        user_name = _unique("ssh-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            upload_resp = iam.upload_ssh_public_key(
+                UserName=user_name, SSHPublicKeyBody=SSH_PUBLIC_KEY_EXPLICIT
+            )
+            key_id = upload_resp["SSHPublicKey"]["SSHPublicKeyId"]
+            get_resp = iam.get_ssh_public_key(
+                UserName=user_name,
+                SSHPublicKeyId=key_id,
+                Encoding="SSH",
+            )
+            assert get_resp["SSHPublicKey"]["SSHPublicKeyId"] == key_id
+            assert get_resp["SSHPublicKey"]["Status"] == "Active"
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_update_ssh_public_key(self, iam):
+        """UpdateSSHPublicKey changes key status."""
+        user_name = _unique("ssh-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            upload_resp = iam.upload_ssh_public_key(
+                UserName=user_name, SSHPublicKeyBody=SSH_PUBLIC_KEY_EXPLICIT
+            )
+            key_id = upload_resp["SSHPublicKey"]["SSHPublicKeyId"]
+            iam.update_ssh_public_key(
+                UserName=user_name,
+                SSHPublicKeyId=key_id,
+                Status="Inactive",
+            )
+            get_resp = iam.get_ssh_public_key(
+                UserName=user_name,
+                SSHPublicKeyId=key_id,
+                Encoding="SSH",
+            )
+            assert get_resp["SSHPublicKey"]["Status"] == "Inactive"
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+        finally:
+            iam.delete_user(UserName=user_name)
+
+    def test_delete_ssh_public_key(self, iam):
+        """DeleteSSHPublicKey removes the key."""
+        user_name = _unique("ssh-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            upload_resp = iam.upload_ssh_public_key(
+                UserName=user_name, SSHPublicKeyBody=SSH_PUBLIC_KEY_EXPLICIT
+            )
+            key_id = upload_resp["SSHPublicKey"]["SSHPublicKeyId"]
+            iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
+            list_resp = iam.list_ssh_public_keys(UserName=user_name)
+            key_ids = [k["SSHPublicKeyId"] for k in list_resp["SSHPublicKeys"]]
+            assert key_id not in key_ids
+        finally:
+            iam.delete_user(UserName=user_name)
+
+
+class TestIAMServiceSpecificCredentialExplicit:
+    """Explicit coverage test for CreateServiceSpecificCredential."""
+
+    def test_create_service_specific_credential(self, iam):
+        """CreateServiceSpecificCredential creates a credential."""
+        user_name = _unique("ssc-usr")
+        iam.create_user(UserName=user_name)
+        try:
+            resp = iam.create_service_specific_credential(
+                UserName=user_name,
+                ServiceName="codecommit.amazonaws.com",
+            )
+            cred = resp["ServiceSpecificCredential"]
+            assert cred["UserName"] == user_name
+            assert cred["ServiceName"] == "codecommit.amazonaws.com"
+            assert "ServiceSpecificCredentialId" in cred
+            assert "ServicePassword" in cred
+        finally:
+            iam.delete_user(UserName=user_name)
