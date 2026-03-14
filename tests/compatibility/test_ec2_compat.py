@@ -9625,3 +9625,22 @@ class TestEC2AdditionalUntested:
                 ec2.delete_verified_access_trust_provider(VerifiedAccessTrustProviderId=tp_id)
         except ClientError:
             pass  # OK if not implemented
+
+
+class TestEC2AllowedImagesSettings:
+    def test_get_allowed_images_settings(self, ec2):
+        resp = ec2.get_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_allowed_images_settings(self, ec2):
+        resp = ec2.disable_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2ClientVpnConnections:
+    def test_describe_client_vpn_connections(self, ec2):
+        # Use a fake endpoint ID - the server returns 200 even for non-existent
+        resp = ec2.describe_client_vpn_connections(
+            ClientVpnEndpointId="cvpn-endpoint-00000000000000000"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

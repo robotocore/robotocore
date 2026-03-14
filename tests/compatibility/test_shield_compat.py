@@ -398,3 +398,39 @@ class TestShieldDRTAndProactive:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             shield.delete_protection(ProtectionId=protection_id)
+
+    def test_associate_health_check(self, shield):
+        shield.create_subscription()
+        arn = _make_resource_arn()
+        name = _unique("hc")
+        resp = shield.create_protection(Name=name, ResourceArn=arn)
+        protection_id = resp["ProtectionId"]
+        health_check_arn = "arn:aws:route53:::healthcheck/12345678-1234-1234-1234-123456789012"
+        try:
+            resp = shield.associate_health_check(
+                ProtectionId=protection_id,
+                HealthCheckArn=health_check_arn,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            shield.delete_protection(ProtectionId=protection_id)
+
+    def test_disassociate_health_check(self, shield):
+        shield.create_subscription()
+        arn = _make_resource_arn()
+        name = _unique("hc-dis")
+        resp = shield.create_protection(Name=name, ResourceArn=arn)
+        protection_id = resp["ProtectionId"]
+        health_check_arn = "arn:aws:route53:::healthcheck/12345678-1234-1234-1234-123456789012"
+        try:
+            shield.associate_health_check(
+                ProtectionId=protection_id,
+                HealthCheckArn=health_check_arn,
+            )
+            resp = shield.disassociate_health_check(
+                ProtectionId=protection_id,
+                HealthCheckArn=health_check_arn,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            shield.delete_protection(ProtectionId=protection_id)

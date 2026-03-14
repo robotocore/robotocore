@@ -4724,3 +4724,47 @@ class TestGlueMLTransforms:
         with pytest.raises(ClientError) as exc:
             glue.get_ml_task_runs(TransformId="tfm-00000000")
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueUpdateRegistry:
+    def test_update_registry(self, glue):
+        """UpdateRegistry changes registry description."""
+        reg_name = _unique("reg")
+        glue.create_registry(RegistryName=reg_name, Description="original")
+        try:
+            resp = glue.update_registry(
+                RegistryId={"RegistryName": reg_name},
+                Description="updated",
+            )
+            assert resp["RegistryName"] == reg_name
+            got = glue.get_registry(RegistryId={"RegistryName": reg_name})
+            assert got["Description"] == "updated"
+        finally:
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_update_registry_not_found(self, glue):
+        """UpdateRegistry with nonexistent registry raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_registry(
+                RegistryId={"RegistryName": "nonexistent-reg-xyz"},
+                Description="nope",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueStartDataQualityRulesetEvaluationRun:
+    def test_start_data_quality_ruleset_evaluation_run(self, glue):
+        """StartDataQualityRulesetEvaluationRun returns a RunId."""
+        resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        assert "RunId" in resp
+
+
+class TestGlueBatchGetDataQualityResult:
+    def test_batch_get_data_quality_result(self, glue):
+        """BatchGetDataQualityResult returns results list (possibly empty)."""
+        resp = glue.batch_get_data_quality_result(ResultIds=["result-fake-id"])
+        assert "Results" in resp

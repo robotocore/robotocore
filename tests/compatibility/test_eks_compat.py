@@ -1468,6 +1468,114 @@ class TestEKSAdditionalOperations:
             eks.delete_eks_anywhere_subscription(id=sub_id)
 
 
+class TestEKSDescribePodIdentityAssociation:
+    """Tests for DescribePodIdentityAssociation operation."""
+
+    def test_describe_pod_identity_association(self, eks):
+        """DescribePodIdentityAssociation returns association details."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            create_resp = eks.create_pod_identity_association(
+                clusterName=cluster_name,
+                namespace="kube-system",
+                serviceAccount="test-sa",
+                roleArn="arn:aws:iam::123456789012:role/pod-role",
+            )
+            assoc_id = create_resp["association"]["associationId"]
+
+            desc_resp = eks.describe_pod_identity_association(
+                clusterName=cluster_name,
+                associationId=assoc_id,
+            )
+            assoc = desc_resp["association"]
+            assert assoc["associationId"] == assoc_id
+            assert assoc["clusterName"] == cluster_name
+            assert assoc["namespace"] == "kube-system"
+            assert assoc["serviceAccount"] == "test-sa"
+            assert assoc["roleArn"] == "arn:aws:iam::123456789012:role/pod-role"
+
+            eks.delete_pod_identity_association(clusterName=cluster_name, associationId=assoc_id)
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+
+class TestEKSClusterCRUDExplicit:
+    """Explicit tests for CreateCluster, DescribeCluster, DeleteCluster."""
+
+    def test_create_cluster(self, eks):
+        """CreateCluster returns cluster with expected fields."""
+        name = _unique("cluster")
+        resp = eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            cluster = resp["cluster"]
+            assert cluster["name"] == name
+            assert "arn" in cluster
+            assert cluster["status"] == "ACTIVE"
+        finally:
+            eks.delete_cluster(name=name)
+
+    def test_describe_cluster(self, eks):
+        """DescribeCluster returns full cluster details."""
+        name = _unique("cluster")
+        eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.describe_cluster(name=name)
+            cluster = resp["cluster"]
+            assert cluster["name"] == name
+            assert cluster["status"] == "ACTIVE"
+            assert "arn" in cluster
+            assert "endpoint" in cluster
+            assert "resourcesVpcConfig" in cluster
+        finally:
+            eks.delete_cluster(name=name)
+
+    def test_delete_cluster(self, eks):
+        """DeleteCluster removes cluster and returns it."""
+        name = _unique("cluster")
+        eks.create_cluster(
+            name=name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        resp = eks.delete_cluster(name=name)
+        assert resp["cluster"]["name"] == name
+
+        with pytest.raises(ClientError) as exc_info:
+            eks.describe_cluster(name=name)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_deregister_cluster_nonexistent(self, eks):
+        """DeregisterCluster with nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.deregister_cluster(name="nonexistent-cluster-deregister")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestEKSCapabilityOperations:
     """Tests for EKS capability create, describe, update, list, and delete."""
 

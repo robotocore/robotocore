@@ -1290,3 +1290,211 @@ class TestDsSchemaExtensionOps:
                 SchemaExtensionId="e-0000000000",
             )
         assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+@pytest.fixture
+def msad_directory(ds, ec2):
+    """Create a MicrosoftAD directory with VPC infrastructure, clean up after test."""
+    vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
+    vpc_id = vpc["Vpc"]["VpcId"]
+    subnet1 = ec2.create_subnet(
+        VpcId=vpc_id, CidrBlock="10.90.1.0/24", AvailabilityZone="us-east-1a"
+    )
+    subnet2 = ec2.create_subnet(
+        VpcId=vpc_id, CidrBlock="10.90.2.0/24", AvailabilityZone="us-east-1b"
+    )
+    sid1 = subnet1["Subnet"]["SubnetId"]
+    sid2 = subnet2["Subnet"]["SubnetId"]
+
+    resp = ds.create_microsoft_ad(
+        Name="msadfix.example.com",
+        Password="P@ssw0rd!",
+        VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+    )
+    dir_id = resp["DirectoryId"]
+
+    yield dir_id
+
+    # Cleanup
+    try:
+        ds.delete_directory(DirectoryId=dir_id)
+    except ClientError:
+        pass  # best-effort cleanup
+    for sid in [sid1, sid2]:
+        try:
+            ec2.delete_subnet(SubnetId=sid)
+        except ClientError:
+            pass  # best-effort cleanup
+    try:
+        ec2.delete_vpc(VpcId=vpc_id)
+    except ClientError:
+        pass  # best-effort cleanup
+
+
+class TestDsCAEnrollmentPolicy:
+    """Test CA enrollment policy operations."""
+
+    def test_describe_ca_enrollment_policy(self, ds, msad_directory):
+        """DescribeCAEnrollmentPolicy returns policy status for a directory."""
+        resp = ds.describe_ca_enrollment_policy(DirectoryId=msad_directory)
+        assert resp["DirectoryId"] == msad_directory
+        assert "CaEnrollmentPolicyStatus" in resp
+
+    def test_enable_ca_enrollment_policy(self, ds, msad_directory):
+        """EnableCAEnrollmentPolicy succeeds on a MicrosoftAD directory."""
+        resp = ds.enable_ca_enrollment_policy(
+            DirectoryId=msad_directory,
+            PcaConnectorArn="arn:aws:pca-connector-ad:us-east-1:123456789012:connector/test",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_ca_enrollment_policy(self, ds, msad_directory):
+        """DisableCAEnrollmentPolicy succeeds on a MicrosoftAD directory."""
+        resp = ds.disable_ca_enrollment_policy(DirectoryId=msad_directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDsDirectoryDataAccess:
+    """Test directory data access operations."""
+
+    def test_describe_directory_data_access(self, ds, msad_directory):
+        """DescribeDirectoryDataAccess returns data access status."""
+        resp = ds.describe_directory_data_access(DirectoryId=msad_directory)
+        assert "DataAccessStatus" in resp
+
+    def test_enable_directory_data_access(self, ds, msad_directory):
+        """EnableDirectoryDataAccess succeeds."""
+        resp = ds.enable_directory_data_access(DirectoryId=msad_directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_directory_data_access(self, ds, msad_directory):
+        """DisableDirectoryDataAccess succeeds."""
+        resp = ds.disable_directory_data_access(DirectoryId=msad_directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDsADAssessment:
+    """Test AD assessment operations."""
+
+    def test_start_ad_assessment(self, ds, msad_directory):
+        """StartADAssessment returns an assessment ID."""
+        resp = ds.start_ad_assessment(DirectoryId=msad_directory)
+        assert "AssessmentId" in resp
+
+    def test_describe_ad_assessment_nonexistent(self, ds):
+        """DescribeADAssessment with fake ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.describe_ad_assessment(AssessmentId="a-0000000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_delete_ad_assessment_nonexistent(self, ds):
+        """DeleteADAssessment with fake ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.delete_ad_assessment(AssessmentId="a-0000000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_list_ad_assessments(self, ds, msad_directory):
+        """ListADAssessments returns a list of assessments."""
+        resp = ds.list_ad_assessments(DirectoryId=msad_directory)
+        assert "Assessments" in resp
+        assert isinstance(resp["Assessments"], list)
+
+
+class TestDsLDAPSMicrosoftAD:
+    """Test LDAPS operations on MicrosoftAD directories."""
+
+    def test_enable_ldaps_msad(self, ds, msad_directory):
+        """EnableLDAPS on MicrosoftAD succeeds."""
+        resp = ds.enable_ldaps(DirectoryId=msad_directory, Type="Client")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_ldaps_msad(self, ds, msad_directory):
+        """DisableLDAPS on MicrosoftAD succeeds."""
+        resp = ds.disable_ldaps(DirectoryId=msad_directory, Type="Client")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_ldaps_settings_msad(self, ds, msad_directory):
+        """DescribeLDAPSSettings on MicrosoftAD returns settings info."""
+        resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
+        assert "LDAPSSettingsInfo" in resp
+
+
+class TestDsRegionOps:
+    """Test AddRegion and RemoveRegion operations."""
+
+    def test_add_region(self, ds, ec2, msad_directory):
+        """AddRegion succeeds on a MicrosoftAD directory."""
+        vpc = ec2.create_vpc(CidrBlock="10.91.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.91.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.91.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.add_region(
+            DirectoryId=msad_directory,
+            RegionName="us-west-2",
+            VPCSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_remove_region(self, ds, msad_directory):
+        """RemoveRegion succeeds on a MicrosoftAD directory."""
+        resp = ds.remove_region(DirectoryId=msad_directory)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDsSharedDirectory:
+    """Test share/unshare/accept/reject directory operations."""
+
+    def test_share_directory(self, ds, msad_directory):
+        """ShareDirectory succeeds and returns a SharedDirectoryId."""
+        resp = ds.share_directory(
+            DirectoryId=msad_directory,
+            ShareTarget={"Id": "999999999999", "Type": "ACCOUNT"},
+            ShareMethod="HANDSHAKE",
+        )
+        assert "SharedDirectoryId" in resp
+
+    def test_unshare_directory_nonexistent_target(self, ds, msad_directory):
+        """UnshareDirectory with non-shared target raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.unshare_directory(
+                DirectoryId=msad_directory,
+                UnshareTarget={"Id": "999999999999", "Type": "ACCOUNT"},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_accept_shared_directory_nonexistent(self, ds):
+        """AcceptSharedDirectory with fake ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.accept_shared_directory(SharedDirectoryId="d-shared000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_reject_shared_directory_nonexistent(self, ds):
+        """RejectSharedDirectory with fake ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc_info:
+            ds.reject_shared_directory(SharedDirectoryId="d-shared000000")
+        assert exc_info.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsUpdateOps:
+    """Test UpdateDirectorySetup and UpdateNumberOfDomainControllers."""
+
+    def test_update_directory_setup(self, ds, msad_directory):
+        """UpdateDirectorySetup succeeds on a MicrosoftAD directory."""
+        resp = ds.update_directory_setup(
+            DirectoryId=msad_directory,
+            UpdateType="OS",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_number_of_domain_controllers(self, ds, msad_directory):
+        """UpdateNumberOfDomainControllers succeeds."""
+        resp = ds.update_number_of_domain_controllers(
+            DirectoryId=msad_directory,
+            DesiredNumber=3,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

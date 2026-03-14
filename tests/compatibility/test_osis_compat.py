@@ -152,3 +152,78 @@ class TestOSISResourcePolicy:
         with pytest.raises(ClientError) as exc:
             osis.delete_pipeline(PipelineName="no-such-pipeline")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestOSISPutResourcePolicy:
+    """Tests for OSIS PutResourcePolicy operation."""
+
+    def test_put_resource_policy(self, osis, pipeline):
+        """PutResourcePolicy sets a policy on a pipeline."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "osis:*",
+                        "Resource": pipeline["PipelineArn"],
+                    }
+                ],
+            }
+        )
+        resp = osis.put_resource_policy(
+            ResourceArn=pipeline["PipelineArn"],
+            Policy=policy,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_and_get_resource_policy(self, osis, pipeline):
+        """PutResourcePolicy then GetResourcePolicy roundtrip."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "osis:*",
+                        "Resource": pipeline["PipelineArn"],
+                    }
+                ],
+            }
+        )
+        osis.put_resource_policy(
+            ResourceArn=pipeline["PipelineArn"],
+            Policy=policy,
+        )
+        get_resp = osis.get_resource_policy(ResourceArn=pipeline["PipelineArn"])
+        assert "Policy" in get_resp
+
+    def test_put_then_delete_resource_policy(self, osis, pipeline):
+        """PutResourcePolicy then DeleteResourcePolicy succeeds."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "osis:*",
+                        "Resource": pipeline["PipelineArn"],
+                    }
+                ],
+            }
+        )
+        osis.put_resource_policy(
+            ResourceArn=pipeline["PipelineArn"],
+            Policy=policy,
+        )
+        del_resp = osis.delete_resource_policy(ResourceArn=pipeline["PipelineArn"])
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200

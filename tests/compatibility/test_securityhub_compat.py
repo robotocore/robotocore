@@ -1522,3 +1522,270 @@ class TestSecurityHubConfigurationPolicyCrud:
             Target={"AccountId": "123456789012"},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSecurityHubAutomationRuleCrud:
+    """Tests for automation rule CRUD operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_create_automation_rule(self, hub_client):
+        """CreateAutomationRule returns a RuleArn."""
+        resp = hub_client.create_automation_rule(
+            RuleOrder=1,
+            RuleName=f"rule-{uuid.uuid4().hex[:8]}",
+            RuleStatus="ENABLED",
+            Description="test automation rule",
+            Criteria={},
+            Actions=[
+                {
+                    "Type": "FINDING_FIELDS_UPDATE",
+                    "FindingFieldsUpdate": {
+                        "Note": {"Text": "auto-note", "UpdatedBy": "rule"},
+                    },
+                }
+            ],
+        )
+        assert "RuleArn" in resp
+        assert "automation-rule" in resp["RuleArn"]
+
+    def test_batch_get_automation_rules(self, hub_client):
+        """BatchGetAutomationRules returns Rules and UnprocessedAutomationRules."""
+        resp = hub_client.batch_get_automation_rules(
+            AutomationRulesArns=[
+                "arn:aws:securityhub:us-east-1:123456789012:automation-rule/fake-id"
+            ],
+        )
+        assert "Rules" in resp
+        assert "UnprocessedAutomationRules" in resp
+
+    def test_batch_delete_automation_rules(self, hub_client):
+        """BatchDeleteAutomationRules returns Processed and Unprocessed lists."""
+        resp = hub_client.batch_delete_automation_rules(
+            AutomationRulesArns=[
+                "arn:aws:securityhub:us-east-1:123456789012:automation-rule/fake-id"
+            ],
+        )
+        assert "ProcessedAutomationRules" in resp
+        assert "UnprocessedAutomationRules" in resp
+
+    def test_batch_update_automation_rules(self, hub_client):
+        """BatchUpdateAutomationRules returns Processed and Unprocessed lists."""
+        resp = hub_client.batch_update_automation_rules(
+            UpdateAutomationRulesRequestItems=[
+                {
+                    "RuleArn": (
+                        "arn:aws:securityhub:us-east-1:123456789012:automation-rule/fake-id"
+                    ),
+                    "RuleStatus": "DISABLED",
+                }
+            ],
+        )
+        assert "ProcessedAutomationRules" in resp
+        assert "UnprocessedAutomationRules" in resp
+
+    def test_create_automation_rule_then_batch_get(self, hub_client):
+        """Created automation rule can be retrieved via BatchGetAutomationRules."""
+        create_resp = hub_client.create_automation_rule(
+            RuleOrder=2,
+            RuleName=f"rule-{uuid.uuid4().hex[:8]}",
+            RuleStatus="ENABLED",
+            Description="test retrieve",
+            Criteria={},
+            Actions=[
+                {
+                    "Type": "FINDING_FIELDS_UPDATE",
+                    "FindingFieldsUpdate": {
+                        "Note": {"Text": "note", "UpdatedBy": "rule"},
+                    },
+                }
+            ],
+        )
+        rule_arn = create_resp["RuleArn"]
+        get_resp = hub_client.batch_get_automation_rules(
+            AutomationRulesArns=[rule_arn],
+        )
+        assert len(get_resp["Rules"]) >= 1
+        arns = [r["RuleArn"] for r in get_resp["Rules"]]
+        assert rule_arn in arns
+
+
+class TestSecurityHubStandardsBatchOps:
+    """Tests for BatchEnableStandards and BatchDisableStandards."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_batch_enable_standards(self, hub_client):
+        """BatchEnableStandards returns StandardsSubscriptions list."""
+        resp = hub_client.batch_enable_standards(
+            StandardsSubscriptionRequests=[
+                {
+                    "StandardsArn": (
+                        "arn:aws:securityhub:::standards/"
+                        "aws-foundational-security-best-practices/v/1.0.0"
+                    ),
+                }
+            ],
+        )
+        assert "StandardsSubscriptions" in resp
+        assert isinstance(resp["StandardsSubscriptions"], list)
+        assert len(resp["StandardsSubscriptions"]) >= 1
+
+    def test_batch_enable_then_disable_standards(self, hub_client):
+        """BatchEnableStandards then BatchDisableStandards removes subscription."""
+        enable_resp = hub_client.batch_enable_standards(
+            StandardsSubscriptionRequests=[
+                {
+                    "StandardsArn": (
+                        "arn:aws:securityhub:::standards/"
+                        "aws-foundational-security-best-practices/v/1.0.0"
+                    ),
+                }
+            ],
+        )
+        sub_arn = enable_resp["StandardsSubscriptions"][0]["StandardsSubscriptionArn"]
+        disable_resp = hub_client.batch_disable_standards(
+            StandardsSubscriptionArns=[sub_arn],
+        )
+        assert "StandardsSubscriptions" in disable_resp
+        assert isinstance(disable_resp["StandardsSubscriptions"], list)
+
+    def test_batch_disable_standards_nonexistent(self, hub_client):
+        """BatchDisableStandards for nonexistent subscription raises error."""
+        with pytest.raises(ClientError) as exc:
+            hub_client.batch_disable_standards(
+                StandardsSubscriptionArns=[
+                    "arn:aws:securityhub:us-east-1:123456789012:subscription/nonexistent/v/1.0.0"
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSecurityHubConfigurationPolicyCreate:
+    """Tests for CreateConfigurationPolicy and association operations."""
+
+    @pytest.fixture
+    def hub_client(self):
+        client = make_client("securityhub")
+        try:
+            client.enable_security_hub(EnableDefaultStandards=False)
+        except ClientError:
+            pass
+        yield client
+        try:
+            client.disable_security_hub()
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_create_configuration_policy(self, hub_client):
+        """CreateConfigurationPolicy returns an Arn and Id."""
+        resp = hub_client.create_configuration_policy(
+            Name=f"policy-{uuid.uuid4().hex[:8]}",
+            ConfigurationPolicy={
+                "SecurityHub": {
+                    "ServiceEnabled": True,
+                    "EnabledStandardIdentifiers": [],
+                }
+            },
+        )
+        assert "Arn" in resp
+        assert "Id" in resp
+        assert "Name" in resp
+
+    def test_create_then_get_configuration_policy(self, hub_client):
+        """Created policy can be retrieved via GetConfigurationPolicy."""
+        name = f"policy-{uuid.uuid4().hex[:8]}"
+        create_resp = hub_client.create_configuration_policy(
+            Name=name,
+            ConfigurationPolicy={
+                "SecurityHub": {
+                    "ServiceEnabled": True,
+                    "EnabledStandardIdentifiers": [],
+                }
+            },
+        )
+        policy_id = create_resp["Id"]
+        get_resp = hub_client.get_configuration_policy(Identifier=policy_id)
+        assert get_resp["Id"] == policy_id
+        assert get_resp["Name"] == name
+
+    def test_get_configuration_policy_association_nonexistent(self, hub_client):
+        """GetConfigurationPolicyAssociation raises error for unassociated target."""
+        with pytest.raises(ClientError) as exc:
+            hub_client.get_configuration_policy_association(
+                Target={"AccountId": "999999999999"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_configuration_policy_association(self, hub_client):
+        """StartConfigurationPolicyAssociation returns association details."""
+        resp = hub_client.start_configuration_policy_association(
+            ConfigurationPolicyIdentifier="fake-policy-id",
+            Target={"AccountId": "123456789012"},
+        )
+        assert "ConfigurationPolicyId" in resp
+        assert "TargetId" in resp
+        assert "AssociationStatus" in resp
+
+
+class TestSecurityHubV2AutomationAndConnectors:
+    """Tests for V2 automation rule and connector CRUD ops."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("securityhub")
+
+    def test_create_automation_rule_v2(self, client):
+        """CreateAutomationRuleV2 returns RuleArn and RuleId."""
+        resp = client.create_automation_rule_v2(
+            RuleOrder=1,
+            RuleName=f"v2-rule-{uuid.uuid4().hex[:8]}",
+            RuleStatus="ENABLED",
+            Description="test v2 automation rule",
+            Criteria={"OcsfFindingCriteria": {}},
+            Actions=[
+                {
+                    "Type": "FINDING_FIELDS_UPDATE",
+                    "FindingFieldsUpdate": {"SeverityId": 2},
+                }
+            ],
+        )
+        assert "RuleArn" in resp
+        assert "RuleId" in resp
+
+    def test_create_connector_v2(self, client):
+        """CreateConnectorV2 returns ConnectorArn and ConnectorId."""
+        resp = client.create_connector_v2(
+            Name=f"conn-{uuid.uuid4().hex[:8]}",
+            Provider={
+                "ServiceNow": {
+                    "InstanceName": "test-instance",
+                    "SecretArn": ("arn:aws:secretsmanager:us-east-1:123456789012:secret:test-key"),
+                }
+            },
+        )
+        assert "ConnectorArn" in resp
+        assert "ConnectorId" in resp
+        assert "ConnectorStatus" in resp

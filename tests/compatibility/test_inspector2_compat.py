@@ -847,3 +847,189 @@ class TestInspector2CodeSecurityOps:
             scanConfigurationArn=fake_arn,
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestInspector2FilterUpdateOp:
+    """Tests for UpdateFilter operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_update_filter(self, client):
+        """UpdateFilter changes a filter's action."""
+        name = _unique("upd-filter")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        resp = client.update_filter(filterArn=arn, action="SUPPRESS")
+        assert "arn" in resp
+        assert resp["arn"] == arn
+
+    def test_update_filter_name(self, client):
+        """UpdateFilter can change the filter name."""
+        name = _unique("upd-name")
+        create_resp = client.create_filter(
+            action="NONE",
+            filterCriteria={},
+            name=name,
+        )
+        arn = create_resp["arn"]
+        new_name = _unique("new-name")
+        resp = client.update_filter(filterArn=arn, name=new_name)
+        assert "arn" in resp
+        assert resp["arn"] == arn
+
+
+class TestInspector2BatchCodeOps:
+    """Tests for batch code security operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_batch_get_code_snippet(self, client):
+        """BatchGetCodeSnippet returns results and errors."""
+        resp = client.batch_get_code_snippet(
+            findingArns=["arn:aws:inspector2:us-east-1:123456789012:finding/fake"],
+        )
+        assert "codeSnippetResults" in resp
+        assert "errors" in resp
+        assert isinstance(resp["codeSnippetResults"], list)
+        assert isinstance(resp["errors"], list)
+
+    def test_batch_get_finding_details(self, client):
+        """BatchGetFindingDetails returns details and errors."""
+        resp = client.batch_get_finding_details(
+            findingArns=["arn:aws:inspector2:us-east-1:123456789012:finding/fake"],
+        )
+        assert "findingDetails" in resp
+        assert "errors" in resp
+        assert isinstance(resp["findingDetails"], list)
+        assert isinstance(resp["errors"], list)
+
+    def test_search_vulnerabilities(self, client):
+        """SearchVulnerabilities returns vulnerabilities list."""
+        resp = client.search_vulnerabilities(
+            filterCriteria={"vulnerabilityIds": ["CVE-2024-0001"]},
+        )
+        assert "vulnerabilities" in resp
+        assert isinstance(resp["vulnerabilities"], list)
+
+
+class TestInspector2CisSessionTelemetry:
+    """Tests for SendCisSessionTelemetry."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_send_cis_session_telemetry(self, client):
+        """SendCisSessionTelemetry sends telemetry data."""
+        resp = client.send_cis_session_telemetry(
+            scanJobId="fake-job-id",
+            sessionToken="fake-token",
+            messages=[
+                {
+                    "cisRuleDetails": b"test-details",
+                    "ruleId": "rule-1",
+                    "status": "PASSED",
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestInspector2CodeSecurityScanConfig:
+    """Tests for code security scan configuration CRUD."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_create_code_security_scan_configuration(self, client):
+        """CreateCodeSecurityScanConfiguration returns scan config ARN."""
+        resp = client.create_code_security_scan_configuration(
+            name=_unique("scan-cfg"),
+            level="STANDARD",
+            configuration={"ruleSetCategories": ["SAST"]},
+        )
+        assert "scanConfigurationArn" in resp
+        assert resp["scanConfigurationArn"]
+
+    def test_update_code_security_scan_configuration(self, client):
+        """UpdateCodeSecurityScanConfiguration updates a config."""
+        fake_arn = "arn:aws:inspector2:us-east-1:123456789012:code-security-scan-config/fake"
+        resp = client.update_code_security_scan_configuration(
+            scanConfigurationArn=fake_arn,
+            configuration={"ruleSetCategories": ["SAST"]},
+        )
+        assert "scanConfigurationArn" in resp
+
+    def test_get_code_security_scan(self, client):
+        """GetCodeSecurityScan returns scan details."""
+        resp = client.get_code_security_scan(
+            scanId="fake-scan-id",
+            resource={"projectId": "test-project-id"},
+        )
+        assert "scanId" in resp
+        assert "status" in resp
+
+    def test_start_code_security_scan(self, client):
+        """StartCodeSecurityScan starts a scan."""
+        resp = client.start_code_security_scan(
+            resource={"projectId": "test-project-id"},
+        )
+        assert "scanId" in resp
+        assert "status" in resp
+
+    def test_update_code_security_integration(self, client):
+        """UpdateCodeSecurityIntegration updates an integration."""
+        fake_arn = "arn:aws:inspector2:us-east-1:123456789012:code-security-integration/fake"
+        resp = client.update_code_security_integration(
+            integrationArn=fake_arn,
+            details={"github": {"code": "test-code", "installationId": "test-id"}},
+        )
+        assert "integrationArn" in resp
+        assert "status" in resp
+
+
+class TestInspector2BatchScanConfigAssociations:
+    """Tests for batch associate/disassociate code security scan configuration."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("inspector2")
+
+    def test_batch_associate_code_security_scan_configuration(self, client):
+        """BatchAssociateCodeSecurityScanConfiguration returns results."""
+        resp = client.batch_associate_code_security_scan_configuration(
+            associateConfigurationRequests=[
+                {
+                    "resource": {"projectId": "test-project"},
+                    "scanConfigurationArn": (
+                        "arn:aws:inspector2:us-east-1:123456789012:code-security-scan-config/fake"
+                    ),
+                }
+            ],
+        )
+        assert "failedAssociations" in resp
+        assert "successfulAssociations" in resp
+
+    def test_batch_disassociate_code_security_scan_configuration(self, client):
+        """BatchDisassociateCodeSecurityScanConfiguration returns results."""
+        resp = client.batch_disassociate_code_security_scan_configuration(
+            disassociateConfigurationRequests=[
+                {
+                    "resource": {"projectId": "test-project"},
+                    "scanConfigurationArn": (
+                        "arn:aws:inspector2:us-east-1:123456789012:code-security-scan-config/fake"
+                    ),
+                }
+            ],
+        )
+        assert "failedAssociations" in resp
+        assert "successfulAssociations" in resp

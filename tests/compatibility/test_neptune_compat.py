@@ -1116,3 +1116,185 @@ class TestNeptuneClusterEndpointLifecycle:
         resp = neptune.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
         assert resp["DBClusterEndpointIdentifier"] == ep_id
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestNeptuneRestoreOps:
+    """Tests for RestoreDBClusterFromSnapshot and RestoreDBClusterToPointInTime."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, neptune, subnet_ids):
+        self.neptune = neptune
+        self.sg_name = _unique("rst-sg")
+        self.cluster_id = _unique("rst-cl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=self.sg_name,
+            DBSubnetGroupDescription="restore tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=self.cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=self.sg_name,
+        )
+        yield
+        neptune.delete_db_cluster(DBClusterIdentifier=self.cluster_id, SkipFinalSnapshot=True)
+        neptune.delete_db_subnet_group(DBSubnetGroupName=self.sg_name)
+
+    def test_restore_db_cluster_from_snapshot_nonexistent(self, neptune):
+        """RestoreDBClusterFromSnapshot raises error for nonexistent snapshot."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.restore_db_cluster_from_snapshot(
+                DBClusterIdentifier="fake-restore",
+                SnapshotIdentifier="nonexistent-snap",
+                Engine="neptune",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_restore_db_cluster_to_point_in_time_nonexistent(self, neptune):
+        """RestoreDBClusterToPointInTime raises error for nonexistent source cluster."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.restore_db_cluster_to_point_in_time(
+                DBClusterIdentifier="fake-pit",
+                SourceDBClusterIdentifier="nonexistent-source",
+                UseLatestRestorableTime=True,
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_restore_db_cluster_to_point_in_time(self, neptune):
+        """RestoreDBClusterToPointInTime restores from an existing cluster."""
+        restored_id = _unique("pit-cl")
+        try:
+            resp = neptune.restore_db_cluster_to_point_in_time(
+                DBClusterIdentifier=restored_id,
+                SourceDBClusterIdentifier=self.cluster_id,
+                UseLatestRestorableTime=True,
+            )
+            assert resp["DBCluster"]["DBClusterIdentifier"] == restored_id
+        finally:
+            try:
+                neptune.delete_db_cluster(DBClusterIdentifier=restored_id, SkipFinalSnapshot=True)
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestNeptuneGlobalClusterAdvanced:
+    """Tests for RemoveFromGlobalCluster and SwitchoverGlobalCluster."""
+
+    def test_remove_from_global_cluster(self, neptune):
+        """RemoveFromGlobalCluster with fake ARN returns 200."""
+        resp = neptune.remove_from_global_cluster(
+            GlobalClusterIdentifier="fake-gc",
+            DbClusterIdentifier="arn:aws:rds:us-east-1:123456789012:cluster:fake",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_switchover_global_cluster_nonexistent(self, neptune):
+        """SwitchoverGlobalCluster raises error for nonexistent global cluster."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.switchover_global_cluster(
+                GlobalClusterIdentifier="nonexistent-gc",
+                TargetDbClusterIdentifier=("arn:aws:rds:us-east-1:123456789012:cluster:fake"),
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_promote_read_replica_db_cluster_nonexistent(self, neptune):
+        """PromoteReadReplicaDBCluster raises error for nonexistent cluster."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.promote_read_replica_db_cluster(
+                DBClusterIdentifier="nonexistent-cluster",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+
+class TestNeptuneEventSubscriptionAdvanced:
+    """Tests for AddSourceIdentifierToSubscription, RemoveSourceIdentifierFromSubscription."""
+
+    def test_add_source_identifier_to_subscription(self, neptune):
+        """AddSourceIdentifierToSubscription adds source to existing subscription."""
+        name = _unique("sub-src")
+        neptune.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        try:
+            resp = neptune.add_source_identifier_to_subscription(
+                SubscriptionName=name,
+                SourceIdentifier="my-cluster-id",
+            )
+            sub = resp["EventSubscription"]
+            assert sub["CustSubscriptionId"] == name
+            assert "SourceIdsList" in sub
+        finally:
+            neptune.delete_event_subscription(SubscriptionName=name)
+
+    def test_remove_source_identifier_from_subscription(self, neptune):
+        """RemoveSourceIdentifierFromSubscription removes source from subscription."""
+        name = _unique("sub-rm")
+        neptune.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        try:
+            # Add first, then remove
+            neptune.add_source_identifier_to_subscription(
+                SubscriptionName=name,
+                SourceIdentifier="my-cluster-id",
+            )
+            resp = neptune.remove_source_identifier_from_subscription(
+                SubscriptionName=name,
+                SourceIdentifier="my-cluster-id",
+            )
+            sub = resp["EventSubscription"]
+            assert sub["CustSubscriptionId"] == name
+        finally:
+            neptune.delete_event_subscription(SubscriptionName=name)
+
+    def test_add_source_identifier_nonexistent_subscription(self, neptune):
+        """AddSourceIdentifierToSubscription raises error for nonexistent subscription."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.add_source_identifier_to_subscription(
+                SubscriptionName="nonexistent-sub",
+                SourceIdentifier="fake-source",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_remove_source_identifier_nonexistent_subscription(self, neptune):
+        """RemoveSourceIdentifierFromSubscription raises error for nonexistent sub."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.remove_source_identifier_from_subscription(
+                SubscriptionName="nonexistent-sub",
+                SourceIdentifier="fake-source",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+
+class TestNeptuneFailoverDBCluster:
+    """Tests for FailoverDBCluster."""
+
+    def test_failover_db_cluster_nonexistent(self, neptune):
+        """FailoverDBCluster raises error for nonexistent cluster."""
+        with pytest.raises(ClientError) as exc_info:
+            neptune.failover_db_cluster(DBClusterIdentifier="nonexistent-cluster")
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_failover_db_cluster_insufficient_instances(self, neptune, subnet_ids):
+        """FailoverDBCluster requires at least two instances."""
+        sg_name = _unique("fo-sg")
+        cluster_id = _unique("fo-cl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg_name,
+            DBSubnetGroupDescription="failover tests",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cluster_id,
+            Engine="neptune",
+            DBSubnetGroupName=sg_name,
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                neptune.failover_db_cluster(DBClusterIdentifier=cluster_id)
+            assert "InvalidDBClusterState" in exc_info.value.response["Error"]["Code"]
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg_name)

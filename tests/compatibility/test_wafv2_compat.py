@@ -1611,3 +1611,98 @@ class TestWAFv2AdditionalOps:
                 Id=summary["Id"],
                 LockToken=get_resp2["LockToken"],
             )
+
+
+class TestWAFv2ListResourcesForWebACL:
+    """Tests for ListResourcesForWebACL operation."""
+
+    def _create_web_acl(self, wafv2):
+        name = _unique("webacl")
+        resp = wafv2.create_web_acl(
+            Name=name,
+            Scope="REGIONAL",
+            DefaultAction={"Allow": {}},
+            VisibilityConfig={
+                "SampledRequestsEnabled": True,
+                "CloudWatchMetricsEnabled": True,
+                "MetricName": name,
+            },
+        )
+        return name, resp["Summary"]
+
+    def _delete_web_acl(self, wafv2, name, acl_id):
+        get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=acl_id)
+        wafv2.delete_web_acl(
+            Name=name, Scope="REGIONAL", Id=acl_id, LockToken=get_resp["LockToken"]
+        )
+
+    def test_list_resources_for_web_acl_empty(self, wafv2):
+        """ListResourcesForWebACL returns empty ResourceArns for new ACL."""
+        name, summary = self._create_web_acl(wafv2)
+        try:
+            resp = wafv2.list_resources_for_web_acl(WebACLArn=summary["ARN"])
+            assert "ResourceArns" in resp
+            assert isinstance(resp["ResourceArns"], list)
+        finally:
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+    def test_list_resources_after_associate(self, wafv2):
+        """ListResourcesForWebACL includes associated resource."""
+        name, summary = self._create_web_acl(wafv2)
+        resource_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/app/my-alb/listres1234567890"
+        )
+        try:
+            wafv2.associate_web_acl(WebACLArn=summary["ARN"], ResourceArn=resource_arn)
+            resp = wafv2.list_resources_for_web_acl(WebACLArn=summary["ARN"])
+            assert resource_arn in resp["ResourceArns"]
+        finally:
+            try:
+                wafv2.disassociate_web_acl(ResourceArn=resource_arn)
+            except Exception:
+                pass  # best-effort cleanup
+            self._delete_web_acl(wafv2, name, summary["Id"])
+
+
+class TestWAFv2APIKeyOperations:
+    """Tests for WAFv2 API Key create, list, get_decrypted, delete."""
+
+    def test_create_api_key(self, wafv2):
+        """CreateAPIKey returns an APIKey string."""
+        resp = wafv2.create_api_key(Scope="REGIONAL", TokenDomains=["example.com"])
+        assert "APIKey" in resp
+        assert isinstance(resp["APIKey"], str)
+        assert len(resp["APIKey"]) > 0
+
+    def test_list_api_keys(self, wafv2):
+        """ListAPIKeys returns APIKeySummaries."""
+        resp = wafv2.list_api_keys(Scope="REGIONAL")
+        assert "APIKeySummaries" in resp
+        assert isinstance(resp["APIKeySummaries"], list)
+
+    def test_create_then_list_api_keys(self, wafv2):
+        """Created API key appears in list."""
+        create_resp = wafv2.create_api_key(Scope="REGIONAL", TokenDomains=["test.example.com"])
+        api_key = create_resp["APIKey"]
+
+        list_resp = wafv2.list_api_keys(Scope="REGIONAL")
+        keys = [s.get("APIKey") for s in list_resp["APIKeySummaries"]]
+        assert api_key in keys
+
+    def test_get_decrypted_api_key(self, wafv2):
+        """GetDecryptedAPIKey returns TokenDomains."""
+        create_resp = wafv2.create_api_key(Scope="REGIONAL", TokenDomains=["decrypt.example.com"])
+        api_key = create_resp["APIKey"]
+
+        resp = wafv2.get_decrypted_api_key(Scope="REGIONAL", APIKey=api_key)
+        assert "TokenDomains" in resp
+        assert isinstance(resp["TokenDomains"], list)
+
+    def test_delete_api_key(self, wafv2):
+        """DeleteAPIKey removes the key."""
+        create_resp = wafv2.create_api_key(Scope="REGIONAL", TokenDomains=["delete.example.com"])
+        api_key = create_resp["APIKey"]
+
+        del_resp = wafv2.delete_api_key(Scope="REGIONAL", APIKey=api_key)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200

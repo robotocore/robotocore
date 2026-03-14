@@ -1173,3 +1173,40 @@ class TestSESv2AccountAndContacts:
             assert resp["UnsubscribeAll"] is True
         finally:
             sesv2.delete_contact_list(ContactListName=cl_name)
+
+
+class TestSESConfigurationSetEventDestination:
+    """Tests for SES configuration set event destination operations."""
+
+    def test_create_configuration_set_event_destination(self, ses):
+        """CreateConfigurationSetEventDestination adds an event destination to a config set."""
+        cs_name = f"cs-evt-{uuid.uuid4().hex[:8]}"
+        dest_name = f"dest-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = ses.create_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestination={
+                    "Name": dest_name,
+                    "Enabled": True,
+                    "MatchingEventTypes": ["send"],
+                    "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_create_configuration_set_event_destination_nonexistent_cs(self, ses):
+        """CreateConfigurationSetEventDestination raises error for nonexistent config set."""
+        with pytest.raises(Exception) as exc:
+            ses.create_configuration_set_event_destination(
+                ConfigurationSetName="nonexistent-cs",
+                EventDestination={
+                    "Name": "test-dest",
+                    "Enabled": True,
+                    "MatchingEventTypes": ["send"],
+                    "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+        assert "ConfigurationSetDoesNotExist" in str(exc.value)

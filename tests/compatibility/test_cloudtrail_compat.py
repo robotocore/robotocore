@@ -1145,3 +1145,65 @@ class TestCloudTrailRestoreEventDataStore:
         with pytest.raises(ClientError) as exc_info:
             cloudtrail.restore_event_data_store(EventDataStore=fake_arn)
         assert exc_info.value.response["Error"]["Code"] == "EventDataStoreNotFoundException"
+
+
+class TestCloudTrailDashboard:
+    """Tests for CloudTrail Dashboard operations."""
+
+    def test_get_dashboard_nonexistent(self, cloudtrail):
+        """GetDashboard for nonexistent dashboard raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_dashboard(DashboardId="nonexistent-dashboard-id")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudTrailEventConfiguration:
+    """Tests for CloudTrail EventConfiguration operations."""
+
+    def test_get_event_configuration(self, cloudtrail):
+        """GetEventConfiguration returns event configuration."""
+        resp = cloudtrail.get_event_configuration()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudTrailResourcePolicy:
+    """Tests for CloudTrail ResourcePolicy operations."""
+
+    def test_put_and_get_resource_policy(self, cloudtrail, s3):
+        """PutResourcePolicy sets a resource policy, GetResourcePolicy retrieves it."""
+        import json
+
+        bucket = _unique("ct-rp-bucket")
+        trail = _unique("ct-rp-trail")
+        s3.create_bucket(Bucket=bucket)
+        try:
+            trail_resp = cloudtrail.create_trail(Name=trail, S3BucketName=bucket)
+            trail_arn = trail_resp["TrailARN"]
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowCloudTrail",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "cloudtrail.amazonaws.com"},
+                            "Action": "cloudtrail:CreateTrail",
+                            "Resource": trail_arn,
+                        }
+                    ],
+                }
+            )
+            put_resp = cloudtrail.put_resource_policy(
+                ResourceArn=trail_arn,
+                ResourcePolicy=policy,
+            )
+            assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ResourceArn" in put_resp
+            assert "ResourcePolicy" in put_resp
+
+            get_resp = cloudtrail.get_resource_policy(ResourceArn=trail_arn)
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert get_resp["ResourceArn"] == trail_arn
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)

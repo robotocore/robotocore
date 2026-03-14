@@ -131,6 +131,25 @@ class TestPanoramaDeleteDevice:
         assert device_id not in device_ids
 
 
+class TestPanoramaUpdateDeviceMetadata:
+    def test_update_device_metadata_returns_device_id(self, panorama, provisioned_device):
+        """UpdateDeviceMetadata returns the device ID after update."""
+        resp = panorama.update_device_metadata(
+            DeviceId=provisioned_device["DeviceId"],
+            Description="Updated description for testing",
+        )
+        assert resp["DeviceId"] == provisioned_device["DeviceId"]
+
+    def test_update_device_metadata_description_persists(self, panorama, provisioned_device):
+        """UpdateDeviceMetadata updates description visible in DescribeDevice."""
+        panorama.update_device_metadata(
+            DeviceId=provisioned_device["DeviceId"],
+            Description="Persisted description",
+        )
+        desc = panorama.describe_device(DeviceId=provisioned_device["DeviceId"])
+        assert desc["Description"] == "Persisted description"
+
+
 class TestPanoramaCreatePackage:
     def test_create_package_returns_expected_fields(self, panorama):
         pkg_name = f"test-pkg-{uuid.uuid4().hex[:8]}"

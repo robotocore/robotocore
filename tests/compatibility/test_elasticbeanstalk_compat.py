@@ -509,6 +509,23 @@ class TestEnvironmentUpdateOperations:
         assert resp["EnvironmentName"] == env_name
         assert "EnvironmentId" in resp
 
+    def test_terminate_environment(self, eb, solution_stack):
+        """TerminateEnvironment terminates an environment."""
+        app_name = _unique("term-app")
+        env_name = _unique("term-env")
+        eb.create_application(ApplicationName=app_name)
+        eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        try:
+            resp = eb.terminate_environment(EnvironmentName=env_name)
+            assert resp["EnvironmentName"] == env_name
+            assert resp["Status"] == "Terminated"
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
     def test_abort_environment_update(self, eb, app_and_env):
         """AbortEnvironmentUpdate can be called on an environment."""
         _app_name, env_name, _env_id = app_and_env

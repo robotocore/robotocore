@@ -263,6 +263,16 @@ class TestS3TablesOperations:
         resp = s3tables.get_table_storage_class(tableBucketARN=bucket_arn, namespace=ns, name=tbl)
         assert "storageClassConfiguration" in resp
 
+    # --- GetTable ---
+    def test_get_table(self, s3tables, table_with_ns):
+        bucket_arn, ns, tbl, table_arn = table_with_ns
+        resp = s3tables.get_table(tableBucketARN=bucket_arn, namespace=ns, name=tbl)
+        assert resp["name"] == tbl
+        assert resp["tableARN"] == table_arn
+        assert resp["format"] == "ICEBERG"
+        assert "namespace" in resp
+        assert "versionToken" in resp
+
     # --- CreateNamespace ---
     def test_create_namespace(self, s3tables, table_bucket):
         ns = _ns_name()

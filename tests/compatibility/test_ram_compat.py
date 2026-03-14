@@ -504,3 +504,13 @@ class TestRAMResourceShareAssociationLifecycle:
         )
         assert resp["returnValue"] is True
         ram.delete_permission(permissionArn=perm_arn)
+
+
+class TestRAMListSourceAssociations:
+    """Tests for ListSourceAssociations operation."""
+
+    def test_list_source_associations_empty(self, ram):
+        """ListSourceAssociations returns a list (possibly empty)."""
+        resp = ram.list_source_associations()
+        assert "sourceAssociations" in resp
+        assert isinstance(resp["sourceAssociations"], list)

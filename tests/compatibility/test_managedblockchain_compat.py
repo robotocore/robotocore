@@ -523,3 +523,74 @@ class TestManagedBlockchainAdditional:
         """RejectInvitation with a nonexistent invitation ID raises error."""
         with pytest.raises(client.exceptions.ResourceNotFoundException):
             client.reject_invitation(InvitationId="inv-doesnotexist12345")
+
+
+class TestManagedBlockchainNodeUpdateOps:
+    """Tests for UpdateNode."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("managedblockchain")
+
+    @pytest.fixture
+    def network(self, client):
+        token = f"token-{uuid.uuid4().hex[:8]}"
+        resp = client.create_network(
+            ClientRequestToken=token,
+            Name=f"net-{uuid.uuid4().hex[:8]}",
+            Framework="HYPERLEDGER_FABRIC",
+            FrameworkVersion="1.2",
+            FrameworkConfiguration={"Fabric": {"Edition": "STARTER"}},
+            VotingPolicy={
+                "ApprovalThresholdPolicy": {
+                    "ThresholdPercentage": 50,
+                    "ProposalDurationInHours": 24,
+                    "ThresholdComparator": "GREATER_THAN",
+                }
+            },
+            MemberConfiguration={
+                "Name": f"member-{uuid.uuid4().hex[:8]}",
+                "Description": "Test",
+                "FrameworkConfiguration": {
+                    "Fabric": {
+                        "AdminUsername": "admin",
+                        "AdminPassword": "Password123!",
+                    }
+                },
+                "LogPublishingConfiguration": {
+                    "Fabric": {"CaLogs": {"Cloudwatch": {"Enabled": False}}}
+                },
+            },
+        )
+        return {"NetworkId": resp["NetworkId"], "MemberId": resp["MemberId"]}
+
+    def test_update_node(self, client, network):
+        """UpdateNode updates a node's log publishing configuration."""
+        create_resp = client.create_node(
+            ClientRequestToken=f"node-{uuid.uuid4().hex[:8]}",
+            NetworkId=network["NetworkId"],
+            MemberId=network["MemberId"],
+            NodeConfiguration={
+                "InstanceType": "bc.t3.small",
+                "AvailabilityZone": "us-east-1a",
+                "LogPublishingConfiguration": {
+                    "Fabric": {
+                        "ChaincodeLogs": {"Cloudwatch": {"Enabled": False}},
+                        "PeerLogs": {"Cloudwatch": {"Enabled": False}},
+                    }
+                },
+            },
+        )
+        node_id = create_resp["NodeId"]
+        resp = client.update_node(
+            NetworkId=network["NetworkId"],
+            MemberId=network["MemberId"],
+            NodeId=node_id,
+            LogPublishingConfiguration={
+                "Fabric": {
+                    "ChaincodeLogs": {"Cloudwatch": {"Enabled": True}},
+                    "PeerLogs": {"Cloudwatch": {"Enabled": True}},
+                }
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

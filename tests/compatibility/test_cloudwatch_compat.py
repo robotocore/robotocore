@@ -1374,3 +1374,23 @@ class TestCloudwatchAutoCoverage:
         # Verify gone
         resp = client.describe_anomaly_detectors(Namespace=ns)
         assert len(resp["AnomalyDetectors"]) == 0
+
+
+class TestCloudWatchManagedInsightRules:
+    """Tests for CloudWatch Managed Insight Rules operations."""
+
+    def test_list_managed_insight_rules(self, cw):
+        """ListManagedInsightRules returns a list for a resource ARN."""
+        resp = cw.list_managed_insight_rules(
+            ResourceARN="arn:aws:ec2:us-east-1:123456789012:instance/i-fake"
+        )
+        assert "ManagedRules" in resp
+
+
+class TestCloudWatchMetricStreams:
+    """Tests for CloudWatch Metric Streams operations."""
+
+    def test_list_metric_streams(self, cw):
+        """ListMetricStreams returns entries list."""
+        resp = cw.list_metric_streams()
+        assert "Entries" in resp

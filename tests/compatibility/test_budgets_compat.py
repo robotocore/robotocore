@@ -649,3 +649,96 @@ class TestBudgetTagOperations:
             assert tags["keep"] == "yes"
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+
+class TestBudgetActionHistories:
+    """Tests for DescribeBudgetActionHistories."""
+
+    def _make_budget_with_action(self, budgets):
+        name = _unique("budget")
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+        resp = budgets.create_budget_action(
+            AccountId=ACCOUNT_ID,
+            BudgetName=name,
+            NotificationType="ACTUAL",
+            ActionType="APPLY_IAM_POLICY",
+            ActionThreshold={
+                "ActionThresholdValue": 80.0,
+                "ActionThresholdType": "PERCENTAGE",
+            },
+            Definition={
+                "IamActionDefinition": {
+                    "PolicyArn": "arn:aws:iam::123456789012:policy/test",
+                    "Roles": ["test-role"],
+                }
+            },
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            ApprovalModel="AUTOMATIC",
+            Subscribers=[
+                {"SubscriptionType": "EMAIL", "Address": "test@example.com"},
+            ],
+        )
+        return name, resp["ActionId"]
+
+    def test_describe_budget_action_histories(self, budgets):
+        """DescribeBudgetActionHistories returns ActionHistories list."""
+        name, action_id = self._make_budget_with_action(budgets)
+        try:
+            resp = budgets.describe_budget_action_histories(
+                AccountId=ACCOUNT_ID, BudgetName=name, ActionId=action_id
+            )
+            assert "ActionHistories" in resp
+            assert isinstance(resp["ActionHistories"], list)
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
+
+
+class TestBudgetSubscribersForNotification:
+    """Tests for DescribeSubscribersForNotification."""
+
+    def test_describe_subscribers_for_notification(self, budgets):
+        """DescribeSubscribersForNotification returns subscribers list."""
+        name = _unique("budget")
+        budgets.create_budget(
+            AccountId=ACCOUNT_ID,
+            Budget={
+                "BudgetName": name,
+                "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+                "TimeUnit": "MONTHLY",
+                "BudgetType": "COST",
+            },
+        )
+        notification = {
+            "NotificationType": "ACTUAL",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 80.0,
+            "ThresholdType": "PERCENTAGE",
+        }
+        try:
+            budgets.create_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+                Subscribers=[
+                    {"SubscriptionType": "EMAIL", "Address": "sub1@example.com"},
+                    {"SubscriptionType": "EMAIL", "Address": "sub2@example.com"},
+                ],
+            )
+            resp = budgets.describe_subscribers_for_notification(
+                AccountId=ACCOUNT_ID, BudgetName=name, Notification=notification
+            )
+            assert "Subscribers" in resp
+            assert len(resp["Subscribers"]) == 2
+            addresses = {s["Address"] for s in resp["Subscribers"]}
+            assert "sub1@example.com" in addresses
+            assert "sub2@example.com" in addresses
+        finally:
+            budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)

@@ -1692,3 +1692,131 @@ class TestConfigAdditionalOps:
             EvaluationMode="PROACTIVE",
         )
         assert "ResourceEvaluationId" in resp
+
+
+class TestConfigAggregateResourceConfig:
+    """Tests for GetAggregateResourceConfig."""
+
+    def test_get_aggregate_resource_config(self, config):
+        """GetAggregateResourceConfig returns ConfigurationItem for an aggregator."""
+        config.put_configuration_aggregator(
+            ConfigurationAggregatorName="test-agg-resource",
+            AccountAggregationSources=[{"AccountIds": ["123456789012"], "AllAwsRegions": True}],
+        )
+        try:
+            resp = config.get_aggregate_resource_config(
+                ConfigurationAggregatorName="test-agg-resource",
+                ResourceIdentifier={
+                    "SourceAccountId": "123456789012",
+                    "SourceRegion": "us-east-1",
+                    "ResourceId": "nonexistent-resource",
+                    "ResourceType": "AWS::S3::Bucket",
+                },
+            )
+            assert "ConfigurationItem" in resp
+        finally:
+            config.delete_configuration_aggregator(ConfigurationAggregatorName="test-agg-resource")
+
+
+class TestConfigOrganizationConfigRuleDetailedStatus:
+    """Tests for GetOrganizationConfigRuleDetailedStatus."""
+
+    def test_get_organization_config_rule_detailed_status_nonexistent(self, config):
+        """GetOrganizationConfigRuleDetailedStatus raises NoSuchOrganizationConfigRuleException."""
+        with pytest.raises(ClientError) as exc:
+            config.get_organization_config_rule_detailed_status(
+                OrganizationConfigRuleName="nonexistent-org-rule"
+            )
+        assert "NoSuchOrganizationConfigRuleException" in exc.value.response["Error"]["Code"]
+
+
+class TestConfigConformancePackComplianceSummary:
+    """Tests for GetConformancePackComplianceSummary."""
+
+    def test_get_conformance_pack_compliance_summary_nonexistent(self, config):
+        """GetConformancePackComplianceSummary raises error for nonexistent pack."""
+        with pytest.raises(ClientError) as exc:
+            config.get_conformance_pack_compliance_summary(
+                ConformancePackNames=["nonexistent-pack"]
+            )
+        assert "NoSuchConformancePackException" in exc.value.response["Error"]["Code"]
+
+
+class TestConfigRemediationExceptions:
+    """Tests for remediation exception CRUD operations."""
+
+    def test_describe_remediation_exceptions_empty(self, config):
+        """DescribeRemediationExceptions returns empty list for a rule with no exceptions."""
+        resp = config.describe_remediation_exceptions(ConfigRuleName="no-such-rule")
+        assert "RemediationExceptions" in resp
+        assert isinstance(resp["RemediationExceptions"], list)
+
+    def test_put_and_describe_remediation_exceptions(self, config):
+        """PutRemediationExceptions adds exceptions, DescribeRemediationExceptions returns them."""
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": "remediation-exc-rule",
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        try:
+            put_resp = config.put_remediation_exceptions(
+                ConfigRuleName="remediation-exc-rule",
+                ResourceKeys=[
+                    {"ResourceType": "AWS::S3::Bucket", "ResourceId": "test-bucket-1"},
+                    {"ResourceType": "AWS::S3::Bucket", "ResourceId": "test-bucket-2"},
+                ],
+            )
+            assert "FailedBatches" in put_resp
+
+            desc_resp = config.describe_remediation_exceptions(
+                ConfigRuleName="remediation-exc-rule"
+            )
+            assert "RemediationExceptions" in desc_resp
+            assert isinstance(desc_resp["RemediationExceptions"], list)
+        finally:
+            config.delete_config_rule(ConfigRuleName="remediation-exc-rule")
+
+    def test_delete_remediation_exceptions(self, config):
+        """DeleteRemediationExceptions removes previously added exceptions."""
+        config.put_config_rule(
+            ConfigRule={
+                "ConfigRuleName": "del-remediation-exc-rule",
+                "Source": {
+                    "Owner": "AWS",
+                    "SourceIdentifier": "S3_BUCKET_VERSIONING_ENABLED",
+                },
+            }
+        )
+        try:
+            config.put_remediation_exceptions(
+                ConfigRuleName="del-remediation-exc-rule",
+                ResourceKeys=[
+                    {"ResourceType": "AWS::S3::Bucket", "ResourceId": "del-bucket"},
+                ],
+            )
+            del_resp = config.delete_remediation_exceptions(
+                ConfigRuleName="del-remediation-exc-rule",
+                ResourceKeys=[
+                    {"ResourceType": "AWS::S3::Bucket", "ResourceId": "del-bucket"},
+                ],
+            )
+            assert "FailedBatches" in del_resp
+        finally:
+            config.delete_config_rule(ConfigRuleName="del-remediation-exc-rule")
+
+
+class TestConfigStartRemediationExecution:
+    """Tests for StartRemediationExecution."""
+
+    def test_start_remediation_execution_no_config(self, config):
+        """StartRemediationExecution raises error when no remediation config exists."""
+        with pytest.raises(ClientError) as exc:
+            config.start_remediation_execution(
+                ConfigRuleName="nonexistent-rule",
+                ResourceKeys=[{"resourceType": "AWS::S3::Bucket", "resourceId": "test-bucket"}],
+            )
+        assert "NoSuchRemediationConfigurationException" in exc.value.response["Error"]["Code"]

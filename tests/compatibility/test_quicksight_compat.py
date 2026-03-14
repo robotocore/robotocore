@@ -2511,3 +2511,303 @@ class TestQuickSightAccountCustomPermissionMutations:
         )
         assert resp["Status"] == 200
         assert "RequestId" in resp
+
+
+class TestQuickSightSearchOpsExpanded:
+    """Test search operations for analyses, dashboards, datasets, datasources, topics."""
+
+    def test_search_analyses(self, quicksight):
+        resp = quicksight.search_analyses(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "QUICKSIGHT_USER",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["AnalysisSummaryList"], list)
+
+    def test_search_dashboards(self, quicksight):
+        resp = quicksight.search_dashboards(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "QUICKSIGHT_USER",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["DashboardSummaryList"], list)
+
+    def test_search_data_sets(self, quicksight):
+        resp = quicksight.search_data_sets(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "QUICKSIGHT_USER",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["DataSetSummaries"], list)
+
+    def test_search_data_sources(self, quicksight):
+        resp = quicksight.search_data_sources(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "QUICKSIGHT_USER",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["DataSourceSummaries"], list)
+
+    def test_search_topics(self, quicksight):
+        resp = quicksight.search_topics(
+            AwsAccountId=ACCOUNT_ID,
+            Filters=[
+                {
+                    "Operator": "StringEquals",
+                    "Name": "QUICKSIGHT_USER",
+                    "Value": "test",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+
+class TestQuickSightVPCConnectionCRUD:
+    """Test VPC connection create/update/describe/delete lifecycle."""
+
+    def test_create_vpc_connection(self, quicksight):
+        vpc_id = _unique("vpc")
+        resp = quicksight.create_vpc_connection(
+            AwsAccountId=ACCOUNT_ID,
+            VPCConnectionId=vpc_id,
+            Name="Test VPC Connection",
+            SubnetIds=["subnet-111", "subnet-222"],
+            SecurityGroupIds=["sg-111"],
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test",
+        )
+        assert resp["Status"] in (200, 201, 202)
+        assert "VPCConnectionId" in resp
+
+    def test_update_vpc_connection(self, quicksight):
+        vpc_id = _unique("vpc")
+        quicksight.create_vpc_connection(
+            AwsAccountId=ACCOUNT_ID,
+            VPCConnectionId=vpc_id,
+            Name="Original",
+            SubnetIds=["subnet-111", "subnet-222"],
+            SecurityGroupIds=["sg-111"],
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test",
+        )
+        resp = quicksight.update_vpc_connection(
+            AwsAccountId=ACCOUNT_ID,
+            VPCConnectionId=vpc_id,
+            Name="Updated",
+            SubnetIds=["subnet-111", "subnet-222"],
+            SecurityGroupIds=["sg-111"],
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test",
+        )
+        assert resp["Status"] == 200
+        assert "VPCConnectionId" in resp
+
+    def test_create_and_describe_vpc_connection(self, quicksight):
+        vpc_id = _unique("vpc")
+        quicksight.create_vpc_connection(
+            AwsAccountId=ACCOUNT_ID,
+            VPCConnectionId=vpc_id,
+            Name="Describe Test",
+            SubnetIds=["subnet-111", "subnet-222"],
+            SecurityGroupIds=["sg-111"],
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test",
+        )
+        resp = quicksight.describe_vpc_connection(AwsAccountId=ACCOUNT_ID, VPCConnectionId=vpc_id)
+        assert resp["Status"] == 200
+        assert "VPCConnection" in resp
+        assert resp["VPCConnection"]["VPCConnectionId"] == vpc_id
+
+
+class TestQuickSightAssetBundleExportJob:
+    """Test asset bundle export job start/describe."""
+
+    def test_start_asset_bundle_export_job(self, quicksight):
+        job_id = _unique("export")
+        resp = quicksight.start_asset_bundle_export_job(
+            AwsAccountId=ACCOUNT_ID,
+            AssetBundleExportJobId=job_id,
+            ResourceArns=[f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/test-dash"],
+            ExportFormat="CLOUDFORMATION_JSON",
+        )
+        assert resp["Status"] == 200
+        assert "AssetBundleExportJobId" in resp
+
+    def test_start_and_describe_asset_bundle_export_job(self, quicksight):
+        job_id = _unique("export")
+        quicksight.start_asset_bundle_export_job(
+            AwsAccountId=ACCOUNT_ID,
+            AssetBundleExportJobId=job_id,
+            ResourceArns=[f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/test-dash"],
+            ExportFormat="CLOUDFORMATION_JSON",
+        )
+        resp = quicksight.describe_asset_bundle_export_job(
+            AwsAccountId=ACCOUNT_ID, AssetBundleExportJobId=job_id
+        )
+        assert resp["Status"] == 200
+        assert "JobStatus" in resp
+
+
+class TestQuickSightDashboardSnapshotJob:
+    """Test dashboard snapshot job start/describe."""
+
+    def test_start_dashboard_snapshot_job(self, quicksight):
+        dash_id = _unique("dash")
+        snap_id = _unique("snap")
+        quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name="Snap Dashboard",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "p",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        resp = quicksight.start_dashboard_snapshot_job(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            SnapshotJobId=snap_id,
+            UserConfiguration={"AnonymousUsers": [{}]},
+            SnapshotConfiguration={
+                "FileGroups": [
+                    {
+                        "Files": [
+                            {
+                                "SheetSelections": [
+                                    {
+                                        "SheetId": "sheet1",
+                                        "SelectionScope": "ALL_VISUALS",
+                                    }
+                                ],
+                                "FormatType": "PDF",
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        assert resp["Status"] == 200
+        assert "SnapshotJobId" in resp
+
+    def test_describe_dashboard_snapshot_job_by_id(self, quicksight):
+        resp = quicksight.describe_dashboard_snapshot_job(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId="fake-dash",
+            SnapshotJobId="fake-snap",
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightActionConnectorCRUD:
+    """Test action connector create/update/describe/delete."""
+
+    def test_create_action_connector(self, quicksight):
+        ac_id = _unique("ac")
+        resp = quicksight.create_action_connector(
+            AwsAccountId=ACCOUNT_ID,
+            ActionConnectorId=ac_id,
+            Name="Test AC",
+            Type="JIRA",
+            AuthenticationConfig={
+                "AuthenticationType": "BASIC",
+                "AuthenticationMetadata": {
+                    "BasicAuthConnectionMetadata": {
+                        "BaseEndpoint": "https://jira.example.com",
+                        "Username": "user",
+                        "Password": "pass",
+                    }
+                },
+            },
+        )
+        assert resp["Status"] == 200
+
+    def test_update_action_connector(self, quicksight):
+        ac_id = _unique("ac")
+        quicksight.create_action_connector(
+            AwsAccountId=ACCOUNT_ID,
+            ActionConnectorId=ac_id,
+            Name="Original AC",
+            Type="JIRA",
+            AuthenticationConfig={
+                "AuthenticationType": "BASIC",
+                "AuthenticationMetadata": {
+                    "BasicAuthConnectionMetadata": {
+                        "BaseEndpoint": "https://jira.example.com",
+                        "Username": "user",
+                        "Password": "pass",
+                    }
+                },
+            },
+        )
+        resp = quicksight.update_action_connector(
+            AwsAccountId=ACCOUNT_ID,
+            ActionConnectorId=ac_id,
+            Name="Updated AC",
+            AuthenticationConfig={
+                "AuthenticationType": "BASIC",
+                "AuthenticationMetadata": {
+                    "BasicAuthConnectionMetadata": {
+                        "BaseEndpoint": "https://jira2.example.com",
+                        "Username": "user2",
+                        "Password": "pass2",
+                    }
+                },
+            },
+        )
+        assert resp["Status"] == 200
+
+
+class TestQuickSightDeleteTopic:
+    """Test topic delete operation."""
+
+    def test_delete_topic(self, quicksight):
+        tid = _unique("topic")
+        quicksight.create_topic(
+            AwsAccountId=ACCOUNT_ID,
+            TopicId=tid,
+            Topic={
+                "Name": "Delete Me",
+                "DataSets": [
+                    {
+                        "DatasetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        "DatasetName": "ds",
+                    }
+                ],
+            },
+        )
+        resp = quicksight.delete_topic(AwsAccountId=ACCOUNT_ID, TopicId=tid)
+        assert resp["Status"] == 200
+        assert resp["TopicId"] == tid
+
+    def test_delete_topic_not_found(self, quicksight):
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.delete_topic(AwsAccountId=ACCOUNT_ID, TopicId="nonexistent")
+        assert "ResourceNotFoundException" in str(exc_info.value)

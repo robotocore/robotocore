@@ -944,3 +944,33 @@ class TestOrganizationsEnableAllFeatures:
         handshake = resp["Handshake"]
         assert "Id" in handshake
         assert handshake["Action"] == "ENABLE_ALL_FEATURES"
+
+
+class TestOrganizationsHandshakeOps:
+    """Tests for AcceptHandshake and DeclineHandshake operations."""
+
+    def test_decline_handshake(self, orgs):
+        """DeclineHandshake transitions an OPEN handshake to DECLINED."""
+        orgs.create_organization(FeatureSet="ALL")
+        invite_resp = orgs.invite_account_to_organization(
+            Target={"Id": "111111111111", "Type": "ACCOUNT"}
+        )
+        handshake_id = invite_resp["Handshake"]["Id"]
+
+        resp = orgs.decline_handshake(HandshakeId=handshake_id)
+        assert "Handshake" in resp
+        assert resp["Handshake"]["State"] == "DECLINED"
+        assert resp["Handshake"]["Id"] == handshake_id
+
+    def test_accept_handshake(self, orgs):
+        """AcceptHandshake transitions an OPEN handshake to ACCEPTED."""
+        orgs.create_organization(FeatureSet="ALL")
+        invite_resp = orgs.invite_account_to_organization(
+            Target={"Id": "222222222222", "Type": "ACCOUNT"}
+        )
+        handshake_id = invite_resp["Handshake"]["Id"]
+
+        resp = orgs.accept_handshake(HandshakeId=handshake_id)
+        assert "Handshake" in resp
+        assert resp["Handshake"]["State"] == "ACCEPTED"
+        assert resp["Handshake"]["Id"] == handshake_id

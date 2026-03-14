@@ -208,3 +208,18 @@ class TestSupportNewOperations:
             assert "checkId" in status
             assert "status" in status
             assert status["checkId"] in check_ids
+
+    def test_describe_attachment_not_found(self, client):
+        """DescribeAttachment with a nonexistent attachment ID raises AttachmentIdNotFound."""
+        with pytest.raises(client.exceptions.AttachmentIdNotFound):
+            client.describe_attachment(attachmentId="nonexistent-attachment-id-12345")
+
+    def test_describe_attachment_for_created_set(self, client):
+        """DescribeAttachment on an attachment set ID returns error (set ID != attachment ID)."""
+        resp = client.add_attachments_to_set(
+            attachments=[{"fileName": "test.txt", "data": b"hello world"}]
+        )
+        set_id = resp["attachmentSetId"]
+        # Attachment set ID is not the same as individual attachment ID
+        with pytest.raises(client.exceptions.AttachmentIdNotFound):
+            client.describe_attachment(attachmentId=set_id)

@@ -403,3 +403,47 @@ class TestSyntheticsAssociateResource:
         resp = synthetics.list_groups()
         group_names = [g["Name"] for g in resp["Groups"]]
         assert name in group_names
+
+
+class TestSyntheticsAssociatedGroups:
+    """Tests for ListAssociatedGroups operation."""
+
+    def test_list_associated_groups_empty(self, synthetics):
+        """ListAssociatedGroups returns empty list for canary with no group associations."""
+        name = _unique("canary")
+        synthetics.create_canary(
+            Name=name,
+            Code={"S3Bucket": "test-bucket", "S3Key": "canary.zip", "Handler": "index.handler"},
+            ArtifactS3Location="s3://test-bucket/artifacts",
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/canary-role",
+            Schedule={"Expression": "rate(5 minutes)"},
+            RuntimeVersion="syn-python-selenium-3.0",
+        )
+        canary_arn = f"arn:aws:synthetics:us-east-1:123456789012:canary:{name}"
+        resp = synthetics.list_associated_groups(ResourceArn=canary_arn)
+        assert "Groups" in resp
+        assert isinstance(resp["Groups"], list)
+        assert len(resp["Groups"]) == 0
+
+    def test_list_associated_groups_after_association(self, synthetics):
+        """ListAssociatedGroups shows group after associating canary to it."""
+        canary_name = _unique("canary")
+        synthetics.create_canary(
+            Name=canary_name,
+            Code={"S3Bucket": "test-bucket", "S3Key": "canary.zip", "Handler": "index.handler"},
+            ArtifactS3Location="s3://test-bucket/artifacts",
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/canary-role",
+            Schedule={"Expression": "rate(5 minutes)"},
+            RuntimeVersion="syn-python-selenium-3.0",
+        )
+        canary_arn = f"arn:aws:synthetics:us-east-1:123456789012:canary:{canary_name}"
+        group_name = _unique("grp")
+        synthetics.create_group(Name=group_name)
+        synthetics.associate_resource(
+            GroupIdentifier=group_name,
+            ResourceArn=canary_arn,
+        )
+        resp = synthetics.list_associated_groups(ResourceArn=canary_arn)
+        assert "Groups" in resp
+        group_names = [g["Name"] for g in resp["Groups"]]
+        assert group_name in group_names

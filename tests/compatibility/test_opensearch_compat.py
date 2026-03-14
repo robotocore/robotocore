@@ -1476,3 +1476,12 @@ class TestOpenSearchNewOps2:
             )
         except opensearch.exceptions.ClientError as e:
             assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+    def test_purchase_reserved_instance_offering_nonexistent(self, opensearch):
+        """PurchaseReservedInstanceOffering with fake offering raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.purchase_reserved_instance_offering(
+                ReservedInstanceOfferingId="12345678-1234-1234-1234-123456789012",
+                ReservationName="test-reservation",
+                InstanceCount=1,
+            )

@@ -744,3 +744,33 @@ class TestCEAdditionalOps:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "AnalysisId" in resp
+
+    def test_get_commitment_purchase_analysis(self, ce):
+        """GetCommitmentPurchaseAnalysis returns a response for a valid analysis ID."""
+        import uuid
+
+        resp = ce.get_commitment_purchase_analysis(AnalysisId=str(uuid.uuid4()))
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_cost_allocation_tag_backfill(self, ce):
+        """StartCostAllocationTagBackfill returns BackfillRequest."""
+        resp = ce.start_cost_allocation_tag_backfill(BackfillFrom="2024-01-01T00:00:00+00:00")
+        assert "BackfillRequest" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_cost_allocation_tags_status(self, ce):
+        """UpdateCostAllocationTagsStatus returns Errors list."""
+        resp = ce.update_cost_allocation_tags_status(
+            CostAllocationTagsStatus=[{"TagKey": "env", "Status": "Active"}]
+        )
+        assert "Errors" in resp
+        assert isinstance(resp["Errors"], list)
+
+    def test_get_savings_plan_purchase_recommendation_details(self, ce):
+        """GetSavingsPlanPurchaseRecommendationDetails returns a response."""
+        import uuid
+
+        resp = ce.get_savings_plan_purchase_recommendation_details(
+            RecommendationDetailId=str(uuid.uuid4())
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

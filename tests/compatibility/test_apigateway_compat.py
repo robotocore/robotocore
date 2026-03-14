@@ -1963,3 +1963,187 @@ class TestAPIGatewayFlushStageAuthorizersCache:
         resp = apigw.flush_stage_authorizers_cache(restApiId=api_id, stageName="test")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
         apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayGetDocumentationParts:
+    """Tests for GetDocumentationParts."""
+
+    def test_get_documentation_parts_empty(self, apigw):
+        api = apigw.create_rest_api(name="docparts-test", description="test")
+        api_id = api["id"]
+        resp = apigw.get_documentation_parts(restApiId=api_id)
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_get_documentation_parts_after_create(self, apigw):
+        api = apigw.create_rest_api(name="docparts-test2", description="test")
+        api_id = api["id"]
+        apigw.create_documentation_part(
+            restApiId=api_id,
+            location={"type": "API"},
+            properties='{"description": "My API"}',
+        )
+        resp = apigw.get_documentation_parts(restApiId=api_id)
+        assert len(resp["items"]) >= 1
+        assert resp["items"][0]["properties"] == '{"description": "My API"}'
+        apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayGetIntegrationResponse:
+    """Tests for GetIntegrationResponse."""
+
+    def test_get_integration_response(self, apigw):
+        api = apigw.create_rest_api(name="intresp-get-test", description="test")
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        apigw.put_integration_response(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
+            responseTemplates={"application/json": ""},
+        )
+        resp = apigw.get_integration_response(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", statusCode="200"
+        )
+        assert resp["statusCode"] == "200"
+        assert "responseTemplates" in resp
+        apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayUpdateIntegrationResponse:
+    """Tests for UpdateIntegrationResponse."""
+
+    def test_update_integration_response(self, apigw):
+        api = apigw.create_rest_api(name="intresp-upd-test", description="test")
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        apigw.put_integration_response(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
+            responseTemplates={"application/json": ""},
+        )
+        resp = apigw.update_integration_response(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
+            patchOperations=[
+                {
+                    "op": "replace",
+                    "path": "/responseTemplates/application~1json",
+                    "value": '{"output": "updated"}',
+                }
+            ],
+        )
+        assert resp["statusCode"] == "200"
+        assert "responseTemplates" in resp
+        apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayGetMethodResponse:
+    """Tests for GetMethodResponse."""
+
+    def test_get_method_response(self, apigw):
+        api = apigw.create_rest_api(name="methresp-get-test", description="test")
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_method_response(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
+            responseModels={"application/json": "Empty"},
+        )
+        resp = apigw.get_method_response(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", statusCode="200"
+        )
+        assert resp["statusCode"] == "200"
+        assert "responseModels" in resp
+        apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayUpdateMethodResponse:
+    """Tests for UpdateMethodResponse."""
+
+    def test_update_method_response(self, apigw):
+        api = apigw.create_rest_api(name="methresp-upd-test", description="test")
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_method_response(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
+            responseModels={"application/json": "Empty"},
+        )
+        resp = apigw.update_method_response(
+            restApiId=api_id,
+            resourceId=root_id,
+            httpMethod="GET",
+            statusCode="200",
+            patchOperations=[
+                {"op": "replace", "path": "/responseModels/application~1json", "value": "Error"}
+            ],
+        )
+        assert resp["statusCode"] == "200"
+        apigw.delete_rest_api(restApiId=api_id)
+
+
+class TestAPIGatewayTagUntagResource:
+    """Tests for TagResource and UntagResource on REST APIs."""
+
+    def test_tag_resource(self, apigw):
+        api = apigw.create_rest_api(name="tag-res-test", description="test")
+        api_id = api["id"]
+        api_arn = f"arn:aws:apigateway:us-east-1::/restapis/{api_id}"
+        resp = apigw.tag_resource(resourceArn=api_arn, tags={"env": "test", "team": "backend"})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # Verify tags applied
+        api_resp = apigw.get_rest_api(restApiId=api_id)
+        assert api_resp.get("tags", {}).get("env") == "test"
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_untag_resource(self, apigw):
+        api = apigw.create_rest_api(name="untag-res-test", description="test", tags={"env": "dev"})
+        api_id = api["id"]
+        api_arn = f"arn:aws:apigateway:us-east-1::/restapis/{api_id}"
+        resp = apigw.untag_resource(resourceArn=api_arn, tagKeys=["env"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # Verify tags removed
+        api_resp = apigw.get_rest_api(restApiId=api_id)
+        assert "env" not in api_resp.get("tags", {})
+        apigw.delete_rest_api(restApiId=api_id)

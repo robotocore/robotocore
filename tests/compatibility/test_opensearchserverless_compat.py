@@ -455,6 +455,39 @@ class TestOpenSearchServerlessAccessPolicies:
         assert "accessPolicySummaries" in resp
         assert isinstance(resp["accessPolicySummaries"], list)
 
+    def test_update_access_policy(self, client):
+        """UpdateAccessPolicy modifies a data access policy's description."""
+        suffix = _uid()
+        name = f"ap-upd-{suffix}"
+        policy = json.dumps(
+            [
+                {
+                    "Rules": [
+                        {
+                            "ResourceType": "collection",
+                            "Resource": [f"collection/test-{suffix}"],
+                            "Permission": ["aoss:*"],
+                        }
+                    ],
+                    "Principal": ["arn:aws:iam::123456789012:root"],
+                }
+            ]
+        )
+        create_resp = client.create_access_policy(name=name, type="data", policy=policy)
+        version = create_resp["accessPolicyDetail"]["policyVersion"]
+        try:
+            resp = client.update_access_policy(
+                name=name,
+                type="data",
+                policyVersion=version,
+                description="Updated access policy",
+            )
+            detail = resp["accessPolicyDetail"]
+            assert detail["name"] == name
+            assert detail["description"] == "Updated access policy"
+        finally:
+            client.delete_access_policy(name=name, type="data")
+
     def test_delete_access_policy_nonexistent(self, client):
         """DeleteAccessPolicy for nonexistent policy raises error."""
         with pytest.raises(ClientError) as exc:
@@ -507,6 +540,50 @@ class TestOpenSearchServerlessLifecyclePolicies:
         assert "lifecyclePolicySummaries" in resp
         assert isinstance(resp["lifecyclePolicySummaries"], list)
 
+    def test_batch_get_lifecycle_policy(self, client):
+        """BatchGetLifecyclePolicy retrieves lifecycle policies by identifiers."""
+        suffix = _uid()
+        name = f"lp-bg-{suffix}"
+        policy = json.dumps(
+            {
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/test-{suffix}"],
+                        "MinIndexRetention": "15d",
+                    }
+                ]
+            }
+        )
+        client.create_lifecycle_policy(name=name, type="retention", policy=policy)
+        try:
+            resp = client.batch_get_lifecycle_policy(
+                identifiers=[{"type": "retention", "name": name}]
+            )
+            assert "lifecyclePolicyDetails" in resp
+            assert len(resp["lifecyclePolicyDetails"]) >= 1
+            found = resp["lifecyclePolicyDetails"][0]
+            assert found["name"] == name
+            assert found["type"] == "retention"
+        finally:
+            client.delete_lifecycle_policy(name=name, type="retention")
+
+    def test_batch_get_lifecycle_policy_nonexistent(self, client):
+        """BatchGetLifecyclePolicy returns error details for nonexistent policy."""
+        resp = client.batch_get_lifecycle_policy(
+            identifiers=[{"type": "retention", "name": "nonexistent-lp"}]
+        )
+        assert "lifecyclePolicyErrorDetails" in resp
+        assert len(resp["lifecyclePolicyErrorDetails"]) >= 1
+
+    def test_batch_get_effective_lifecycle_policy(self, client):
+        """BatchGetEffectiveLifecyclePolicy returns effective policies or errors."""
+        resp = client.batch_get_effective_lifecycle_policy(
+            resourceIdentifiers=[{"type": "retention", "resource": "collection/test"}]
+        )
+        assert "effectiveLifecyclePolicyDetails" in resp
+        assert "effectiveLifecyclePolicyErrorDetails" in resp
+
     def test_delete_lifecycle_policy_nonexistent(self, client):
         """DeleteLifecyclePolicy for nonexistent policy raises error."""
         with pytest.raises(ClientError) as exc:
@@ -535,6 +612,51 @@ class TestOpenSearchServerlessSecurityConfigs:
         assert "id" in detail
         assert detail["type"] == "saml"
         client.delete_security_config(id=detail["id"])
+
+    def test_get_security_config(self, client):
+        """GetSecurityConfig retrieves a created SAML config by ID."""
+        suffix = _uid()
+        name = f"sc-get-{suffix}"
+        resp = client.create_security_config(
+            name=name,
+            type="saml",
+            samlOptions={"metadata": "<xml>saml</xml>"},
+            description="test config for get",
+        )
+        sc_id = resp["securityConfigDetail"]["id"]
+        try:
+            got = client.get_security_config(id=sc_id)
+            detail = got["securityConfigDetail"]
+            assert detail["id"] == sc_id
+            assert detail["type"] == "saml"
+            assert "configVersion" in detail
+        finally:
+            client.delete_security_config(id=sc_id)
+
+    def test_update_security_config(self, client):
+        """UpdateSecurityConfig modifies a SAML config's description."""
+        suffix = _uid()
+        name = f"sc-upd-{suffix}"
+        resp = client.create_security_config(
+            name=name,
+            type="saml",
+            samlOptions={"metadata": "<xml>saml</xml>"},
+            description="original",
+        )
+        detail = resp["securityConfigDetail"]
+        sc_id = detail["id"]
+        version = detail["configVersion"]
+        try:
+            upd = client.update_security_config(
+                id=sc_id,
+                configVersion=version,
+                description="updated description",
+            )
+            upd_detail = upd["securityConfigDetail"]
+            assert upd_detail["id"] == sc_id
+            assert upd_detail["description"] == "updated description"
+        finally:
+            client.delete_security_config(id=sc_id)
 
     def test_get_security_config_nonexistent(self, client):
         """GetSecurityConfig for nonexistent ID raises error."""
@@ -567,6 +689,32 @@ class TestOpenSearchServerlessVpcEndpoints:
         resp = client.list_vpc_endpoints()
         assert "vpcEndpointSummaries" in resp
         assert isinstance(resp["vpcEndpointSummaries"], list)
+
+    def test_batch_get_vpc_endpoint(self, client):
+        """BatchGetVpcEndpoint retrieves VPC endpoints by IDs."""
+        suffix = _uid()
+        create_resp = client.create_vpc_endpoint(
+            name=f"test-bgvpce-{suffix}",
+            vpcId=f"vpc-{suffix}",
+            subnetIds=[f"subnet-{suffix}"],
+        )
+        vpce_id = create_resp["createVpcEndpointDetail"]["id"]
+        try:
+            resp = client.batch_get_vpc_endpoint(ids=[vpce_id])
+            assert "vpcEndpointDetails" in resp
+            found_ids = [ep["id"] for ep in resp["vpcEndpointDetails"]]
+            assert vpce_id in found_ids
+        finally:
+            try:
+                client.delete_vpc_endpoint(id=vpce_id)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_batch_get_vpc_endpoint_nonexistent(self, client):
+        """BatchGetVpcEndpoint returns error details for nonexistent endpoints."""
+        resp = client.batch_get_vpc_endpoint(ids=["vpce-nonexistent123"])
+        assert "vpcEndpointErrorDetails" in resp
+        assert len(resp["vpcEndpointErrorDetails"]) >= 1
 
     def test_delete_vpc_endpoint_nonexistent(self, client):
         """DeleteVpcEndpoint for nonexistent ID raises error."""

@@ -3226,3 +3226,77 @@ class TestDynamoDBExportImport:
         assert "ExportDescription" in resp
         assert resp["ExportDescription"]["ExportArn"] == export_arn
         assert "ExportStatus" in resp["ExportDescription"]
+
+
+class TestDynamoDBGlobalTables:
+    """Tests for DynamoDB Global Tables operations."""
+
+    def test_create_global_table(self, dynamodb, table):
+        """CreateGlobalTable creates a global table from an existing table."""
+        resp = dynamodb.create_global_table(
+            GlobalTableName=table,
+            ReplicationGroup=[{"RegionName": "us-east-1"}],
+        )
+        assert "GlobalTableDescription" in resp
+        desc = resp["GlobalTableDescription"]
+        assert desc["GlobalTableName"] == table
+        assert "GlobalTableStatus" in desc
+
+    def test_describe_global_table(self, dynamodb, table):
+        """DescribeGlobalTable returns details for a global table."""
+        dynamodb.create_global_table(
+            GlobalTableName=table,
+            ReplicationGroup=[{"RegionName": "us-east-1"}],
+        )
+        resp = dynamodb.describe_global_table(GlobalTableName=table)
+        assert "GlobalTableDescription" in resp
+        desc = resp["GlobalTableDescription"]
+        assert desc["GlobalTableName"] == table
+        assert "ReplicationGroup" in desc
+
+    def test_update_global_table(self, dynamodb, table):
+        """UpdateGlobalTable adds a replica to an existing global table."""
+        dynamodb.create_global_table(
+            GlobalTableName=table,
+            ReplicationGroup=[{"RegionName": "us-east-1"}],
+        )
+        resp = dynamodb.update_global_table(
+            GlobalTableName=table,
+            ReplicaUpdates=[{"Create": {"RegionName": "eu-west-1"}}],
+        )
+        assert "GlobalTableDescription" in resp
+        desc = resp["GlobalTableDescription"]
+        regions = [r["RegionName"] for r in desc["ReplicationGroup"]]
+        assert "eu-west-1" in regions
+
+    def test_describe_global_table_not_found(self, dynamodb):
+        """DescribeGlobalTable for nonexistent table raises error."""
+        with pytest.raises(ClientError) as exc:
+            dynamodb.describe_global_table(GlobalTableName="nonexistent-gt-xyz")
+        assert exc.value.response["Error"]["Code"] == "GlobalTableNotFoundException"
+
+
+class TestDynamoDBContributorInsights:
+    """Tests for DynamoDB Contributor Insights operations."""
+
+    def test_list_contributor_insights(self, dynamodb):
+        """ListContributorInsights returns a list."""
+        resp = dynamodb.list_contributor_insights()
+        assert "ContributorInsightsSummaries" in resp
+
+
+class TestDynamoDBReplicaAutoScaling:
+    """Tests for DynamoDB Table Replica Auto Scaling operations."""
+
+    def test_describe_table_replica_auto_scaling_not_found(self, dynamodb):
+        """DescribeTableReplicaAutoScaling for nonexistent table raises error."""
+        with pytest.raises(ClientError) as exc:
+            dynamodb.describe_table_replica_auto_scaling(TableName="nonexistent-table-xyz-replica")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_table_replica_auto_scaling(self, dynamodb, table):
+        """DescribeTableReplicaAutoScaling returns info for existing table."""
+        resp = dynamodb.describe_table_replica_auto_scaling(TableName=table)
+        assert "TableAutoScalingDescription" in resp
+        desc = resp["TableAutoScalingDescription"]
+        assert desc["TableName"] == table

@@ -119,6 +119,12 @@ class TestMQBrokerOperations:
         assert broker_id not in broker_ids
 
 
+class TestMQBrokerReboot:
+    def test_reboot_broker(self, mq, broker):
+        resp = mq.reboot_broker(BrokerId=broker["BrokerId"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestMQConfigurationOperations:
     def test_create_configuration(self, mq):
         name = _unique("config")
@@ -138,6 +144,29 @@ class TestMQConfigurationOperations:
         assert resp["Name"] == configuration["Name"]
         assert resp["EngineType"] == "ACTIVEMQ"
         assert resp["EngineVersion"] == "5.17.6"
+
+    def test_update_configuration(self, mq, configuration):
+        import base64
+
+        config_data = base64.b64encode(
+            b'<broker xmlns="http://activemq.apache.org/schema/core"></broker>'
+        ).decode()
+        resp = mq.update_configuration(
+            ConfigurationId=configuration["Id"],
+            Data=config_data,
+        )
+        assert "Id" in resp
+        assert "LatestRevision" in resp
+        assert resp["Id"] == configuration["Id"]
+
+    def test_describe_configuration_revision(self, mq, configuration):
+        resp = mq.describe_configuration_revision(
+            ConfigurationId=configuration["Id"],
+            ConfigurationRevision="1",
+        )
+        assert "ConfigurationId" in resp
+        assert resp["ConfigurationId"] == configuration["Id"]
+        assert "Data" in resp
 
     def test_list_configurations(self, mq, configuration):
         resp = mq.list_configurations()

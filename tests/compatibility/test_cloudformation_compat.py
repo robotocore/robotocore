@@ -2967,6 +2967,57 @@ class TestCloudFormationDriftDetection:
         assert "Code" in exc.value.response["Error"]
 
 
+class TestCloudFormationTypeRegistry:
+    """Tests for CloudFormation type registry operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("cloudformation")
+
+    def test_describe_type(self, client):
+        """DescribeType returns type info for a known AWS resource type."""
+        resp = client.describe_type(Type="RESOURCE", TypeName="AWS::S3::Bucket")
+        assert resp["TypeName"] == "AWS::S3::Bucket"
+        assert "Arn" in resp
+
+    def test_batch_describe_type_configurations(self, client):
+        """BatchDescribeTypeConfigurations returns expected response keys."""
+        resp = client.batch_describe_type_configurations(
+            TypeConfigurationIdentifiers=[
+                {
+                    "TypeArn": (
+                        "arn:aws:cloudformation:us-east-1:123456789012:type/resource/AWS-S3-Bucket"
+                    ),
+                }
+            ]
+        )
+        assert "TypeConfigurations" in resp
+        assert "Errors" in resp
+
+    def test_activate_type(self, client):
+        """ActivateType returns an Arn for the activated type."""
+        resp = client.activate_type(
+            Type="RESOURCE",
+            PublicTypeArn=("arn:aws:cloudformation:us-east-1::type/resource/AWS-S3-Bucket"),
+        )
+        assert "Arn" in resp
+
+    def test_deactivate_type(self, client):
+        """DeactivateType succeeds for a known type."""
+        resp = client.deactivate_type(Type="RESOURCE", TypeName="AWS::S3::Bucket")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_deregister_type(self, client):
+        """DeregisterType succeeds for a type name."""
+        resp = client.deregister_type(Type="RESOURCE", TypeName="AWS::Nonexistent::Type")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_publish_type(self, client):
+        """PublishType returns a PublicTypeArn."""
+        resp = client.publish_type(Type="RESOURCE", TypeName="AWS::S3::Bucket")
+        assert "PublicTypeArn" in resp
+
+
 class TestCloudFormationTerminationProtection:
     """Tests for termination protection."""
 

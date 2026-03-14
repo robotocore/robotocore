@@ -3564,3 +3564,29 @@ class TestS3ControlStorageLensGroups:
         )
         resp = s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestS3ControlJobTaggingExpanded:
+    """Tests for S3 Control Job Tagging operations."""
+
+    def test_get_job_tagging_not_found(self, s3control):
+        """GetJobTagging for nonexistent job raises NoSuchJob."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_job_tagging(AccountId=ACCOUNT_ID, JobId="nonexistent-job-id")
+        assert exc.value.response["Error"]["Code"] == "NoSuchJob"
+
+    def test_put_job_tagging_not_found(self, s3control):
+        """PutJobTagging for nonexistent job raises NoSuchJob."""
+        with pytest.raises(ClientError) as exc:
+            s3control.put_job_tagging(
+                AccountId=ACCOUNT_ID,
+                JobId="nonexistent-job-id",
+                Tags=[{"Key": "env", "Value": "test"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchJob"
+
+    def test_delete_job_tagging_not_found(self, s3control):
+        """DeleteJobTagging for nonexistent job raises NoSuchJob."""
+        with pytest.raises(ClientError) as exc:
+            s3control.delete_job_tagging(AccountId=ACCOUNT_ID, JobId="nonexistent-job-id")
+        assert exc.value.response["Error"]["Code"] == "NoSuchJob"

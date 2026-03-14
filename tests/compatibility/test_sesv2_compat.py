@@ -1,6 +1,7 @@
 """SESv2 compatibility tests."""
 
 import uuid
+from datetime import UTC
 
 import pytest
 from botocore.exceptions import ClientError
@@ -2145,3 +2146,29 @@ class TestSESV2AdditionalOps:
         """GetDomainDeliverabilityCampaign returns a response for a fake ID."""
         resp = client.get_domain_deliverability_campaign(CampaignId="fake-campaign-id-xyz")
         assert "DomainDeliverabilityCampaign" in resp
+
+
+class TestSESv2MetricsAndInsights:
+    @pytest.fixture
+    def client(self):
+        return make_client("sesv2")
+
+    def test_batch_get_metric_data(self, client):
+        """BatchGetMetricData returns metric results."""
+        from datetime import datetime, timedelta
+
+        end = datetime.now(UTC)
+        start = end - timedelta(days=1)
+        resp = client.batch_get_metric_data(
+            Queries=[
+                {
+                    "Id": "q1",
+                    "Namespace": "VDM",
+                    "Metric": "SEND",
+                    "StartDate": start,
+                    "EndDate": end,
+                }
+            ]
+        )
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)

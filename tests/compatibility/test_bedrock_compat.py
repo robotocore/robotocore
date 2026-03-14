@@ -1091,3 +1091,360 @@ class TestBedrockUseCaseOps:
         """PutUseCaseForModelAccess returns 200."""
         r = bedrock.put_use_case_for_model_access(formData=b"use_case=testing")
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockCreateCustomModel:
+    """Tests for standalone CreateCustomModel operation."""
+
+    def test_create_custom_model(self, bedrock):
+        """CreateCustomModel creates a model from S3 source."""
+        model_name = _unique("custom-model")
+        r = bedrock.create_custom_model(
+            modelName=model_name,
+            modelSourceConfig={"s3DataSource": {"s3Uri": "s3://bucket/model/"}},
+        )
+        assert "modelArn" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_custom_model_then_get(self, bedrock):
+        """CreateCustomModel model is retrievable via GetCustomModel."""
+        model_name = _unique("custom-model")
+        bedrock.create_custom_model(
+            modelName=model_name,
+            modelSourceConfig={"s3DataSource": {"s3Uri": "s3://bucket/model/"}},
+        )
+        r = bedrock.get_custom_model(modelIdentifier=model_name)
+        assert r["modelName"] == model_name
+        assert "modelArn" in r
+
+    def test_create_custom_model_then_delete(self, bedrock):
+        """CreateCustomModel model can be deleted."""
+        model_name = _unique("custom-model")
+        bedrock.create_custom_model(
+            modelName=model_name,
+            modelSourceConfig={"s3DataSource": {"s3Uri": "s3://bucket/model/"}},
+        )
+        bedrock.delete_custom_model(modelIdentifier=model_name)
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_custom_model(modelIdentifier=model_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockEvaluationJobCRUD:
+    """Tests for CreateEvaluationJob and BatchDeleteEvaluationJob."""
+
+    def test_create_evaluation_job(self, bedrock):
+        """CreateEvaluationJob returns a job ARN."""
+        job_name = _unique("eval-job")
+        r = bedrock.create_evaluation_job(
+            jobName=job_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            evaluationConfig={
+                "automated": {
+                    "datasetMetricConfigs": [
+                        {
+                            "taskType": "Summarization",
+                            "dataset": {
+                                "name": "test",
+                                "datasetLocation": {
+                                    "s3Uri": "s3://bucket/data.jsonl",
+                                },
+                            },
+                            "metricNames": ["Accuracy"],
+                        }
+                    ]
+                }
+            },
+            inferenceConfig={
+                "models": [
+                    {
+                        "bedrockModel": {
+                            "modelIdentifier": "amazon.titan-text-express-v1",
+                            "inferenceParams": "{}",
+                        }
+                    }
+                ]
+            },
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+        )
+        assert "jobArn" in r
+        assert "evaluation-job" in r["jobArn"]
+
+    def test_create_evaluation_job_then_get(self, bedrock):
+        """GetEvaluationJob returns created job details."""
+        job_name = _unique("eval-job")
+        create_r = bedrock.create_evaluation_job(
+            jobName=job_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            evaluationConfig={
+                "automated": {
+                    "datasetMetricConfigs": [
+                        {
+                            "taskType": "Summarization",
+                            "dataset": {
+                                "name": "test",
+                                "datasetLocation": {
+                                    "s3Uri": "s3://bucket/data.jsonl",
+                                },
+                            },
+                            "metricNames": ["Accuracy"],
+                        }
+                    ]
+                }
+            },
+            inferenceConfig={
+                "models": [
+                    {
+                        "bedrockModel": {
+                            "modelIdentifier": "amazon.titan-text-express-v1",
+                            "inferenceParams": "{}",
+                        }
+                    }
+                ]
+            },
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+        )
+        job_arn = create_r["jobArn"]
+        r = bedrock.get_evaluation_job(jobIdentifier=job_arn)
+        assert r["jobName"] == job_name
+        assert r["jobArn"] == job_arn
+
+    def test_batch_delete_evaluation_job(self, bedrock):
+        """BatchDeleteEvaluationJob accepts job identifiers."""
+        job_name = _unique("eval-del")
+        create_r = bedrock.create_evaluation_job(
+            jobName=job_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            evaluationConfig={
+                "automated": {
+                    "datasetMetricConfigs": [
+                        {
+                            "taskType": "Summarization",
+                            "dataset": {
+                                "name": "test",
+                                "datasetLocation": {
+                                    "s3Uri": "s3://bucket/data.jsonl",
+                                },
+                            },
+                            "metricNames": ["Accuracy"],
+                        }
+                    ]
+                }
+            },
+            inferenceConfig={
+                "models": [
+                    {
+                        "bedrockModel": {
+                            "modelIdentifier": "amazon.titan-text-express-v1",
+                            "inferenceParams": "{}",
+                        }
+                    }
+                ]
+            },
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+        )
+        job_arn = create_r["jobArn"]
+        r = bedrock.batch_delete_evaluation_job(jobIdentifiers=[job_arn])
+        assert "errors" in r
+        assert "evaluationJobs" in r
+
+
+TITAN_MODEL_ARN = "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
+
+
+class TestBedrockInferenceProfileCRUD:
+    """Tests for CreateInferenceProfile CRUD."""
+
+    def test_create_inference_profile(self, bedrock):
+        """CreateInferenceProfile returns an ARN and status."""
+        name = _unique("inf-profile")
+        r = bedrock.create_inference_profile(
+            inferenceProfileName=name,
+            modelSource={"copyFrom": TITAN_MODEL_ARN},
+        )
+        assert "inferenceProfileArn" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_inference_profile_then_get(self, bedrock):
+        """GetInferenceProfile returns created profile."""
+        name = _unique("inf-profile")
+        create_r = bedrock.create_inference_profile(
+            inferenceProfileName=name,
+            modelSource={"copyFrom": TITAN_MODEL_ARN},
+        )
+        arn = create_r["inferenceProfileArn"]
+        r = bedrock.get_inference_profile(inferenceProfileIdentifier=arn)
+        assert r["inferenceProfileName"] == name
+        assert r["inferenceProfileArn"] == arn
+
+    def test_create_inference_profile_then_delete(self, bedrock):
+        """DeleteInferenceProfile removes created profile."""
+        name = _unique("inf-profile")
+        create_r = bedrock.create_inference_profile(
+            inferenceProfileName=name,
+            modelSource={"copyFrom": TITAN_MODEL_ARN},
+        )
+        arn = create_r["inferenceProfileArn"]
+        bedrock.delete_inference_profile(inferenceProfileIdentifier=arn)
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_inference_profile(inferenceProfileIdentifier=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockModelImportJobCRUD:
+    """Tests for CreateModelImportJob."""
+
+    def test_create_model_import_job(self, bedrock):
+        """CreateModelImportJob returns a job ARN."""
+        job_name = _unique("import-job")
+        r = bedrock.create_model_import_job(
+            jobName=job_name,
+            importedModelName=_unique("imported"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            modelDataSource={"s3DataSource": {"s3Uri": "s3://bucket/model/"}},
+        )
+        assert "jobArn" in r
+        assert "model-import-job" in r["jobArn"]
+
+    def test_create_model_import_job_then_get(self, bedrock):
+        """GetModelImportJob returns created job."""
+        job_name = _unique("import-job")
+        create_r = bedrock.create_model_import_job(
+            jobName=job_name,
+            importedModelName=_unique("imported"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            modelDataSource={"s3DataSource": {"s3Uri": "s3://bucket/model/"}},
+        )
+        job_arn = create_r["jobArn"]
+        r = bedrock.get_model_import_job(jobIdentifier=job_arn)
+        assert r["jobName"] == job_name
+        assert r["jobArn"] == job_arn
+
+
+class TestBedrockModelInvocationJobCRUD:
+    """Tests for CreateModelInvocationJob."""
+
+    def test_create_model_invocation_job(self, bedrock):
+        """CreateModelInvocationJob returns a job ARN."""
+        job_name = _unique("invoke-job")
+        r = bedrock.create_model_invocation_job(
+            jobName=job_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            modelId="amazon.titan-text-express-v1",
+            inputDataConfig={"s3InputDataConfig": {"s3Uri": "s3://bucket/input/"}},
+            outputDataConfig={"s3OutputDataConfig": {"s3Uri": "s3://bucket/output/"}},
+        )
+        assert "jobArn" in r
+        assert "model-invocation-job" in r["jobArn"]
+
+    def test_create_model_invocation_job_then_get(self, bedrock):
+        """GetModelInvocationJob returns created job."""
+        job_name = _unique("invoke-job")
+        create_r = bedrock.create_model_invocation_job(
+            jobName=job_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            modelId="amazon.titan-text-express-v1",
+            inputDataConfig={"s3InputDataConfig": {"s3Uri": "s3://bucket/input/"}},
+            outputDataConfig={"s3OutputDataConfig": {"s3Uri": "s3://bucket/output/"}},
+        )
+        job_arn = create_r["jobArn"]
+        r = bedrock.get_model_invocation_job(jobIdentifier=job_arn)
+        assert r["jobName"] == job_name
+        assert r["jobArn"] == job_arn
+
+
+class TestBedrockPromptRouterCRUD:
+    """Tests for CreatePromptRouter CRUD."""
+
+    def test_create_prompt_router(self, bedrock):
+        """CreatePromptRouter returns a router ARN."""
+        name = _unique("router")
+        r = bedrock.create_prompt_router(
+            promptRouterName=name,
+            models=[{"modelArn": TITAN_MODEL_ARN}],
+            fallbackModel={"modelArn": TITAN_MODEL_ARN},
+            routingCriteria={"responseQualityDifference": 0.5},
+        )
+        assert "promptRouterArn" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_prompt_router_appears_in_list(self, bedrock):
+        """CreatePromptRouter creates a router visible in ListPromptRouters."""
+        name = _unique("router")
+        create_r = bedrock.create_prompt_router(
+            promptRouterName=name,
+            models=[{"modelArn": TITAN_MODEL_ARN}],
+            fallbackModel={"modelArn": TITAN_MODEL_ARN},
+            routingCriteria={"responseQualityDifference": 0.5},
+        )
+        arn = create_r["promptRouterArn"]
+        lr = bedrock.list_prompt_routers()
+        arns = [s["promptRouterArn"] for s in lr["promptRouterSummaries"]]
+        assert arn in arns
+
+
+class TestBedrockMarketplaceModelEndpointCRUD:
+    """Tests for CreateMarketplaceModelEndpoint CRUD."""
+
+    def test_create_marketplace_model_endpoint(self, bedrock):
+        """CreateMarketplaceModelEndpoint returns an endpoint ARN."""
+        name = _unique("mkt-ep")
+        r = bedrock.create_marketplace_model_endpoint(
+            modelSourceIdentifier="arn:aws:bedrock:us-east-1:123456789012:marketplace-model/fake",
+            endpointConfig={
+                "sageMaker": {
+                    "initialInstanceCount": 1,
+                    "instanceType": "ml.g5.xlarge",
+                    "executionRole": "arn:aws:iam::123456789012:role/test",
+                }
+            },
+            endpointName=name,
+        )
+        assert "marketplaceModelEndpoint" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_marketplace_model_endpoint_appears_in_list(self, bedrock):
+        """CreateMarketplaceModelEndpoint appears in ListMarketplaceModelEndpoints."""
+        name = _unique("mkt-ep")
+        create_r = bedrock.create_marketplace_model_endpoint(
+            modelSourceIdentifier="arn:aws:bedrock:us-east-1:123456789012:marketplace-model/fake",
+            endpointConfig={
+                "sageMaker": {
+                    "initialInstanceCount": 1,
+                    "instanceType": "ml.g5.xlarge",
+                    "executionRole": "arn:aws:iam::123456789012:role/test",
+                }
+            },
+            endpointName=name,
+        )
+        ep = create_r["marketplaceModelEndpoint"]
+        arn = ep["endpointArn"]
+        lr = bedrock.list_marketplace_model_endpoints()
+        arns = [e["endpointArn"] for e in lr.get("marketplaceModelEndpoints", [])]
+        assert arn in arns
+
+
+class TestBedrockAutomatedReasoningVersionOps:
+    """Tests for automated reasoning policy version and annotation operations."""
+
+    def test_create_automated_reasoning_policy_version_not_found(self, bedrock):
+        """CreateAutomatedReasoningPolicyVersion: fake policy error."""
+        long_hash = "a" * 128
+        with pytest.raises(ClientError) as exc:
+            bedrock.create_automated_reasoning_policy_version(
+                policyArn="arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/fake",
+                lastUpdatedDefinitionHash=long_hash,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_automated_reasoning_policy_annotations_not_found(self, bedrock):
+        """UpdateAutomatedReasoningPolicyAnnotations: fake policy error."""
+        long_hash = "a" * 128
+        with pytest.raises(ClientError) as exc:
+            bedrock.update_automated_reasoning_policy_annotations(
+                policyArn="arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/fake",
+                buildWorkflowId="fake-workflow",
+                annotations=[],
+                lastUpdatedAnnotationSetHash=long_hash,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

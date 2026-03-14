@@ -526,6 +526,122 @@ class TestAMPAnomalyDetectors:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
 
 
+class TestAMPAnomalyDetectorCRUD:
+    """Tests for CreateAnomalyDetector, DescribeAnomalyDetector, PutAnomalyDetector."""
+
+    def test_create_anomaly_detector(self, amp, workspace):
+        """CreateAnomalyDetector returns anomalyDetectorId and status."""
+        ws_id, _ = workspace
+        alias = f"test-ad-{uuid.uuid4().hex[:8]}"
+        resp = amp.create_anomaly_detector(
+            workspaceId=ws_id,
+            alias=alias,
+            configuration={"randomCutForest": {"query": "up"}},
+        )
+        assert "anomalyDetectorId" in resp
+        assert "status" in resp
+        ad_id = resp["anomalyDetectorId"]
+        amp.delete_anomaly_detector(workspaceId=ws_id, anomalyDetectorId=ad_id)
+
+    def test_describe_anomaly_detector(self, amp, workspace):
+        """DescribeAnomalyDetector returns anomaly detector details."""
+        ws_id, _ = workspace
+        alias = f"test-ad-desc-{uuid.uuid4().hex[:8]}"
+        create_resp = amp.create_anomaly_detector(
+            workspaceId=ws_id,
+            alias=alias,
+            configuration={"randomCutForest": {"query": "up"}},
+        )
+        ad_id = create_resp["anomalyDetectorId"]
+        try:
+            desc = amp.describe_anomaly_detector(workspaceId=ws_id, anomalyDetectorId=ad_id)
+            assert "anomalyDetector" in desc
+            ad = desc["anomalyDetector"]
+            assert ad["anomalyDetectorId"] == ad_id
+            assert "status" in ad
+        finally:
+            amp.delete_anomaly_detector(workspaceId=ws_id, anomalyDetectorId=ad_id)
+
+    def test_put_anomaly_detector(self, amp, workspace):
+        """PutAnomalyDetector updates an existing anomaly detector."""
+        ws_id, _ = workspace
+        alias = f"test-ad-put-{uuid.uuid4().hex[:8]}"
+        create_resp = amp.create_anomaly_detector(
+            workspaceId=ws_id,
+            alias=alias,
+            configuration={"randomCutForest": {"query": "up"}},
+        )
+        ad_id = create_resp["anomalyDetectorId"]
+        try:
+            put_resp = amp.put_anomaly_detector(
+                workspaceId=ws_id,
+                anomalyDetectorId=ad_id,
+                configuration={"randomCutForest": {"query": "down"}},
+            )
+            assert "status" in put_resp
+            assert put_resp["status"]["statusCode"] in ("ACTIVE", "UPDATING")
+        finally:
+            amp.delete_anomaly_detector(workspaceId=ws_id, anomalyDetectorId=ad_id)
+
+    def test_describe_anomaly_detector_not_found(self, amp, workspace):
+        """DescribeAnomalyDetector with fake ID returns 404."""
+        ws_id, _ = workspace
+        with pytest.raises(ClientError) as exc_info:
+            amp.describe_anomaly_detector(workspaceId=ws_id, anomalyDetectorId="ad-fake-id")
+        assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+
+
+class TestAMPQueryLoggingConfiguration:
+    """Tests for CreateQueryLoggingConfiguration and UpdateQueryLoggingConfiguration."""
+
+    def test_create_query_logging_configuration(self, amp, workspace):
+        """CreateQueryLoggingConfiguration returns a status."""
+        ws_id, _ = workspace
+        resp = amp.create_query_logging_configuration(
+            workspaceId=ws_id,
+            destinations=[
+                {
+                    "cloudWatchLogs": {
+                        "logGroupArn": "arn:aws:logs:us-east-1:123456789012:log-group:ql"
+                    },
+                    "filters": {"qspThreshold": 10},
+                }
+            ],
+        )
+        assert "status" in resp
+        assert resp["status"]["statusCode"] in ("CREATING", "ACTIVE")
+
+    def test_update_query_logging_configuration(self, amp, workspace):
+        """UpdateQueryLoggingConfiguration updates the configuration."""
+        ws_id, _ = workspace
+        # Create first
+        amp.create_query_logging_configuration(
+            workspaceId=ws_id,
+            destinations=[
+                {
+                    "cloudWatchLogs": {
+                        "logGroupArn": "arn:aws:logs:us-east-1:123456789012:log-group:test-ql-upd1"
+                    },
+                    "filters": {"qspThreshold": 10},
+                }
+            ],
+        )
+        # Update
+        resp = amp.update_query_logging_configuration(
+            workspaceId=ws_id,
+            destinations=[
+                {
+                    "cloudWatchLogs": {
+                        "logGroupArn": "arn:aws:logs:us-east-1:123456789012:log-group:test-ql-upd2"
+                    },
+                    "filters": {"qspThreshold": 20},
+                }
+            ],
+        )
+        assert "status" in resp
+        assert resp["status"]["statusCode"] in ("UPDATING", "ACTIVE")
+
+
 class TestAMPScraperExtended:
     def test_update_scraper(self, amp, workspace):
         """UpdateScraper changes scraper configuration."""
@@ -595,6 +711,35 @@ class TestAMPScraperExtended:
         try:
             resp = amp.delete_scraper_logging_configuration(scraperId=scraper_id)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+        finally:
+            amp.delete_scraper(scraperId=scraper_id)
+
+    def test_update_scraper_logging_configuration(self, amp, workspace):
+        """UpdateScraperLoggingConfiguration changes logging destination."""
+        ws_id, ws_arn = workspace
+        create_resp = amp.create_scraper(
+            alias="test-scraper-logupd",
+            scrapeConfiguration={"configurationBlob": base64.b64encode(b"scrape_configs: []")},
+            source={
+                "eksConfiguration": {
+                    "clusterArn": "arn:aws:eks:us-east-1:123456789012:cluster/test",
+                    "subnetIds": ["subnet-12345"],
+                }
+            },
+            destination={"ampConfiguration": {"workspaceArn": ws_arn}},
+        )
+        scraper_id = create_resp["scraperId"]
+        try:
+            resp = amp.update_scraper_logging_configuration(
+                scraperId=scraper_id,
+                loggingDestination={
+                    "cloudWatchLogs": {
+                        "logGroupArn": "arn:aws:logs:us-east-1:123456789012:log-group:scr"
+                    }
+                },
+            )
+            assert "status" in resp
+            assert resp["status"]["statusCode"] in ("ACTIVE", "UPDATING")
         finally:
             amp.delete_scraper(scraperId=scraper_id)
 

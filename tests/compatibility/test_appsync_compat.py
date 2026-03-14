@@ -1259,6 +1259,21 @@ class TestAppsyncMergedApiOps:
             "MERGE_SCHEDULED",
         )
 
+    def test_update_source_api_association(self, client, source_api, merged_api):
+        """UpdateSourceApiAssociation updates an existing association's description."""
+        assoc = client.associate_merged_graphql_api(
+            sourceApiIdentifier=source_api["apiId"],
+            mergedApiIdentifier=merged_api["apiId"],
+        )
+        assoc_id = assoc["sourceApiAssociation"]["associationId"]
+        resp = client.update_source_api_association(
+            associationId=assoc_id,
+            mergedApiIdentifier=merged_api["apiId"],
+            description="updated-description",
+        )
+        assert "sourceApiAssociation" in resp
+        assert resp["sourceApiAssociation"]["associationId"] == assoc_id
+
 
 class TestAppsyncEvalAndIntrospection:
     """Tests for EvaluateCode, EvaluateMappingTemplate, and data source introspection."""

@@ -2696,3 +2696,51 @@ class TestDMSAdditionalOps:
             assert "DataMigration" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
+
+
+class TestDMSReplicationOps:
+    """Tests for StartReplication and StopReplication."""
+
+    def test_start_replication_nonexistent(self, dms):
+        """StartReplication for nonexistent replication config raises ResourceNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            dms.start_replication(
+                ReplicationConfigArn=(
+                    "arn:aws:dms:us-east-1:123456789012:replication-config:nonexistent"
+                ),
+                StartReplicationType="reload-target",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+    def test_stop_replication_nonexistent(self, dms):
+        """StopReplication for nonexistent replication config raises ResourceNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            dms.stop_replication(
+                ReplicationConfigArn=(
+                    "arn:aws:dms:us-east-1:123456789012:replication-config:nonexistent"
+                ),
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundFault"
+
+
+class TestDMSMetadataModelOps:
+    """Tests for metadata model operations."""
+
+    def test_cancel_metadata_model_creation(self, dms):
+        """CancelMetadataModelCreation returns a RequestIdentifier."""
+        resp = dms.cancel_metadata_model_creation(
+            MigrationProjectIdentifier="nonexistent-proj",
+            RequestIdentifier="fake-request-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_metadata_model_creation(self, dms):
+        """StartMetadataModelCreation returns a RequestIdentifier."""
+        resp = dms.start_metadata_model_creation(
+            MigrationProjectIdentifier="nonexistent-proj",
+            SelectionRules='{"rules":[]}',
+            MetadataModelName="test-model",
+            Properties={"StatementProperties": {"Definition": "CREATE TABLE test (id INT)"}},
+        )
+        assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0

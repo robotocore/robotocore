@@ -224,6 +224,90 @@ class TestIdentityStoreGroupMembership:
         assert mem["MembershipId"] not in membership_ids
 
 
+class TestIdentityStoreUpdateAndLookup:
+    """Tests for Update, GetId, and membership lookup operations."""
+
+    def test_get_group_id(self, identitystore):
+        """GetGroupId returns the group ID for a unique attribute filter."""
+        display_name = _unique("group")
+        create_resp = identitystore.create_group(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            DisplayName=display_name,
+        )
+        group_id = create_resp["GroupId"]
+
+        resp = identitystore.get_group_id(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            AlternateIdentifier={
+                "UniqueAttribute": {
+                    "AttributePath": "displayName",
+                    "AttributeValue": display_name,
+                }
+            },
+        )
+        assert resp["GroupId"] == group_id
+        assert resp["IdentityStoreId"] == IDENTITY_STORE_ID
+
+    def test_get_user_id(self, identitystore):
+        """GetUserId returns the user ID for a unique attribute filter."""
+        username = _unique("user")
+        create_resp = identitystore.create_user(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            UserName=username,
+            DisplayName="Get User ID",
+            Name={"GivenName": "Get", "FamilyName": "User"},
+        )
+        user_id = create_resp["UserId"]
+
+        resp = identitystore.get_user_id(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            AlternateIdentifier={
+                "UniqueAttribute": {
+                    "AttributePath": "userName",
+                    "AttributeValue": username,
+                }
+            },
+        )
+        assert resp["UserId"] == user_id
+        assert resp["IdentityStoreId"] == IDENTITY_STORE_ID
+
+    def test_list_group_memberships_for_member(self, identitystore):
+        """ListGroupMembershipsForMember returns all groups a user belongs to."""
+        user = identitystore.create_user(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            UserName=_unique("user"),
+            DisplayName="Multi Member",
+            Name={"GivenName": "M", "FamilyName": "U"},
+        )
+        group1 = identitystore.create_group(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            DisplayName=_unique("group"),
+        )
+        group2 = identitystore.create_group(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            DisplayName=_unique("group"),
+        )
+        identitystore.create_group_membership(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            GroupId=group1["GroupId"],
+            MemberId={"UserId": user["UserId"]},
+        )
+        identitystore.create_group_membership(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            GroupId=group2["GroupId"],
+            MemberId={"UserId": user["UserId"]},
+        )
+
+        resp = identitystore.list_group_memberships_for_member(
+            IdentityStoreId=IDENTITY_STORE_ID,
+            MemberId={"UserId": user["UserId"]},
+        )
+        assert "GroupMemberships" in resp
+        group_ids = [m["GroupId"] for m in resp["GroupMemberships"]]
+        assert group1["GroupId"] in group_ids
+        assert group2["GroupId"] in group_ids
+
+
 class TestIdentityStoreErrors:
     """Tests for error handling on nonexistent resources."""
 

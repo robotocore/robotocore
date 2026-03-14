@@ -1000,6 +1000,30 @@ class TestEMRAdditionalOps:
         assert "NotebookExecutions" in resp
         assert isinstance(resp["NotebookExecutions"], list)
 
+    def test_describe_job_flows(self, emr):
+        """DescribeJobFlows returns details for a running cluster."""
+        resp = emr.run_job_flow(
+            Name=_unique("djf-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        desc = emr.describe_job_flows(JobFlowIds=[cid])
+        assert "JobFlows" in desc
+        assert len(desc["JobFlows"]) == 1
+        flow = desc["JobFlows"][0]
+        assert flow["JobFlowId"] == cid
+        assert "Name" in flow
+        assert "ExecutionStatusDetail" in flow
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
 
 class TestEMRNotebookErrors:
     """Tests for EMR notebook execution error handling."""

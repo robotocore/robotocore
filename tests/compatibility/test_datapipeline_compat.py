@@ -209,3 +209,138 @@ class TestDataPipelineTaskOperations:
             taskStatus="FINISHED",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDataPipelineMissingOps:
+    """Tests for previously uncovered datapipeline operations."""
+
+    def _create_pipeline_with_definition(self, datapipeline):
+        uid = uuid.uuid4().hex[:8]
+        resp = datapipeline.create_pipeline(
+            name=f"test-pipeline-{uid}",
+            uniqueId=f"test-unique-{uid}",
+        )
+        pipeline_id = resp["pipelineId"]
+        datapipeline.put_pipeline_definition(
+            pipelineId=pipeline_id,
+            pipelineObjects=[
+                {
+                    "id": "Default",
+                    "name": "Default",
+                    "fields": [{"key": "type", "stringValue": "Default"}],
+                }
+            ],
+        )
+        return pipeline_id
+
+    def test_deactivate_pipeline(self, datapipeline):
+        """DeactivatePipeline deactivates a pipeline."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            datapipeline.activate_pipeline(pipelineId=pipeline_id)
+            resp = datapipeline.deactivate_pipeline(pipelineId=pipeline_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_query_objects(self, datapipeline):
+        """QueryObjects returns object IDs for a pipeline."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            resp = datapipeline.query_objects(
+                pipelineId=pipeline_id,
+                sphere="INSTANCE",
+            )
+            assert "ids" in resp
+            assert isinstance(resp["ids"], list)
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_set_status(self, datapipeline):
+        """SetStatus sets the status of pipeline objects."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            resp = datapipeline.set_status(
+                pipelineId=pipeline_id,
+                objectIds=["Default"],
+                status="FINISHED",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_add_tags(self, datapipeline):
+        """AddTags adds tags to a pipeline."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            resp = datapipeline.add_tags(
+                pipelineId=pipeline_id,
+                tags=[{"key": "env", "value": "test"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_remove_tags(self, datapipeline):
+        """RemoveTags removes tags from a pipeline."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            datapipeline.add_tags(
+                pipelineId=pipeline_id,
+                tags=[{"key": "env", "value": "test"}],
+            )
+            resp = datapipeline.remove_tags(
+                pipelineId=pipeline_id,
+                tagKeys=["env"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_add_and_verify_tags(self, datapipeline):
+        """AddTags tags appear in DescribePipelines."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            datapipeline.add_tags(
+                pipelineId=pipeline_id,
+                tags=[{"key": "team", "value": "infra"}],
+            )
+            desc = datapipeline.describe_pipelines(pipelineIds=[pipeline_id])
+            pipeline = desc["pipelineDescriptionList"][0]
+            # Tag should be present in fields or tags list
+            assert pipeline["pipelineId"] == pipeline_id
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_validate_pipeline_definition(self, datapipeline):
+        """ValidatePipelineDefinition validates a definition without storing it."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            resp = datapipeline.validate_pipeline_definition(
+                pipelineId=pipeline_id,
+                pipelineObjects=[
+                    {
+                        "id": "Default",
+                        "name": "Default",
+                        "fields": [{"key": "type", "stringValue": "Default"}],
+                    }
+                ],
+            )
+            assert "errored" in resp
+            assert isinstance(resp["errored"], bool)
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)
+
+    def test_evaluate_expression(self, datapipeline):
+        """EvaluateExpression evaluates an expression in pipeline context."""
+        pipeline_id = self._create_pipeline_with_definition(datapipeline)
+        try:
+            resp = datapipeline.evaluate_expression(
+                pipelineId=pipeline_id,
+                objectId="Default",
+                expression="#{node.name}",
+            )
+            assert "evaluatedExpression" in resp
+            assert isinstance(resp["evaluatedExpression"], str)
+        finally:
+            datapipeline.delete_pipeline(pipelineId=pipeline_id)

@@ -225,6 +225,21 @@ class TestKinesisVideoUpdates:
         finally:
             kinesisvideo_client.delete_stream(StreamARN=arn)
 
+    def test_untag_stream(self, kinesisvideo_client):
+        name = f"test-stream-{uuid.uuid4().hex[:8]}"
+        resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)
+        arn = resp["StreamARN"]
+        try:
+            kinesisvideo_client.tag_stream(StreamName=name, Tags={"env": "test", "team": "dev"})
+            untag_resp = kinesisvideo_client.untag_stream(StreamName=name, TagKeyList=["env"])
+            assert untag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify the tag was removed
+            tags = kinesisvideo_client.list_tags_for_resource(ResourceARN=arn)
+            assert "env" not in tags.get("Tags", {})
+            assert tags["Tags"]["team"] == "dev"
+        finally:
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
     def test_update_stream(self, kinesisvideo_client):
         name = f"test-stream-{uuid.uuid4().hex[:8]}"
         resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)

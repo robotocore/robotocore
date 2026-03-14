@@ -123,3 +123,30 @@ class TestPipesCompat:
         tags = resp["tags"]
         assert "remove-me" not in tags
         assert tags["env"] == "test"
+
+    def test_start_pipe(self, pipes_client, created_pipe, pipe_name):
+        """start_pipe transitions a pipe to RUNNING state."""
+        resp = pipes_client.start_pipe(Name=pipe_name)
+        assert resp["Name"] == pipe_name
+        assert resp["DesiredState"] == "RUNNING"
+        assert "Arn" in resp
+
+    def test_stop_pipe(self, pipes_client, created_pipe, pipe_name):
+        """stop_pipe transitions a pipe to STOPPED state."""
+        resp = pipes_client.stop_pipe(Name=pipe_name)
+        assert resp["Name"] == pipe_name
+        assert resp["DesiredState"] == "STOPPED"
+        assert "Arn" in resp
+
+    def test_update_pipe(self, pipes_client, created_pipe, pipe_name):
+        """update_pipe modifies pipe configuration."""
+        resp = pipes_client.update_pipe(
+            Name=pipe_name,
+            RoleArn="arn:aws:iam::123456789012:role/updated-role",
+        )
+        assert resp["Name"] == pipe_name
+        assert "Arn" in resp
+
+        # Verify the update took effect
+        desc = pipes_client.describe_pipe(Name=pipe_name)
+        assert desc["RoleArn"] == "arn:aws:iam::123456789012:role/updated-role"

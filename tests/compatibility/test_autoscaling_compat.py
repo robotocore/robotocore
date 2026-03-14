@@ -566,6 +566,27 @@ class TestAutoScalingCapacityAndMetrics:
         assert len(resp["AutoScalingGroups"]) == 1
         assert resp["AutoScalingGroups"][0]["AutoScalingGroupName"] == self.asg_name
 
+    def test_enable_metrics_collection_all_metrics(self, autoscaling):
+        """EnableMetricsCollection with no Metrics param succeeds and returns 200."""
+        resp = autoscaling.enable_metrics_collection(
+            AutoScalingGroupName=self.asg_name,
+            Granularity="1Minute",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify ASG still exists and has EnabledMetrics key
+        desc = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        asg = desc["AutoScalingGroups"][0]
+        assert "EnabledMetrics" in asg
+
+    def test_enable_metrics_collection_specific_metrics(self, autoscaling):
+        """EnableMetricsCollection with specific Metrics list succeeds."""
+        resp = autoscaling.enable_metrics_collection(
+            AutoScalingGroupName=self.asg_name,
+            Granularity="1Minute",
+            Metrics=["GroupMinSize"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
 
 class TestAutoScalingWarmPool:
     """Tests for PutWarmPool, DescribeWarmPool, DeleteWarmPool."""

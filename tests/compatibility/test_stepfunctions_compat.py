@@ -1395,3 +1395,68 @@ class TestStepFunctionsVersions:
             assert v2_num > v1_num
         finally:
             sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+
+class TestStepFunctionsSyncExecution:
+    """Tests for StartSyncExecution on EXPRESS state machines."""
+
+    @staticmethod
+    def _simple_definition():
+        return json.dumps({"StartAt": "Pass", "States": {"Pass": {"Type": "Pass", "End": True}}})
+
+    @staticmethod
+    def _make_sync_client():
+        """Create an SFN client that redirects sync-* endpoints to localhost."""
+        client = make_client("stepfunctions")
+
+        def redirect_sync_endpoint(request, **kwargs):
+            if "sync-" in request.url:
+                request.url = request.url.replace("sync-localhost", "localhost")
+
+        client.meta.events.register("before-send.stepfunctions.*", redirect_sync_endpoint)
+        return client
+
+    def test_start_sync_execution(self):
+        """StartSyncExecution on EXPRESS state machine returns synchronous result."""
+        sfn = self._make_sync_client()
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"sync-exec-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name,
+            definition=self._simple_definition(),
+            roleArn=role_arn,
+            type="EXPRESS",
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            resp = sfn.start_sync_execution(
+                stateMachineArn=sm_arn,
+                input=json.dumps({"key": "value"}),
+            )
+            assert resp["status"] == "SUCCEEDED"
+            assert "executionArn" in resp
+            assert resp["stateMachineArn"] == sm_arn
+            output = json.loads(resp["output"])
+            assert output == {"key": "value"}
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)
+
+    def test_start_sync_execution_has_timing_fields(self):
+        """StartSyncExecution response includes startDate and stopDate."""
+        sfn = self._make_sync_client()
+        role_arn = "arn:aws:iam::123456789012:role/StepRole"
+        sm_name = f"sync-time-{uuid.uuid4().hex[:8]}"
+        sm = sfn.create_state_machine(
+            name=sm_name,
+            definition=self._simple_definition(),
+            roleArn=role_arn,
+            type="EXPRESS",
+        )
+        sm_arn = sm["stateMachineArn"]
+        try:
+            resp = sfn.start_sync_execution(stateMachineArn=sm_arn)
+            assert "startDate" in resp
+            assert "stopDate" in resp
+            assert resp["stopDate"] >= resp["startDate"]
+        finally:
+            sfn.delete_state_machine(stateMachineArn=sm_arn)

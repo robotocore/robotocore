@@ -543,3 +543,34 @@ class TestEsVpcEndpointOperations:
             assert "VpcEndpointSummary" in del_resp
         finally:
             client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_update_vpc_endpoint(self, client):
+        """UpdateVpcEndpoint updates VPC options for an endpoint."""
+        name = f"es-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name, ElasticsearchVersion="7.10")
+        try:
+            create_resp = client.create_vpc_endpoint(
+                DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{name}",
+                VpcOptions={"SubnetIds": ["subnet-12345678"]},
+            )
+            endpoint_id = create_resp["VpcEndpoint"]["VpcEndpointId"]
+
+            resp = client.update_vpc_endpoint(
+                VpcEndpointId=endpoint_id,
+                VpcOptions={"SubnetIds": ["subnet-87654321"]},
+            )
+            assert "VpcEndpoint" in resp
+            assert resp["VpcEndpoint"]["VpcEndpointId"] == endpoint_id
+
+            client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+        finally:
+            client.delete_elasticsearch_domain(DomainName=name)
+
+    def test_purchase_reserved_instance_offering_nonexistent(self, client):
+        """PurchaseReservedElasticsearchInstanceOffering with fake offering raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            client.purchase_reserved_elasticsearch_instance_offering(
+                ReservedElasticsearchInstanceOfferingId="fake-offering-id",
+                ReservationName="test-reservation",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

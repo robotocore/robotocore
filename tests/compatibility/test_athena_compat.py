@@ -1286,3 +1286,47 @@ class TestAthenaResourceDashboard:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             athena.delete_work_group(WorkGroup=name)
+
+
+class TestAthenaApplicationDPUSizes:
+    """Tests for ListApplicationDPUSizes."""
+
+    def test_list_application_dpu_sizes(self, athena):
+        """ListApplicationDPUSizes returns supported DPU size configurations."""
+        resp = athena.list_application_dpu_sizes()
+        assert "ApplicationDPUSizes" in resp
+        assert isinstance(resp["ApplicationDPUSizes"], list)
+        assert len(resp["ApplicationDPUSizes"]) > 0
+        # Each entry should have SupportedDPUSizes
+        for entry in resp["ApplicationDPUSizes"]:
+            assert "SupportedDPUSizes" in entry
+            assert isinstance(entry["SupportedDPUSizes"], list)
+            assert len(entry["SupportedDPUSizes"]) > 0
+
+
+class TestAthenaCapacityReservation:
+    """Tests for capacity reservation operations."""
+
+    def test_get_capacity_reservation_nonexistent(self, athena):
+        """GetCapacityReservation for nonexistent reservation raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            athena.get_capacity_reservation(Name="nonexistent-cap-res-12345")
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_cancel_capacity_reservation_nonexistent(self, athena):
+        """CancelCapacityReservation for nonexistent reservation raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.cancel_capacity_reservation(Name="nonexistent-cap-res-12345")
+        assert exc.value.response["Error"]["Code"] == "InvalidArgumentException"
+
+    def test_delete_capacity_reservation_nonexistent(self, athena):
+        """DeleteCapacityReservation for nonexistent reservation raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.delete_capacity_reservation(Name="nonexistent-cap-res-12345")
+        assert exc.value.response["Error"]["Code"] == "InvalidArgumentException"
+
+    def test_update_capacity_reservation_nonexistent(self, athena):
+        """UpdateCapacityReservation for nonexistent reservation raises error."""
+        with pytest.raises(ClientError) as exc:
+            athena.update_capacity_reservation(TargetDpus=8, Name="nonexistent-cap-res-12345")
+        assert exc.value.response["Error"]["Code"] == "InvalidArgumentException"

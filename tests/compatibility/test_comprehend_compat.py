@@ -826,3 +826,19 @@ class TestComprehendJobOps:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "JobId" in resp
         assert "JobStatus" in resp
+
+    def test_start_events_detection_job(self, client):
+        """StartEventsDetectionJob returns a job ID and status."""
+        resp = client.start_events_detection_job(
+            InputDataConfig={
+                "S3Uri": "s3://fake-bucket/input/",
+                "InputFormat": "ONE_DOC_PER_LINE",
+            },
+            OutputDataConfig={"S3Uri": "s3://fake-bucket/output/"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/comprehend-role",
+            LanguageCode="en",
+            TargetEventTypes=["BANKRUPTCY", "EMPLOYMENT"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "JobId" in resp
+        assert "JobStatus" in resp

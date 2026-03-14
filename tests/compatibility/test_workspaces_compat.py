@@ -967,6 +967,88 @@ class TestWorkSpacesDeleteTags:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestWorkSpacesDeleteClientBranding:
+    """Tests for DeleteClientBranding operation."""
+
+    def test_delete_client_branding_nonexistent(self, workspaces):
+        """DeleteClientBranding for nonexistent directory raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_client_branding(
+                ResourceId="d-0000000000",
+                Platforms=["DeviceTypeWindows"],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesRebuildWorkspaces:
+    """Tests for RebuildWorkspaces operation."""
+
+    def test_rebuild_nonexistent_workspace(self, workspaces):
+        """RebuildWorkspaces for nonexistent workspace returns FailedRequests."""
+        result = workspaces.rebuild_workspaces(
+            RebuildWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 1
+        assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
+        assert "ErrorCode" in result["FailedRequests"][0]
+
+
+class TestWorkSpacesRebootWorkspaces:
+    """Tests for RebootWorkspaces operation."""
+
+    def test_reboot_nonexistent_workspace(self, workspaces):
+        """RebootWorkspaces for nonexistent workspace returns FailedRequests."""
+        result = workspaces.reboot_workspaces(
+            RebootWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 1
+        assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
+        assert "ErrorCode" in result["FailedRequests"][0]
+
+
+class TestWorkSpacesStartWorkspaces:
+    """Tests for StartWorkspaces operation."""
+
+    def test_start_nonexistent_workspace(self, workspaces):
+        """StartWorkspaces for nonexistent workspace returns FailedRequests."""
+        result = workspaces.start_workspaces(
+            StartWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 1
+        assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
+        assert "ErrorCode" in result["FailedRequests"][0]
+
+
+class TestWorkSpacesStopWorkspaces:
+    """Tests for StopWorkspaces operation."""
+
+    def test_stop_nonexistent_workspace(self, workspaces):
+        """StopWorkspaces for nonexistent workspace returns FailedRequests."""
+        result = workspaces.stop_workspaces(
+            StopWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 1
+        assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
+        assert "ErrorCode" in result["FailedRequests"][0]
+
+
+class TestWorkSpacesTerminateWorkspacesPoolSession:
+    """Tests for TerminateWorkspacesPoolSession operation."""
+
+    def test_terminate_pool_session_nonexistent(self, workspaces):
+        """TerminateWorkspacesPoolSession for nonexistent session returns 200."""
+        resp = workspaces.terminate_workspaces_pool_session(
+            SessionId="00000000-0000-0000-0000-000000000000"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestWorkspacesTagOps:
     """Tests for CreateTags and DescribeTags operations."""
 
