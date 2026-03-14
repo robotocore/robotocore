@@ -1049,6 +1049,46 @@ class TestNeptuneModifyEventSubscription:
             neptune.modify_event_subscription(SubscriptionName="nonexistent-sub")
         assert "NotFound" in exc_info.value.response["Error"]["Code"]
 
+    def test_add_source_identifier_to_subscription(self, neptune):
+        """AddSourceIdentifierToSubscription adds a source to an event sub."""
+        name = _unique("nep-sub-src")
+        neptune.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        try:
+            resp = neptune.add_source_identifier_to_subscription(
+                SubscriptionName=name,
+                SourceIdentifier="test-db-instance",
+            )
+            sub = resp["EventSubscription"]
+            assert sub["CustSubscriptionId"] == name
+            assert "test-db-instance" in sub.get("SourceIdsList", [])
+        finally:
+            neptune.delete_event_subscription(SubscriptionName=name)
+
+    def test_remove_source_identifier_from_subscription(self, neptune):
+        """RemoveSourceIdentifierFromSubscription removes a source."""
+        name = _unique("nep-sub-rm")
+        neptune.create_event_subscription(
+            SubscriptionName=name,
+            SnsTopicArn="arn:aws:sns:us-east-1:123456789012:test-topic",
+        )
+        try:
+            neptune.add_source_identifier_to_subscription(
+                SubscriptionName=name,
+                SourceIdentifier="test-db-instance",
+            )
+            resp = neptune.remove_source_identifier_from_subscription(
+                SubscriptionName=name,
+                SourceIdentifier="test-db-instance",
+            )
+            sub = resp["EventSubscription"]
+            assert sub["CustSubscriptionId"] == name
+            assert "test-db-instance" not in sub.get("SourceIdsList", [])
+        finally:
+            neptune.delete_event_subscription(SubscriptionName=name)
+
 
 class TestNeptuneDescribeOps:
     """Additional describe/list operations returning empty results."""
