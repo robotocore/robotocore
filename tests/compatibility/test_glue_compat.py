@@ -4768,3 +4768,49 @@ class TestGlueBatchGetDataQualityResult:
         """BatchGetDataQualityResult returns results list (possibly empty)."""
         resp = glue.batch_get_data_quality_result(ResultIds=["result-fake-id"])
         assert "Results" in resp
+
+
+class TestGlueGetUserDefinedFunctions:
+    """Tests for GetUserDefinedFunctions (plural list operation)."""
+
+    def test_get_user_defined_functions_empty(self, glue):
+        """GetUserDefinedFunctions returns empty list for db with no UDFs."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        try:
+            resp = glue.get_user_defined_functions(DatabaseName=db_name, Pattern="*")
+            assert "UserDefinedFunctions" in resp
+            assert resp["UserDefinedFunctions"] == []
+        finally:
+            glue.delete_database(Name=db_name)
+
+    def test_get_user_defined_functions_returns_created(self, glue):
+        """GetUserDefinedFunctions lists UDFs matching pattern."""
+        db_name = _unique("db")
+        func_name = _unique("udf")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_user_defined_function(
+            DatabaseName=db_name,
+            FunctionInput={
+                "FunctionName": func_name,
+                "ClassName": "com.example.ListUDF",
+                "OwnerName": "owner",
+                "OwnerType": "USER",
+            },
+        )
+        try:
+            resp = glue.get_user_defined_functions(DatabaseName=db_name, Pattern="*")
+            names = [f["FunctionName"] for f in resp["UserDefinedFunctions"]]
+            assert func_name in names
+        finally:
+            glue.delete_user_defined_function(DatabaseName=db_name, FunctionName=func_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_user_defined_functions_nonexistent_db(self, glue):
+        """GetUserDefinedFunctions on missing db raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_user_defined_functions(
+                DatabaseName="nonexistent-db-xyz-999",
+                Pattern="*",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
