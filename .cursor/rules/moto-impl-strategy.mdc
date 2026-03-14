@@ -44,6 +44,23 @@ When a model returns `""` for optional string fields, the botocore serializer om
 | rest-json catchall (IoT) | `self._get_param()` | `ActionResult(dict)` / `EmptyResult()` | None |
 | rest-json explicit (Connect) | `self._get_param()`, `json.loads(self.body)` | `json.dumps(dict)` / `"{}"` | Add URL entries to urls.py |
 
+## Worktree workflow for parallel implementation
+
+1. Create worktree: `git worktree add ../robotocore-{svc} -b impl/{svc} HEAD`
+2. Init submodule and checkout moto branch in worktree
+3. Agent implements in worktree, commits to worktree branch
+4. Copy changed files from worktree to main: `cp worktree/vendor/moto/moto/{svc}/* main/vendor/moto/moto/{svc}/`
+5. Commit in main vendor/moto, push to fork, update lockfile
+6. Clean up: `git worktree remove ../robotocore-{svc}`
+
+Key lesson: submodule commits in worktrees can't be cherry-picked to main vendor/moto (different git databases). Use file copy or patches instead.
+
+## Test generator limitations (known)
+
+1. **DashboardId vs Name**: When describe uses a param like `DashboardId` that maps to the create param `Name`, the generator doesn't know they're the same. Produces `DashboardId="test-id-1"` instead of `DashboardId="test-name-1"`.
+2. **Prerequisite resources**: Organizations needs an org, Backup needs a vault. Add to `SERVICE_FIXTURES` or handle manually.
+3. **Min value constraints**: Botocore validates min values client-side (e.g., `TieringDownSettingsInDays >= 60`). Generator uses `1` for integers.
+
 ## Moto update flow
 
 1. Edit vendor/moto/moto/{service}/models.py + responses.py
