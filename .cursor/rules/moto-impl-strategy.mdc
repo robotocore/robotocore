@@ -9,57 +9,68 @@ alwaysApply: false
 ## What works
 
 - **gen_resource_lifecycle_test.py** generates good test skeletons from botocore shapes
-- **gen_moto_impl.py** generates ~80% correct scaffolding for models + responses
+- **gen_moto_impl.py** generates ~80% correct scaffolding but ONLY for response methods — agents often forget backend methods
 - Not-found tests pass reliably — the implementations raise correct exceptions
-- Three protocol patterns are well-understood: JSON (Glue), rest-json catchall (IoT), rest-json explicit URLs (Connect)
+- Three protocol patterns are well-understood: JSON (Glue), rest-json catchall (OpenSearch), rest-json explicit URLs (Connect/EKS)
+- Service fixtures (SERVICE_FIXTURES) work well for prerequisite resources
 
-## Critical test generation fix needed
+## Critical agent pitfalls
 
-Tests must capture IDs from create responses and use them in describe/delete calls:
+### Agents write response methods but forget backend methods
+The most common failure: agent adds `responses.py` methods that call `self.backend.create_foo()` but never adds `create_foo()` to the backend class in `models.py`. Always verify both files.
 
-```python
-# WRONG (hardcoded ID):
-create_resp = client.create_workspace(InstanceId=iid, Name="test")
-desc_resp = client.describe_workspace(InstanceId=iid, WorkspaceId="test-id-1")
+### Cognito-IDP has two backend classes
+`CognitoIdpBackend` (line ~999) and `RegionAgnosticBackend` (line ~2398). Methods must go on `CognitoIdpBackend`, not `RegionAgnosticBackend`. The `update_user_attributes` method at the end of `RegionAgnosticBackend` is a trap — new methods placed after it land on the wrong class.
 
-# RIGHT (captured ID):
-create_resp = client.create_workspace(InstanceId=iid, Name="test")
-workspace_id = create_resp["WorkspaceId"]
-desc_resp = client.describe_workspace(InstanceId=iid, WorkspaceId=workspace_id)
-```
+### gen_moto_impl.py has many false positives
+It reports nouns as "missing" if ANY CRUD op is unimplemented. Many services (EKS, EMR, cognito-idp, emr-serverless, stepfunctions) show false positives because:
+- Operations are implemented but with different method names
+- Operations are in a parser/provider submodule
+- The moto module name differs from the boto3 service name (e.g., `emrserverless` vs `emr-serverless`)
 
-## Connect requires instance_id fixture
+Always verify with `probe_service.py` before implementing.
 
-All Connect sub-resources need a valid instance. Create one in a fixture and pass `instance_id` to tests.
+## Test generator features (implemented)
 
-## Botocore strips empty strings from responses
+- **ID capture**: Captures server-generated IDs from create responses and threads them through describe/delete calls
+- **Doc-based param aliasing**: When param ends with "Id" but botocore docs mention "name", generates name value (e.g., CloudTrail DashboardId)
+- **Integer min values**: Respects botocore `min` constraints on integer shapes
+- **Required-only strict assertions**: Only asserts `isinstance` for botocore-required output fields, not optional ones
+- **Tagged union shapes**: Generates correct first-member values for union types (e.g., `DataSourceType={"S3GlueDataCatalog": {}}`)
+- **Service fixtures**: Creates prerequisite resources (connect instance, org, vault, cluster, domain, user pool)
 
-When a model returns `""` for optional string fields, the botocore serializer omits them. Tests should not assert `isinstance(resp.get("displayName"), str)` for optional fields — use `strict=False` for describe assertions.
+## Service fixtures available
+
+| Service | Fixture | Creates |
+|---------|---------|---------|
+| connect | `instance_id` | Connect instance |
+| organizations | `org` (autouse) | Organization |
+| backup | `vault_name` | Backup vault |
+| eks | `cluster_name` | EKS cluster + IAM role |
+| opensearch | `domain_name` | OpenSearch domain |
+| cognito-idp | `user_pool_id` | User pool |
 
 ## Protocol-specific patterns
 
 | Protocol | Params from | Returns | URL changes |
 |----------|------------|---------|-------------|
-| JSON (Glue) | `self.parameters` | `ActionResult(dict)` / `EmptyResult()` | None |
-| rest-json catchall (IoT) | `self._get_param()` | `ActionResult(dict)` / `EmptyResult()` | None |
-| rest-json explicit (Connect) | `self._get_param()`, `json.loads(self.body)` | `json.dumps(dict)` / `"{}"` | Add URL entries to urls.py |
+| JSON (Glue, EMR, Cognito) | `self.parameters` | `ActionResult(dict)` / `EmptyResult()` | None |
+| rest-json catchall (IoT, OpenSearch) | `self._get_param()` + URL path | `json.dumps(dict)` / `"{}"` | None |
+| rest-json explicit (Connect, EKS) | `self._get_param()`, URL path | `ActionResult(dict)` / `json.dumps(dict)` | Add URL entries to urls.py |
 
 ## Worktree workflow for parallel implementation
 
 1. Create worktree: `git worktree add ../robotocore-{svc} -b impl/{svc} HEAD`
-2. Init submodule and checkout moto branch in worktree
+2. Init submodule: `cd worktree && git submodule update --init vendor/moto`
 3. Agent implements in worktree, commits to worktree branch
 4. Copy changed files from worktree to main: `cp worktree/vendor/moto/moto/{svc}/* main/vendor/moto/moto/{svc}/`
 5. Commit in main vendor/moto, push to fork, update lockfile
-6. Clean up: `git worktree remove ../robotocore-{svc}`
+6. Clean up: `rm -rf worktree && git worktree prune && git branch -D impl/{svc}`
 
-Key lesson: submodule commits in worktrees can't be cherry-picked to main vendor/moto (different git databases). Use file copy or patches instead.
-
-## Test generator limitations (known)
-
-1. **DashboardId vs Name**: When describe uses a param like `DashboardId` that maps to the create param `Name`, the generator doesn't know they're the same. Produces `DashboardId="test-id-1"` instead of `DashboardId="test-name-1"`.
-2. **Prerequisite resources**: Organizations needs an org, Backup needs a vault. Add to `SERVICE_FIXTURES` or handle manually.
-3. **Min value constraints**: Botocore validates min values client-side (e.g., `TieringDownSettingsInDays >= 60`). Generator uses `1` for integers.
+Key lessons:
+- Submodule commits in worktrees can't be cherry-picked (different git databases). Use file copy.
+- Push to the correct remote branch: `git push jackdanger robotocore/all-fixes:robotocore/all-fixes`
+- Always verify installed moto has the new methods after sync (check with `python3 -c "from moto.{svc}.models import ..."`).
 
 ## Moto update flow
 
@@ -68,3 +79,9 @@ Key lesson: submodule commits in worktrees can't be cherry-picked to main vendor
 3. Lock: `cd ../.. && uv lock --upgrade-package moto`
 4. Sync: `uv sync`
 5. Restart server: `make stop && make start`
+6. Verify: `python3 -c "from moto.{svc}.models import BackendClass; print(hasattr(BackendClass, 'new_method'))"`
+
+## Test count
+
+33 lifecycle tests pass across 11 services:
+- IoT (2), Glue (4), Connect (6), CloudTrail (4), LakeFormation (4), Organizations (2), Backup (4), EMR (2), EKS (1), OpenSearch (2), Cognito-IDP (2)
