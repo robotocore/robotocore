@@ -685,6 +685,120 @@ def _delete_state_machine_version(params: dict, region: str, account_id: str) ->
     return {}
 
 
+# --- Alias Management ---
+
+_aliases: dict[str, dict] = {}
+
+
+def _create_state_machine_alias(params: dict, region: str, account_id: str) -> dict:
+    name = params.get("name", "")
+    description = params.get("description", "")
+    routing_config = params.get("routingConfiguration", [])
+
+    if not routing_config:
+        raise SfnError("ValidationException", "routingConfiguration is required")
+
+    version_arn = routing_config[0].get("stateMachineVersionArn", "")
+    parts = version_arn.rsplit(":", 1)
+    if len(parts) != 2 or not parts[1].isnumeric():
+        raise SfnError(
+            "ValidationException",
+            f"Invalid version ARN: {version_arn}",
+        )
+    sm_arn = parts[0]
+
+    with _exec_lock:
+        if sm_arn not in _state_machines:
+            raise SfnError(
+                "StateMachineDoesNotExist",
+                f"State Machine Does Not Exist: '{sm_arn}'",
+            )
+        sm_versions = _versions.get(sm_arn, [])
+        if not any(v["stateMachineVersionArn"] == version_arn for v in sm_versions):
+            raise SfnError(
+                "ResourceNotFound",
+                f"Version does not exist: '{version_arn}'",
+            )
+
+        alias_arn = f"{sm_arn}:{name}"
+        if alias_arn in _aliases:
+            raise SfnError(
+                "ConflictException",
+                f"State Machine Alias already exists: '{alias_arn}'",
+                409,
+            )
+        now = time.time()
+        _aliases[alias_arn] = {
+            "stateMachineAliasArn": alias_arn,
+            "name": name,
+            "description": description,
+            "routingConfiguration": routing_config,
+            "creationDate": now,
+            "updateDate": now,
+        }
+
+    return {"stateMachineAliasArn": alias_arn, "creationDate": now}
+
+
+def _describe_state_machine_alias(params: dict, region: str, account_id: str) -> dict:
+    alias_arn = params.get("stateMachineAliasArn", "")
+    with _exec_lock:
+        alias = _aliases.get(alias_arn)
+    if not alias:
+        raise SfnError(
+            "ResourceNotFound",
+            f"Resource not found: '{alias_arn}'",
+        )
+    return dict(alias)
+
+
+def _list_state_machine_aliases(params: dict, region: str, account_id: str) -> dict:
+    sm_arn = params.get("stateMachineArn", "")
+    prefix = sm_arn.rstrip(":") + ":"
+    with _exec_lock:
+        matches = [
+            {
+                "stateMachineAliasArn": a["stateMachineAliasArn"],
+                "creationDate": a["creationDate"],
+            }
+            for a in _aliases.values()
+            if a["stateMachineAliasArn"].startswith(prefix) and a["stateMachineAliasArn"] != sm_arn
+        ]
+    return {"stateMachineAliases": matches}
+
+
+def _update_state_machine_alias(params: dict, region: str, account_id: str) -> dict:
+    alias_arn = params.get("stateMachineAliasArn", "")
+    with _exec_lock:
+        alias = _aliases.get(alias_arn)
+        if not alias:
+            raise SfnError(
+                "ResourceNotFound",
+                f"Resource not found: '{alias_arn}'",
+            )
+        if "description" in params:
+            alias["description"] = params["description"]
+        if "routingConfiguration" in params:
+            alias["routingConfiguration"] = params["routingConfiguration"]
+        alias["updateDate"] = time.time()
+    return {
+        "stateMachineAliasArn": alias_arn,
+        "updateDate": alias["updateDate"],
+    }
+
+
+def _delete_state_machine_alias(params: dict, region: str, account_id: str) -> dict:
+    alias_arn = params.get("stateMachineAliasArn", "")
+    with _exec_lock:
+        if alias_arn not in _aliases:
+            raise SfnError(
+                "ResourceNotFound",
+                f"Resource not found: '{alias_arn}'",
+            )
+        del _aliases[alias_arn]
+    return {}
+
+
 # --- Helpers ---
 
 
@@ -745,4 +859,9 @@ _ACTION_MAP = {
     "PublishStateMachineVersion": _publish_state_machine_version,
     "ListStateMachineVersions": _list_state_machine_versions,
     "DeleteStateMachineVersion": _delete_state_machine_version,
+    "CreateStateMachineAlias": _create_state_machine_alias,
+    "DescribeStateMachineAlias": _describe_state_machine_alias,
+    "ListStateMachineAliases": _list_state_machine_aliases,
+    "UpdateStateMachineAlias": _update_state_machine_alias,
+    "DeleteStateMachineAlias": _delete_state_machine_alias,
 }

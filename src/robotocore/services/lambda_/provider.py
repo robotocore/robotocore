@@ -123,6 +123,9 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         # /account-settings
         elif parts[0] == "account-settings":
             return _handle_account_settings(region, account_id)
+        # /code-signing-configs
+        elif parts[0] == "code-signing-configs":
+            return _handle_code_signing_configs(parts, method, body, region, account_id)
         else:
             return _error("InvalidRequest", f"Unknown path: {path}", 400)
 
@@ -152,6 +155,8 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         if "UnknownEventConfig" in error_type:
             return _error("ResourceNotFoundException", error_msg, 404)
         if "GenericResourcNotFound" in error_type:
+            return _error("ResourceNotFoundException", error_msg, 404)
+        if "UnknownCodeSigningConfig" in error_type:
             return _error("ResourceNotFoundException", error_msg, 404)
         if "ValidationException" in error_type:
             return _error("ValidationException", error_msg, 400)
@@ -927,6 +932,51 @@ def _handle_account_settings(region: str, account_id: str) -> Response:
             },
         },
     )
+
+
+def _handle_code_signing_configs(
+    parts: list[str], method: str, body: bytes, region: str, account_id: str
+) -> Response:
+    """Handle /code-signing-configs endpoints (standalone CSC management)."""
+    backend = _get_moto_backend(account_id, region)
+
+    if len(parts) == 1:
+        if method == "POST":
+            spec = json.loads(body) if body else {}
+            csc = backend.create_code_signing_config(
+                spec.get("AllowedPublishers", {}),
+                spec.get("Description", ""),
+                spec.get("CodeSigningPolicies"),
+            )
+            return _json(201, {"CodeSigningConfig": csc.to_dict()})
+        if method == "GET":
+            configs = backend.list_code_signing_configs()
+            return _json(
+                200,
+                {
+                    "CodeSigningConfigs": [c.to_dict() for c in configs],
+                    "NextMarker": None,
+                },
+            )
+        return _error("InvalidRequest", "Method not allowed", 405)
+
+    config_arn = parts[1]
+    if len(parts) == 2:
+        if method == "GET":
+            csc = backend.get_code_signing_config(config_arn)
+            return _json(200, {"CodeSigningConfig": csc.to_dict()})
+        if method == "DELETE":
+            backend.delete_code_signing_config(config_arn)
+            return _json(204, None)
+        return _error("InvalidRequest", "Method not allowed", 405)
+
+    if len(parts) == 3 and parts[2] == "functions":
+        if method == "GET":
+            func_arns = backend.list_functions_by_code_signing_config(config_arn)
+            return _json(200, {"FunctionArns": func_arns, "NextMarker": None})
+        return _error("InvalidRequest", "Method not allowed", 405)
+
+    return _error("InvalidRequest", "Unknown code-signing-configs path", 400)
 
 
 def _cascade_delete_function(func_name: str, region: str, account_id: str) -> None:

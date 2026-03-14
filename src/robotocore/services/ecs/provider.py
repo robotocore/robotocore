@@ -307,6 +307,19 @@ def _create_service(store: EcsStore, params: dict, region: str, account_id: str)
 
     svc_arn = f"arn:aws:ecs:{region}:{account_id}:service/{cluster_name}/{svc_name}"
 
+    now = time.time()
+    dep_id = f"ecs-svc/{_new_id().replace('-', '')[:20]}"
+    initial_deployment = {
+        "id": dep_id,
+        "status": "PRIMARY",
+        "taskDefinition": params.get("taskDefinition", ""),
+        "desiredCount": params.get("desiredCount", 1),
+        "runningCount": 0,
+        "pendingCount": 0,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+
     service = {
         "serviceArn": svc_arn,
         "serviceName": svc_name,
@@ -319,7 +332,8 @@ def _create_service(store: EcsStore, params: dict, region: str, account_id: str)
         "launchType": params.get("launchType", "FARGATE"),
         "networkConfiguration": params.get("networkConfiguration", {}),
         "loadBalancers": params.get("loadBalancers", []),
-        "createdAt": time.time(),
+        "deployments": [initial_deployment],
+        "createdAt": now,
         "tags": params.get("tags", []),
     }
 
@@ -1020,6 +1034,127 @@ def _error(code: str, message: str, status: int) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# Service Deployments & Revisions
+# ---------------------------------------------------------------------------
+
+
+def _list_service_deployments(store: EcsStore, params: dict, region: str, account_id: str) -> dict:
+    cluster_name = _resolve_cluster_name(params.get("cluster", "default"))
+    _require_cluster(store, cluster_name)
+    svc_name = params.get("service", "")
+    svc_name = svc_name.split("/")[-1] if "/" in svc_name else svc_name
+
+    with store.lock:
+        services = store.services.get(cluster_name, {})
+        svc = services.get(svc_name)
+    if not svc:
+        raise EcsError(
+            "ServiceNotFoundException",
+            f"Service {svc_name} not found.",
+            404,
+        )
+
+    status_filter = params.get("status")
+    deployments = []
+    for dep in svc.get("deployments", []):
+        dep_arn = (
+            f"arn:aws:ecs:{region}:{account_id}:"
+            f"service-deployment/{cluster_name}/{svc_name}/{dep['id']}"
+        )
+        entry = {
+            "serviceDeploymentArn": dep_arn,
+            "serviceArn": svc["serviceArn"],
+            "clusterArn": svc["clusterArn"],
+            "status": dep.get("status", "PRIMARY"),
+            "createdAt": dep.get("createdAt"),
+            "targetServiceRevisionArn": (
+                f"arn:aws:ecs:{region}:{account_id}:service-revision/{cluster_name}/{svc_name}:1"
+            ),
+        }
+        if status_filter is None or entry["status"] == status_filter:
+            deployments.append(entry)
+    return {"serviceDeployments": deployments}
+
+
+def _describe_service_deployments(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    dep_arns = params.get("serviceDeploymentArns", [])
+    results = []
+    failures = []
+    for dep_arn in dep_arns:
+        found = False
+        with store.lock:
+            for cl_name, services in store.services.items():
+                for svc_name, svc in services.items():
+                    for dep in svc.get("deployments", []):
+                        expected_arn = (
+                            f"arn:aws:ecs:{region}:{account_id}:"
+                            f"service-deployment/{cl_name}/{svc_name}/{dep['id']}"
+                        )
+                        if expected_arn == dep_arn:
+                            results.append(
+                                {
+                                    "serviceDeploymentArn": expected_arn,
+                                    "serviceArn": svc["serviceArn"],
+                                    "clusterArn": svc["clusterArn"],
+                                    "status": dep.get("status", "PRIMARY"),
+                                    "taskDefinition": dep.get("taskDefinition", ""),
+                                    "desiredCount": dep.get("desiredCount", 0),
+                                    "runningCount": dep.get("runningCount", 0),
+                                    "createdAt": dep.get("createdAt"),
+                                    "updatedAt": dep.get("updatedAt"),
+                                }
+                            )
+                            found = True
+                            break
+                    if found:
+                        break
+                if found:
+                    break
+        if not found:
+            failures.append({"arn": dep_arn, "reason": "SERVICE_DEPLOYMENT_NOT_FOUND"})
+    return {"serviceDeployments": results, "failures": failures}
+
+
+def _describe_service_revisions(
+    store: EcsStore, params: dict, region: str, account_id: str
+) -> dict:
+    rev_arns = params.get("serviceRevisionArns", [])
+    results = []
+    failures = []
+    for rev_arn in rev_arns:
+        found = False
+        try:
+            parts = rev_arn.split(":")
+            resource = parts[5]
+            path_parts = resource.split("/")
+            cluster_name = path_parts[1]
+            svc_name = path_parts[2]
+            with store.lock:
+                services = store.services.get(cluster_name, {})
+                svc = services.get(svc_name)
+                if svc:
+                    results.append(
+                        {
+                            "serviceRevisionArn": rev_arn,
+                            "serviceArn": svc["serviceArn"],
+                            "clusterArn": svc["clusterArn"],
+                            "taskDefinition": svc.get("taskDefinition", ""),
+                            "desiredCount": svc.get("desiredCount", 0),
+                            "runningCount": svc.get("runningCount", 0),
+                            "createdAt": svc.get("createdAt"),
+                        }
+                    )
+                    found = True
+        except (IndexError, ValueError):
+            pass
+        if not found:
+            failures.append({"arn": rev_arn, "reason": "SERVICE_REVISION_NOT_FOUND"})
+    return {"serviceRevisions": results, "failures": failures}
+
+
+# ---------------------------------------------------------------------------
 # Action map
 # ---------------------------------------------------------------------------
 
@@ -1059,4 +1194,7 @@ _ACTION_MAP: dict[str, Callable] = {
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tags_for_resource,
     "PutClusterCapacityProviders": _put_cluster_capacity_providers,
+    "ListServiceDeployments": _list_service_deployments,
+    "DescribeServiceDeployments": _describe_service_deployments,
+    "DescribeServiceRevisions": _describe_service_revisions,
 }
