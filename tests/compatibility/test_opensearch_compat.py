@@ -1476,3 +1476,23 @@ class TestOpenSearchNewOps2:
             )
         except opensearch.exceptions.ClientError as e:
             assert e.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404, 409)
+
+
+class TestOpenSearchReservedInstances:
+    """Tests for OpenSearch reserved instance operations."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_purchase_reserved_instance_offering_nonexistent(self, opensearch):
+        """PurchaseReservedInstanceOffering with fake ID raises error."""
+        import botocore.exceptions
+
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            opensearch.purchase_reserved_instance_offering(
+                ReservedInstanceOfferingId=str(uuid.uuid4()),
+                ReservationName="test-reservation",
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
