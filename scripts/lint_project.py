@@ -21,6 +21,7 @@ Checks:
     8.  provider-import-sync   Provider files vs app.py imports
     9.  router-stale-ops       Hardcoded operation sets that may be stale
     10. test-duplicate-names   Duplicate test method names within a class
+    11. async-race-test        Tests that trigger async op then immediately read state
 """
 
 import argparse
@@ -472,6 +473,121 @@ def check_stale_operation_sets(findings: list[Finding]):
         )
 
 
+# ─── Check 11: Async race conditions in tests ────────────────────────────────
+
+# Operations that trigger async work (trigger → async state change)
+_TRIGGER_OPS = frozenset(
+    {
+        "start_execution",
+        "start_sync_execution",
+        "invoke",
+        "create_pipe",
+        "run_task",
+        "start_task",
+        "send_message",
+        "put_events",
+        "put_record",
+        "put_records",
+        "start_query",
+        "start_query_execution",
+    }
+)
+
+# Operations that read state that may not be ready yet
+_READ_OPS = frozenset(
+    {
+        "describe_execution",
+        "get_execution_history",
+        "describe_pipe",
+        "describe_task",
+        "get_function",
+        "get_object",
+        "get_query_results",
+        "get_query_execution",
+        "describe_query",
+    }
+)
+
+# Polling indicators: if any of these appear between trigger and read, it's fine
+_POLL_INDICATORS = {"sleep", "time", "while", "poll", "wait"}
+
+
+def _extract_call_name(node: ast.Call) -> str | None:
+    """Extract method name from a Call node."""
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
+
+
+def check_async_race_tests(findings: list[Finding]):
+    """Check 11: Tests that trigger async op then immediately read state (likely race)."""
+    # Check both unit and compat tests
+    test_dirs = [Path("tests/unit"), Path("tests/compatibility")]
+
+    for test_dir in test_dirs:
+        if not test_dir.exists():
+            continue
+        for fpath in sorted(test_dir.rglob("test_*.py")):
+            tree = _parse_file(fpath)
+            if not tree:
+                continue
+
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not node.name.startswith("test_"):
+                    continue
+
+                _check_async_race_in_test(fpath, node, findings)
+
+
+def _check_async_race_in_test(fpath: Path, node: ast.FunctionDef, findings: list[Finding]):
+    """Check a single test function for async race patterns."""
+    # Collect all statements with their line numbers, flattened
+    stmts = list(ast.walk(node))
+
+    # Find all call statements with their line numbers
+    calls: list[tuple[int, str]] = []  # (lineno, method_name)
+    for child in stmts:
+        if isinstance(child, (ast.Call,)):
+            name = _extract_call_name(child)
+            if name:
+                calls.append((child.lineno, name))
+
+    # Check for trigger → read with no poll in between
+    for i, (trigger_line, trigger_name) in enumerate(calls):
+        if trigger_name not in _TRIGGER_OPS:
+            continue
+
+        # Look for a read op within the next 5 lines
+        for read_line, read_name in calls[i + 1 :]:
+            if read_line > trigger_line + 5:
+                break
+            if read_name not in _READ_OPS:
+                continue
+
+            # Check if there's a poll indicator in the function body lines between them
+            source_lines = fpath.read_text().splitlines()
+            between = "\n".join(source_lines[trigger_line:read_line])
+            if any(indicator in between for indicator in _POLL_INDICATORS):
+                continue
+
+            findings.append(
+                Finding(
+                    "async-race-test",
+                    "warning",
+                    str(fpath),
+                    trigger_line,
+                    f"{node.name}: calls {trigger_name}() then immediately {read_name}() "
+                    f"(line {read_line}) — add poll loop or sleep to avoid race condition",
+                )
+            )
+            break  # Only report once per trigger
+
+
 # ─── Check 10: Duplicate test method names ───────────────────────────────────
 
 
@@ -516,6 +632,7 @@ ALL_CHECKS = {
     "provider-import-sync": check_provider_import_sync,
     "router-stale-ops": check_stale_operation_sets,
     "test-duplicate-names": check_duplicate_test_names,
+    "async-race-test": check_async_race_tests,
 }
 
 # Deduplicate functions (test_quality handles two check names)

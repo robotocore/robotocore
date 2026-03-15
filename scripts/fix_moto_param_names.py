@@ -223,6 +223,76 @@ def apply_fixes(service: str, issues: list[dict]) -> int:
     return 0
 
 
+def find_or_defaults(service: str, session) -> list[dict]:
+    """Find _get_param("X") or <default> patterns and classify them.
+
+    Returns a list of findings with kind "silent_mismatch" (X is wrong wire name + has default)
+    or "masked_default" (X is correct wire name but has an `or` default that hides None).
+    """
+    botocore_name = SERVICE_NAME_MAP.get(service, service)
+    responses_path = VENDOR_MOTO / service / "responses.py"
+    if not responses_path.exists():
+        return []
+
+    source = responses_path.read_text()
+    # Match: _get_param("X") or <something>
+    or_default_re = re.compile(r'_get_param\(\s*"([^"]+)"\s*\)\s*or\b')
+
+    method_re = re.compile(r"^    def (\w+)\(self\)", re.MULTILINE)
+    starts = [(m.start(), m.group(1)) for m in method_re.finditer(source)]
+
+    issues = []
+    for i, (start, method_name) in enumerate(starts):
+        if method_name.startswith("_") or method_name in SKIP_METHODS:
+            continue
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(source)
+        body = source[start:end]
+
+        op_name = snake_to_pascal(method_name)
+        body_wire_names, all_wire_names = get_all_wire_names(botocore_name, op_name, session)
+        if all_wire_names is None:
+            continue
+
+        all_valid = set(all_wire_names.keys())
+        lower_all_valid = {k.lower(): k for k in all_valid}
+
+        for match in or_default_re.finditer(body):
+            param = match.group(1)
+            line_no = source[: start + match.start()].count("\n") + 1
+
+            if param in all_valid:
+                # Correct wire name but has `or` default — may mask None return silently
+                issues.append(
+                    {
+                        "service": service,
+                        "method": method_name,
+                        "operation": op_name,
+                        "param": param,
+                        "kind": "masked_default",
+                        "line": line_no,
+                        "message": f'_get_param("{param}") or <default> — '
+                        f"default masks None (may be intentional)",
+                    }
+                )
+            else:
+                suggestion = lower_all_valid.get(param.lower())
+                issues.append(
+                    {
+                        "service": service,
+                        "method": method_name,
+                        "operation": op_name,
+                        "param": param,
+                        "kind": "silent_mismatch",
+                        "line": line_no,
+                        "message": f'_get_param("{param}") or <default> — '
+                        f"wrong wire name + default silences error"
+                        + (f', should be "{suggestion}"' if suggestion else ""),
+                    }
+                )
+
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check/fix Moto _get_param wire names")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -232,6 +302,11 @@ def main() -> int:
         "--all", action="store_true", help=f"Check batch 4-7 services: {BATCH_SERVICES}"
     )
     parser.add_argument("--write", action="store_true", help="Apply fixes (default: dry run)")
+    parser.add_argument(
+        "--check-defaults",
+        action="store_true",
+        help="Also report _get_param(...) or <default> patterns that may mask wire-name bugs",
+    )
     args = parser.parse_args()
 
     if args.service:
@@ -243,16 +318,19 @@ def main() -> int:
 
     session = get_botocore_session()
     all_issues: list[dict] = []
+    or_default_issues: list[dict] = []
 
     for service in services:
         issues = find_mismatches(service, session)
         all_issues.extend(issues)
+        if args.check_defaults:
+            or_default_issues.extend(find_or_defaults(service, session))
 
     # Split into casing bugs (fixable) and unknown params (need review)
     casing = [i for i in all_issues if i["kind"] == "casing"]
     unknown = [i for i in all_issues if i["kind"] == "unknown"]
 
-    if not all_issues:
+    if not all_issues and not or_default_issues:
         print(f"✓ No _get_param mismatches found in {len(services)} service(s).")
         return 0
 
@@ -278,6 +356,26 @@ def main() -> int:
                 f'_get_param("{issue["wrong"]}") — valid keys: {issue["all_valid"][:5]}...'
             )
         print()
+
+    if or_default_issues:
+        silent = [i for i in or_default_issues if i["kind"] == "silent_mismatch"]
+        masked = [i for i in or_default_issues if i["kind"] == "masked_default"]
+        if silent:
+            print(f"SILENT MISMATCHES ({len(silent)}) — wrong wire name + `or` default hides it:\n")
+            for issue in silent:
+                loc = f"{issue['service']}.{issue['method']}():{issue['line']}"
+                print(f"  {loc}: {issue['message']}")
+            print()
+        if masked:
+            print(
+                f"MASKED DEFAULTS ({len(masked)}) — correct name but `or` default may hide None:\n"
+            )
+            for issue in masked[:20]:
+                loc = f"{issue['service']}.{issue['method']}():{issue['line']}"
+                print(f"  {loc}: {issue['message']}")
+            if len(masked) > 20:
+                print(f"  ... and {len(masked) - 20} more")
+            print()
 
     if args.write:
         if not casing:

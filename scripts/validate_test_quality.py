@@ -32,6 +32,30 @@ from pathlib import Path
 TESTS_DIR = Path("tests/compatibility")
 
 
+def _is_key_presence_assert(node: ast.Assert) -> bool:
+    """Return True if the assert is a key-presence check: assert "X" in <name>.
+
+    These only verify a key exists in a dict, not that it has a meaningful value.
+    Patterns matched:
+        assert "Key" in response
+        assert "Key" in result
+        assert "Key" in resp
+    Does NOT match:
+        assert response["Key"] == value   (value check — good)
+        assert len(response["X"]) > 0     (value check — good)
+        assert "Key" not in response      (negative check — ok, deliberate)
+    """
+    test = node.test
+    if not isinstance(test, ast.Compare):
+        return False
+    if len(test.ops) != 1 or not isinstance(test.ops[0], ast.In):
+        return False
+    # Left side must be a string constant
+    if not isinstance(test.left, ast.Constant) or not isinstance(test.left.value, str):
+        return False
+    return True
+
+
 class TestQualityVisitor(ast.NodeVisitor):
     """AST visitor that classifies test methods by quality."""
 
@@ -76,11 +100,13 @@ class TestQualityVisitor(ast.NodeVisitor):
         all_excepts_pass = True
         has_method_call = False
         has_response_capture = False
+        assert_nodes: list[ast.Assert] = []
 
         for child in ast.walk(node):
             # Check for assert statements
             if isinstance(child, ast.Assert):
                 has_assert = True
+                assert_nodes.append(child)
 
             # Check for pytest.raises
             if isinstance(child, ast.Attribute) and child.attr == "raises":
@@ -128,6 +154,14 @@ class TestQualityVisitor(ast.NodeVisitor):
                     ):
                         has_response_capture = True
 
+        # Detect weak assertions: all asserts are key-presence checks
+        # e.g. `assert "X" in response` but never `assert response["X"] == value`
+        is_weak = False
+        if assert_nodes:
+            all_weak = all(_is_key_presence_assert(a) for a in assert_nodes)
+            if all_weak:
+                is_weak = True
+
         # Classify
         if catches_param_validation and has_try_except and all_excepts_pass and not has_assert:
             quality = "no_server_contact"
@@ -138,6 +172,9 @@ class TestQualityVisitor(ast.NodeVisitor):
         elif not has_assert and not has_try_except and has_method_call:
             quality = "no_assertion"
             reason = "calls server but has no assertions"
+        elif is_weak:
+            quality = "weak_assertion"
+            reason = "all assertions are key-presence only (assert 'X' in resp) — no value checks"
         elif has_assert or (has_try_except and not all_excepts_pass):
             quality = "ok"
             reason = ""
@@ -189,6 +226,12 @@ def main():
         default=0,
         help="Fail if no-assertion tests exceed this percentage (0=no check)",
     )
+    parser.add_argument(
+        "--max-weak-assertion-pct",
+        type=float,
+        default=0,
+        help="Fail if weak-assertion tests exceed this percentage (0=no check)",
+    )
     args = parser.parse_args()
 
     if args.file:
@@ -210,6 +253,7 @@ def main():
     ok_count = len(by_quality.get("ok", []))
     no_contact = len(by_quality.get("no_server_contact", []))
     no_assert = len(by_quality.get("no_assertion", []))
+    weak_assert = len(by_quality.get("weak_assertion", []))
     unknown = len(by_quality.get("unknown", []))
 
     if args.json:
@@ -218,14 +262,20 @@ def main():
             "server_contact_with_assertions": ok_count,
             "no_server_contact": no_contact,
             "no_assertion": no_assert,
+            "weak_assertion": weak_assert,
             "unknown": unknown,
             "no_contact_pct": round(no_contact / total * 100, 1) if total else 0,
             "no_assertion_pct": round(no_assert / total * 100, 1) if total else 0,
+            "weak_assertion_pct": round(weak_assert / total * 100, 1) if total else 0,
             "effective_tests": ok_count,
             "effective_pct": round(ok_count / total * 100, 1) if total else 0,
         }
         if args.problems_only:
-            problems = by_quality.get("no_server_contact", []) + by_quality.get("no_assertion", [])
+            problems = (
+                by_quality.get("no_server_contact", [])
+                + by_quality.get("no_assertion", [])
+                + by_quality.get("weak_assertion", [])
+            )
             summary["problems"] = [
                 {"file": t["file"], "line": t["line"], "name": t["name"], "reason": t["reason"]}
                 for t in problems
@@ -238,24 +288,35 @@ def main():
         print(f"  Server contact + assertions:   {ok_count:,}  (effective)")
         print(f"  No server contact:             {no_contact:,}  (client-side validation only)")
         print(f"  No meaningful assertion:        {no_assert:,}  (call without verification)")
+        print(f"  Weak assertions only:           {weak_assert:,}  (key-presence checks only)")
         print(f"  Unknown:                       {unknown:,}")
         print()
         pct_effective = ok_count / total * 100 if total else 0
         pct_no_contact = no_contact / total * 100 if total else 0
+        pct_weak = weak_assert / total * 100 if total else 0
         print(f"Effective test rate:             {pct_effective:.1f}%")
         print(f"No-server-contact rate:          {pct_no_contact:.1f}%")
+        print(f"Weak-assertion rate:             {pct_weak:.1f}%")
         print()
 
         if args.problems_only or not args.json:
             # Group problems by file
-            problems = by_quality.get("no_server_contact", []) + by_quality.get("no_assertion", [])
+            problems = (
+                by_quality.get("no_server_contact", [])
+                + by_quality.get("no_assertion", [])
+                + by_quality.get("weak_assertion", [])
+            )
             if problems and not args.problems_only:
                 print("Top files with non-effective tests:")
                 file_counts: dict[str, dict[str, int]] = {}
                 for t in problems:
-                    fc = file_counts.setdefault(t["file"], {"no_contact": 0, "no_assert": 0})
+                    fc = file_counts.setdefault(
+                        t["file"], {"no_contact": 0, "no_assert": 0, "weak_assert": 0}
+                    )
                     if t["quality"] == "no_server_contact":
                         fc["no_contact"] += 1
+                    elif t["quality"] == "weak_assertion":
+                        fc["weak_assert"] += 1
                     else:
                         fc["no_assert"] += 1
                 for f, counts in sorted(
@@ -282,6 +343,15 @@ def main():
             print(
                 f"\nFAIL: {pct:.1f}% of tests have no assertions "
                 f"(threshold: {args.max_no_assertion_pct}%)"
+            )
+            exit_code = 1
+
+    if args.max_weak_assertion_pct > 0 and total > 0:
+        pct = weak_assert / total * 100
+        if pct > args.max_weak_assertion_pct:
+            print(
+                f"\nFAIL: {pct:.1f}% of tests have only weak (key-presence) assertions "
+                f"(threshold: {args.max_weak_assertion_pct}%)"
             )
             exit_code = 1
 
