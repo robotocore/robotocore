@@ -13,9 +13,27 @@ concurrency:
 
 jobs:
   app-tests:
-    name: "Real-world app tests"
+    name: "App: ${{ matrix.app }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - cicd_pipeline
+          - content_mgmt
+          - data_pipeline
+          - ecommerce_order
+          - event_chain
+          - event_driven
+          - file_processing
+          - message_queue
+          - multitenant_saas
+          - notification_dispatch
+          - scheduled_tasks
+          - secrets_rotation
+          - serverless_api
+          - user_auth
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,16 +67,16 @@ jobs:
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_DEFAULT_REGION: us-east-1
-        run: uv run pytest tests/apps/ -v --tb=short --reruns=2 --reruns-delay=2 --junitxml=results-app-tests.xml
+        run: uv run pytest tests/apps/${{ matrix.app }}/ -v --tb=short --reruns=2 --reruns-delay=2 --junitxml=results-${{ matrix.app }}.xml
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: results-app-tests
-          path: results-app-tests.xml
+          name: results-app-${{ matrix.app }}
+          path: results-${{ matrix.app }}.xml
       - name: Upload server log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: server-log-app-tests
+          name: server-log-${{ matrix.app }}
           path: .robotocore.log
