@@ -207,6 +207,8 @@ class TestExecutionOperations:
             )
 
     def test_describe_execution(self):
+        import time
+
         _create_state_machine(
             {"name": "sm1", "definition": _SIMPLE_DEFINITION, "roleArn": "r"},
             "us-east-1",
@@ -218,7 +220,15 @@ class TestExecutionOperations:
             "us-east-1",
             "123",
         )
-        result = _describe_execution({"executionArn": start["executionArn"]}, "us-east-1", "123")
+        # Execution runs in background thread — poll until it leaves RUNNING
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            result = _describe_execution(
+                {"executionArn": start["executionArn"]}, "us-east-1", "123"
+            )
+            if result["status"] != "RUNNING":
+                break
+            time.sleep(0.05)
         assert result["status"] == "SUCCEEDED"
         assert result["name"] == "exec1"
 
