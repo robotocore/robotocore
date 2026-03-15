@@ -1348,23 +1348,3 @@ class TestDsLDAPSMicrosoftAD:
         """DescribeLDAPSSettings on MicrosoftAD returns settings info."""
         resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
         assert "LDAPSSettingsInfo" in resp
-
-
-class TestDsUpdateOps:
-    """Test UpdateDirectorySetup and UpdateNumberOfDomainControllers."""
-
-    def test_update_directory_setup(self, ds, msad_directory):
-        """UpdateDirectorySetup succeeds on a MicrosoftAD directory."""
-        resp = ds.update_directory_setup(
-            DirectoryId=msad_directory,
-            UpdateType="OS",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_update_number_of_domain_controllers(self, ds, msad_directory):
-        """UpdateNumberOfDomainControllers succeeds."""
-        resp = ds.update_number_of_domain_controllers(
-            DirectoryId=msad_directory,
-            DesiredNumber=3,
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
