@@ -32,7 +32,7 @@ def fifo_queue(broker, unique_name):
     config = QueueConfig(
         name=f"fifo-{unique_name}",
         fifo=True,
-        visibility_timeout=5,
+        visibility_timeout=30,
     )
     url = broker.create_queue(config)
     yield url
