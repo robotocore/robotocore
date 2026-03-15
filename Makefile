@@ -80,9 +80,11 @@ smoke: ## Run smoke tests (requires running server)
 
 ## ── Code quality ─────────────────────────────────────────────────────────────
 
-lint: ## Check code with ruff (lint + format)
+lint: ## Check code: ruff, mypy, bandit (matches pre-commit + CI)
 	uv run ruff check src/ tests/ scripts/
 	uv run ruff format --check src/ tests/ scripts/
+	uv run mypy src/robotocore/ --ignore-missing-imports
+	uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
 
 format: ## Auto-format and fix code with ruff
 	uv run ruff format src/ tests/ scripts/

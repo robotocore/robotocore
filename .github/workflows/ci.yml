@@ -50,8 +50,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
-      - run: uv run ruff check src/ tests/ scripts/
-      - run: uv run ruff format --check src/ tests/ scripts/
+      - name: ruff
+        run: |
+          uv run ruff check src/ tests/ scripts/
+          uv run ruff format --check src/ tests/ scripts/
+      - name: mypy
+        run: uv run mypy src/robotocore/ --ignore-missing-imports
+      - name: bandit
+        run: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
+      - name: dependency audit
+        run: uv pip audit
 
   test-quality:
     runs-on: ubuntu-latest
@@ -83,19 +91,6 @@ jobs:
           path: |
             test-quality.json
             lint-project.json
-
-  type-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-      - run: uv sync --extra dev
-      - run: uv run mypy src/robotocore/ --ignore-missing-imports
-        continue-on-error: true  # Non-blocking during transition
 
   # ── Unit test shards (run in parallel, on Python 3.12 + 3.13) ─────────────
 
@@ -382,25 +377,6 @@ jobs:
         with:
           name: server-logs-iac
           path: .robotocore.log
-
-  # ── Security ───────────────────────────────────────────────────────────────
-
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Python security scan (bandit)
-        run: |
-          uv pip install bandit
-          uv run bandit -r src/robotocore/ -ll -q || true
-      - name: Dependency audit
-        run: uv pip audit || true
 
   # ── Docker + final gates ───────────────────────────────────────────────────
 

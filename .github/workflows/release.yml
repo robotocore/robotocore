@@ -24,6 +24,8 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run ruff check src/ tests/ scripts/
       - run: uv run ruff format --check src/ tests/ scripts/
+      - run: uv run mypy src/robotocore/ --ignore-missing-imports
+      - run: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
 
   unit-tests:
     runs-on: ubuntu-latest

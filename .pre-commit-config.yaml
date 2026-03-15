@@ -5,3 +5,18 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src/robotocore/ --ignore-missing-imports
+        language: system
+        pass_filenames: false
+        types_or: [python]
+      - id: bandit
+        name: bandit
+        entry: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
+        language: system
+        pass_filenames: false
+        types_or: [python]
