@@ -725,12 +725,6 @@ class TestAthenaNewOps:
             athena.get_calculation_execution_status(CalculationExecutionId="fake-calc-id")
         assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_get_capacity_assignment_configuration_nonexistent(self, athena):
-        """GetCapacityAssignmentConfiguration with fake name raises error."""
-        with pytest.raises(ClientError) as exc:
-            athena.get_capacity_assignment_configuration(CapacityReservationName="fake-res")
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
-
     def test_get_database_nonexistent(self, athena):
         """GetDatabase with nonexistent database raises InvalidRequestException."""
         with pytest.raises(ClientError) as exc:

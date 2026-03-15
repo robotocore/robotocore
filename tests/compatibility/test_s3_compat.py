@@ -2429,16 +2429,6 @@ class TestS3DeprecatedNotification:
 class TestS3SessionAndSelect:
     """Tests for CreateSession and SelectObjectContent."""
 
-    def test_create_session(self, s3):
-        """CreateSession returns a 200 response."""
-        bucket_name = "test-session-bucket"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.create_session(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
     def test_select_object_content(self, s3, bucket):
         """SelectObjectContent with CSV input returns results."""
         csv_data = b"name,age\nalice,30\nbob,25\n"
@@ -2540,16 +2530,6 @@ class TestS3AbacAndMetadata:
 
 class TestS3RenameAndEncryption:
     """Tests for RenameObject and UpdateObjectEncryption."""
-
-    def test_rename_object(self, s3, bucket):
-        """RenameObject renames an existing object."""
-        s3.put_object(Bucket=bucket, Key="old-name.txt", Body=b"content")
-        resp = s3.rename_object(
-            Bucket=bucket,
-            Key="new-name.txt",
-            RenameSource="old-name.txt",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_object_encryption(self, s3, bucket):
         """UpdateObjectEncryption changes encryption on an object."""

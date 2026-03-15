@@ -1552,7 +1552,7 @@ def test_deliver_to_sqs_cross_region(mock_get_sqs_store):
         "us-east-1",
     )
     # Should have called get_sqs_store with "eu-west-1"
-    mock_get_sqs_store.assert_called_with("eu-west-1")
+    mock_get_sqs_store.assert_called_with("eu-west-1", "123456789012")
 
 
 # ---- Deliver to Lambda ----

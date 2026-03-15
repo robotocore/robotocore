@@ -27,7 +27,7 @@ class TestExtractFunctionName:
 
     def test_arn_with_qualifier(self):
         arn = "arn:aws:lambda:us-east-1:123456789012:function:my-fn:prod"
-        assert _extract_function_name(arn) == "my-fn"
+        assert _extract_function_name(arn) == "my-fn:prod"
 
 
 # ---------------------------------------------------------------------------

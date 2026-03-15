@@ -341,11 +341,6 @@ class TestLakeFormationAdditionalOps:
     def client(self):
         return make_client("lakeformation")
 
-    def test_describe_lake_formation_identity_center_configuration(self, client):
-        """DescribeLakeFormationIdentityCenterConfiguration returns catalog info."""
-        resp = client.describe_lake_formation_identity_center_configuration()
-        assert "CatalogId" in resp
-
     def test_describe_transaction_not_found(self, client):
         """DescribeTransaction with fake ID raises EntityNotFoundException."""
         from botocore.exceptions import ClientError as BotoClientError

@@ -992,6 +992,7 @@ class TestActionMapCompleteness:
             "DeleteStreamProcessor",
             "CreateFaceLivenessSession",
             "GetFaceLivenessSessionResults",
+            "ListUsers",
         }
         assert set(rekog._ACTION_MAP.keys()) == expected
 

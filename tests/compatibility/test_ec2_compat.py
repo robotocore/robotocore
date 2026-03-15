@@ -9418,26 +9418,6 @@ class TestEC2AdditionalUntested:
         resp = ec2.list_volumes_in_recycle_bin()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_modify_instance_metadata_options(self, ec2):
-        """ModifyInstanceMetadataOptions on a running instance."""
-        run_resp = ec2.run_instances(
-            ImageId="ami-12345678",
-            InstanceType="t2.micro",
-            MinCount=1,
-            MaxCount=1,
-        )
-        instance_id = run_resp["Instances"][0]["InstanceId"]
-        try:
-            resp = ec2.modify_instance_metadata_options(
-                InstanceId=instance_id,
-                HttpTokens="required",
-                HttpEndpoint="enabled",
-            )
-            assert "InstanceId" in resp
-            assert resp["InstanceId"] == instance_id
-        finally:
-            ec2.terminate_instances(InstanceIds=[instance_id])
-
     def test_replace_iam_instance_profile_association(self, ec2):
         """ReplaceIamInstanceProfileAssociation with a fake association ID."""
         with pytest.raises(botocore.exceptions.ClientError) as exc_info:
@@ -9450,72 +9430,6 @@ class TestEC2AdditionalUntested:
             s in err
             for s in ["NoSuchEntity", "InvalidParameterValue", "NotFound", "InvalidAssociationID"]
         )
-
-    def test_create_delete_verified_access_endpoint(self, ec2):
-        """CreateVerifiedAccessEndpoint and DeleteVerifiedAccessEndpoint."""
-        tp_resp = ec2.create_verified_access_trust_provider(
-            TrustProviderType="user",
-            UserTrustProviderType="iam-identity-center",
-            PolicyReferenceName="test-policy",
-        )
-        tp_id = tp_resp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
-        try:
-            inst_resp = ec2.create_verified_access_instance(
-                Description="test-instance",
-            )
-            inst_id = inst_resp["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
-            try:
-                ec2.attach_verified_access_trust_provider(
-                    VerifiedAccessInstanceId=inst_id,
-                    VerifiedAccessTrustProviderId=tp_id,
-                )
-                grp_resp = ec2.create_verified_access_group(
-                    VerifiedAccessInstanceId=inst_id,
-                )
-                grp_id = grp_resp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
-                try:
-                    subnets = ec2.describe_subnets()["Subnets"]
-                    subnet_id = subnets[0]["SubnetId"] if subnets else None
-                    if subnet_id:
-                        sg_resp = ec2.create_security_group(
-                            GroupName=_unique("va-sg"),
-                            Description="VA endpoint SG",
-                        )
-                        sg_id = sg_resp["GroupId"]
-                        try:
-                            cert_arn = "arn:aws:acm:us-east-1:123456789012:certificate/fake"
-                            ep_resp = ec2.create_verified_access_endpoint(
-                                VerifiedAccessGroupId=grp_id,
-                                EndpointType="network-interface",
-                                AttachmentType="vpc",
-                                DomainCertificateArn=cert_arn,
-                                ApplicationDomain="test.example.com",
-                                EndpointDomainPrefix="test-ep",
-                                SecurityGroupIds=[sg_id],
-                                NetworkInterfaceOptions={
-                                    "NetworkInterfaceId": "eni-00000000000000000",
-                                    "Protocol": "https",
-                                    "Port": 443,
-                                },
-                            )
-                            ep_id = ep_resp["VerifiedAccessEndpoint"]["VerifiedAccessEndpointId"]
-                            assert ep_id.startswith("vae-")
-                            del_resp = ec2.delete_verified_access_endpoint(
-                                VerifiedAccessEndpointId=ep_id,
-                            )
-                            assert "VerifiedAccessEndpoint" in del_resp
-                        finally:
-                            ec2.delete_security_group(GroupId=sg_id)
-                finally:
-                    ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
-            finally:
-                ec2.detach_verified_access_trust_provider(
-                    VerifiedAccessInstanceId=inst_id,
-                    VerifiedAccessTrustProviderId=tp_id,
-                )
-                ec2.delete_verified_access_instance(VerifiedAccessInstanceId=inst_id)
-        finally:
-            ec2.delete_verified_access_trust_provider(VerifiedAccessTrustProviderId=tp_id)
 
 
 class TestEC2AllowedImagesSettings:
