@@ -3,6 +3,7 @@
         start stop status smoke help test-quality validate-tests lint-project \
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
         test-iac-pulumi test-iac-serverless test-iac-sam release \
+        s3-semantic-audit s3-connectivity-matrix \
         coverage pre-commit-install pre-commit
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
@@ -129,6 +130,12 @@ parity-report: ## Generate full parity report to parity-report.json (auto-manage
 	$(DEV) server-start
 	ENDPOINT_URL=http://localhost:4566 uv run python scripts/generate_parity_report.py --output parity-report.json
 	$(DEV) server-stop
+
+s3-semantic-audit: ## Generate the S3 feature-level semantic audit report
+	uv run python scripts/s3_semantic_audit.py
+
+s3-connectivity-matrix: s3-semantic-audit ## Regenerate the S3 connectivity matrix
+	@echo "Wrote docs/s3-connectivity-matrix.md"
 
 ## ── Docker ───────────────────────────────────────────────────────────────────
 

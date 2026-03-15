@@ -208,6 +208,22 @@ robotocore replaces these open-source AWS emulators — each link has a step-by-
 - **[goaws](src/robotocore/services/sqs/README.md)** — SQS + [SNS](src/robotocore/services/sns/README.md) with message filtering, Lambda targets, FIFO topics
 - **[s3rver](src/robotocore/services/s3/README.md)** / **[Adobe S3Mock](src/robotocore/services/s3/README.md)** — versioning, multipart, lifecycle, presigned URLs
 
+## S3 Semantic Audit
+
+The repo now includes a feature-level S3 audit in addition to operation coverage:
+
+```bash
+make s3-semantic-audit
+```
+
+This generates:
+
+- `docs/s3-semantic-audit-report.json` — launch-family audit results
+- `docs/s3-connectivity-matrix.md` — S3 cross-service edge inventory
+- `data/s3_launch_catalog.yaml` — the canonical S3 launch catalog used by the audit
+
+The audit is intentionally evidence-driven: each catalog row maps a public S3 launch family to expected semantics, botocore operations, robotocore components, and current proof points in the test suite.
+
 ---
 
 ## Accounts & Regions

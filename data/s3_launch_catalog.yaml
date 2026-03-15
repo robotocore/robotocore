@@ -1,0 +1,263 @@
+catalog_version: 1
+service: s3
+inventory_methodology:
+  source_of_record: "AWS What's New launch posts, normalized with current S3 documentation"
+  notes:
+    - "This baseline catalog focuses on launch families that map cleanly onto robotocore's current S3 surface."
+    - "Each row is a canonical feature family; renamed or expanded launches should be folded into one row."
+features:
+  - feature_id: s3_event_notifications
+    canonical_name: "Amazon S3 Event Notifications"
+    launch_date: "2014-12-09"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2014/12/09/amazon-s3-event-notifications/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: ["s3->sqs", "s3->sns", "s3->lambda"]
+    expected_semantics:
+      - "Bucket notification configuration is persisted on the bucket."
+      - "Object-created events fan out to configured targets."
+      - "Prefix and suffix filters restrict deliveries to matching keys."
+    aws_operations:
+      - PutBucketNotificationConfiguration
+      - GetBucketNotificationConfiguration
+      - PutObject
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+      - "src/robotocore/services/s3/notifications.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventNotifications.html"
+    evidence_files:
+      - "src/robotocore/services/s3/notifications.py"
+      - "tests/compatibility/test_s3_compat.py"
+      - "tests/compatibility/test_cross_service_compat.py"
+      - "tests/apps/event_chain/test_s3_triggers.py"
+  - feature_id: s3_eventbridge_notifications
+    canonical_name: "Amazon S3 Event Notifications to EventBridge"
+    launch_date: "2021-11-29"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2021/11/amazon-s3-event-notifications-amazon-eventbridge/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: ["s3->eventbridge"]
+    expected_semantics:
+      - "Bucket notification configuration can enable EventBridge delivery."
+      - "Object events are emitted as EventBridge events without direct SNS/SQS/Lambda targets."
+    aws_operations:
+      - PutBucketNotificationConfiguration
+      - GetBucketNotificationConfiguration
+    robotocore_components:
+      - "src/robotocore/services/s3/notifications.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html"
+    evidence_files:
+      - "src/robotocore/services/s3/notifications.py"
+      - "tests/unit/services/s3/test_eventbridge_advanced.py"
+  - feature_id: s3_lifecycle_configuration
+    canonical_name: "Amazon S3 Lifecycle Configuration"
+    launch_date: "2012-09-19"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2012/09/19/amazon-s3-introduces-lifecycle-management/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Bucket lifecycle rules can be created, fetched, and removed."
+      - "Lifecycle configuration survives subsequent object writes and reads."
+    aws_operations:
+      - PutBucketLifecycleConfiguration
+      - GetBucketLifecycleConfiguration
+      - DeleteBucketLifecycle
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"
+      - "tests/parity/test_s3_lifecycle.py"
+  - feature_id: s3_object_tagging
+    canonical_name: "Amazon S3 Object Tagging"
+    launch_date: "2017-01-18"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2017/01/amazon-s3-object-tagging/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Object tags can be written, read, and deleted independently from object bodies."
+    aws_operations:
+      - PutObjectTagging
+      - GetObjectTagging
+      - DeleteObjectTagging
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"
+      - "tests/parity/test_s3_lifecycle.py"
+  - feature_id: s3_object_lock
+    canonical_name: "Amazon S3 Object Lock"
+    launch_date: "2019-01-14"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2019/01/amazon-s3-object-lock/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Buckets can store object lock configuration."
+      - "Retention and legal hold APIs round-trip per-object protections."
+    aws_operations:
+      - PutObjectLockConfiguration
+      - GetObjectLockConfiguration
+      - PutObjectLegalHold
+      - GetObjectLegalHold
+      - PutObjectRetention
+      - GetObjectRetention
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"
+  - feature_id: s3_replication
+    canonical_name: "Amazon S3 Replication"
+    launch_date: "2015-03-31"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2015/03/amazon-s3-replication/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: ["s3->iam", "s3->kms"]
+    expected_semantics:
+      - "Bucket replication configuration can be stored and queried."
+      - "Replication rules preserve destination and rule metadata."
+    aws_operations:
+      - PutBucketReplication
+      - GetBucketReplication
+      - DeleteBucketReplication
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+      - "src/robotocore/services/s3/replication.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html"
+    evidence_files:
+      - "src/robotocore/services/s3/replication.py"
+      - "tests/compatibility/test_s3_compat.py"
+      - "tests/unit/services/test_s3_replication.py"
+  - feature_id: s3_static_website_hosting
+    canonical_name: "Amazon S3 Static Website Hosting"
+    launch_date: "2011-02-15"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2011/02/15/amazon-s3-static-website-hosting/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Website configuration is persisted and read back."
+      - "Website endpoints resolve index and error document behavior."
+    aws_operations:
+      - PutBucketWebsite
+      - GetBucketWebsite
+      - DeleteBucketWebsite
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+      - "src/robotocore/services/s3/website.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html"
+    evidence_files:
+      - "src/robotocore/services/s3/website.py"
+      - "tests/compatibility/test_s3_compat.py"
+      - "tests/unit/services/s3/test_website_integration.py"
+  - feature_id: s3_intelligent_tiering
+    canonical_name: "Amazon S3 Intelligent-Tiering"
+    launch_date: "2018-11-26"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2018/11/amazon-s3-intelligent-tiering/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Bucket intelligent-tiering configuration can be created, listed, fetched, and removed."
+    aws_operations:
+      - PutBucketIntelligentTieringConfiguration
+      - GetBucketIntelligentTieringConfiguration
+      - ListBucketIntelligentTieringConfigurations
+      - DeleteBucketIntelligentTieringConfiguration
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/intelligent-tiering.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"
+  - feature_id: s3_inventory
+    canonical_name: "Amazon S3 Inventory"
+    launch_date: "2016-11-30"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2016/11/amazon-s3-inventory/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Bucket inventory configurations can be created, listed, fetched, and removed."
+    aws_operations:
+      - PutBucketInventoryConfiguration
+      - GetBucketInventoryConfiguration
+      - ListBucketInventoryConfigurations
+      - DeleteBucketInventoryConfiguration
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-inventory.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"
+  - feature_id: s3_directory_buckets
+    canonical_name: "Amazon S3 Express One Zone directory buckets"
+    launch_date: "2023-11-28"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2023/11/amazon-s3-express-one-zone-high-performance-storage-class/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Directory buckets are discoverable separately from classic buckets."
+      - "Session-based auth operations exist for directory-bucket APIs."
+    aws_operations:
+      - ListDirectoryBuckets
+      - CreateSession
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-overview.html"
+      - "https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+      - "tests/unit/services/s3/test_directory_buckets.py"
+  - feature_id: s3_rename_object
+    canonical_name: "Amazon S3 RenameObject for S3 Express One Zone"
+    launch_date: "2025-06-17"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2025/06/amazon-s3-express-one-zone-renameobject-api/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: []
+    expected_semantics:
+      - "Objects in directory buckets can be renamed without copy-delete semantics."
+    aws_operations:
+      - RenameObject
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
+  - feature_id: s3_object_lambda_write_get_object_response
+    canonical_name: "Amazon S3 Object Lambda WriteGetObjectResponse"
+    launch_date: "2021-03-18"
+    launch_url: "https://aws.amazon.com/about-aws/whats-new/2021/03/amazon-s3-object-lambda/"
+    current_status: active
+    replacement_feature_id:
+    service_edges: ["s3->lambda"]
+    expected_semantics:
+      - "Object Lambda integrations can return transformed object payloads with WriteGetObjectResponse."
+    aws_operations:
+      - WriteGetObjectResponse
+    robotocore_components:
+      - "src/robotocore/services/s3/provider.py"
+    evidence_urls:
+      - "https://docs.aws.amazon.com/AmazonS3/latest/API/API_WriteGetObjectResponse.html"
+    evidence_files:
+      - "src/robotocore/services/s3/provider.py"
