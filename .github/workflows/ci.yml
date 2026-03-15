@@ -59,7 +59,7 @@ jobs:
       - name: bandit
         run: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
       - name: dependency audit
-        run: uv pip audit
+        run: uvx pip-audit
 
   test-quality:
     runs-on: ubuntu-latest
