@@ -22,6 +22,7 @@ from robotocore.services.stepfunctions.asl import (
     send_task_heartbeat,
     send_task_success,
 )
+from robotocore.services.stepfunctions.history import ExecutionHistory
 from robotocore.services.stepfunctions.mock_config import (
     extract_test_case_from_name,
     get_mock_config,
@@ -249,6 +250,10 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
 
     abort_event = threading.Event()
 
+    # Pre-create ExecutionHistory so _stop_execution can record abort even
+    # if the background thread hasn't finished yet.
+    history = ExecutionHistory(exec_arn)
+
     with _exec_lock:
         # Check for duplicate execution name on STANDARD workflows
         if exec_arn in _executions and sm.get("type", "STANDARD") == "STANDARD":
@@ -258,12 +263,22 @@ def _start_execution(params: dict, region: str, account_id: str) -> dict:
             )
         _executions[exec_arn] = exec_info
         _abort_events[exec_arn] = abort_event
+        _execution_histories[exec_arn] = history
 
     # Launch background thread for STANDARD workflows
     definition = sm["definition"]
     thread = threading.Thread(
         target=_run_execution_background,
-        args=(exec_arn, definition, input_data, region, account_id, abort_event, mock_test_case),
+        args=(
+            exec_arn,
+            definition,
+            input_data,
+            region,
+            account_id,
+            abort_event,
+            mock_test_case,
+            history,
+        ),
         daemon=True,
         name=f"sfn-exec-{name}",
     )
@@ -287,10 +302,16 @@ def _run_execution_background(
     account_id: str,
     abort_event: threading.Event,
     mock_test_case: dict | None = None,
+    history: ExecutionHistory | None = None,
 ) -> None:
     """Execute a state machine in a background thread, updating status on completion."""
     executor = ASLExecutor(
-        definition, region, account_id, execution_arn=exec_arn, mock_test_case=mock_test_case
+        definition,
+        region,
+        account_id,
+        execution_arn=exec_arn,
+        mock_test_case=mock_test_case,
+        history=history,
     )
 
     try:

@@ -82,6 +82,7 @@ class ASLExecutor:
         account_id: str = "123456789012",
         execution_arn: str = "",
         mock_test_case: dict | None = None,
+        history: ExecutionHistory | None = None,
     ):
         self.definition = definition
         self.region = region
@@ -89,7 +90,10 @@ class ASLExecutor:
         self.states = definition.get("States", {})
         self.start_at = definition.get("StartAt", "")
         self.max_steps = 1000  # Safety limit
-        self.history = ExecutionHistory(execution_arn) if execution_arn else None
+        if history is not None:
+            self.history = history
+        else:
+            self.history = ExecutionHistory(execution_arn) if execution_arn else None
         self.mock_test_case = mock_test_case
         self._current_state_name: str = ""  # Set during state execution for mock lookup
 
