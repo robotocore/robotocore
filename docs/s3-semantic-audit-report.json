@@ -1,0 +1,404 @@
+{
+  "summary": {
+    "catalog_version": 1,
+    "service": "s3",
+    "feature_count": 12,
+    "status_counts": {
+      "fail": 3,
+      "needs_manual_review": 0,
+      "out_of_scope": 0,
+      "pass": 9,
+      "retired": 0
+    },
+    "operation_baseline": {
+      "implemented_operation_source": "compat_fallback",
+      "compat_total_ops": 109,
+      "compat_covered_ops": 106,
+      "compat_missing_ops": [
+        "CreateSession",
+        "RenameObject",
+        "WriteGetObjectResponse"
+      ],
+      "parity_total_ops": 111,
+      "parity_implemented_ops": 2,
+      "parity_tested_ops": 107
+    }
+  },
+  "features": [
+    {
+      "feature_id": "s3_static_website_hosting",
+      "canonical_name": "Amazon S3 Static Website Hosting",
+      "launch_date": "2011-02-15",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2011/02/15/amazon-s3-static-website-hosting/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "PutBucketWebsite",
+        "GetBucketWebsite",
+        "DeleteBucketWebsite"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py",
+        "src/robotocore/services/s3/website.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/website.py",
+        "tests/compatibility/test_s3_compat.py",
+        "tests/unit/services/s3/test_website_integration.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html"
+      ]
+    },
+    {
+      "feature_id": "s3_lifecycle_configuration",
+      "canonical_name": "Amazon S3 Lifecycle Configuration",
+      "launch_date": "2012-09-19",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2012/09/19/amazon-s3-introduces-lifecycle-management/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "PutBucketLifecycleConfiguration",
+        "GetBucketLifecycleConfiguration",
+        "DeleteBucketLifecycle"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py",
+        "tests/parity/test_s3_lifecycle.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html"
+      ]
+    },
+    {
+      "feature_id": "s3_event_notifications",
+      "canonical_name": "Amazon S3 Event Notifications",
+      "launch_date": "2014-12-09",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2014/12/09/amazon-s3-event-notifications/",
+      "current_status": "active",
+      "service_edges": [
+        "s3->sqs",
+        "s3->sns",
+        "s3->lambda"
+      ],
+      "aws_operations": [
+        "PutBucketNotificationConfiguration",
+        "GetBucketNotificationConfiguration",
+        "PutObject"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py",
+        "src/robotocore/services/s3/notifications.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/notifications.py",
+        "tests/compatibility/test_s3_compat.py",
+        "tests/compatibility/test_cross_service_compat.py",
+        "tests/apps/event_chain/test_s3_triggers.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventNotifications.html"
+      ]
+    },
+    {
+      "feature_id": "s3_replication",
+      "canonical_name": "Amazon S3 Replication",
+      "launch_date": "2015-03-31",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2015/03/amazon-s3-replication/",
+      "current_status": "active",
+      "service_edges": [
+        "s3->iam",
+        "s3->kms"
+      ],
+      "aws_operations": [
+        "PutBucketReplication",
+        "GetBucketReplication",
+        "DeleteBucketReplication"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py",
+        "src/robotocore/services/s3/replication.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/replication.py",
+        "tests/compatibility/test_s3_compat.py",
+        "tests/unit/services/test_s3_replication.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html"
+      ]
+    },
+    {
+      "feature_id": "s3_inventory",
+      "canonical_name": "Amazon S3 Inventory",
+      "launch_date": "2016-11-30",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2016/11/amazon-s3-inventory/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "PutBucketInventoryConfiguration",
+        "GetBucketInventoryConfiguration",
+        "ListBucketInventoryConfigurations",
+        "DeleteBucketInventoryConfiguration"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-inventory.html"
+      ]
+    },
+    {
+      "feature_id": "s3_object_tagging",
+      "canonical_name": "Amazon S3 Object Tagging",
+      "launch_date": "2017-01-18",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2017/01/amazon-s3-object-tagging/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "PutObjectTagging",
+        "GetObjectTagging",
+        "DeleteObjectTagging"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py",
+        "tests/parity/test_s3_lifecycle.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html"
+      ]
+    },
+    {
+      "feature_id": "s3_intelligent_tiering",
+      "canonical_name": "Amazon S3 Intelligent-Tiering",
+      "launch_date": "2018-11-26",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2018/11/amazon-s3-intelligent-tiering/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "PutBucketIntelligentTieringConfiguration",
+        "GetBucketIntelligentTieringConfiguration",
+        "ListBucketIntelligentTieringConfigurations",
+        "DeleteBucketIntelligentTieringConfiguration"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/intelligent-tiering.html"
+      ]
+    },
+    {
+      "feature_id": "s3_object_lock",
+      "canonical_name": "Amazon S3 Object Lock",
+      "launch_date": "2019-01-14",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2019/01/amazon-s3-object-lock/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "PutObjectLockConfiguration",
+        "GetObjectLockConfiguration",
+        "PutObjectLegalHold",
+        "GetObjectLegalHold",
+        "PutObjectRetention",
+        "GetObjectRetention"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html"
+      ]
+    },
+    {
+      "feature_id": "s3_object_lambda_write_get_object_response",
+      "canonical_name": "Amazon S3 Object Lambda WriteGetObjectResponse",
+      "launch_date": "2021-03-18",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2021/03/amazon-s3-object-lambda/",
+      "current_status": "active",
+      "service_edges": [
+        "s3->lambda"
+      ],
+      "aws_operations": [
+        "WriteGetObjectResponse"
+      ],
+      "status": "fail",
+      "notes": [
+        "One or more required operations are not currently implemented.",
+        "One or more required operations are not covered by existing compat/parity tests."
+      ],
+      "missing_operations": [
+        "WriteGetObjectResponse"
+      ],
+      "missing_test_coverage": [
+        "WriteGetObjectResponse"
+      ],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/API/API_WriteGetObjectResponse.html"
+      ]
+    },
+    {
+      "feature_id": "s3_eventbridge_notifications",
+      "canonical_name": "Amazon S3 Event Notifications to EventBridge",
+      "launch_date": "2021-11-29",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2021/11/amazon-s3-event-notifications-amazon-eventbridge/",
+      "current_status": "active",
+      "service_edges": [
+        "s3->eventbridge"
+      ],
+      "aws_operations": [
+        "PutBucketNotificationConfiguration",
+        "GetBucketNotificationConfiguration"
+      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/notifications.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/notifications.py",
+        "tests/unit/services/s3/test_eventbridge_advanced.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html"
+      ]
+    },
+    {
+      "feature_id": "s3_directory_buckets",
+      "canonical_name": "Amazon S3 Express One Zone directory buckets",
+      "launch_date": "2023-11-28",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2023/11/amazon-s3-express-one-zone-high-performance-storage-class/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "ListDirectoryBuckets",
+        "CreateSession"
+      ],
+      "status": "fail",
+      "notes": [
+        "One or more required operations are not currently implemented.",
+        "One or more required operations are not covered by existing compat/parity tests."
+      ],
+      "missing_operations": [
+        "CreateSession"
+      ],
+      "missing_test_coverage": [
+        "CreateSession"
+      ],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py",
+        "tests/unit/services/s3/test_directory_buckets.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-overview.html",
+        "https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html"
+      ]
+    },
+    {
+      "feature_id": "s3_rename_object",
+      "canonical_name": "Amazon S3 RenameObject for S3 Express One Zone",
+      "launch_date": "2025-06-17",
+      "launch_url": "https://aws.amazon.com/about-aws/whats-new/2025/06/amazon-s3-express-one-zone-renameobject-api/",
+      "current_status": "active",
+      "service_edges": [],
+      "aws_operations": [
+        "RenameObject"
+      ],
+      "status": "fail",
+      "notes": [
+        "One or more required operations are not currently implemented.",
+        "One or more required operations are not covered by existing compat/parity tests."
+      ],
+      "missing_operations": [
+        "RenameObject"
+      ],
+      "missing_test_coverage": [
+        "RenameObject"
+      ],
+      "missing_evidence_files": [],
+      "robotocore_components": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_files": [
+        "src/robotocore/services/s3/provider.py"
+      ],
+      "evidence_urls": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html"
+      ]
+    }
+  ]
+}
