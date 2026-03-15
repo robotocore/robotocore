@@ -2302,17 +2302,26 @@ class TestLogsNewOps:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_scheduled_query_conflict(self, logs):
-        """CreateScheduledQuery with a conflicting name raises ConflictException."""
-        with pytest.raises(ClientError) as exc:
-            logs.create_scheduled_query(
-                name="conflict-sched-query",
-                queryString="fields @timestamp | limit 10",
-                queryLanguage="CWLI",
-                scheduleExpression="rate(1 hour)",
-                executionRoleArn="arn:aws:iam::123456789012:role/test",
-            )
-        # Server returns ConflictException because name mapping has a bug (sees None)
-        assert exc.value.response["Error"]["Code"] == "ConflictException"
+        """CreateScheduledQuery with a duplicate name raises ConflictException."""
+        unique_name = f"conflict-{uuid.uuid4().hex[:8]}"
+        resp = logs.create_scheduled_query(
+            name=unique_name,
+            queryString="fields @timestamp | limit 10",
+            scheduleExpression="rate(1 hour)",
+            executionRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        arn = resp["scheduledQueryArn"]
+        try:
+            with pytest.raises(ClientError) as exc:
+                logs.create_scheduled_query(
+                    name=unique_name,
+                    queryString="fields @timestamp | limit 5",
+                    scheduleExpression="rate(2 hours)",
+                    executionRoleArn="arn:aws:iam::123456789012:role/test",
+                )
+            assert exc.value.response["Error"]["Code"] == "ConflictException"
+        finally:
+            logs.delete_scheduled_query(identifier=arn)
 
 
 class TestLogsScheduledQueryList:
