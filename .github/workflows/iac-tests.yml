@@ -56,13 +56,13 @@ jobs:
           uv run pytest tests/iac/terraform/ -q --tb=short --junitxml=results-iac-terraform.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-iac-terraform
           path: results-iac-terraform.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-terraform
           path: .robotocore.log
@@ -103,13 +103,13 @@ jobs:
           uv run pytest tests/iac/cloudformation/ -q --tb=short --junitxml=results-iac-cloudformation.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-iac-cloudformation
           path: results-iac-cloudformation.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-cloudformation
           path: .robotocore.log
@@ -154,13 +154,13 @@ jobs:
           uv run pytest tests/iac/cdk/ -q --tb=short --junitxml=results-iac-cdk.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-iac-cdk
           path: results-iac-cdk.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-cdk
           path: .robotocore.log
@@ -202,13 +202,13 @@ jobs:
           uv run pytest tests/iac/pulumi/ -q --tb=short --junitxml=results-iac-pulumi.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-iac-pulumi
           path: results-iac-pulumi.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-pulumi
           path: .robotocore.log
@@ -253,13 +253,13 @@ jobs:
           uv run pytest tests/iac/serverless/ -q --tb=short --junitxml=results-iac-serverless.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-iac-serverless
           path: results-iac-serverless.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-serverless
           path: .robotocore.log
@@ -304,13 +304,13 @@ jobs:
           uv run pytest tests/iac/sam/ -q --tb=short --junitxml=results-iac-sam.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-iac-sam
           path: results-iac-sam.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-sam
           path: .robotocore.log
