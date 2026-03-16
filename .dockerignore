@@ -1,0 +1,29 @@
+# Exclude moto git history from build context (saves ~123MB)
+.git/modules/vendor/
+vendor/moto/.git
+vendor/localstack/
+
+# Dev/test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Worktrees and IDE
+.claude/worktrees/
+.idea/
+.vscode/
+
+# Test/dev files not needed in image
+tests/
+probes/
+chunks/
+prompts/
+docs/
+scripts/

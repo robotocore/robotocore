@@ -1,4 +1,4 @@
-# ---- Builder stage: install deps + project, then discard git/uv/build artifacts ----
+# ---- Builder stage: install deps + project, then discard build artifacts ----
 FROM python:3.12-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends git \
@@ -11,10 +11,18 @@ WORKDIR /app
 ARG HATCH_VCS_FALLBACK_VERSION=0.0.0.dev0
 ENV HATCH_VCS_FALLBACK_VERSION=${HATCH_VCS_FALLBACK_VERSION}
 
-# Install dependencies (layer cache: only re-runs when lockfile changes)
-# Split into two layers: heavy deps (moto, boto3 — rarely change) then the rest
+# Copy moto source from vendor (no git history — .dockerignore excludes it)
+COPY vendor/moto/ vendor/moto/
+
+# Copy project metadata and lockfile
 COPY .git/ .git/
 COPY pyproject.toml uv.lock* README.md ./
+
+# Rewrite moto source from git remote to local vendor copy (avoids ~123MB clone)
+RUN sed -i 's|^moto = .*|moto = { path = "vendor/moto" }|' pyproject.toml \
+    && rm -f uv.lock
+
+# Install dependencies from local moto + PyPI
 RUN uv sync --no-dev --no-install-project \
     && uv cache clean
 
@@ -23,9 +31,9 @@ COPY src/ src/
 RUN uv sync --no-dev
 
 # Strip build artifacts and unused transitive deps (~90MB savings)
-# Also remove the main .git directory (now that version is determined)
 RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
     rm -rf /app/.git /app/.venv/src/*/.git /root/.cache/uv \
+    /app/vendor \
     /app/.venv/lib/python3.12/site-packages/cfnlint \
     /app/.venv/lib/python3.12/site-packages/cfn_lint*.dist-info \
     /app/.venv/lib/python3.12/site-packages/sympy \
@@ -75,6 +83,6 @@ ENV ROBOTOCORE_VERSION=${HATCH_VCS_FALLBACK_VERSION}
 USER robotocore
 
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:4566/_robotocore/health || exit 1
+    CMD curl -f http://localhost:4566/_localstack/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -18,7 +18,7 @@ services:
       # - robotocore-data:/data/state
       - /dev/null:/dev/null  # placeholder
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_robotocore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 3s
       start_period: 10s

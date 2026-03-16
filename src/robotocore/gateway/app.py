@@ -249,6 +249,83 @@ async def health(request: Request) -> JSONResponse:
     )
 
 
+async def localstack_health(request: Request) -> JSONResponse:
+    """LocalStack-compatible health endpoint (drop-in replacement format)."""
+    services_status = {}
+    for name in sorted(SERVICE_REGISTRY.keys()):
+        services_status[name] = "available"
+
+    return JSONResponse(
+        {
+            "services": services_status,
+            "edition": "community",
+            "version": __version__,
+        }
+    )
+
+
+async def localstack_info(request: Request) -> JSONResponse:
+    """LocalStack-compatible /_localstack/info endpoint."""
+    import platform
+    import uuid
+
+    uptime = time.monotonic() - _server_start_time if _server_start_time else 0
+    return JSONResponse(
+        {
+            "version": __version__,
+            "edition": "community",
+            "is_license_activated": False,
+            "session_id": str(uuid.uuid5(uuid.NAMESPACE_DNS, "robotocore")),
+            "machine_id": "robotocore",
+            "system": f"{platform.system()}(Container),{platform.release()},{platform.machine()}",
+            "is_docker": True,
+            "server_time_utc": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+            "uptime": int(uptime),
+        }
+    )
+
+
+async def localstack_init(request: Request) -> JSONResponse:
+    """LocalStack-compatible /_localstack/init endpoint."""
+    return JSONResponse(
+        {
+            "completed": {
+                "BOOT": True,
+                "START": True,
+                "READY": True,
+                "SHUTDOWN": False,
+            },
+            "scripts": [],
+        }
+    )
+
+
+async def localstack_init_stage(request: Request) -> JSONResponse:
+    """LocalStack-compatible /_localstack/init/{stage} endpoint."""
+    stage = request.path_params["stage"]
+    is_shutdown = stage.lower() == "shutdown"
+    return JSONResponse(
+        {
+            "completed": not is_shutdown,
+            "scripts": [],
+        }
+    )
+
+
+async def localstack_plugins(request: Request) -> JSONResponse:
+    """LocalStack-compatible /_localstack/plugins endpoint."""
+    providers = []
+    for name in sorted(SERVICE_REGISTRY.keys()):
+        providers.append(
+            {
+                "name": f"{name}:default",
+                "is_initialized": True,
+                "is_loaded": True,
+            }
+        )
+    return JSONResponse({"localstack.aws.provider": providers})
+
+
 async def services_endpoint(request: Request) -> JSONResponse:
     """List all registered services with their status, protocol, and enabled state."""
     services = []
@@ -1179,6 +1256,11 @@ async def _boot_status_endpoint(request: Request) -> JSONResponse:
 management_routes = [
     Route("/_robotocore/dashboard", dashboard_endpoint, methods=["GET"]),
     Route("/_robotocore/health", health, methods=["GET"]),
+    Route("/_localstack/health", localstack_health, methods=["GET"]),
+    Route("/_localstack/info", localstack_info, methods=["GET"]),
+    Route("/_localstack/init", localstack_init, methods=["GET"]),
+    Route("/_localstack/init/{stage}", localstack_init_stage, methods=["GET"]),
+    Route("/_localstack/plugins", localstack_plugins, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
     Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
@@ -1325,10 +1407,21 @@ class AWSRoutingMiddleware:
 
         path = scope.get("path", "")
 
-        # Rewrite /_localstack/* to /_robotocore/* for drop-in compatibility
+        # /_localstack/* routes: dedicated routes return LocalStack-compatible
+        # format; everything else rewrites to /_robotocore/* equivalent
         if path.startswith("/_localstack/"):
-            scope = dict(scope, path="/_robotocore/" + path[len("/_localstack/") :])
-            path = scope["path"]
+            # Paths with dedicated /_localstack/ routes serve directly
+            # All others fall back to /_robotocore/ rewrite
+            _localstack_dedicated = (
+                "/_localstack/health",
+                "/_localstack/info",
+                "/_localstack/init",
+                "/_localstack/plugins",
+            )
+            if not (path in _localstack_dedicated or path.startswith("/_localstack/init/")):
+                scope = dict(scope, path="/_robotocore/" + path[len("/_localstack/") :])
+            await self.app(scope, receive, send)
+            return
 
         if path.startswith("/_robotocore/"):
             await self.app(scope, receive, send)
