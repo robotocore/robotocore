@@ -57,6 +57,18 @@ class TestParseS3Vhost:
         assert result is not None
         assert result["bucket"] == "mybucket"
 
+    def test_s3_express_localhost_host(self):
+        """S3 Express directory bucket via boto3 virtual-host on localhost."""
+        result = s3_routing.parse_s3_vhost("mybucket--use1-az1--x-s3.localhost:4566")
+        assert result is not None
+        assert result["bucket"] == "mybucket--use1-az1--x-s3"
+
+    def test_s3_object_lambda_route_token(self):
+        """WriteGetObjectResponse route-token host on localhost."""
+        result = s3_routing.parse_s3_vhost("my-route-token.localhost:4566")
+        assert result is not None
+        assert result["bucket"] == "my-route-token"
+
     def test_eu_west_region(self):
         result = s3_routing.parse_s3_vhost("mybucket.s3.eu-west-1.amazonaws.com")
         assert result is not None
@@ -322,11 +334,12 @@ class TestRewriteVhostToPath:
         assert result["query_string"] == b"versionId=123"
 
     def test_preserves_headers(self):
-        """All headers should be preserved after rewrite."""
+        """Non-host headers are preserved; host is rewritten to strip bucket prefix."""
         scope = self._make_scope("mybucket.s3.localhost.robotocore.cloud", "/key.txt")
         result = s3_routing.rewrite_vhost_to_path(scope)
         assert result is not None
-        assert (b"host", b"mybucket.s3.localhost.robotocore.cloud") in result["headers"]
+        # Host is rewritten to strip the bucket-name prefix so Moto sees path-style.
+        assert (b"host", b"s3.localhost.robotocore.cloud") in result["headers"]
         assert (b"content-type", b"text/plain") in result["headers"]
 
     def test_non_s3_host_returns_none(self):

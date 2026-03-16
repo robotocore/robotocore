@@ -157,6 +157,7 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
     "timestream": "timestreamwrite",
     "timestream-influxdb": "timestreaminfluxdb",
     "s3express": "s3",
+    "s3-object-lambda": "s3",
     "vpc-lattice": "vpclattice",
     "workspaces-web": "workspacesweb",
     "sso": "ssoadmin",

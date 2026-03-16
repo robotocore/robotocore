@@ -4,24 +4,20 @@
     "service": "s3",
     "feature_count": 12,
     "status_counts": {
-      "fail": 3,
+      "fail": 0,
       "needs_manual_review": 0,
       "out_of_scope": 0,
-      "pass": 9,
+      "pass": 12,
       "retired": 0
     },
     "operation_baseline": {
       "implemented_operation_source": "compat_fallback",
       "compat_total_ops": 109,
-      "compat_covered_ops": 106,
-      "compat_missing_ops": [
-        "CreateSession",
-        "RenameObject",
-        "WriteGetObjectResponse"
-      ],
+      "compat_covered_ops": 109,
+      "compat_missing_ops": [],
       "parity_total_ops": 111,
       "parity_implemented_ops": 2,
-      "parity_tested_ops": 107
+      "parity_tested_ops": 110
     }
   },
   "features": [
@@ -282,23 +278,17 @@
       "aws_operations": [
         "WriteGetObjectResponse"
       ],
-      "status": "fail",
-      "notes": [
-        "One or more required operations are not currently implemented.",
-        "One or more required operations are not covered by existing compat/parity tests."
-      ],
-      "missing_operations": [
-        "WriteGetObjectResponse"
-      ],
-      "missing_test_coverage": [
-        "WriteGetObjectResponse"
-      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
       "missing_evidence_files": [],
       "robotocore_components": [
         "src/robotocore/services/s3/provider.py"
       ],
       "evidence_files": [
-        "src/robotocore/services/s3/provider.py"
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py"
       ],
       "evidence_urls": [
         "https://docs.aws.amazon.com/AmazonS3/latest/API/API_WriteGetObjectResponse.html"
@@ -344,24 +334,18 @@
         "ListDirectoryBuckets",
         "CreateSession"
       ],
-      "status": "fail",
-      "notes": [
-        "One or more required operations are not currently implemented.",
-        "One or more required operations are not covered by existing compat/parity tests."
-      ],
-      "missing_operations": [
-        "CreateSession"
-      ],
-      "missing_test_coverage": [
-        "CreateSession"
-      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
       "missing_evidence_files": [],
       "robotocore_components": [
         "src/robotocore/services/s3/provider.py"
       ],
       "evidence_files": [
         "src/robotocore/services/s3/provider.py",
-        "tests/unit/services/s3/test_directory_buckets.py"
+        "tests/unit/services/s3/test_directory_buckets.py",
+        "tests/compatibility/test_s3_compat.py"
       ],
       "evidence_urls": [
         "https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-overview.html",
@@ -378,23 +362,17 @@
       "aws_operations": [
         "RenameObject"
       ],
-      "status": "fail",
-      "notes": [
-        "One or more required operations are not currently implemented.",
-        "One or more required operations are not covered by existing compat/parity tests."
-      ],
-      "missing_operations": [
-        "RenameObject"
-      ],
-      "missing_test_coverage": [
-        "RenameObject"
-      ],
+      "status": "pass",
+      "notes": [],
+      "missing_operations": [],
+      "missing_test_coverage": [],
       "missing_evidence_files": [],
       "robotocore_components": [
         "src/robotocore/services/s3/provider.py"
       ],
       "evidence_files": [
-        "src/robotocore/services/s3/provider.py"
+        "src/robotocore/services/s3/provider.py",
+        "tests/compatibility/test_s3_compat.py"
       ],
       "evidence_urls": [
         "https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html"

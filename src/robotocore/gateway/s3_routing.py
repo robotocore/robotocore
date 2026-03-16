@@ -113,6 +113,16 @@ def parse_s3_vhost(host: str) -> dict | None:
                 result["region"] = region_match.group(1) + region_match.group(2)
             return result
 
+    # S3 Express directory buckets: boto3 uses {bucket}.localhost:{port} when the
+    # bucket name ends with --x-s3 (e.g. mybucket--use1-az1--x-s3.localhost:4566).
+    # Similarly, S3 Object Lambda uses {route-token}.localhost:{port} for
+    # WriteGetObjectResponse. Detect both by checking if the bucket portion of the
+    # host is the entire left-most label before .localhost (no .s3. separator).
+    if host_no_port.endswith(".localhost") or ".localhost:" in host:
+        label = host_no_port.split(".localhost")[0]
+        if label and "." not in label:
+            return {"bucket": label}
+
     return None
 
 
@@ -136,7 +146,9 @@ def rewrite_vhost_to_path(scope: dict) -> dict | None:
     Returns a new scope dict with the path rewritten to include the bucket,
     or ``None`` if the Host header does not match.
 
-    The query string and all headers are preserved.
+    The query string is preserved. The Host header is rewritten to strip the
+    bucket-name prefix so that Moto sees a clean path-style request (not a
+    virtual-hosted one) and does not double-count the bucket.
     """
     host = b""
     for key, val in scope.get("headers", []):
@@ -159,8 +171,20 @@ def rewrite_vhost_to_path(scope: dict) -> dict | None:
     else:
         new_path = f"/{bucket}{original_path}"
 
+    # Strip the bucket prefix from the Host header so the downstream Moto bridge
+    # receives a path-style request.  For example:
+    #   mybucket--x-s3.localhost:4566 -> localhost:4566
+    #   mybucket.s3.localhost.robotocore.cloud -> s3.localhost.robotocore.cloud
+    host_str = host.decode("latin-1")
+    new_host = host_str[len(bucket) + 1 :]  # strip "bucket."
+    new_headers = [
+        (b"host", new_host.encode("latin-1")) if k == b"host" else (k, v)
+        for k, v in scope.get("headers", [])
+    ]
+
     new_scope = dict(scope)
     new_scope["path"] = new_path
+    new_scope["headers"] = new_headers
     # raw_path should match
     qs = scope.get("query_string", b"")
     if qs:
