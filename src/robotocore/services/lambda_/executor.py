@@ -575,6 +575,12 @@ def execute_python_handler(
         invocation_env["AWS_REGION"] = region
         invocation_env["AWS_DEFAULT_REGION"] = region
         invocation_env["AWS_ACCOUNT_ID"] = account_id
+        # Ensure dummy credentials are present so boto3 doesn't raise NoCredentialsError
+        # when Lambda functions call back to the local emulator. The emulator doesn't
+        # validate credentials, but boto3 refuses to sign a request without them.
+        invocation_env.setdefault("AWS_ACCESS_KEY_ID", "testing")
+        invocation_env.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
+        invocation_env.setdefault("AWS_SESSION_TOKEN", "testing")
 
         # Set up sys.path with lock for thread safety.
         # Track exactly which entries we add so we can remove them later
