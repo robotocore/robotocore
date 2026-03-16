@@ -118,9 +118,11 @@ def parse_s3_vhost(host: str) -> dict | None:
     # Similarly, S3 Object Lambda uses {route-token}.localhost:{port} for
     # WriteGetObjectResponse. Detect both by checking if the bucket portion of the
     # host is the entire left-most label before .localhost (no .s3. separator).
+    # Exclude AWS account IDs (12-digit numeric strings) — S3 Control sends
+    # requests to {AccountId}.localhost:{port} which is NOT a bucket vhost.
     if host_no_port.endswith(".localhost") or ".localhost:" in host:
         label = host_no_port.split(".localhost")[0]
-        if label and "." not in label:
+        if label and "." not in label and not (label.isdigit() and len(label) == 12):
             return {"bucket": label}
 
     return None

@@ -69,6 +69,11 @@ class TestParseS3Vhost:
         assert result is not None
         assert result["bucket"] == "my-route-token"
 
+    def test_s3control_account_id_not_bucket(self):
+        """S3 Control uses {AccountId}.localhost:{port} — NOT a bucket vhost."""
+        result = s3_routing.parse_s3_vhost("123456789012.localhost:4566")
+        assert result is None
+
     def test_eu_west_region(self):
         result = s3_routing.parse_s3_vhost("mybucket.s3.eu-west-1.amazonaws.com")
         assert result is not None

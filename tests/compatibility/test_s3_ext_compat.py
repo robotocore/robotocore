@@ -38,7 +38,7 @@ def sqs():
 
 @pytest.fixture
 def bucket(s3):
-    bucket_name = "test-compat-bucket"
+    bucket_name = "test-compat-ext-bucket"
     s3.create_bucket(Bucket=bucket_name)
     yield bucket_name
     try:
