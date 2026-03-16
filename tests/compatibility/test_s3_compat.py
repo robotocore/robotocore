@@ -2429,6 +2429,31 @@ class TestS3DeprecatedNotification:
 class TestS3SessionAndSelect:
     """Tests for CreateSession and SelectObjectContent."""
 
+    @pytest.fixture
+    def dir_bucket(self, s3):
+        """Create an S3 Express directory bucket and return its name."""
+        name = f"compat-dir-{uuid.uuid4().hex[:8]}--use1-az1--x-s3"
+        s3.create_bucket(
+            Bucket=name,
+            CreateBucketConfiguration={
+                "Location": {"Type": "AvailabilityZone", "Name": "use1-az1"},
+                "Bucket": {
+                    "Type": "Directory",
+                    "DataRedundancy": "SingleAvailabilityZone",
+                },
+            },
+        )
+        yield name
+
+    def test_create_session(self, s3, dir_bucket):
+        """CreateSession returns temporary S3 Express credentials."""
+        resp = s3.create_session(Bucket=dir_bucket)
+        creds = resp["Credentials"]
+        assert creds["AccessKeyId"]
+        assert creds["SecretAccessKey"]
+        assert creds["SessionToken"]
+        assert creds["Expiration"]
+
     def test_select_object_content(self, s3, bucket):
         """SelectObjectContent with CSV input returns results."""
         csv_data = b"name,age\nalice,30\nbob,25\n"
@@ -2530,6 +2555,35 @@ class TestS3AbacAndMetadata:
 
 class TestS3RenameAndEncryption:
     """Tests for RenameObject and UpdateObjectEncryption."""
+
+    @pytest.fixture
+    def dir_bucket(self, s3):
+        """Create an S3 Express directory bucket and return its name."""
+        name = f"compat-ren-{uuid.uuid4().hex[:8]}--use1-az1--x-s3"
+        s3.create_bucket(
+            Bucket=name,
+            CreateBucketConfiguration={
+                "Location": {"Type": "AvailabilityZone", "Name": "use1-az1"},
+                "Bucket": {
+                    "Type": "Directory",
+                    "DataRedundancy": "SingleAvailabilityZone",
+                },
+            },
+        )
+        yield name
+
+    def test_rename_object(self, s3, dir_bucket):
+        """RenameObject moves an object within a directory bucket."""
+        s3.put_object(Bucket=dir_bucket, Key="source.txt", Body=b"hello rename")
+        resp = s3.rename_object(
+            Bucket=dir_bucket,
+            Key="destination.txt",
+            RenameSource=f"{dir_bucket}/source.txt",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Destination should now exist
+        head = s3.head_object(Bucket=dir_bucket, Key="destination.txt")
+        assert head["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_object_encryption(self, s3, bucket):
         """UpdateObjectEncryption changes encryption on an object."""
@@ -2997,3 +3051,21 @@ class TestS3RestoreObjectNotification:
         assert record["eventName"] == "ObjectRestore:Post"
         assert record["s3"]["bucket"]["name"] == unique_bucket
         assert record["s3"]["object"]["key"] == "glacier-obj"
+
+
+class TestS3ObjectLambda:
+    """Tests for S3 Object Lambda operations."""
+
+    def test_write_get_object_response(self, s3):
+        """WriteGetObjectResponse accepts a transformed object response."""
+        # In a real Object Lambda flow, RequestRoute and RequestToken are issued
+        # by S3 when invoking the Lambda. Here we call the endpoint directly to
+        # verify that our emulator accepts the delivery and returns 200.
+        resp = s3.write_get_object_response(
+            RequestRoute="test-route-token",
+            RequestToken="test-request-token",
+            Body=b"transformed content",
+            StatusCode=200,
+            ContentType="text/plain",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

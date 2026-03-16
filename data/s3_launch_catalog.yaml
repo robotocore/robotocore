@@ -227,6 +227,7 @@ features:
     evidence_files:
       - "src/robotocore/services/s3/provider.py"
       - "tests/unit/services/s3/test_directory_buckets.py"
+      - "tests/compatibility/test_s3_compat.py"
   - feature_id: s3_rename_object
     canonical_name: "Amazon S3 RenameObject for S3 Express One Zone"
     launch_date: "2025-06-17"
@@ -244,6 +245,7 @@ features:
       - "https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html"
     evidence_files:
       - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"
   - feature_id: s3_object_lambda_write_get_object_response
     canonical_name: "Amazon S3 Object Lambda WriteGetObjectResponse"
     launch_date: "2021-03-18"
@@ -261,3 +263,4 @@ features:
       - "https://docs.aws.amazon.com/AmazonS3/latest/API/API_WriteGetObjectResponse.html"
     evidence_files:
       - "src/robotocore/services/s3/provider.py"
+      - "tests/compatibility/test_s3_compat.py"

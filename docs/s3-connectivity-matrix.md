@@ -7,5 +7,5 @@
 | Amazon S3 Event Notifications | `s3->lambda` | `PutBucketNotificationConfiguration, GetBucketNotificationConfiguration, PutObject` | `pass` | Catalog evidence files present |
 | Amazon S3 Replication | `s3->iam` | `PutBucketReplication, GetBucketReplication, DeleteBucketReplication` | `pass` | Catalog evidence files present |
 | Amazon S3 Replication | `s3->kms` | `PutBucketReplication, GetBucketReplication, DeleteBucketReplication` | `pass` | Catalog evidence files present |
-| Amazon S3 Object Lambda WriteGetObjectResponse | `s3->lambda` | `WriteGetObjectResponse` | `fail` | One or more required operations are not currently implemented.; One or more required operations are not covered by existing compat/parity tests. |
+| Amazon S3 Object Lambda WriteGetObjectResponse | `s3->lambda` | `WriteGetObjectResponse` | `pass` | Catalog evidence files present |
 | Amazon S3 Event Notifications to EventBridge | `s3->eventbridge` | `PutBucketNotificationConfiguration, GetBucketNotificationConfiguration` | `pass` | Catalog evidence files present |

@@ -128,7 +128,11 @@ def _build_werkzeug_request(
     # encoding so Werkzeug's single decode produces the correct result.
     raw_path = getattr(request, "scope", {}).get("raw_path", b"")
     if raw_path:
-        path = raw_path.decode("latin-1")
+        # raw_path may include the query string (e.g. after S3 vhost rewriting).
+        # EnvironBuilder takes path and query_string separately, so strip any
+        # query portion from path to avoid "Query string defined in both" error.
+        raw_path_str = raw_path.decode("latin-1")
+        path = raw_path_str.split("?", 1)[0]
     else:
         # Fallback: re-encode what Starlette decoded so Werkzeug's decode is a no-op.
         path = quote(request.url.path, safe="/:@!$&'()*+,;=-._~")
