@@ -585,13 +585,16 @@ def execute_python_handler(
         # Set up sys.path with lock for thread safety.
         # Track exactly which entries we add so we can remove them later
         # without corrupting other threads' additions.
+        # Only add paths that aren't already present — avoids removing pre-existing
+        # entries when sys.path.remove() removes the first occurrence.
         added_paths = []
         with _path_lock:
-            sys.path.insert(0, tmpdir)
-            added_paths.append(tmpdir)
+            if tmpdir not in sys.path:
+                sys.path.insert(0, tmpdir)
+                added_paths.append(tmpdir)
             # AWS Lambda layers put Python code in python/ subdirectory
             python_subdir = os.path.join(tmpdir, "python")
-            if os.path.isdir(python_subdir):
+            if os.path.isdir(python_subdir) and python_subdir not in sys.path:
                 sys.path.insert(1, python_subdir)
                 added_paths.append(python_subdir)
 
