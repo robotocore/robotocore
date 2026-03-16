@@ -226,8 +226,22 @@ jobs:
           path: results-integration.xml
 
   compatibility-tests:
+    name: "compat: ${{ matrix.shard }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # a-g: ~5200 tests (acm, batch, cloudwatch, dynamodb, ec2, ecs, events, glue, iam…)
+          - shard: "a-g"
+            pattern: "tests/compatibility/test_[a-g]*.py"
+          # h-r: ~3800 tests (iam, kinesis, lambda, logs, opensearch, rds, route53, rekognition…)
+          - shard: "h-r"
+            pattern: "tests/compatibility/test_[h-r]*.py"
+          # s-z: ~2700 tests (s3, scheduler, secretsmanager, ses, sns, sqs, ssm, stepfunctions…)
+          - shard: "s-z"
+            pattern: "tests/compatibility/test_[s-z]*.py"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -255,24 +269,23 @@ jobs:
             cat .robotocore.log 2>/dev/null || true
             exit 1
           }
-      - name: Run per-service compatibility tests
+      - name: Run per-service compatibility tests (${{ matrix.shard }})
         run: >
           ENDPOINT_URL=http://localhost:4566
-          uv run pytest tests/compatibility/
+          uv run pytest ${{ matrix.pattern }}
           --ignore=tests/compatibility/test_cross_service_compat.py
-          -n4 --dist=loadfile -q --tb=short
-          --reruns=2 --reruns-delay=1
-          --junitxml=results-compat.xml
+          -n8 --dist=loadfile -q --tb=short
+          --junitxml=results-compat-${{ matrix.shard }}.xml
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: test-results-compat
-          path: results-compat.xml
+          name: test-results-compat-${{ matrix.shard }}
+          path: results-compat-${{ matrix.shard }}.xml
       - name: Upload server logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: server-logs-compat
+          name: server-logs-compat-${{ matrix.shard }}
           path: .robotocore.log
 
   cross-service-tests:
