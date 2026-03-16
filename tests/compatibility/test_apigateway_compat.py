@@ -605,7 +605,7 @@ class TestAPIGatewayOperations:
             try:
                 apigw.delete_domain_name(domainName="api.example.com")
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_authorizer(self, apigw, rest_api):
         """CreateAuthorizer / GetAuthorizers."""
@@ -896,7 +896,7 @@ class TestAPIGatewayExtended:
             try:
                 apigw.delete_domain_name(domainName=domain)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_account(self, apigw):
         resp = apigw.get_account()
@@ -1025,7 +1025,7 @@ class TestApigatewayAutoCoverage:
         try:
             client.delete_domain_name(domainName=domain_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_base_path_mapping(self, client, api, domain):
         """CreateBasePathMapping creates a mapping for a domain."""
@@ -1134,7 +1134,7 @@ class TestApigatewayAutoCoverage:
             try:
                 client.delete_vpc_link(vpcLinkId=link_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_vpc_link(self, client):
         """GetVpcLink retrieves a VPC link by ID."""
@@ -1153,7 +1153,7 @@ class TestApigatewayAutoCoverage:
             try:
                 client.delete_vpc_link(vpcLinkId=link_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_vpc_link(self, client):
         """DeleteVpcLink removes a VPC link."""
@@ -1294,7 +1294,7 @@ class TestApigatewayAutoCoverage:
             try:
                 client.delete_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             client.delete_api_key(apiKey=key["id"])
             client.delete_usage_plan(usagePlanId=plan["id"])
 
@@ -1428,7 +1428,7 @@ class TestAPIGatewayDeleteOperations:
             try:
                 apigw.delete_domain_name(domainName=domain_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             apigw.delete_rest_api(restApiId=api_id)
 
     def test_put_rest_api(self, apigw):
@@ -1598,7 +1598,7 @@ class TestAPIGatewayUsagePlanKeyLifecycle:
             try:
                 apigw.delete_usage_plan_key(usagePlanId=plan["id"], keyId=key["id"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             apigw.delete_api_key(apiKey=key["id"])
             apigw.delete_usage_plan(usagePlanId=plan["id"])
 
@@ -1647,7 +1647,7 @@ class TestAPIGatewayVpcLinkLifecycle:
             try:
                 apigw.delete_vpc_link(vpcLinkId=link_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
 

@@ -985,8 +985,8 @@ def _invoke_logs_target(arn: str, payload: str, region: str, account_id: str):
         stream_name = f"eventbridge-{uuid.uuid4().hex[:8]}"
         try:
             logs_backend.create_log_stream(log_group_name, stream_name)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("_invoke_logs_target: create_log_stream failed (non-fatal): %s", exc)
 
         logs_backend.put_log_events(
             log_group_name,

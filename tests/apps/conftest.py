@@ -146,7 +146,7 @@ def lambda_role(iam):
     try:
         iam.delete_role(RoleName=role_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -182,7 +182,7 @@ def deploy_lambda(lambda_client, lambda_role):
         try:
             lambda_client.delete_function(FunctionName=fn_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 def wait_for_messages(sqs_client, queue_url: str, timeout: int = 10, expected: int = 1):

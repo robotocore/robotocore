@@ -1,6 +1,7 @@
 """CloudFormation template engine — parses templates and orchestrates resources."""
 
 import json
+import logging
 import re
 import threading
 import time
@@ -10,6 +11,9 @@ from dataclasses import dataclass, field
 import yaml
 
 _NO_VALUE = object()  # Sentinel for AWS::NoValue property removal
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -123,8 +127,8 @@ def parse_template(template_str: str) -> dict:
     """
     try:
         return json.loads(template_str)
-    except (json.JSONDecodeError, ValueError):
-        pass
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.debug("parse_template: loads failed (non-fatal): %s", exc)
     return yaml.safe_load(template_str)
 
 

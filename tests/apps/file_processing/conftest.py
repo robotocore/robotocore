@@ -27,13 +27,13 @@ def file_bucket(s3, unique_name):
             for dm in page.get("DeleteMarkers", []):
                 s3.delete_object(Bucket=bucket, Key=dm["Key"], VersionId=dm["VersionId"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         objects = s3.list_objects_v2(Bucket=bucket).get("Contents", [])
         for obj in objects:
             s3.delete_object(Bucket=bucket, Key=obj["Key"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
     s3.delete_bucket(Bucket=bucket)
 
 

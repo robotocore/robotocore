@@ -109,7 +109,7 @@ class TestKinesisLambda:
                     EnforceConsumerDeletion=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_kinesis_lambda_esm_config(self, aws_client, lambda_role_arn):
         """Verify Kinesis -> Lambda ESM can be configured."""
@@ -170,15 +170,15 @@ class TestKinesisLambda:
                 try:
                     lam.delete_event_source_mapping(UUID=esm_uuid)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=fn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 kinesis.delete_stream(
                     StreamName=stream_name,
                     EnforceConsumerDeletion=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup

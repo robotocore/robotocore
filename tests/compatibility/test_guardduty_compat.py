@@ -22,7 +22,7 @@ def detector(guardduty):
     try:
         guardduty.delete_detector(DetectorId=detector_id)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 def _unique(prefix):

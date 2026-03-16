@@ -478,7 +478,7 @@ class TestClearAllRules:
             ddb.list_tables()
             pytest.fail("Expected DynamoDB ClientError")
         except ddb.exceptions.ClientError:
-            pass
+            pass  # resource may already be cleaned up
 
         # Clear all rules
         requests.post(CHAOS_CLEAR_URL)

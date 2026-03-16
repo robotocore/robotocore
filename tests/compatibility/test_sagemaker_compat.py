@@ -1051,7 +1051,7 @@ class TestSageMakerEndpointCRUD:
         try:
             sagemaker.delete_endpoint(EndpointName=ep_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
         sagemaker.delete_model(ModelName=model_name)
 

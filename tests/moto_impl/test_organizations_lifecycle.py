@@ -24,7 +24,7 @@ def org(client):
     try:
         client.delete_organization()
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_organization_lifecycle(client):

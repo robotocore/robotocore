@@ -36,7 +36,7 @@ class TestSecurityHubOperations:
             try:
                 securityhub.disable_security_hub()
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestSecurityhubAutoCoverage:
@@ -106,7 +106,7 @@ class TestSecurityHubDescribeHub:
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_describe_hub_returns_hub_arn(self, hub_client):
         """DescribeHub returns HubArn field."""
@@ -142,7 +142,7 @@ class TestSecurityHubEnableWithTags:
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_enable_security_hub_with_tags(self, client):
         """EnableSecurityHub accepts Tags parameter."""
@@ -309,7 +309,7 @@ class TestSecurityHubMembers:
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     @staticmethod
     def _random_account_id():
@@ -405,7 +405,7 @@ class TestSecurityHubActionTargets:
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_describe_action_targets_empty(self, hub_client):
         """DescribeActionTargets returns empty list when none exist."""
@@ -502,7 +502,7 @@ class TestSecurityHubProductSubscriptions:
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_list_enabled_products_for_import(self, hub_client):
         """ListEnabledProductsForImport returns product subscriptions list."""
@@ -581,7 +581,7 @@ class TestSecurityHubTags:
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _get_hub_arn(self, client):
         resp = client.describe_hub()
@@ -1131,12 +1131,12 @@ class TestSecurityHubInsightCrud:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_insight(self, hub_client):
         """CreateInsight returns an InsightArn."""
@@ -1213,12 +1213,12 @@ class TestSecurityHubFindingAggregatorCrud:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_finding_aggregator(self, hub_client):
         """CreateFindingAggregator returns aggregator ARN and mode."""
@@ -1255,12 +1255,12 @@ class TestSecurityHubConfigurationOps:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_update_security_hub_configuration(self, hub_client):
         """UpdateSecurityHubConfiguration toggles AutoEnableControls."""
@@ -1317,12 +1317,12 @@ class TestSecurityHubBatchControlOps:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_batch_get_security_controls(self, hub_client):
         """BatchGetSecurityControls returns controls and unprocessed."""
@@ -1385,12 +1385,12 @@ class TestSecurityHubMemberActions:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_invite_members(self, hub_client):
         """InviteMembers returns UnprocessedAccounts."""
@@ -1429,12 +1429,12 @@ class TestSecurityHubInvitationActions:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_accept_administrator_invitation(self, hub_client):
         """AcceptAdministratorInvitation succeeds."""
@@ -1493,12 +1493,12 @@ class TestSecurityHubConfigurationPolicyCrud:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_delete_configuration_policy_nonexistent(self, hub_client):
         """DeleteConfigurationPolicy for nonexistent raises error."""
@@ -1533,7 +1533,7 @@ class TestSecurityHubAutomationRuleCrud:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
@@ -1630,7 +1630,7 @@ class TestSecurityHubStandardsBatchOps:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()
@@ -1692,7 +1692,7 @@ class TestSecurityHubConfigurationPolicyCreate:
         try:
             client.enable_security_hub(EnableDefaultStandards=False)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         yield client
         try:
             client.disable_security_hub()

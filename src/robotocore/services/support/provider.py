@@ -11,6 +11,7 @@ Intercepts operations that Moto doesn't implement:
 
 import datetime
 import json
+import logging
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -76,6 +77,9 @@ _SEVERITY_LEVELS = [
 
 # In-memory communication store: case_id -> list of communications
 _communications: dict[str, list[dict]] = {}
+
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_support_request(request: Request, region: str, account_id: str) -> Response:
@@ -183,8 +187,8 @@ def _describe_communications(params: dict, region: str, account_id: str) -> dict
                 "attachmentSet": [],
             }
             comms = [initial_comm] + comms
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_describe_communications: get_backend failed (non-fatal): %s", exc)
 
     return {"communications": comms, "nextToken": None}
 

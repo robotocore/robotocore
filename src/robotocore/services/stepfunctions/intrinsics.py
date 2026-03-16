@@ -7,10 +7,13 @@ https://docs.aws.amazon.com/step-functions/latest/dg/amazon-states-language-intr
 import base64
 import hashlib
 import json
+import logging
 import random
 import re
 import uuid
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class IntrinsicError(Exception):
@@ -64,8 +67,8 @@ def _eval_expr(expr: str, context: dict) -> Any:
         if "." in expr:
             return float(expr)
         return int(expr)
-    except ValueError:
-        pass
+    except ValueError as exc:
+        logger.debug("_eval_expr: int failed (non-fatal): %s", exc)
 
     # JSON array literal
     if expr.startswith("[") and expr.endswith("]"):
@@ -79,8 +82,8 @@ def _eval_expr(expr: str, context: dict) -> Any:
     if expr.startswith("{") and expr.endswith("}"):
         try:
             return json.loads(expr)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logger.debug("_eval_expr: loads failed (non-fatal): %s", exc)
 
     return expr
 

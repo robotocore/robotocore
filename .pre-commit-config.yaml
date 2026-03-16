@@ -20,3 +20,9 @@ repos:
         language: system
         pass_filenames: false
         types_or: [python]
+      - id: empty-except
+        name: empty except:pass
+        entry: uv run python scripts/fix_empty_except.py --check
+        language: system
+        pass_filenames: false
+        types_or: [python]

@@ -38,7 +38,7 @@ def cluster_id(emr):
     try:
         emr.terminate_job_flows(JobFlowIds=[cid])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestEMRClusterOperations:
@@ -1077,7 +1077,7 @@ class TestEMRInstanceFleetOperations:
         try:
             emr.terminate_job_flows(JobFlowIds=[cid])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_list_instance_fleets(self, emr, fleet_cluster_id):
         """ListInstanceFleets returns fleets for a fleet-based cluster."""
@@ -1166,7 +1166,7 @@ class TestEMRStudioSessionMappingOperations:
         try:
             emr.delete_studio(StudioId=sid)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_studio_session_mapping(self, emr, studio_id):
         """CreateStudioSessionMapping creates a mapping for an IAM user."""

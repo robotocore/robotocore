@@ -74,8 +74,8 @@ def get_resource_counts(account_id: str = DEFAULT_ACCOUNT_ID) -> dict[str, int]:
                 if obj is not None:
                     try:
                         total += len(obj)
-                    except TypeError:
-                        pass
+                    except TypeError as exc:
+                        logger.debug("get_resource_counts: len failed (non-fatal): %s", exc)
         if total > 0:
             counts[service_name] = total
 

@@ -43,7 +43,7 @@ def test_iot_get_thing_connectivity_data(iot_client):
         try:
             iot_client.delete_thing(thingName="test-conn-thing")
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 def test_iot_get_thing_connectivity_data_not_found(iot_client):
@@ -81,7 +81,7 @@ def test_config_describe_aggregator_sources_status(config_client):
         try:
             config_client.delete_configuration_aggregator(ConfigurationAggregatorName="test-agg-b4")
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 def test_config_describe_aggregator_not_found(config_client):
@@ -112,7 +112,7 @@ def test_rekognition_list_users(rek_client):
         try:
             rek_client.delete_collection(CollectionId="test-coll-b4")
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 def test_rekognition_list_users_not_found(rek_client):

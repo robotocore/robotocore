@@ -52,7 +52,7 @@ def registered_directory(workspaces, ec2, ds):
     try:
         workspaces.deregister_workspace_directory(DirectoryId=dir_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def workspace(workspaces, registered_directory):
     try:
         workspaces.terminate_workspaces(TerminateWorkspaceRequests=[{"WorkspaceId": ws_id}])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestWorkSpacesDirectoryOperations:

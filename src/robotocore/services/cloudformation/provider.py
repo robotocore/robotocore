@@ -1,6 +1,7 @@
 """Native CloudFormation provider."""
 
 import copy
+import logging
 import threading
 import time
 import uuid
@@ -26,6 +27,9 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 
 _stores: dict[tuple[str, str], CfnStore] = {}
 _store_lock = threading.Lock()
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> CfnStore:
@@ -387,8 +391,8 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             )
             try:
                 delete_resource(res, region, account_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("_create_stack: delete_resource failed (non-fatal): %s", exc)
             _add_event(
                 stack, logical_id, res.resource_type, res.physical_id or "", "DELETE_COMPLETE"
             )
@@ -545,8 +549,8 @@ def _delete_stack_action(store: CfnStore, params: dict, region: str, account_id:
             continue  # Skip deletion for Retain policy
         try:
             delete_resource(resource, region, account_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("_delete_stack_action: delete_resource failed (non-fatal): %s", exc)
 
     # Clean up exports from the global store (categorical: deletion must cascade)
     for export_name in list(stack.exports.keys()):
@@ -738,8 +742,8 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             if logical_id in stack.resources:
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("_update_stack: delete_resource failed (non-fatal): %s", exc)
                 del stack.resources[logical_id]
 
         # For common resources, check if definition changed
@@ -751,8 +755,8 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
                 if logical_id in stack.resources:
                     try:
                         delete_resource(stack.resources[logical_id], region, account_id)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("_update_stack: delete_resource failed (non-fatal): %s", exc)
                     del stack.resources[logical_id]
             # If unchanged, keep the existing resource (in-place)
 
@@ -776,8 +780,8 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             if logical_id not in old_resources:
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("_update_stack: delete_resource failed (non-fatal): %s", exc)
 
         stack.template_body = old_template_body
         stack.parameters = old_parameters
@@ -1030,8 +1034,8 @@ def _describe_change_set(store: CfnStore, params: dict, region: str, account_id:
                             },
                         }
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("_describe_change_set: parse_template failed (non-fatal): %s", exc)
 
     return {
         "ChangeSetId": cs.change_set_id,
@@ -1125,8 +1129,8 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
             for logical_id in reversed(list(stack.resources.keys())):
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("_execute_change_set: delete_resource failed (non-fatal): %s", exc)
             stack.status = "ROLLBACK_COMPLETE"
             stack.status_reason = str(e)
             _add_event(
@@ -1157,8 +1161,8 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
             for logical_id in reversed(list(stack.resources.keys())):
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("_execute_change_set: delete_resource failed (non-fatal): %s", exc)
 
             stack.resources = OrderedDict()
             stack.outputs = {}

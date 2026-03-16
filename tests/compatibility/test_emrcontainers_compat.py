@@ -32,7 +32,7 @@ def virtual_cluster(emr_containers):
     try:
         emr_containers.delete_virtual_cluster(id=vc_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestEMRContainersVirtualCluster:

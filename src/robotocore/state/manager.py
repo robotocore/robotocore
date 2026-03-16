@@ -1045,8 +1045,8 @@ class StateManager:
                     f = tar.extractfile(member)
                     if f:
                         return json.loads(f.read())
-                except KeyError:
-                    pass
+                except KeyError as exc:
+                    logger.debug("_read_compressed_metadata: getmember failed (non-fatal): %s", exc)
         except Exception:
             logger.debug("Could not read metadata from %s", archive_path, exc_info=True)
         return None
@@ -1086,8 +1086,8 @@ class StateManager:
             # Remove corrupt/partial pickle so load doesn't choke on it
             try:
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("_save_moto_state: unlink failed (non-fatal): %s", exc)
 
     def _load_moto_state(self, path: Path, services: list[str] | None = None) -> bool:
         """Restore Moto backends from pickle. Returns True on success.
@@ -1138,8 +1138,8 @@ class StateManager:
         if services and path.exists():
             try:
                 existing_state = _loads_native(path.read_text())
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.debug("_save_native_state: _loads_native failed (non-fatal): %s", exc)
 
         state = dict(existing_state)
         for service, (save_fn, _) in self._native_handlers.items():
@@ -1199,8 +1199,8 @@ class StateManager:
                     for account_id in list(backend_dict.keys()):
                         for region in list(backend_dict[account_id].keys()):
                             backend_dict[account_id][region].reset()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("_reset_moto_state: get_backend failed (non-fatal): %s", exc)
         except Exception:
             logger.debug("Failed to reset Moto state", exc_info=True)
 

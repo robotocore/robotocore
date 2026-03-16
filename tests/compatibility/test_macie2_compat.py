@@ -215,7 +215,7 @@ class TestMacie2Buckets:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_describe_buckets_returns_list(self, client):
@@ -242,7 +242,7 @@ class TestMacie2Configuration:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_describe_organization_configuration(self, client):
@@ -284,7 +284,7 @@ class TestMacie2Findings:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_findings_returns_ids(self, client):
@@ -327,7 +327,7 @@ class TestMacie2DataIdentifiers:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_managed_data_identifiers(self, client):
@@ -358,7 +358,7 @@ class TestMacie2ClassificationJobs:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_classification_jobs_returns_items(self, client):
@@ -383,7 +383,7 @@ class TestMacie2Scopes:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_classification_scopes(self, client):
@@ -419,7 +419,7 @@ class TestMacie2AllowLists:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_allow_lists(self, client):
@@ -444,7 +444,7 @@ class TestMacie2Usage:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_get_usage_totals(self, client):
@@ -469,7 +469,7 @@ class TestMacie2Invitations:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_get_invitations_count(self, client):
@@ -499,7 +499,7 @@ class TestMacie2ResourceProfile:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_get_resource_profile(self, client):
@@ -529,7 +529,7 @@ class TestMacie2SensitiveData:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_get_sensitive_data_occurrences(self, client):
@@ -552,7 +552,7 @@ class TestMacie2AutomatedDiscovery:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_automated_discovery_accounts(self, client):
@@ -571,7 +571,7 @@ class TestMacie2Tags:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_list_tags_for_resource(self, client):
@@ -612,7 +612,7 @@ class TestMacie2AllowListLifecycle:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_create_allow_list(self, client):
@@ -667,7 +667,7 @@ class TestMacie2CustomDataIdentifierLifecycle:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_create_custom_data_identifier(self, client):
@@ -715,7 +715,7 @@ class TestMacie2FindingsFilterLifecycle:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_create_findings_filter(self, client):
@@ -769,7 +769,7 @@ class TestMacie2ClassificationJobLifecycle:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_create_classification_job(self, client):
@@ -809,7 +809,7 @@ class TestMacie2MemberOperations:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_create_member(self, client):
@@ -835,7 +835,7 @@ class TestMacie2ConfigurationUpdates:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_put_classification_export_configuration(self, client):
@@ -901,7 +901,7 @@ class TestMacie2SearchAndSample:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_search_resources(self, client):
@@ -925,7 +925,7 @@ class TestMacie2InvitationOperations:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_delete_invitations(self, client):
@@ -966,7 +966,7 @@ class TestMacie2ResourceProfileUpdates:
         try:
             c.enable_macie()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         return c
 
     def test_update_resource_profile(self, client):

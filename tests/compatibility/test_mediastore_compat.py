@@ -21,7 +21,7 @@ def container(mediastore_client):
     try:
         mediastore_client.delete_container(ContainerName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestMediaStoreContainers:
@@ -242,4 +242,4 @@ class TestMediaStoreTagsForResource:
             try:
                 mediastore_client.delete_container(ContainerName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

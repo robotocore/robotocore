@@ -5,6 +5,7 @@ Uses JSON protocol (X-Amz-Target: Kinesis_20131202.{Action}).
 
 import base64
 import json
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -13,6 +14,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.services.kinesis.models import KinesisStore, _get_store
+
+logger = logging.getLogger(__name__)
 
 
 class KinesisError(Exception):
@@ -186,8 +189,8 @@ def _list_streams(store: KinesisStore, params: dict, region: str, account_id: st
         try:
             idx = names.index(start) + 1
             names = names[idx:]
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("_list_streams: index failed (non-fatal): %s", exc)
     has_more = len(names) > limit
     names = names[:limit]
     return {

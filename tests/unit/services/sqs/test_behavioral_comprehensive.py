@@ -187,7 +187,7 @@ class TestQueueDeletedTrackerEdgeCases:
                 try:
                     self.tracker.check_create("q1")
                 except QueueDeletedRecentlyError:
-                    pass
+                    pass  # intentionally ignored
                 except Exception as e:
                     errors.append(e)
 
@@ -276,7 +276,7 @@ class TestRetentionScannerEdgeCases:
                 m = queue._visible.get_nowait()
                 queue._inflight[m.message_id] = m
             except Exception:
-                pass
+                pass  # best-effort cleanup
         assert "m1" in queue._inflight
 
         self.scanner.scan_store(self.store)

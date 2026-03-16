@@ -4,6 +4,7 @@ Supports: fields, filter, stats (with group-by), sort, limit, parse (regex extra
 Pipeline executor against in-memory log data.
 """
 
+import logging
 import re
 import threading
 import time
@@ -23,6 +24,9 @@ STATUS_SCHEDULED = "Scheduled"
 STATUS_RUNNING = "Running"
 STATUS_COMPLETE = "Complete"
 STATUS_CANCELLED = "Cancelled"
+
+
+logger = logging.getLogger(__name__)
 
 
 def start_query(
@@ -441,8 +445,8 @@ def _compute_aggregation(agg: dict, rows: list[dict]) -> float:
         if val is not None:
             try:
                 values.append(float(val))
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as exc:
+                logger.debug("_compute_aggregation: append failed (non-fatal): %s", exc)
 
     if not values and func_name == "count":
         return 0.0
@@ -530,8 +534,8 @@ def _execute_query(query_id: str, region: str, account_id: str) -> None:
                             "eventId": getattr(event, "event_id", ""),
                         }
                     )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_execute_query: get failed (non-fatal): %s", exc)
 
     # Execute pipeline
     results = execute_pipeline(commands, all_events)

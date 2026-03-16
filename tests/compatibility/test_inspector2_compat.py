@@ -238,7 +238,7 @@ class TestInspector2EnableDisableOperations:
                 accountIds=["123456789012"],
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         client.enable(resourceTypes=["EC2"], accountIds=["123456789012"])
         resp = client.disable(resourceTypes=["EC2"], accountIds=["123456789012"])
         assert "accounts" in resp

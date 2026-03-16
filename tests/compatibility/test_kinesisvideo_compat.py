@@ -27,7 +27,7 @@ def created_stream(kinesisvideo_client, stream_name):
     try:
         kinesisvideo_client.delete_stream(StreamARN=arn)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestKinesisVideoCompat:

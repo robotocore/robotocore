@@ -887,7 +887,7 @@ class TestRoute53Extended:
                         )
                     route53.delete_hosted_zone(Id=zone_id)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_list_resource_record_sets_pagination(self, route53):
         """ListResourceRecordSets with MaxItems pagination."""
@@ -1662,7 +1662,7 @@ class TestRoute53HostedZonesByVPC:
                         VPC={"VPCRegion": "us-east-1", "VPCId": vpc2_id},
                     )
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
                 route53.delete_hosted_zone(Id=zone_id)
         finally:
             ec2.delete_vpc(VpcId=vpc1_id)

@@ -71,7 +71,7 @@ class TestRollback:
         try:
             runner.delete_stack(stack_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_entirely_invalid_template_fails(self, runner, cfn):
         """Stack with only invalid resource types should fail."""
@@ -98,4 +98,4 @@ class TestRollback:
         try:
             runner.delete_stack(stack_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup

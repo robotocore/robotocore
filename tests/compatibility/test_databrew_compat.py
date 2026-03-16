@@ -29,7 +29,7 @@ def created_dataset(databrew_client, unique_name):
     try:
         databrew_client.delete_dataset(Name=unique_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def created_ruleset(databrew_client):
     try:
         databrew_client.delete_ruleset(Name=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestDataBrewJobs:

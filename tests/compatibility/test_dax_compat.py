@@ -31,7 +31,7 @@ class TestDAXClusterOperations:
         try:
             dax.delete_cluster(ClusterName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_cluster(self, dax):
         name = _unique("dax")
@@ -87,7 +87,7 @@ class TestDAXClusterOperations:
             try:
                 dax.delete_cluster(ClusterName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_tags(self, dax, cluster):
         resp = dax.list_tags(ResourceName=cluster["arn"])
@@ -140,7 +140,7 @@ class TestDAXClusterOperations:
             try:
                 dax.delete_cluster(ClusterName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_clusters_by_name(self, dax, cluster):
         resp = dax.describe_clusters(ClusterNames=[cluster["name"]])
@@ -174,7 +174,7 @@ class TestDAXParameterGroupOperations:
         try:
             dax.delete_parameter_group(ParameterGroupName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_parameter_group(self, dax):
         name = _unique("pg")
@@ -238,7 +238,7 @@ class TestDAXSubnetGroupOperations:
         try:
             dax.delete_subnet_group(SubnetGroupName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_subnet_group(self, dax):
         name = _unique("sg")

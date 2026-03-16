@@ -255,8 +255,8 @@ def _match_json_pattern(match: re.Match, message: str) -> bool:
             return actual_num < expected_num
         elif operator == "<=":
             return actual_num <= expected_num
-    except (ValueError, TypeError):
-        pass
+    except (ValueError, TypeError) as exc:
+        logger.debug("_match_json_pattern: float failed (non-fatal): %s", exc)
 
     # String comparison
     if operator == "=":

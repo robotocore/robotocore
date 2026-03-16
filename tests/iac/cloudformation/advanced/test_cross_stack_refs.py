@@ -101,7 +101,7 @@ class TestCrossStackRefs:
                 try:
                     runner.delete_stack(name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_list_exports_includes_stack_exports(self, runner, cfn):
         """ListExports should include exports from Stack A."""
@@ -119,4 +119,4 @@ class TestCrossStackRefs:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

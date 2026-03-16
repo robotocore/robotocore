@@ -271,15 +271,15 @@ class TestConfigurationRecorder:
             try:
                 config.stop_configuration_recorder(ConfigurationRecorderName="default")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 config.delete_delivery_channel(DeliveryChannelName="default")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 config.delete_configuration_recorder(ConfigurationRecorderName="default")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName="config-start-role")
             s3.delete_bucket(Bucket="config-start-bucket")
 
@@ -308,11 +308,11 @@ class TestConfigurationRecorder:
             try:
                 config.delete_delivery_channel(DeliveryChannelName="default")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 config.delete_configuration_recorder(ConfigurationRecorderName="default")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName="config-stop-role")
             s3.delete_bucket(Bucket="config-stop-bucket")
 
@@ -368,19 +368,19 @@ class TestDeliveryChannel:
         try:
             config.delete_delivery_channel(DeliveryChannelName="default")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             config.delete_configuration_recorder(ConfigurationRecorderName="default")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             iam.delete_role(RoleName="config-dc-role")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             s3.delete_bucket(Bucket="config-bucket-test")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_put_delivery_channel(self, config, iam, s3):
         self._setup_recorder(config, iam, s3)
@@ -426,15 +426,15 @@ class TestDeliveryChannel:
         try:
             config.delete_configuration_recorder(ConfigurationRecorderName="default")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             iam.delete_role(RoleName="config-dc-role")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             s3.delete_bucket(Bucket="config-bucket-test")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
 
 class TestConfigCompliance:
@@ -739,7 +739,7 @@ class TestConfigExtended:
             try:
                 config.delete_configuration_recorder(ConfigurationRecorderName="default")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName="config-status-role")
 
     def test_describe_retention_configurations(self, config):

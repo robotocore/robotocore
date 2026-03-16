@@ -4,6 +4,7 @@ JSON protocol via X-Amz-Target: AmazonEC2ContainerServiceV20141113.{Action}.
 """
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -18,6 +19,9 @@ from starlette.responses import Response
 
 _stores: dict[str, "EcsStore"] = {}
 _lock = threading.RLock()
+
+
+logger = logging.getLogger(__name__)
 
 
 class EcsStore:
@@ -1147,8 +1151,8 @@ def _describe_service_revisions(
                         }
                     )
                     found = True
-        except (IndexError, ValueError):
-            pass
+        except (IndexError, ValueError) as exc:
+            logger.debug("_describe_service_revisions: split failed (non-fatal): %s", exc)
         if not found:
             failures.append({"arn": rev_arn, "reason": "SERVICE_REVISION_NOT_FOUND"})
     return {"serviceRevisions": results, "failures": failures}

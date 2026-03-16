@@ -1357,7 +1357,7 @@ class TestOpenSearchNewOps2:
         try:
             opensearch.delete_domain(DomainName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_authorize_vpc_endpoint_access(self, opensearch, domain):
         """AuthorizeVpcEndpointAccess with a fake account on a real domain."""

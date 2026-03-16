@@ -36,7 +36,7 @@ def load_balancer(elb):
     try:
         elb.delete_load_balancer(LoadBalancerName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestELBClassicLoadBalancerOperations:
@@ -479,7 +479,7 @@ class TestELBClassicSubnetsAndSecurityGroups:
             ec2.delete_subnet(SubnetId=subnet1["Subnet"]["SubnetId"])
             ec2.delete_vpc(VpcId=vpc_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_apply_security_groups_to_load_balancer(self, elb, vpc_resources):
         name = _unique("clb-vpc")

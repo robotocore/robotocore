@@ -5,8 +5,11 @@ and enforces reserved/provisioned concurrency constraints. All limit values are
 configurable via environment variables.
 """
 
+import logging
 import os
 import threading
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configurable limits (env-var overridable)
@@ -22,8 +25,8 @@ def _env_int(name: str, default: int) -> int:
     if raw is not None:
         try:
             return int(raw)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("_env_int: int failed (non-fatal): %s", exc)
     return default
 
 

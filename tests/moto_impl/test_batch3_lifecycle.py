@@ -39,7 +39,7 @@ def state_machine_arn(sfn_client):
             Path="/",
         )
     except Exception:
-        pass
+        pass  # best-effort cleanup
     sm = sfn_client.create_state_machine(
         name="test-sm-alias",
         definition=json.dumps(
@@ -56,7 +56,7 @@ def state_machine_arn(sfn_client):
     try:
         sfn_client.delete_state_machine(stateMachineArn=sm["stateMachineArn"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_state_machine_alias_lifecycle(sfn_client, state_machine_arn):
@@ -123,7 +123,7 @@ def ddb_table(ddb_client):
     try:
         ddb_client.delete_table(TableName=table_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_describe_contributor_insights(ddb_client, ddb_table):
@@ -232,7 +232,7 @@ def ecs_service(ecs_client):
         )
         ecs_client.delete_cluster(cluster=cluster_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_list_service_deployments(ecs_client, ecs_service):

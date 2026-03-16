@@ -794,7 +794,7 @@ class TaskScheduler:
             for p in resp.get("Parameters", []):
                 self.ssm.delete_parameter(Name=p["Name"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _store_output(self, task_id: str, execution_id: str, data: dict[str, Any]) -> str:
         key = f"output/{task_id}/{execution_id}/result.json"

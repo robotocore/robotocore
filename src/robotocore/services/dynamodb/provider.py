@@ -137,8 +137,10 @@ def _fire_stream_hooks(
                         if existing:
                             event_name = "MODIFY"
                             old_image = existing
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(
+                            "_fire_stream_hooks: _get_existing_item failed (non-fatal): %s", exc
+                        )
                     notify_table_change(
                         table_name=table_name,
                         event_name=event_name,
@@ -202,8 +204,10 @@ def _fire_stream_hooks(
                         # After the update, the item has been modified
                         new_image = existing  # Best effort: current state after update
                         old_image = existing  # Approximate: we don't have pre-update state
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "_fire_stream_hooks: _get_existing_item failed (non-fatal): %s", exc
+                    )
                 notify_table_change(
                     table_name=table_name,
                     event_name="MODIFY",
@@ -304,8 +308,8 @@ def _get_existing_item(table_name: str, keys: dict, region: str, account_id: str
         result = backend.get_item(table_name, keys)
         if result and hasattr(result, "to_json"):
             return result.to_json().get("Attributes", result.to_json())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_get_existing_item: get_item failed (non-fatal): %s", exc)
     return None
 
 
@@ -326,8 +330,8 @@ def _extract_keys_from_item(table_name: str, item: dict, region: str, account_id
                 keys[table.range_key_attr] = item.get(table.range_key_attr, {})
             if keys:
                 return keys
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_extract_keys_from_item: get_table failed (non-fatal): %s", exc)
     return item  # Fallback: return full item as keys
 
 

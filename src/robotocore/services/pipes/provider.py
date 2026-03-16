@@ -491,8 +491,8 @@ def _poll_sqs_source(source_arn: str, src_params: dict, region: str, account_id:
             # Delete message after successful receive (auto-acknowledge)
             try:
                 backend.delete_message(queue_name, msg.receipt_handle)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("_poll_sqs_source: delete_message failed (non-fatal): %s", exc)
 
         return records
 

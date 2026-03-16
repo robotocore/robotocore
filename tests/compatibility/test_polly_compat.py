@@ -35,7 +35,7 @@ def lexicon_name(polly_client):
     try:
         polly_client.delete_lexicon(Name=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestDescribeVoices:

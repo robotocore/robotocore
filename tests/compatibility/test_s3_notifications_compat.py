@@ -52,7 +52,7 @@ def s3_bucket(s3, unique_name):
             s3.delete_object(Bucket=name, Key=obj["Key"])
         s3.delete_bucket(Bucket=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ def sqs_queue(sqs, unique_name):
     try:
         sqs.delete_queue(QueueUrl=url)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def _drain_queue(sqs, queue_url, max_wait=3):
@@ -216,7 +216,7 @@ class TestS3ToSnsNotification:
             sqs.delete_queue(QueueUrl=queue_url)
             sns.delete_topic(TopicArn=topic_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +406,7 @@ class TestMultipleTargets:
             sqs.delete_queue(QueueUrl=q1_url)
             sqs.delete_queue(QueueUrl=q2_url)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------

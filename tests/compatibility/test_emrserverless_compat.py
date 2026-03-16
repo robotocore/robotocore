@@ -29,11 +29,11 @@ def application(emr_serverless):
     try:
         emr_serverless.stop_application(applicationId=app_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         emr_serverless.delete_application(applicationId=app_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestEMRServerlessApplications:
@@ -202,8 +202,8 @@ class TestEMRServerlessApplicationLifecycle:
             try:
                 emr_serverless.stop_application(applicationId=app_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 emr_serverless.delete_application(applicationId=app_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup

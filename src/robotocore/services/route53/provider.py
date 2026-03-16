@@ -11,6 +11,7 @@ Intercepts operations that Moto has bugs or doesn't implement:
   flask_paths routing table
 """
 
+import logging
 import re
 import uuid
 
@@ -38,6 +39,9 @@ _TRAFFIC_POLICY_INSTANCES_RE = re.compile(r"^/2013-04-01/trafficpolicyinstances$
 
 # Store query logging configs
 _query_log_configs: dict[str, dict] = {}
+
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_route53_request(request: Request, region: str, account_id: str) -> Response:
@@ -211,8 +215,8 @@ def _handle_get_health_check_count(account_id: str) -> Response:
 
         backend = get_backend("route53")[account_id]["global"]
         count = len(backend.health_checks.values())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_handle_get_health_check_count: len failed (non-fatal): %s", exc)
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <GetHealthCheckCountResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
@@ -321,8 +325,8 @@ def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> R
                         for record in rr_set.records:
                             val = record.value if hasattr(record, "value") else str(record)
                             record_data.append(val)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_handle_test_dns_answer: get_hosted_zone failed (non-fatal): %s", exc)
 
     if not record_data:
         record_data = ["127.0.0.1"] if record_type == "A" else [record_name]

@@ -2579,7 +2579,7 @@ class TestBackupRestore:
                 try:
                     dynamodb.delete_table(TableName=t)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_restore_table_to_point_in_time(self, dynamodb):
         """RestoreTableToPointInTime creates a restored copy of a table."""
@@ -2608,7 +2608,7 @@ class TestBackupRestore:
                 try:
                     dynamodb.delete_table(TableName=t)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_create_table_replica(self, dynamodb):
         """UpdateTable with ReplicaUpdates Create adds a replica."""
@@ -2638,7 +2638,7 @@ class TestBackupRestore:
             try:
                 dynamodb.delete_table(TableName=tname)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestDynamoDBGapStubs:
@@ -2793,7 +2793,7 @@ class TestDynamoDBImportExport:
             try:
                 dynamodb.delete_table(TableName=imp_table)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_import_table_with_dynamodb_json_format(self, dynamodb):
         """ImportTable with DYNAMODB_JSON input format."""
@@ -2816,7 +2816,7 @@ class TestDynamoDBImportExport:
             try:
                 dynamodb.delete_table(TableName=imp_table)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestDynamoDBBackupDetails:
@@ -2895,7 +2895,7 @@ class TestDynamoDBBackupDetails:
                 try:
                     dynamodb.delete_backup(BackupArn=arn)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestDynamoDBGlobalTableDetails:
@@ -2954,7 +2954,7 @@ class TestDynamoDBGlobalTableDetails:
             try:
                 dynamodb.delete_table(TableName=tname)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_global_tables_with_region_filter(self, dynamodb):
         """ListGlobalTables with RegionName filter."""
@@ -2982,7 +2982,7 @@ class TestDynamoDBGlobalTableDetails:
             try:
                 dynamodb.delete_table(TableName=tname)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestDynamoDBContinuousBackupsDetails:

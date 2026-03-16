@@ -90,7 +90,7 @@ class TestConditions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_condition_false_skips_resource(self, runner, cfn, sqs):
         """When Environment=dev, the conditional SQS queue is NOT created."""
@@ -116,4 +116,4 @@ class TestConditions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

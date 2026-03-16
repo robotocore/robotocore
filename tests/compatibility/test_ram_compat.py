@@ -27,7 +27,7 @@ def resource_share(ram):
     try:
         ram.delete_resource_share(resourceShareArn=share["resourceShareArn"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestRAMResourceShareLifecycle:

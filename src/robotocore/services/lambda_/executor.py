@@ -194,10 +194,10 @@ def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
                             layer_zips.append(zip_data)
                         elif hasattr(layer_ver, "code_bytes") and layer_ver.code_bytes:
                             layer_zips.append(layer_ver.code_bytes)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                logger.debug("get_layer_zips: split failed (non-fatal): %s", exc)
+    except Exception as exc:
+        logger.debug("get_layer_zips: isinstance failed (non-fatal): %s", exc)
 
     return layer_zips
 
@@ -432,8 +432,8 @@ def _clear_plain_modules_for_dir(code_dir: str) -> None:
             try:
                 if os.path.abspath(mod_file).startswith(norm_dir):
                     to_remove.append(name)
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as exc:
+                logger.debug("_clear_plain_modules_for_dir: startswith failed (non-fatal): %s", exc)
     for name in to_remove:
         sys.modules.pop(name, None)
 
@@ -682,8 +682,11 @@ def execute_python_handler(
                         ctypes.pythonapi.PyThreadState_SetAsyncExc(
                             ctypes.c_ulong(tid), ctypes.py_object(SystemExit)
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "execute_python_handler: pythreadstate_setasyncexc failed (non-fatal): %s",
+                        exc,
+                    )
                 # Add END/REPORT log lines
                 elapsed_ms = timeout * 1000
                 logs_output.write(f"END RequestId: {request_id}\n")
@@ -755,8 +758,8 @@ def execute_python_handler(
             for p in added_paths:
                 try:
                     sys.path.remove(p)
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    logger.debug("execute_python_handler: remove failed (non-fatal): %s", exc)
         # Release the cache reference
         _code_cache.release_ref(tmpdir)
         # Do NOT clean up tmpdir when using cache or mount dir --- managed externally

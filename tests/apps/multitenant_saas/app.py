@@ -211,7 +211,7 @@ class SaaSPlatform:
         try:
             self._sm.delete_secret(SecretId=secret_name, ForceDeleteWithoutRecovery=True)
         except self._sm.exceptions.ResourceNotFoundException:
-            pass
+            pass  # best-effort cleanup
 
         # 4. Delete S3 objects under tenant prefix
         self._delete_tenant_files(tenant_id)

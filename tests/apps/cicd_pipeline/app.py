@@ -354,14 +354,14 @@ class CICDPipeline:
         try:
             self.logs.create_log_group(logGroupName=group_name)
         except self.logs.exceptions.ResourceAlreadyExistsException:
-            pass
+            pass  # resource may not exist
         try:
             self.logs.create_log_stream(
                 logGroupName=group_name,
                 logStreamName=self._log_stream_name(build_id),
             )
         except self.logs.exceptions.ResourceAlreadyExistsException:
-            pass
+            pass  # resource may not exist
 
     def _write_log(self, repo: str, build_id: str, level: str, message: str) -> None:
         """Write a single log event."""
@@ -637,7 +637,7 @@ class CICDPipeline:
                     end = datetime.strptime(b.finished_at, "%Y-%m-%dT%H:%M:%SZ")
                     durations.append((end - start).total_seconds())
                 except ValueError:
-                    pass
+                    pass  # conversion may fail; not critical
 
         avg_duration = sum(durations) / len(durations) if durations else 0.0
 
@@ -679,7 +679,7 @@ class CICDPipeline:
         try:
             self.logs.delete_log_group(logGroupName=self._log_group_name(repo))
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def cleanup_all_artifacts(self) -> None:
         """Delete all artifacts in the bucket."""

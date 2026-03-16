@@ -619,8 +619,8 @@ def _evaluate_route_selection(expression: str, message: str | bytes) -> str:
         data = json.loads(message)
         if isinstance(data, dict) and field in data:
             return str(data[field])
-    except (json.JSONDecodeError, TypeError):
-        pass
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.debug("_evaluate_route_selection: loads failed (non-fatal): %s", exc)
 
     return "$default"
 

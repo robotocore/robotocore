@@ -168,26 +168,26 @@ def pipeline(
     try:
         kinesis.delete_stream(StreamName=stream_name, EnforceConsumerDeletion=True)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         objs = s3.list_objects_v2(Bucket=bucket_name).get("Contents", [])
         for obj in objs:
             s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
         s3.delete_bucket(Bucket=bucket_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         dynamodb.delete_table(TableName=table_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         logs.delete_log_group(logGroupName=log_group)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     # Clean SSM params
     try:
         resp = ssm.get_parameters_by_path(Path=prefix, Recursive=True)
         for p in resp["Parameters"]:
             ssm.delete_parameter(Name=p["Name"])
     except Exception:
-        pass
+        pass  # best-effort cleanup

@@ -2,6 +2,7 @@
 
 import base64
 import json
+import logging
 import threading
 import time
 import uuid
@@ -18,6 +19,9 @@ _worker_lock = threading.Lock()
 
 BUFFER_SIZE = 1 * 1024 * 1024  # 1MB buffer before flushing
 BUFFER_INTERVAL = 60  # seconds
+
+
+logger = logging.getLogger(__name__)
 
 
 def _key(name: str, region: str, account_id: str) -> tuple[str, str, str]:
@@ -94,8 +98,8 @@ def _write_to_s3(bucket: str, key: str, data: bytes, region: str) -> None:
 
         s3_backend = get_backend("s3")[DEFAULT_ACCOUNT_ID]["global"]
         s3_backend.put_object(bucket, key, data)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_write_to_s3: put_object failed (non-fatal): %s", exc)
 
 
 async def handle_firehose_request(request: Request, region: str, account_id: str) -> Response:
@@ -236,8 +240,8 @@ def _list_delivery_streams(params: dict, region: str, account_id: str) -> dict:
         try:
             idx = names.index(start) + 1
             names = names[idx:]
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("_list_delivery_streams: index failed (non-fatal): %s", exc)
     has_more = len(names) > limit
     names = names[:limit]
     return {

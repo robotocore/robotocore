@@ -1820,11 +1820,11 @@ class TestCloudFormationChangeSets:
             try:
                 client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_change_set(self, client):
         """DescribeChangeSet returns details of a change set."""
@@ -1845,11 +1845,11 @@ class TestCloudFormationChangeSets:
             try:
                 client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_execute_change_set(self, client):
         """ExecuteChangeSet applies a change set and creates resources."""
@@ -1884,7 +1884,7 @@ class TestCloudFormationChangeSets:
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_execute_change_set_update(self, client):
         """ExecuteChangeSet with UPDATE type updates an existing stack."""
@@ -1939,7 +1939,7 @@ class TestCloudFormationChangeSets:
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_change_set(self, client):
         """DeleteChangeSet removes a change set."""
@@ -1959,7 +1959,7 @@ class TestCloudFormationChangeSets:
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_change_sets(self, client):
         """ListChangeSets returns change sets for a stack."""
@@ -1980,11 +1980,11 @@ class TestCloudFormationChangeSets:
             try:
                 client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestCloudFormationStackSetsOps:
@@ -2023,7 +2023,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stack_set(self, client):
         """DescribeStackSet returns stack set details."""
@@ -2040,7 +2040,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_stack_set(self, client):
         """UpdateStackSet updates a stack set."""
@@ -2060,7 +2060,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_stack_set(self, client):
         """DeleteStackSet removes a stack set."""
@@ -2087,7 +2087,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_stack_set_operations(self, client):
         """ListStackSetOperations returns operations list."""
@@ -2103,7 +2103,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_stack_instances(self, client):
         """CreateStackInstances creates instances in a stack set."""
@@ -2128,11 +2128,11 @@ class TestCloudFormationStackSetsOps:
                     RetainStacks=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_stack_instances(self, client):
         """UpdateStackInstances updates instances in a stack set."""
@@ -2162,11 +2162,11 @@ class TestCloudFormationStackSetsOps:
                     RetainStacks=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_stack_instances(self, client):
         """DeleteStackInstances removes instances from a stack set."""
@@ -2192,7 +2192,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stack_instance(self, client):
         """DescribeStackInstance returns details of a stack instance."""
@@ -2223,11 +2223,11 @@ class TestCloudFormationStackSetsOps:
                     RetainStacks=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stack_set_operation(self, client):
         """DescribeStackSetOperation returns operation details."""
@@ -2260,11 +2260,11 @@ class TestCloudFormationStackSetsOps:
                     RetainStacks=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_stack_set_operation_results(self, client):
         """ListStackSetOperationResults returns results for an operation."""
@@ -2292,11 +2292,11 @@ class TestCloudFormationStackSetsOps:
                     RetainStacks=True,
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_stop_stack_set_operation_nonexistent(self, client):
         """StopStackSetOperation returns error for nonexistent operation."""
@@ -2313,7 +2313,7 @@ class TestCloudFormationStackSetsOps:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestCloudFormationStackPolicy:
@@ -2385,7 +2385,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_stack_set_with_description(self, client):
         """CreateStackSet with description stores description."""
@@ -2402,7 +2402,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_stack_set_permission_model(self, client):
         """CreateStackSet with PermissionModel stores the model."""
@@ -2419,7 +2419,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_stack_sets_contains_created(self, client):
         """ListStackSets includes a newly created stack set."""
@@ -2436,7 +2436,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_stack_sets_with_status_filter(self, client):
         """ListStackSets with Status=ACTIVE includes newly created set."""
@@ -2454,7 +2454,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stack_set_not_found(self, client):
         """DescribeStackSet for nonexistent stack set returns error."""
@@ -2487,7 +2487,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_change_set_describe_fields(self, client):
         """DescribeChangeSet returns expected fields."""
@@ -2522,11 +2522,11 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_stack_set_description(self, client):
         """UpdateStackSet can change description."""
@@ -2548,7 +2548,7 @@ class TestCloudFormationStackSetDetails:
             try:
                 client.delete_stack_set(StackSetName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_stack_set_then_describe_raises(self, client):
         """Deleted stack set raises StackSetNotFoundException."""
@@ -2600,7 +2600,7 @@ class TestCloudFormationImports:
             try:
                 client.delete_stack(StackName=stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestCloudFormationDriftOps:
@@ -2789,7 +2789,7 @@ class TestCloudFormationGeneratedTemplates:
         try:
             client.delete_generated_template(GeneratedTemplateName=f"gen-tmpl-{unique}")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_describe_generated_template(self, client):
         """DescribeGeneratedTemplate returns details for a created template."""
@@ -2810,7 +2810,7 @@ class TestCloudFormationGeneratedTemplates:
         try:
             client.delete_generated_template(GeneratedTemplateName=name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_update_generated_template(self, client):
         """UpdateGeneratedTemplate updates a template and returns an ID."""
@@ -2834,7 +2834,7 @@ class TestCloudFormationGeneratedTemplates:
         try:
             client.delete_generated_template(GeneratedTemplateName=f"{name}-updated")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_get_generated_template(self, client):
         """GetGeneratedTemplate returns template body or status."""
@@ -2855,7 +2855,7 @@ class TestCloudFormationGeneratedTemplates:
         try:
             client.delete_generated_template(GeneratedTemplateName=name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_delete_generated_template(self, client):
         """DeleteGeneratedTemplate removes a template."""

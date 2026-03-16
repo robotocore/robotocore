@@ -23,7 +23,7 @@ def table_bucket(s3tables):
     try:
         s3tables.delete_table_bucket(tableBucketARN=arn)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -46,11 +46,11 @@ def table_with_ns(s3tables, table_bucket):
     try:
         s3tables.delete_table(tableBucketARN=table_bucket, namespace=ns, name=tbl)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         s3tables.delete_namespace(tableBucketARN=table_bucket, namespace=ns)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def _bucket_name():
@@ -95,7 +95,7 @@ class TestS3TablesOperations:
             try:
                 s3tables.delete_namespace(tableBucketARN=bucket_arn, namespace=ns_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_namespace(self, s3tables):
         bucket_name = _bucket_name()
@@ -117,7 +117,7 @@ class TestS3TablesOperations:
             try:
                 s3tables.delete_namespace(tableBucketARN=bucket_arn, namespace=ns_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
     # --- GetTableBucket ---
@@ -297,7 +297,7 @@ class TestS3TablesOperations:
             try:
                 s3tables.delete_table(tableBucketARN=table_bucket, namespace=ns, name=tbl)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3tables.delete_namespace(tableBucketARN=table_bucket, namespace=ns)
 
     # --- DeleteTableBucket ---
@@ -480,8 +480,8 @@ class TestS3TablesOperations:
                 try:
                     s3tables.delete_table(tableBucketARN=table_bucket, namespace=ns, name=n)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 s3tables.delete_namespace(tableBucketARN=table_bucket, namespace=ns)
             except Exception:
-                pass
+                pass  # best-effort cleanup

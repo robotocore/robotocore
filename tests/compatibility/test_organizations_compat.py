@@ -41,9 +41,9 @@ def _cleanup_org(client):
                 try:
                     client.remove_account_from_organization(AccountId=acct["Id"])
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
     # Delete OUs (must delete children first)
     try:
@@ -51,7 +51,7 @@ def _cleanup_org(client):
         for root in roots:
             _delete_ous_recursive(client, root["Id"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
     # Delete non-default policies
     try:
@@ -62,14 +62,14 @@ def _cleanup_org(client):
                     try:
                         client.delete_policy(PolicyId=p["Id"])
                     except Exception:
-                        pass
+                        pass  # best-effort cleanup
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
     try:
         client.delete_organization()
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def _delete_ous_recursive(client, parent_id):
@@ -81,9 +81,9 @@ def _delete_ous_recursive(client, parent_id):
             try:
                 client.delete_organizational_unit(OrganizationalUnitId=ou["Id"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestOrganizationsLifecycle:

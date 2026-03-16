@@ -50,16 +50,16 @@ def directory(ds, ec2):
     try:
         ds.delete_directory(DirectoryId=dir_id)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
     for sid in [sid1, sid2]:
         try:
             ec2.delete_subnet(SubnetId=sid)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
     try:
         ec2.delete_vpc(VpcId=vpc_id)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestDSDescribeOperations:
@@ -254,11 +254,11 @@ class TestDsSettings:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_settings_microsoft_ad(self, ds, ec2):
         """UpdateSettings on MicrosoftAD returns the directory ID."""
@@ -289,11 +289,11 @@ class TestDsSettings:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestDsMicrosoftAD:
@@ -329,11 +329,11 @@ class TestDsMicrosoftAD:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestDsSso:
@@ -590,11 +590,11 @@ class TestDsConnectDirectory:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_connect_directory(self, ds, ec2):
         """delete_directory removes an ADConnector directory."""
@@ -630,11 +630,11 @@ class TestDsConnectDirectory:
             try:
                 ec2.delete_subnet(SubnetId=sid)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
         try:
             ec2.delete_vpc(VpcId=vpc_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
 
 class TestDsTagErrors:
@@ -1249,11 +1249,11 @@ class TestDsAdditionalOps:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestDSUpdateOps:

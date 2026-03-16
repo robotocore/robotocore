@@ -1207,6 +1207,6 @@ class TestElastiCacheCopySnapshot:
             try:
                 elasticache.delete_snapshot(SnapshotName=target_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             elasticache.delete_snapshot(SnapshotName=snap_name)
             elasticache.delete_replication_group(ReplicationGroupId=rg_id)

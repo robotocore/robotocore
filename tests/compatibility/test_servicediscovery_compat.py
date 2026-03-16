@@ -31,7 +31,7 @@ def namespace(sd):
     try:
         sd.delete_namespace(Id=ns_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def service(sd, namespace):
     try:
         sd.delete_service(Id=svc["Id"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestServiceDiscoveryNamespaceOperations:
@@ -390,15 +390,15 @@ class TestServiceDiscoveryDiscoverInstances:
         try:
             sd.deregister_instance(ServiceId=svc_id, InstanceId=inst_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             sd.delete_service(Id=svc_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             sd.delete_namespace(Id=ns_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_discover_instances(self, sd_data, ns_and_svc):
         resp = sd_data.discover_instances(

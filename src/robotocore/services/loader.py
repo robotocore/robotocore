@@ -23,6 +23,9 @@ _initialized_services: set[str] = set()
 _initialized = False
 
 
+logger = logging.getLogger(__name__)
+
+
 def _normalize_service_name(name: str) -> str:
     """Strip whitespace and lowercase a service name."""
     return name.strip().lower()
@@ -180,9 +183,9 @@ def initialize_service(service_name: str) -> None:
         from moto.backends import get_backend
 
         get_backend(service_name)
-    except Exception:
+    except Exception as exc:
         # Some services may not have Moto backends (native-only)
-        pass
+        logger.debug("initialize_service: get_backend failed (non-fatal): %s", exc)
     _initialized_services.add(service_name)
 
 

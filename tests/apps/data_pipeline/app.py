@@ -398,7 +398,7 @@ class DataPipeline:
             try:
                 self.ssm.delete_parameter(Name=param["Name"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     # -----------------------------------------------------------------------
     # Secrets Manager (credentials)

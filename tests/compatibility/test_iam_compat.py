@@ -347,7 +347,7 @@ class TestIAMGroupCRUD:
             try:
                 iam.remove_user_from_group(GroupName=group_name, UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
             iam.delete_group(GroupName=group_name)
 
@@ -409,7 +409,7 @@ class TestIAMManagedPolicyAttach:
             try:
                 iam.detach_user_policy(UserName=user_name, PolicyArn=arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
             iam.delete_policy(PolicyArn=arn)
 
@@ -429,7 +429,7 @@ class TestIAMManagedPolicyAttach:
             try:
                 iam.detach_group_policy(GroupName=group_name, PolicyArn=arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_group(GroupName=group_name)
             iam.delete_policy(PolicyArn=arn)
 
@@ -453,11 +453,11 @@ class TestIAMManagedPolicyAttach:
             try:
                 iam.detach_role_policy(RoleName=role_name, PolicyArn=arn1)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.detach_role_policy(RoleName=role_name, PolicyArn=arn2)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName=role_name)
             iam.delete_policy(PolicyArn=arn1)
             iam.delete_policy(PolicyArn=arn2)
@@ -477,7 +477,7 @@ class TestIAMManagedPolicyAttach:
             try:
                 iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName=role_name)
             iam.delete_policy(PolicyArn=arn)
 
@@ -505,7 +505,7 @@ class TestIAMInlinePolicyExtended:
             try:
                 iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName=role_name)
 
     def test_list_role_policies(self, iam):
@@ -524,7 +524,7 @@ class TestIAMInlinePolicyExtended:
                 try:
                     iam.delete_role_policy(RoleName=role_name, PolicyName=p)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             iam.delete_role(RoleName=role_name)
 
     def test_delete_role_policy(self, iam):
@@ -575,7 +575,7 @@ class TestIAMInlinePolicyExtended:
                 try:
                     iam.delete_user_policy(UserName=user_name, PolicyName=p)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
 
@@ -627,7 +627,7 @@ class TestIAMInstanceProfileExtended:
             try:
                 iam.remove_role_from_instance_profile(InstanceProfileName=prof, RoleName=role)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_instance_profile(InstanceProfileName=prof)
             iam.delete_role(RoleName=role)
 
@@ -652,7 +652,7 @@ class TestIAMAccessKeys:
             try:
                 iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_list_access_keys(self, iam):
@@ -667,7 +667,7 @@ class TestIAMAccessKeys:
             try:
                 iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_update_access_key_inactive(self, iam):
@@ -689,7 +689,7 @@ class TestIAMAccessKeys:
             try:
                 iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_delete_access_key(self, iam):
@@ -871,7 +871,7 @@ class TestIAMPolicyVersionsExtended:
                     try:
                         iam.delete_policy_version(PolicyArn=arn, VersionId=v["VersionId"])
                     except Exception:
-                        pass
+                        pass  # best-effort cleanup
             iam.delete_policy(PolicyArn=arn)
 
     def test_delete_policy_version(self, iam):
@@ -921,7 +921,7 @@ class TestIAMGroupMembership:
             try:
                 iam.remove_user_from_group(GroupName=group_name, UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
             iam.delete_group(GroupName=group_name)
 
@@ -952,7 +952,7 @@ class TestIAMAttachDetachRolePolicy:
             try:
                 iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_policy(PolicyArn=arn)
             iam.delete_role(RoleName=role_name)
 
@@ -996,15 +996,15 @@ class TestIAMInstanceProfileCRUD:
                     InstanceProfileName=profile_name, RoleName=role_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_instance_profile(InstanceProfileName=profile_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -1036,7 +1036,7 @@ class TestIAMRoleInlinePolicy:
             try:
                 iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_role(RoleName=role_name)
 
 
@@ -1086,12 +1086,12 @@ class TestIAMLoginProfile:
                 iam.get_login_profile(UserName=user_name)
                 assert False, "Expected NoSuchEntity error"
             except iam.exceptions.NoSuchEntityException:
-                pass
+                pass  # resource may not exist
         finally:
             try:
                 iam.delete_login_profile(UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_get_account_authorization_details_filter(self, iam):
@@ -1135,7 +1135,7 @@ class TestIAMServiceLinkedRole:
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestIAMOpenIDConnectProvider:
@@ -1336,7 +1336,7 @@ class TestIAMAccountPasswordPolicy:
             try:
                 iam.delete_account_password_policy()
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestIAMChangePassword:
@@ -1755,7 +1755,7 @@ class TestIAMExtendedV2:
             try:
                 iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_account_alias_lifecycle(self, iam):
@@ -1769,7 +1769,7 @@ class TestIAMExtendedV2:
             try:
                 iam.delete_account_alias(AccountAlias=alias)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_account_aliases_empty_after_delete(self, iam):
         """After deleting an alias, it should not appear in the list."""
@@ -1818,11 +1818,11 @@ class TestIAMExtendedV2:
             try:
                 iam.delete_user(UserName=new_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_user(UserName=old_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_role_description(self, iam):
         """UpdateRole to change the description."""
@@ -1857,15 +1857,15 @@ class TestIAMExtendedV2:
                     InstanceProfileName=prof_name, RoleName=role_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_instance_profile(InstanceProfileName=prof_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_put_delete_user_permissions_boundary(self, iam):
         """PutUserPermissionsBoundary / DeleteUserPermissionsBoundary."""
@@ -1886,7 +1886,7 @@ class TestIAMExtendedV2:
             try:
                 iam.delete_user_permissions_boundary(UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
             iam.delete_policy(PolicyArn=arn)
 
@@ -1914,7 +1914,7 @@ class TestIAMExtendedV2:
             try:
                 iam.delete_group_policy(GroupName=group_name, PolicyName=policy_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_group(GroupName=group_name)
 
     def test_get_account_authorization_details_role_filter(self, iam):
@@ -2121,11 +2121,11 @@ class TestIAMUpdateGroup:
             try:
                 iam.delete_group(GroupName=new_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_group(GroupName=old_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -2148,7 +2148,7 @@ class TestIAMUpdateLoginProfile:
             try:
                 iam.delete_login_profile(UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_update_login_profile_password_reset(self, iam):
@@ -2168,7 +2168,7 @@ class TestIAMUpdateLoginProfile:
             try:
                 iam.delete_login_profile(UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
 
@@ -2634,7 +2634,7 @@ class TestIAMMFADeviceOps:
             try:
                 iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_virtual_mfa_device(SerialNumber=serial)
             iam.delete_user(UserName=user_name)
 
@@ -2671,7 +2671,7 @@ class TestIAMSSHPublicKeyUpload:
             try:
                 iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
 
@@ -2719,7 +2719,7 @@ class TestIAMSigningCertificateUpload:
             try:
                 iam.delete_signing_certificate(UserName=user_name, CertificateId=cert_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
 
@@ -2819,7 +2819,7 @@ class TestIAMSigningCertificateLifecycle:
             try:
                 iam.delete_signing_certificate(UserName=user_name, CertificateId=cert_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_delete_signing_certificate(self, iam):
@@ -4051,11 +4051,11 @@ class TestIAMListInstanceProfilesForRoleEdge:
                 try:
                     iam.remove_role_from_instance_profile(InstanceProfileName=p, RoleName=role_name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
                 try:
                     iam.delete_instance_profile(InstanceProfileName=p)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             iam.delete_role(RoleName=role_name)
 
 
@@ -4130,7 +4130,7 @@ class TestIAMLoginProfileExtended:
             try:
                 iam.delete_login_profile(UserName=user_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
 
@@ -4166,7 +4166,7 @@ class TestIAMDeactivateMFADevice:
             try:
                 iam.deactivate_mfa_device(UserName=user_name, SerialNumber=serial)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_virtual_mfa_device(SerialNumber=serial)
             iam.delete_user(UserName=user_name)
 
@@ -4451,7 +4451,7 @@ class TestIAMMultipleAccessKeys:
                 try:
                     iam.delete_access_key(UserName=user_name, AccessKeyId=ak["AccessKeyId"])
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
 
@@ -4755,7 +4755,7 @@ class TestIAMSshPublicKeys:
             try:
                 iam.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_list_ssh_public_keys_empty(self, iam):
@@ -5177,7 +5177,7 @@ class TestIAMVirtualMFAExplicit:
             try:
                 iam.delete_virtual_mfa_device(SerialNumber=serial)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_deactivate_mfa_device(self, iam):
@@ -5202,7 +5202,7 @@ class TestIAMVirtualMFAExplicit:
             try:
                 iam.delete_virtual_mfa_device(SerialNumber=serial)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam.delete_user(UserName=user_name)
 
     def test_list_mfa_devices(self, iam):

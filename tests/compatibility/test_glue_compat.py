@@ -536,7 +536,7 @@ class TestGlueSchemaOperations:
         try:
             client.delete_registry(RegistryId={"RegistryName": name})
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_schema(self, client, registry):
         """CreateSchema creates a schema in a registry."""
@@ -870,7 +870,7 @@ class TestGlueSchemaVersionOps:
         try:
             client.delete_registry(RegistryId={"RegistryName": name})
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     @pytest.fixture
     def schema(self, client, registry):
@@ -894,7 +894,7 @@ class TestGlueSchemaVersionOps:
                 SchemaId={"SchemaName": schema_name, "RegistryName": registry["name"]}
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_get_schema_version(self, client, schema):
         """GetSchemaVersion retrieves schema version details."""
@@ -3464,7 +3464,7 @@ class TestGlueSchemaVersions:
             try:
                 glue.delete_schema(SchemaId={"RegistryName": reg_name, "SchemaName": schema_name})
             except Exception:
-                pass
+                pass  # best-effort cleanup
             glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
 

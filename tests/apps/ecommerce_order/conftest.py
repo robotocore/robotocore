@@ -160,7 +160,7 @@ def receipt_bucket(s3, unique_suffix):
         for obj in objects:
             s3.delete_object(Bucket=name, Key=obj["Key"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
     s3.delete_bucket(Bucket=name)
 
 

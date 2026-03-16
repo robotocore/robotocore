@@ -109,7 +109,7 @@ def pipeline(codepipeline, pipeline_role_arn):
     try:
         codepipeline.delete_pipeline(name=name)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestCodePipelineOperations:

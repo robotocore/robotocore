@@ -697,7 +697,7 @@ class TestEventBridgeRuleState:
             try:
                 events.delete_archive(ArchiveName=archive_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
 
@@ -883,7 +883,7 @@ class TestEventBridgeConnections:
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeUpdateConnection:
@@ -926,7 +926,7 @@ class TestEventBridgeUpdateConnection:
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeApiDestinations:
@@ -962,11 +962,11 @@ class TestEventBridgeApiDestinations:
             try:
                 events.delete_api_destination(Name=dest_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeUpdateApiDestination:
@@ -1013,11 +1013,11 @@ class TestEventBridgeUpdateApiDestination:
             try:
                 events.delete_api_destination(Name=dest_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeListRuleNamesByTarget:
@@ -1045,11 +1045,11 @@ class TestEventBridgeListRuleNamesByTarget:
             try:
                 events.remove_targets(Rule=rule_name, Ids=["tgt1"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_rule(Name=rule_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeExtended:
@@ -1181,11 +1181,11 @@ class TestEventBridgeExtended:
             try:
                 events.delete_rule(Name=rule_name, EventBusName=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_event_bus(Name=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_put_targets_with_input_transformer(self, events):
         suffix = uuid.uuid4().hex[:8]
@@ -1405,7 +1405,7 @@ class TestEventBridgeTagsOnConnection:
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeListArchivesFilters:
@@ -1434,7 +1434,7 @@ class TestEventBridgeListArchivesFilters:
                 try:
                     events.delete_archive(ArchiveName=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_list_archives_with_event_source_arn(self, events):
         """ListArchives filtered by EventSourceArn returns matching archives."""
@@ -1510,7 +1510,7 @@ class TestEventBridgeDeleteConnection:
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
 
@@ -1556,11 +1556,11 @@ class TestEventBridgeDeleteApiDestination:
             try:
                 events.delete_api_destination(Name=dest_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventsAutoCoverage:
@@ -1621,7 +1621,7 @@ class TestEventBridgePartnerEventSource:
             try:
                 events.delete_partner_event_source(Name=source_name, Account=account)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeCancelReplay:
@@ -1807,7 +1807,7 @@ class TestEventBridgeConnectionLifecycle:
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_connection_then_describe_raises(self, events):
         """Delete connection, then describe raises ResourceNotFoundException."""
@@ -1886,11 +1886,11 @@ class TestEventBridgeApiDestinationLifecycle:
             try:
                 events.delete_api_destination(Name=dest_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_api_destination_then_describe_raises(self, events):
         """Delete API destination, then describe raises ResourceNotFoundException."""
@@ -1925,7 +1925,7 @@ class TestEventBridgeApiDestinationLifecycle:
             try:
                 events.delete_connection(Name=conn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgePartnerLifecycle:
@@ -1947,7 +1947,7 @@ class TestEventBridgePartnerLifecycle:
             try:
                 events.delete_partner_event_source(Name=source_name, Account=account)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_event_sources_returns_list(self, events):
         """ListEventSources returns EventSources key with a list."""
@@ -2092,11 +2092,11 @@ class TestEventBridgeRuleOnCustomBus:
             try:
                 events.delete_rule(Name=rule_name, EventBusName=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_event_bus(Name=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_targets_on_custom_bus_rule(self, events):
         """PutTargets, ListTargetsByRule, RemoveTargets on custom bus rule."""
@@ -2130,15 +2130,15 @@ class TestEventBridgeRuleOnCustomBus:
             try:
                 events.remove_targets(Rule=rule_name, EventBusName=bus_name, Ids=["t1"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_rule(Name=rule_name, EventBusName=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_event_bus(Name=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEventBridgeTagsOnEventBus:
@@ -2221,16 +2221,16 @@ class TestEventBridgeListRuleNamesByTargetExtended:
             try:
                 events.remove_targets(Rule=rule1, Ids=["t1"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.remove_targets(Rule=rule2, Ids=["t1"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_rule(Name=rule1)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 events.delete_rule(Name=rule2)
             except Exception:
-                pass
+                pass  # best-effort cleanup

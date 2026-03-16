@@ -22,7 +22,7 @@ def schema(clouddirectory_client):
     try:
         clouddirectory_client.delete_schema(SchemaArn=arn)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestCloudDirectoryCompat:
@@ -78,7 +78,7 @@ def published_schema(clouddirectory_client, schema):
     try:
         clouddirectory_client.delete_schema(SchemaArn=arn)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -98,11 +98,11 @@ def directory(clouddirectory_client, published_schema):
     try:
         clouddirectory_client.disable_directory(DirectoryArn=directory_arn)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         clouddirectory_client.delete_directory(DirectoryArn=directory_arn)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestClouddirectoryAutoCoverage:
@@ -136,7 +136,7 @@ class TestCloudDirectoryDirectoryOps:
         try:
             clouddirectory_client.disable_directory(DirectoryArn=resp["DirectoryArn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
         clouddirectory_client.delete_directory(DirectoryArn=resp["DirectoryArn"])
 
     def test_get_directory(self, clouddirectory_client, directory):
@@ -191,11 +191,11 @@ class TestCloudDirectorySchemaOps:
             try:
                 clouddirectory_client.delete_schema(SchemaArn=pub_arn2)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 clouddirectory_client.delete_schema(SchemaArn=arn2)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestCloudDirectoryDeleteDirectory:
@@ -326,7 +326,7 @@ class TestCloudDirectorySchemaLifecycle:
                 try:
                     clouddirectory_client.delete_schema(SchemaArn=arn)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestCloudDirectoryTagOps:
@@ -677,11 +677,11 @@ class TestCloudDirectoryDirectoryEnableDisable:
             try:
                 clouddirectory_client.disable_directory(DirectoryArn=dir_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 clouddirectory_client.delete_directory(DirectoryArn=dir_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestCloudDirectoryObjectCrud:

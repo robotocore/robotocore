@@ -61,8 +61,8 @@ def _detect_tfm() -> str:
                 _cached_tfm = f"net{major}.0"
                 logger.debug("Detected .NET TFM: %s", _cached_tfm)
                 return _cached_tfm
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_detect_tfm: run failed (non-fatal): %s", exc)
 
     _cached_tfm = "net8.0"
     return _cached_tfm

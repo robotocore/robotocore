@@ -77,6 +77,8 @@ jobs:
           --max-no-contact-pct 5
           --max-no-assertion-pct 6
           --max-weak-assertion-pct 25
+      - name: Check empty except:pass blocks
+        run: uv run python scripts/fix_empty_except.py --check
       - name: Check wire name correctness
         run: uv run python scripts/fix_moto_param_names.py --all
       - name: Audit fallthrough coverage (informational)

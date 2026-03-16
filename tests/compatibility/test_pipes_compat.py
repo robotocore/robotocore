@@ -30,7 +30,7 @@ def created_pipe(pipes_client, pipe_name):
     try:
         pipes_client.delete_pipe(Name=pipe_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestPipesCompat:

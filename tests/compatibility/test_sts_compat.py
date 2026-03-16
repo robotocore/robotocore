@@ -123,7 +123,7 @@ class TestSTSOperations:
             sts.decode_authorization_message(EncodedMessage="dummy-encoded-message")
         except sts.exceptions.InvalidAuthorizationMessageException:
             # Expected — the message is not a real encoded authorization message
-            pass
+            pass  # best-effort cleanup
 
     def test_assume_role_with_duration(self, sts):
         """AssumeRole with DurationSeconds."""

@@ -404,7 +404,7 @@ class MessageBroker:
                 if isinstance(parsed, dict) and "group" in parsed:
                     group_key = str(parsed["group"])
             except (json.JSONDecodeError, KeyError):
-                pass
+                pass  # intentionally ignored
             groups.setdefault(group_key, []).append(msg)
         return groups
 

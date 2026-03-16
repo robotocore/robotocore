@@ -547,8 +547,8 @@ def _send_task_success_op(params: dict, region: str, account_id: str) -> dict:
     if isinstance(output, str):
         try:
             output = json.loads(output)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logger.debug("_send_task_success_op: loads failed (non-fatal): %s", exc)
 
     if not send_task_success(task_token, output):
         raise SfnError("TaskDoesNotExist", f"Task token not found: {task_token}")

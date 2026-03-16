@@ -30,7 +30,7 @@ def rds_cluster(rds):
     try:
         rds.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestRDSDataOperations:

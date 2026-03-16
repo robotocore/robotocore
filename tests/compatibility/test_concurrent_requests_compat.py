@@ -88,7 +88,7 @@ class TestConcurrentS3Puts:
                 try:
                     s3.delete_object(Bucket=bucket, Key=f"obj-{i}")
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
 
@@ -262,7 +262,7 @@ class TestConcurrentLambdaInvocations:
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -353,19 +353,19 @@ class TestCrossServiceConcurrent:
                 try:
                     s3.delete_object(Bucket=bucket, Key=f"cross-{i}")
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 ddb.delete_table(TableName=table_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 sqs.delete_queue(QueueUrl=queue_url)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -534,13 +534,13 @@ class TestConcurrentAPIGatewayRequests:
             try:
                 apigw.delete_rest_api(restApiId=api_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             iam = make_client("iam")
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

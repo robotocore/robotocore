@@ -92,7 +92,7 @@ class TestDynamoDBStreams:
             try:
                 ddb.delete_table(TableName=table_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_dynamodb_stream_esm_config(self, aws_client, lambda_role_arn):
         """Verify DDB stream -> Lambda ESM can be configured."""
@@ -158,12 +158,12 @@ class TestDynamoDBStreams:
                 try:
                     lam.delete_event_source_mapping(UUID=esm_uuid)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=fn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 ddb.delete_table(TableName=table_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

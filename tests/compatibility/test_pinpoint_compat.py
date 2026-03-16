@@ -1020,7 +1020,7 @@ class TestPinpointCampaignCRUD:
         try:
             pinpoint.delete_campaign(ApplicationId=app_id, CampaignId=campaign_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_campaign(self, pinpoint, app_id, segment_id):
         resp = pinpoint.create_campaign(

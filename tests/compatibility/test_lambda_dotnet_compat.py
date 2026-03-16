@@ -47,7 +47,7 @@ def _detect_tfm() -> str:
         if versions:
             return f"net{max(versions)}.0"
     except Exception:
-        pass
+        pass  # intentionally ignored
     return "net8.0"
 
 

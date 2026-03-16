@@ -87,7 +87,7 @@ def pipeline(s3, dynamodb, ssm, sns, sqs, logs, stepfunctions, iam, boto_session
         for param in resp["Parameters"]:
             ssm.delete_parameter(Name=param["Name"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture

@@ -89,8 +89,8 @@ def _match_pattern(data: dict | str | list, pattern: dict | list | str) -> bool:
         if key == "body" and isinstance(data.get("body"), str):
             try:
                 actual_data = {**data, "body": json.loads(data["body"])}
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.debug("_match_pattern: loads failed (non-fatal): %s", exc)
 
         if isinstance(expected, dict):
             # Nested pattern

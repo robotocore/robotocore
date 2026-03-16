@@ -116,7 +116,7 @@ class TestCfnE2eS3:
             try:
                 s3.delete_object(Bucket=bucket_name, Key="test.txt")
             except Exception:
-                pass
+                pass  # best-effort cleanup
             cfn.delete_stack(StackName=stack_name)
 
 

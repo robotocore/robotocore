@@ -74,7 +74,7 @@ class TestS3ControlOperations:
         try:
             s3control.delete_public_access_block(AccountId="123456789012")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         with pytest.raises(ClientError) as exc:
             s3control.get_public_access_block(AccountId="123456789012")
         assert exc.value.response["Error"]["Code"] == "NoSuchPublicAccessBlockConfiguration"
@@ -130,7 +130,7 @@ class TestS3ControlOperations:
         try:
             s3control.delete_public_access_block(AccountId="123456789012")
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         # Delete again - should succeed
         response = s3control.delete_public_access_block(AccountId="123456789012")
         assert response["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
@@ -171,7 +171,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point(self, s3control, s3):
@@ -190,7 +190,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_access_point(self, s3control, s3):
@@ -226,7 +226,7 @@ class TestS3ControlAccessPoints:
                 try:
                     s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_list_access_points_by_bucket(self, s3control, s3):
@@ -249,7 +249,7 @@ class TestS3ControlAccessPoints:
                 try:
                     s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket1)
             s3.delete_bucket(Bucket=bucket2)
 
@@ -269,7 +269,7 @@ class TestS3ControlAccessPoints:
                 try:
                     s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_not_found(self, s3control):
@@ -305,7 +305,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_access_point_arn_format(self, s3control, s3):
@@ -323,7 +323,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_put_access_point_policy(self, s3control, s3):
@@ -356,11 +356,11 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy(self, s3control, s3):
@@ -395,11 +395,11 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy_not_set(self, s3control, s3):
@@ -416,7 +416,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_access_point_policy(self, s3control, s3):
@@ -438,7 +438,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy_status(self, s3control, s3):
@@ -472,11 +472,11 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_list_access_points_empty(self, s3control):
@@ -504,7 +504,7 @@ class TestS3ControlAccessPoints:
                 try:
                     s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_access_point_network_origin(self, s3control, s3):
@@ -520,7 +520,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_access_point_idempotent(self, s3control):
@@ -555,7 +555,7 @@ class TestS3ControlAccessPoints:
                 try:
                     s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_create_access_point_duplicate_name(self, s3control, s3):
@@ -571,7 +571,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy_status_no_policy(self, s3control, s3):
@@ -588,7 +588,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy_status_not_found(self, s3control):
@@ -618,7 +618,7 @@ class TestS3ControlAccessPoints:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
 
@@ -647,7 +647,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_multi_region_access_point(self, s3control, s3):
@@ -675,7 +675,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_multi_region_access_point(self, s3control, s3):
@@ -724,7 +724,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_multi_region_access_point_policy(self, s3control, s3):
@@ -769,7 +769,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_put_multi_region_access_point_policy(self, s3control, s3):
@@ -811,7 +811,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_multi_region_access_point_policy_status(self, s3control, s3):
@@ -856,7 +856,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_describe_multi_region_access_point_operation(self, s3control, s3):
@@ -884,7 +884,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_multi_region_access_point_details(self, s3control, s3):
@@ -914,7 +914,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_multi_region_access_point_not_found(self, s3control):
@@ -958,7 +958,7 @@ class TestS3ControlMultiRegionAccessPoints:
                     Details={"Name": mrap_name},
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_mrap_policy_not_found(self, s3control):
@@ -1012,7 +1012,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_storage_lens_configuration(self, s3control):
         """DeleteStorageLensConfiguration removes the config."""
@@ -1054,7 +1054,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_put_storage_lens_configuration_tagging(self, s3control):
         """PutStorageLensConfigurationTagging sets tags on a storage lens config."""
@@ -1083,7 +1083,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_storage_lens_configuration_tagging(self, s3control):
         """GetStorageLensConfigurationTagging returns tags for a storage lens config."""
@@ -1116,7 +1116,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_storage_lens_has_created_config(self, s3control):
         """ListStorageLensConfigurations includes a freshly created config."""
@@ -1140,7 +1140,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_storage_lens_removes_from_list(self, s3control):
         """Deleting a storage lens config removes it from list results."""
@@ -1187,7 +1187,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_put_storage_lens_replaces_existing(self, s3control):
         """Putting a storage lens config with the same ID replaces it."""
@@ -1219,7 +1219,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_put_storage_lens_tagging_replaces_tags(self, s3control):
         """PutStorageLensConfigurationTagging replaces existing tags."""
@@ -1252,7 +1252,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_storage_lens_multiple_tags(self, s3control):
         """PutStorageLensConfigurationTagging with multiple tags persists all."""
@@ -1288,7 +1288,7 @@ class TestS3ControlStorageLens:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_storage_lens_list_multiple(self, s3control):
         """ListStorageLensConfigurations returns all created configs."""
@@ -1313,7 +1313,7 @@ class TestS3ControlStorageLens:
                 try:
                     s3control.delete_storage_lens_configuration(AccountId=ACCOUNT_ID, ConfigId=cid)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_storage_lens_tagging_not_found(self, s3control):
         """GetStorageLensConfigurationTagging for nonexistent config raises error."""
@@ -1438,7 +1438,7 @@ class TestS3ControlStorageLensUpdate:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_storage_lens_list_shows_enabled(self, s3control):
         """ListStorageLensConfigurations shows IsEnabled for each config."""
@@ -1464,7 +1464,7 @@ class TestS3ControlStorageLensUpdate:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlMultiRegionAccessPointMultiBucket:
@@ -1509,15 +1509,15 @@ class TestS3ControlMultiRegionAccessPointMultiBucket:
                     AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket1)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket2)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_mrap_status_field(self, s3control, s3):
         """GetMultiRegionAccessPoint returns Status field."""
@@ -1544,11 +1544,11 @@ class TestS3ControlMultiRegionAccessPointMultiBucket:
                     AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlListJobs:
@@ -1624,7 +1624,7 @@ class TestS3ControlAccessGrantsCRUD:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_access_grants_instance_then_get(self, s3control):
         """GetAccessGrantsInstance returns details after creation."""
@@ -1637,7 +1637,7 @@ class TestS3ControlAccessGrantsCRUD:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_access_grants_instance_appears_in_list(self, s3control):
         """ListAccessGrantsInstances includes the created instance."""
@@ -1653,7 +1653,7 @@ class TestS3ControlAccessGrantsCRUD:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_access_grants_location(self, s3control):
         """CreateAccessGrantsLocation creates a location and returns ARN."""
@@ -1671,7 +1671,7 @@ class TestS3ControlAccessGrantsCRUD:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_access_grants_location_then_get(self, s3control):
         """GetAccessGrantsLocation returns details after creation."""
@@ -1692,7 +1692,7 @@ class TestS3ControlAccessGrantsCRUD:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_access_grants_location_appears_in_list(self, s3control):
         """ListAccessGrantsLocations includes the created location."""
@@ -1711,7 +1711,7 @@ class TestS3ControlAccessGrantsCRUD:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlBucketOps:
@@ -1725,7 +1725,7 @@ class TestS3ControlBucketOps:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_get_bucket_lifecycle_configuration(self, s3control, bucket):
         resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
@@ -1902,7 +1902,7 @@ class TestS3ControlStorageLensDeepLifecycle:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_storage_lens_delete_tagging(self, s3control):
         """Tags are removed after deleting and recreating configuration."""
@@ -1942,7 +1942,7 @@ class TestS3ControlStorageLensDeepLifecycle:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_storage_lens_put_appears_in_list(self, s3control):
         """Newly created config appears in list."""
@@ -1962,7 +1962,7 @@ class TestS3ControlStorageLensDeepLifecycle:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_storage_lens_double_delete(self, s3control):
         """Deleting already deleted config should error or succeed gracefully."""
@@ -2005,7 +2005,7 @@ class TestS3ControlAccessPointDeepLifecycle:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_delete_access_point_then_describe_fails(self, s3control, s3, bucket):
         """Get access point after deletion returns error."""
@@ -2023,7 +2023,7 @@ class TestS3ControlAccessPointDeepLifecycle:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_delete_access_point_policy_then_get_fails(self, s3control, s3, bucket):
@@ -2056,7 +2056,7 @@ class TestS3ControlAccessPointDeepLifecycle:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_access_point_list_after_delete(self, s3control, s3, bucket):
         """Deleted access point should not appear in list."""
@@ -2077,7 +2077,7 @@ class TestS3ControlAccessPointDeepLifecycle:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
 
@@ -2100,7 +2100,7 @@ class TestS3ControlMRAPDeepLifecycle:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_mrap_delete_then_get_fails(self, s3control, s3, bucket):
         """Get MRAP after deletion returns error."""
@@ -2129,7 +2129,7 @@ class TestS3ControlMRAPDeepLifecycle:
                     AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_mrap_list_after_delete(self, s3control, s3, bucket):
@@ -2162,7 +2162,7 @@ class TestS3ControlMRAPDeepLifecycle:
                     AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_mrap_policy_roundtrip(self, s3control, s3, bucket):
@@ -2214,7 +2214,7 @@ class TestS3ControlMRAPDeepLifecycle:
                     AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlAccessGrantsResourcePolicy:
@@ -2236,7 +2236,7 @@ class TestS3ControlAccessGrantsResourcePolicy:
         try:
             s3control.delete_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_put_access_grants_instance_resource_policy(self, s3control):
         """PutAccessGrantsInstanceResourcePolicy sets a policy and returns it."""
@@ -2351,7 +2351,7 @@ class TestS3ControlAccessGrantLifecycle:
                     AccountId=ACCOUNT_ID, AccessGrantId=resp["AccessGrantId"]
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_access_grant(self, s3control):
         """GetAccessGrant returns full grant details."""
@@ -2383,7 +2383,7 @@ class TestS3ControlAccessGrantLifecycle:
             try:
                 s3control.delete_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_access_grant(self, s3control):
         """DeleteAccessGrant removes the grant."""
@@ -2438,7 +2438,7 @@ class TestS3ControlAccessGrantLifecycle:
             try:
                 s3control.delete_access_grant(AccountId=ACCOUNT_ID, AccessGrantId=grant_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlAccessGrantsLocationLifecycle:
@@ -2512,7 +2512,7 @@ class TestS3ControlAccessGrantsLocationLifecycle:
                     AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_access_grants_location_preserves_scope(self, s3control):
         """UpdateAccessGrantsLocation preserves the location scope."""
@@ -2536,7 +2536,7 @@ class TestS3ControlAccessGrantsLocationLifecycle:
                     AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlMRAPRoutes:
@@ -2565,11 +2565,11 @@ class TestS3ControlMRAPRoutes:
                 AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             s3.delete_bucket(Bucket=bucket)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_get_multi_region_access_point_routes(self, s3control, mrap_with_bucket):
         """GetMultiRegionAccessPointRoutes returns routes for a MRAP."""
@@ -2642,11 +2642,11 @@ class TestS3ControlJobLifecycle:
                 AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             s3.delete_bucket(Bucket=bucket)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_job_returns_job_id(self, s3control, s3):
         """CreateJob returns a valid JobId."""
@@ -2679,7 +2679,7 @@ class TestS3ControlJobLifecycle:
                     RequestedJobStatus="Cancelled",
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_create_job_appears_in_list(self, s3control, job_with_bucket):
@@ -2837,7 +2837,7 @@ class TestS3ControlDeleteStorageLensTagging:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_storage_lens_tagging_idempotent(self, s3control):
         """Deleting tags when none exist succeeds."""
@@ -2863,7 +2863,7 @@ class TestS3ControlDeleteStorageLensTagging:
                     AccountId=ACCOUNT_ID, ConfigId=config_id
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3ControlAccessPointForObjectLambda:
@@ -2915,11 +2915,11 @@ class TestS3ControlAccessPointForObjectLambda:
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_for_object_lambda(self, s3control, s3):
@@ -2946,11 +2946,11 @@ class TestS3ControlAccessPointForObjectLambda:
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_access_point_for_object_lambda(self, s3control, s3):
@@ -2974,7 +2974,7 @@ class TestS3ControlAccessPointForObjectLambda:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_put_access_point_policy_for_object_lambda(self, s3control, s3):
@@ -3016,17 +3016,17 @@ class TestS3ControlAccessPointForObjectLambda:
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point_for_object_lambda(
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy_for_object_lambda(self, s3control, s3):
@@ -3072,17 +3072,17 @@ class TestS3ControlAccessPointForObjectLambda:
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point_for_object_lambda(
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_access_point_policy_for_object_lambda(self, s3control, s3):
@@ -3112,11 +3112,11 @@ class TestS3ControlAccessPointForObjectLambda:
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_policy_status_for_object_lambda(self, s3control, s3):
@@ -3162,17 +3162,17 @@ class TestS3ControlAccessPointForObjectLambda:
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point_for_object_lambda(
                     AccountId=ACCOUNT_ID, Name=olap_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
 
@@ -3206,11 +3206,11 @@ class TestS3ControlAccessPointScope:
             try:
                 s3control.delete_access_point_scope(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_get_access_point_scope(self, s3control, s3):
@@ -3234,11 +3234,11 @@ class TestS3ControlAccessPointScope:
             try:
                 s3control.delete_access_point_scope(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
     def test_delete_access_point_scope(self, s3control, s3):
@@ -3261,7 +3261,7 @@ class TestS3ControlAccessPointScope:
             try:
                 s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             s3.delete_bucket(Bucket=bucket)
 
 
@@ -3284,7 +3284,7 @@ class TestS3ControlBucketLifecyclePolicyReplicationTagging:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_put_bucket_tagging(self, s3control, bucket):
         """PutBucketTagging sets tags on a bucket."""
@@ -3426,11 +3426,11 @@ class TestS3ControlJobTagging:
                 AccountId=ACCOUNT_ID, JobId=jid, RequestedJobStatus="Cancelled"
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             s3.delete_bucket(Bucket=bucket)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_get_job_tagging(self, s3control, job_id):
         """GetJobTagging returns tags for a job."""
@@ -3475,7 +3475,7 @@ class TestS3ControlStorageLensGroups:
             try:
                 s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_storage_lens_group(self, s3control):
         """GetStorageLensGroup returns group details."""
@@ -3497,7 +3497,7 @@ class TestS3ControlStorageLensGroups:
             try:
                 s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_storage_lens_groups(self, s3control):
         """ListStorageLensGroups returns groups for the account."""
@@ -3518,7 +3518,7 @@ class TestS3ControlStorageLensGroups:
             try:
                 s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_storage_lens_group(self, s3control):
         """UpdateStorageLensGroup modifies a group."""
@@ -3548,7 +3548,7 @@ class TestS3ControlStorageLensGroups:
             try:
                 s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_storage_lens_group(self, s3control):
         """DeleteStorageLensGroup removes a group."""

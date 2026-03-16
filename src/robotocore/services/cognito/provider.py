@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import threading
 import time
 import uuid
@@ -23,6 +24,9 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 
 _stores: dict[tuple[str, str], "CognitoStore"] = {}
 _lock = threading.RLock()
+
+
+logger = logging.getLogger(__name__)
 
 
 class CognitoStore:
@@ -173,8 +177,8 @@ def _sync_user_to_moto(
 
         backend = get_backend("cognito-idp")[account_id][region]
         backend.admin_create_user(pool_id, username, password, {})
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_sync_user_to_moto: admin_create_user failed (non-fatal): %s", exc)
 
 
 def _sync_client_to_moto(
@@ -193,8 +197,8 @@ def _sync_client_to_moto(
         if pool:
             pool.clients.pop(old_id, None)
             pool.clients[client_id] = moto_client
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_sync_client_to_moto: create_user_pool_client failed (non-fatal): %s", exc)
 
 
 def _delete_pool_from_moto(pool_id: str, region: str, account_id: str) -> None:
@@ -204,8 +208,8 @@ def _delete_pool_from_moto(pool_id: str, region: str, account_id: str) -> None:
 
         backend = get_backend("cognito-idp")[account_id][region]
         backend.user_pools.pop(pool_id, None)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_delete_pool_from_moto: pop failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------

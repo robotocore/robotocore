@@ -69,7 +69,7 @@ class TestArchival:
             file_service.download_file("report.pdf")
             assert False, "Expected error downloading deleted key"
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
         # Verify the file is at the new key
         body = file_service.download_file("archive/report.pdf")

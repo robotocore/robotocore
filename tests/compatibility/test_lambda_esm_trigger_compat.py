@@ -85,7 +85,7 @@ def role(iam):
     try:
         iam.delete_role(RoleName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ def marker_table(dynamodb):
     try:
         dynamodb.delete_table(TableName=table_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def _lambda_code_write_marker(marker_table: str, endpoint_url: str) -> str:
@@ -246,7 +246,7 @@ class TestSQSToLambdaTrigger:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_sqs_batch_triggers_lambda(self, lam, sqs, role, dynamodb, marker_table):
         """Send 5 messages, verify Lambda receives batch with multiple Records."""
@@ -302,7 +302,7 @@ class TestSQSToLambdaTrigger:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_sqs_fifo_triggers_lambda(self, lam, sqs, role, dynamodb, marker_table):
         """FIFO queue messages trigger Lambda with MessageGroupId in attributes."""
@@ -370,7 +370,7 @@ class TestSQSToLambdaTrigger:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_sqs_filter_criteria(self, lam, sqs, role, dynamodb, marker_table):
         """ESM with filter criteria: only matching messages trigger Lambda."""
@@ -446,7 +446,7 @@ class TestSQSToLambdaTrigger:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestESMDisableEnable:
@@ -524,7 +524,7 @@ class TestESMDisableEnable:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestPartialBatchFailure:
@@ -622,7 +622,7 @@ class TestPartialBatchFailure:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestKinesisToLambdaTrigger:
@@ -687,7 +687,7 @@ class TestKinesisToLambdaTrigger:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestDynamoDBStreamsToLambdaTrigger:
@@ -759,4 +759,4 @@ class TestDynamoDBStreamsToLambdaTrigger:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup

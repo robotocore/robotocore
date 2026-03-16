@@ -109,19 +109,19 @@ def handler(event, context):
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -193,15 +193,15 @@ def handler(event, context):
             try:
                 ddb.delete_table(TableName=table_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -272,15 +272,15 @@ def handler(event, context):
             try:
                 sqs.delete_queue(QueueUrl=queue_url)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -347,15 +347,15 @@ def handler(event, context):
             try:
                 lam.delete_function(FunctionName=inner_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=outer_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -436,19 +436,19 @@ def handler(event, context):
             try:
                 sns.delete_topic(TopicArn=topic_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 sqs.delete_queue(QueueUrl=queue_url)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -505,15 +505,15 @@ def handler(event, context):
             try:
                 sm.delete_secret(SecretId=secret_name, ForceDeleteWithoutRecovery=True)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -597,15 +597,15 @@ def handler(event, context):
                 if rest_api_id:
                     apigw.delete_rest_api(restApiId=rest_api_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -690,15 +690,15 @@ def handler(event, context):
             try:
                 lam.delete_alias(FunctionName=func_name, Name="stable")
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -753,11 +753,11 @@ class TestLambdaConcurrencyIntegration:
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -807,23 +807,23 @@ class TestLambdaVPCConfig:
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 ec2.delete_security_group(GroupId=sg_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 ec2.delete_subnet(SubnetId=subnet_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -875,11 +875,11 @@ class TestLambdaTagsIntegration:
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -934,12 +934,12 @@ def handler(event, context):
             try:
                 ssm.delete_parameter(Name=param_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=func_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 iam.delete_role(RoleName=role_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

@@ -682,7 +682,7 @@ class TestEC2Volumes:
             try:
                 ec2.delete_volume(VolumeId=vol_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestEC2Snapshots:
@@ -6569,7 +6569,7 @@ class TestEC2MiscOperations:
             assert subnet_id
         except ec2.exceptions.ClientError:
             # Already exists, that's fine
-            pass
+            pass  # resource may already be cleaned up
 
 
 class TestEC2CapacityReservationCrud:
@@ -6913,7 +6913,7 @@ class TestEC2SpotDatafeedSubscription:
         try:
             ec2.delete_spot_datafeed_subscription()
         except Exception:
-            pass
+            pass  # best-effort cleanup
         resp = ec2.describe_spot_datafeed_subscription()
         assert "ResponseMetadata" in resp
 

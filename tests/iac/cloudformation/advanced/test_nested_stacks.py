@@ -105,12 +105,12 @@ class TestNestedStacks:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_object(Bucket=template_bucket, Key="child.yaml")
                 s3.delete_bucket(Bucket=template_bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_deleting_parent_cleans_up_child(self, runner, cfn, s3, sqs):
         """Deleting parent stack should clean up nested stack resources."""
@@ -162,4 +162,4 @@ class TestNestedStacks:
                 s3.delete_object(Bucket=template_bucket, Key="child.yaml")
                 s3.delete_bucket(Bucket=template_bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup

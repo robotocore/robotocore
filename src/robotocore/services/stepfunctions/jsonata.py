@@ -14,10 +14,13 @@ Step Functions patterns.
 """
 
 import json
+import logging
 import re
 from typing import Any
 
 from robotocore.services.stepfunctions.intrinsics import evaluate_intrinsic
+
+logger = logging.getLogger(__name__)
 
 
 class JSONataError(Exception):
@@ -58,8 +61,8 @@ def _eval(expr: str, data: dict) -> Any:
         if "." in expr:
             return float(expr)
         return int(expr)
-    except ValueError:
-        pass
+    except ValueError as exc:
+        logger.debug("_eval: int failed (non-fatal): %s", exc)
 
     # Boolean/null
     if expr == "true":
@@ -81,8 +84,8 @@ def _eval(expr: str, data: dict) -> Any:
     if expr.startswith("{") and expr.endswith("}"):
         try:
             return json.loads(expr)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            logger.debug("_eval: loads failed (non-fatal): %s", exc)
         return _eval_object_literal(expr[1:-1].strip(), data)
 
     # Conditional: condition ? then_expr : else_expr

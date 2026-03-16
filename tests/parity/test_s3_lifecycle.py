@@ -48,11 +48,11 @@ class TestS3CrudOperations:
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_multiple_objects_and_prefix_listing(self, aws_client):
         s3 = aws_client.s3
@@ -85,11 +85,11 @@ class TestS3CrudOperations:
                 try:
                     s3.delete_object(Bucket=bucket, Key=key)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_head_object_metadata(self, aws_client):
         s3 = aws_client.s3
@@ -114,11 +114,11 @@ class TestS3CrudOperations:
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3PresignedUrls:
@@ -147,11 +147,11 @@ class TestS3PresignedUrls:
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_presigned_put(self, aws_client):
         s3 = aws_client.s3
@@ -177,11 +177,11 @@ class TestS3PresignedUrls:
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3Versioning:
@@ -244,11 +244,11 @@ class TestS3Versioning:
                         VersionId=dm["VersionId"],
                     )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3MultipartUpload:
@@ -306,11 +306,11 @@ class TestS3MultipartUpload:
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_abort_multipart_upload(self, aws_client):
         s3 = aws_client.s3
@@ -344,7 +344,7 @@ class TestS3MultipartUpload:
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3CopyObject:
@@ -377,11 +377,11 @@ class TestS3CopyObject:
                 try:
                     s3.delete_object(Bucket=bucket, Key=k)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestS3Tagging:
@@ -419,8 +419,8 @@ class TestS3Tagging:
             try:
                 s3.delete_object(Bucket=bucket, Key=key)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup

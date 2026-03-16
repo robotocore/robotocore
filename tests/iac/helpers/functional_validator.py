@@ -31,7 +31,7 @@ def invoke_api_gateway(api_id: str, stage: str, path: str, method: str = "GET") 
     try:
         body = json.loads(body)
     except (json.JSONDecodeError, ValueError):
-        pass
+        pass  # intentionally ignored
     return {
         "status": resp.status,
         "headers": dict(resp.headers),
@@ -234,7 +234,7 @@ def put_log_event_and_query(
     try:
         logs_client.create_log_stream(logGroupName=log_group, logStreamName=log_stream)
     except logs_client.exceptions.ResourceAlreadyExistsException:
-        pass
+        pass  # resource may not exist
 
     logs_client.put_log_events(
         logGroupName=log_group,

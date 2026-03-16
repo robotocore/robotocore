@@ -383,7 +383,7 @@ class ContentManagementSystem:
         try:
             self.s3.delete_object(Bucket=self.media_bucket, Key=asset.key)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         self.dynamodb.delete_item(
             TableName=self.media_table,
             Key={"asset_id": {"S": asset_id}},
@@ -756,7 +756,7 @@ class ContentManagementSystem:
                         )
                     )
                 except (json.JSONDecodeError, KeyError):
-                    pass
+                    pass  # intentionally ignored
             return entries
         except Exception:
             return []
@@ -1017,47 +1017,47 @@ class ContentManagementSystem:
                     Bucket=self.media_bucket, Key=dm["Key"], VersionId=dm["VersionId"]
                 )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             objs = self.s3.list_objects_v2(Bucket=self.media_bucket).get("Contents", [])
             for obj in objs:
                 self.s3.delete_object(Bucket=self.media_bucket, Key=obj["Key"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             self.s3.delete_bucket(Bucket=self.media_bucket)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_content_table(self) -> None:
         try:
             self.dynamodb.delete_table(TableName=self.content_table)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_versions_table(self) -> None:
         try:
             self.dynamodb.delete_table(TableName=self.versions_table)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_media_table(self) -> None:
         try:
             self.dynamodb.delete_table(TableName=self.media_table)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_publish_queue(self) -> None:
         try:
             self.sqs.delete_queue(QueueUrl=self.publish_queue_url)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_webhook_topic(self) -> None:
         try:
             self.sns.delete_topic(TopicArn=self.webhook_topic_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_audit_log(self) -> None:
         try:
@@ -1066,20 +1066,20 @@ class ContentManagementSystem:
                 logStreamName=self.audit_stream,
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             self.logs.delete_log_group(logGroupName=self.audit_log_group)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _delete_eb_rules(self) -> None:
         for rule_name in self._eb_rules:
             try:
                 self.events.remove_targets(Rule=rule_name, Ids=["publish-queue"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 self.events.delete_rule(Name=rule_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
         self._eb_rules.clear()

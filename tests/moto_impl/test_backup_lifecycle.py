@@ -25,7 +25,7 @@ def vault_name(client):
     try:
         client.delete_backup_vault(BackupVaultName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_backup_job_lifecycle(client, vault_name):

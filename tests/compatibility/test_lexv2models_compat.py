@@ -35,7 +35,7 @@ def created_bot(lexv2_client):
     try:
         lexv2_client.delete_bot(botId=bot_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestLexV2ModelsCompat:

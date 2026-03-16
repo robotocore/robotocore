@@ -48,7 +48,7 @@ class TestResourceGroupsTaggingAPIOperations:
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_compliance_summary(self, tagging):
         resp = tagging.get_compliance_summary()
@@ -80,4 +80,4 @@ class TestResourceGroupsTaggingAPIOperations:
             try:
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup

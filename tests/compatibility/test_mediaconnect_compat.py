@@ -33,7 +33,7 @@ class TestMediaConnectFlows:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_list_flows(self, mediaconnect):
         resp = mediaconnect.list_flows()
@@ -117,7 +117,7 @@ class TestMediaConnectTags:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_tag_resource(self, mediaconnect, flow):
         mediaconnect.tag_resource(ResourceArn=flow["arn"], Tags={"env": "test"})
@@ -165,7 +165,7 @@ class TestMediaConnectGlobalTags:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_tag_global_resource(self, mediaconnect, flow):
         """TagGlobalResource adds tags visible via ListTagsForGlobalResource."""
@@ -222,7 +222,7 @@ class TestMediaConnectOutputs:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_add_flow_outputs(self, mediaconnect, flow):
         resp = mediaconnect.add_flow_outputs(
@@ -289,7 +289,7 @@ class TestMediaConnectSources:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_add_flow_sources(self, mediaconnect, flow):
         resp = mediaconnect.add_flow_sources(
@@ -351,7 +351,7 @@ class TestMediaConnectEntitlements:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_grant_flow_entitlements(self, mediaconnect, flow):
         resp = mediaconnect.grant_flow_entitlements(
@@ -422,7 +422,7 @@ class TestMediaConnectVpcInterfaces:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_add_flow_vpc_interfaces(self, mediaconnect, flow):
         # AddFlowVpcInterfaces returns empty response body but succeeds (200)
@@ -483,7 +483,7 @@ class TestMediaConnectBridges:
         try:
             mediaconnect.delete_bridge(BridgeArn=bridge["BridgeArn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_bridge(self, mediaconnect):
         """CreateBridge creates a bridge and returns its details."""
@@ -683,7 +683,7 @@ class TestMediaConnectGateways:
         try:
             mediaconnect.delete_gateway(GatewayArn=gw["GatewayArn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_gateway(self, mediaconnect):
         """CreateGateway creates a gateway and returns its details."""
@@ -770,7 +770,7 @@ class TestMediaConnectUpdateFlow:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_update_flow(self, mediaconnect, flow):
         """UpdateFlow modifies flow properties."""
@@ -879,7 +879,7 @@ class TestMediaConnectMediaStreams:
         try:
             mediaconnect.delete_flow(FlowArn=flow_arn)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_remove_flow_media_stream_not_found(self, mediaconnect, flow):
         """RemoveFlowMediaStream raises NotFoundException for nonexistent stream."""
@@ -982,7 +982,7 @@ class TestMediaConnectRouterNetworkInterfaces:
         try:
             mediaconnect.delete_router_network_interface(Arn=rni["Arn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_router_network_interface(self, mediaconnect):
         """CreateRouterNetworkInterface creates and returns a network interface."""
@@ -1048,7 +1048,7 @@ class TestMediaConnectRouterInputs:
         try:
             mediaconnect.delete_router_network_interface(Arn=rni["Arn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     @pytest.fixture
     def router_input(self, mediaconnect, rni):
@@ -1077,7 +1077,7 @@ class TestMediaConnectRouterInputs:
         try:
             mediaconnect.delete_router_input(Arn=ri["Arn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_router_input(self, mediaconnect, rni):
         """CreateRouterInput creates and returns a router input."""
@@ -1193,7 +1193,7 @@ class TestMediaConnectRouterOutputs:
         try:
             mediaconnect.delete_router_network_interface(Arn=rni["Arn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     @pytest.fixture
     def router_output(self, mediaconnect, rni):
@@ -1222,7 +1222,7 @@ class TestMediaConnectRouterOutputs:
         try:
             mediaconnect.delete_router_output(Arn=ro["Arn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_router_output(self, mediaconnect, rni):
         """CreateRouterOutput creates and returns a router output."""
@@ -1328,7 +1328,7 @@ class TestMediaConnectTakeRouterInput:
         try:
             mediaconnect.delete_router_network_interface(Arn=rni["Arn"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_take_router_input(self, mediaconnect, rni):
         """TakeRouterInput connects a router output to a router input."""

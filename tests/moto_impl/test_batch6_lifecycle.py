@@ -75,7 +75,7 @@ def mp_channel_id(mediapackage_client):
     try:
         mediapackage_client.delete_channel(Id="test-ch-b6")
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_mediapackage_update_channel(mediapackage_client, mp_channel_id):
@@ -125,7 +125,7 @@ def test_mediapackage_harvest_job_lifecycle(mediapackage_client, mp_channel_id):
         try:
             mediapackage_client.delete_origin_endpoint(Id="test-ep-b6")
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------

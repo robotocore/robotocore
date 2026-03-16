@@ -291,7 +291,7 @@ class TestWAFv2LoggingConfigurationOperations:
             try:
                 wafv2.delete_logging_configuration(ResourceArn=summary["ARN"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             self._delete_web_acl(wafv2, name, summary["Id"])
 
     def test_delete_logging_configuration(self, wafv2):
@@ -335,7 +335,7 @@ class TestWAFv2LoggingConfigurationOperations:
             try:
                 wafv2.delete_logging_configuration(ResourceArn=summary["ARN"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             self._delete_web_acl(wafv2, name, summary["Id"])
 
 

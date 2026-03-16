@@ -111,7 +111,7 @@ def _cleanup_user(iam, user_name: str) -> None:
         # Delete user
         iam.delete_user(UserName=user_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture(autouse=True)
@@ -138,7 +138,7 @@ class TestNoCredentials:
             try:
                 iam.create_user(UserName=user_name)
             except ClientError:
-                pass
+                pass  # resource may already be cleaned up
             key_resp = iam.create_access_key(UserName=user_name)
             key = key_resp["AccessKey"]
 
@@ -310,7 +310,7 @@ class TestWildcardActions:
                 admin_s3 = _make_s3_client("testing", "testing")
                 admin_s3.delete_bucket(Bucket=bucket_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             _cleanup_user(iam, user_name)
 
 
@@ -324,7 +324,7 @@ class TestExplicitDeny:
             try:
                 iam.create_user(UserName=user_name)
             except ClientError:
-                pass
+                pass  # resource may already be cleaned up
             # Attach Allow-all policy
             iam.put_user_policy(
                 UserName=user_name,
@@ -459,7 +459,7 @@ class TestResourceSpecificPolicy:
                 admin_s3.delete_bucket(Bucket=allowed_bucket)
                 admin_s3.delete_bucket(Bucket=denied_bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             _cleanup_user(iam, user_name)
 
 
@@ -474,7 +474,7 @@ class TestIAMAndSTSExempt:
             try:
                 iam.create_user(UserName=user_name)
             except ClientError:
-                pass
+                pass  # resource may already be cleaned up
             key_resp = iam.create_access_key(UserName=user_name)
             key = key_resp["AccessKey"]
 
@@ -523,7 +523,7 @@ class TestMultiplePolicies:
             try:
                 iam.create_user(UserName=user_name)
             except ClientError:
-                pass
+                pass  # resource may already be cleaned up
             # S3 policy
             iam.put_user_policy(
                 UserName=user_name,
@@ -583,7 +583,7 @@ class TestEnforcementToggle:
             try:
                 iam.create_user(UserName=user_name)
             except ClientError:
-                pass
+                pass  # resource may already be cleaned up
             key_resp = iam.create_access_key(UserName=user_name)
             key = key_resp["AccessKey"]
 
@@ -602,7 +602,7 @@ class TestEnforcementToggle:
             try:
                 iam.create_user(UserName=user_name)
             except ClientError:
-                pass
+                pass  # resource may already be cleaned up
             key_resp = iam.create_access_key(UserName=user_name)
             key = key_resp["AccessKey"]
 

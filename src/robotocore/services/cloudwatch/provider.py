@@ -873,8 +873,8 @@ def _handle_delete_alarms(params: dict, region: str, account_id: str) -> dict:
         backend = get_backend("cloudwatch")[account_id][region]
         for name in alarm_names:
             backend.delete_alarms([name])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_handle_delete_alarms: delete_alarms failed (non-fatal): %s", exc)
 
     return {}
 

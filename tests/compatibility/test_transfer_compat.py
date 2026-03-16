@@ -129,7 +129,7 @@ class TestTransferUserOperations:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="testuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_describe_user(self, transfer):
@@ -153,7 +153,7 @@ class TestTransferUserOperations:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="descuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_delete_user(self, transfer):
@@ -214,7 +214,7 @@ class TestTransferSshPublicKeyOperations:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="sshuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_import_ssh_key_visible_in_describe_user(self, transfer):
@@ -242,7 +242,7 @@ class TestTransferSshPublicKeyOperations:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="sshuser2")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_delete_ssh_public_key(self, transfer):
@@ -271,7 +271,7 @@ class TestTransferSshPublicKeyOperations:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="sshuser3")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_import_multiple_ssh_keys(self, transfer):
@@ -301,7 +301,7 @@ class TestTransferSshPublicKeyOperations:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="multikey")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
 
@@ -355,7 +355,7 @@ class TestTransferAdditionalServerOps:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="homedir")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_multiple_users_on_server(self, transfer):
@@ -383,7 +383,7 @@ class TestTransferAdditionalServerOps:
                 try:
                     transfer.delete_user(ServerId=server_id, UserName=name)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_describe_user_has_arn(self, transfer):
@@ -403,7 +403,7 @@ class TestTransferAdditionalServerOps:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="arnuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_server_returns_arn_via_describe(self, transfer):
@@ -434,7 +434,7 @@ class TestTransferAdditionalServerOps:
                 try:
                     transfer.delete_server(ServerId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestTransferServerAdvanced:
@@ -571,7 +571,7 @@ class TestTransferServerAdvanced:
                 try:
                     transfer.delete_user(ServerId=server_id, UserName=name)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_describe_server_user_count_decrements(self, transfer):
@@ -650,7 +650,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="pathuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_user_with_home_directory_mappings(self, transfer):
@@ -676,7 +676,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="mapuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_user_with_posix_profile(self, transfer):
@@ -698,7 +698,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="posixuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_user_with_policy(self, transfer):
@@ -722,7 +722,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="policyuser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_user_with_tags(self, transfer):
@@ -745,7 +745,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="taguser")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_user_arn_contains_server_and_username(self, transfer):
@@ -767,7 +767,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="arnfmt")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_create_user_with_ssh_key_inline(self, transfer):
@@ -795,7 +795,7 @@ class TestTransferUserAdvanced:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="inlinekey")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
 
@@ -851,7 +851,7 @@ class TestTransferErrorCases:
             try:
                 transfer.delete_user(ServerId=server_id, UserName="nokey")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             transfer.delete_server(ServerId=server_id)
 
     def test_import_key_for_nonexistent_server_raises(self, transfer):
@@ -1911,7 +1911,7 @@ class TestTransferWebAppOperations:
         try:
             transfer.delete_web_app(WebAppId=web_app_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_describe_web_app(self, transfer):
         """DescribeWebApp returns web app details."""
@@ -1931,7 +1931,7 @@ class TestTransferWebAppOperations:
             try:
                 transfer.delete_web_app(WebAppId=web_app_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_web_app(self, transfer):
         """DeleteWebApp removes a web app."""

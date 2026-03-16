@@ -56,7 +56,7 @@ def delivery_stream(firehose, s3):
             s3.delete_object(Bucket=bucket, Key=obj["Key"])
         s3.delete_bucket(Bucket=bucket)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestFirehoseOperations:
@@ -123,7 +123,7 @@ class TestFirehoseOperations:
         try:
             firehose.delete_delivery_stream(DeliveryStreamName="buffered-stream")
         except Exception:
-            pass
+            pass  # best-effort cleanup
         firehose.create_delivery_stream(
             DeliveryStreamName="buffered-stream",
             ExtendedS3DestinationConfiguration={
@@ -224,7 +224,7 @@ class TestFirehoseOperations:
             try:
                 firehose.delete_delivery_stream(DeliveryStreamName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             firehose.create_delivery_stream(
                 DeliveryStreamName=name,
                 ExtendedS3DestinationConfiguration={
@@ -431,7 +431,7 @@ class TestFirehoseExtended:
         try:
             self.firehose.delete_delivery_stream(DeliveryStreamName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def _cleanup_bucket(self, bucket):
         try:
@@ -440,7 +440,7 @@ class TestFirehoseExtended:
                 self.s3.delete_object(Bucket=bucket, Key=obj["Key"])
             self.s3.delete_bucket(Bucket=bucket)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_stream_returns_valid_arn_format(self):
         """CreateDeliveryStream ARN follows the expected format."""

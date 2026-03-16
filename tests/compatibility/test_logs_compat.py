@@ -697,7 +697,7 @@ class TestLogsOperations:
                     s3.delete_object(Bucket=bucket, Key=obj["Key"])
                 s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_log_groups_prefix_filter(self, logs):
         """DescribeLogGroups with prefix filter."""
@@ -1755,7 +1755,7 @@ class TestLogsMetricFilterCRUD:
             try:
                 logs.delete_metric_filter(logGroupName=group, filterName="my-filter")
             except Exception:
-                pass
+                pass  # best-effort cleanup
             logs.delete_log_group(logGroupName=group)
 
     def test_multiple_metric_filters_on_group(self, logs):
@@ -1781,7 +1781,7 @@ class TestLogsMetricFilterCRUD:
                 try:
                     logs.delete_metric_filter(logGroupName=group, filterName=name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             logs.delete_log_group(logGroupName=group)
 
 
@@ -1834,7 +1834,7 @@ class TestLogsSubscriptionFilterCRUD:
             try:
                 logs.delete_subscription_filter(logGroupName=group, filterName="prefix-alpha")
             except Exception:
-                pass
+                pass  # best-effort cleanup
             logs.delete_log_group(logGroupName=group)
 
 

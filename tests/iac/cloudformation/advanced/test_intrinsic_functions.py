@@ -86,7 +86,7 @@ class TestIntrinsicFunctions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_fn_join(self, runner):
         """Fn::Join concatenates values with delimiter."""
@@ -100,7 +100,7 @@ class TestIntrinsicFunctions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_fn_select(self, runner):
         """Fn::Select picks an element by index."""
@@ -114,7 +114,7 @@ class TestIntrinsicFunctions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_ref(self, runner):
         """Ref resolves a parameter value."""
@@ -128,7 +128,7 @@ class TestIntrinsicFunctions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_fn_getatt(self, runner):
         """Fn::GetAtt retrieves a resource attribute."""
@@ -144,4 +144,4 @@ class TestIntrinsicFunctions:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

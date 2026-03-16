@@ -120,10 +120,10 @@ class FileWatcher:
                             mtime = os.stat(filepath).st_mtime
                             if mtime > max_mtime:
                                 max_mtime = mtime
-                        except OSError:
-                            pass
-        except OSError:
-            pass
+                        except OSError as exc:
+                            logger.debug("_scan_directory: join failed (non-fatal): %s", exc)
+        except OSError as exc:
+            logger.debug("_scan_directory: walk failed (non-fatal): %s", exc)
         return max_mtime
 
 

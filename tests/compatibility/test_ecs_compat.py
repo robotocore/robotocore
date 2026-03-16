@@ -1242,7 +1242,7 @@ class TestEcsAccountSettings:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError:
             # Some implementations raise if setting not set
-            pass
+            pass  # best-effort cleanup
 
     def test_delete_account_setting_after_put(self, ecs):
         """DeleteAccountSetting after PutAccountSetting removes the value."""

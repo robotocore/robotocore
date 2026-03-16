@@ -80,8 +80,8 @@ def _list_identities(params: dict, region: str, account_id: str) -> str:
         try:
             max_items = int(max_items)
             identities = identities[:max_items]
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as exc:
+            logger.debug("_list_identities: int failed (non-fatal): %s", exc)
 
     # Build XML members
     members = "".join(f"<member>{_escape_xml(i)}</member>" for i in identities)

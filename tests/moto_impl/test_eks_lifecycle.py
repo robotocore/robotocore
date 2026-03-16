@@ -35,7 +35,7 @@ def cluster_name(client):
             Path="/",
         )
     except Exception:
-        pass
+        pass  # best-effort cleanup
     name = "test-cluster-1"
     try:
         client.create_cluster(
@@ -44,7 +44,7 @@ def cluster_name(client):
             resourcesVpcConfig={"subnetIds": ["subnet-12345"], "securityGroupIds": ["sg-12345"]},
         )
     except Exception:
-        pass
+        pass  # best-effort cleanup
     yield name
 
 

@@ -2997,7 +2997,7 @@ class TestIoTThingTypeUpdateOperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError:
             # Some implementations may not support this fully
-            pass
+            pass  # best-effort cleanup
         finally:
             iot.deprecate_thing_type(thingTypeName=name)
             iot.delete_thing_type(thingTypeName=name)

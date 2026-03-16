@@ -325,7 +325,7 @@ class TestEKSFargateProfileOperations:
                     fargateProfileName=profile_name, clusterName=cluster_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
 
@@ -542,7 +542,7 @@ class TestEKSUpdateOperations:
             try:
                 eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
     def test_update_nodegroup_config_labels(self, eks):
@@ -574,7 +574,7 @@ class TestEKSUpdateOperations:
             try:
                 eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
     def test_update_cluster_config_nonexistent(self, eks):
@@ -639,7 +639,7 @@ class TestEKSNodegroupWithTags:
             try:
                 eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
     def test_nodegroup_tags_in_describe(self, eks):
@@ -668,7 +668,7 @@ class TestEKSNodegroupWithTags:
             try:
                 eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
 
@@ -794,7 +794,7 @@ class TestEKSFargateProfileAdvanced:
                     fargateProfileName=profile_name, clusterName=cluster_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
     def test_fargate_profile_with_multiple_selectors(self, eks):
@@ -830,7 +830,7 @@ class TestEKSFargateProfileAdvanced:
                     fargateProfileName=profile_name, clusterName=cluster_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
     def test_fargate_profile_has_status(self, eks):
@@ -860,7 +860,7 @@ class TestEKSFargateProfileAdvanced:
                     fargateProfileName=profile_name, clusterName=cluster_name
                 )
             except Exception:
-                pass
+                pass  # best-effort cleanup
             eks.delete_cluster(name=cluster_name)
 
     def test_describe_nonexistent_fargate_on_nonexistent_cluster(self, eks):

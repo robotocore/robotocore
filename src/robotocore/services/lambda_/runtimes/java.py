@@ -1,6 +1,7 @@
 """Java runtime executor — compiles bootstrap + runs handler via subprocess."""
 
 import glob
+import logging
 import os
 import shutil
 import subprocess
@@ -15,6 +16,9 @@ BOOTSTRAP_JAVA = os.path.join(os.path.dirname(__file__), "bootstraps", "Bootstra
 
 # Cache compiled bootstrap class
 _bootstrap_compiled_dir: str | None = None
+
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_bootstrap_compiled() -> str | None:
@@ -39,8 +43,8 @@ def _ensure_bootstrap_compiled() -> str | None:
         if os.path.exists(os.path.join(outdir, "Bootstrap.class")):
             _bootstrap_compiled_dir = outdir
             return outdir
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_ensure_bootstrap_compiled: run failed (non-fatal): %s", exc)
     return None
 
 

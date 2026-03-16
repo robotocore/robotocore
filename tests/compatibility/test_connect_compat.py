@@ -130,7 +130,7 @@ class TestConnectInstances:
             try:
                 connect.delete_instance(InstanceId=instance_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_analytics_data_associations(self, connect):
         """ListAnalyticsDataAssociations returns a response."""
@@ -149,7 +149,7 @@ class TestConnectInstances:
             try:
                 connect.delete_instance(InstanceId=instance_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestConnectListOps:

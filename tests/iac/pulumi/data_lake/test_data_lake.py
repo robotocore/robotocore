@@ -60,7 +60,7 @@ def data_lake_resources(s3_client, kinesis_client, dynamodb_client):
         for obj in objs.get("Contents", []):
             s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
     s3_client.delete_bucket(Bucket=bucket_name)
 
 

@@ -92,7 +92,7 @@ def avatar_bucket(s3, unique_name):
         for obj in objects:
             s3.delete_object(Bucket=bucket, Key=obj["Key"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
     s3.delete_bucket(Bucket=bucket)
 
 
@@ -137,7 +137,7 @@ def auth_config(ssm, ssm_prefix):
         try:
             ssm.delete_parameter(Name=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 @pytest.fixture

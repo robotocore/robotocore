@@ -80,7 +80,7 @@ class TestSqsLambda:
                 try:
                     sqs.delete_queue(QueueUrl=queue_url)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_sqs_lambda_esm_creation(self, aws_client, lambda_role_arn):
         """Create SQS -> Lambda event source mapping and verify config."""
@@ -149,16 +149,16 @@ class TestSqsLambda:
                 try:
                     lam.delete_event_source_mapping(UUID=esm_uuid)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=fn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             if queue_url:
                 try:
                     sqs.delete_queue(QueueUrl=queue_url)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_sqs_batch_send(self, aws_client):
         """Verify SQS batch send works (common ESM pattern)."""
@@ -201,4 +201,4 @@ class TestSqsLambda:
                 try:
                     sqs.delete_queue(QueueUrl=queue_url)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup

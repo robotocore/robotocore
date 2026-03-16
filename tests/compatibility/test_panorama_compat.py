@@ -24,7 +24,7 @@ def provisioned_device(panorama):
     try:
         panorama.delete_device(DeviceId=device_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestPanoramaListDevices:
@@ -65,7 +65,7 @@ class TestPanoramaProvisionDevice:
             try:
                 panorama.delete_device(DeviceId=resp["DeviceId"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_provision_device_unique_ids(self, panorama):
         name1 = f"test-device-{uuid.uuid4().hex[:8]}"
@@ -79,7 +79,7 @@ class TestPanoramaProvisionDevice:
                 try:
                     panorama.delete_device(DeviceId=did)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestPanoramaDescribeDevice:
@@ -166,7 +166,7 @@ class TestPanoramaCreatePackage:
             try:
                 panorama.delete_package(PackageId=resp["PackageId"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_package_unique_ids(self, panorama):
         pkg1 = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
@@ -179,7 +179,7 @@ class TestPanoramaCreatePackage:
                 try:
                     panorama.delete_package(PackageId=pid)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestPanoramaDeletePackage:
@@ -239,7 +239,7 @@ class TestPanoramaCreateApplicationInstance:
             try:
                 panorama.delete_device(DeviceId=device_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestPanoramaDescribeApplicationInstanceDetails:
@@ -262,7 +262,7 @@ class TestPanoramaDescribeApplicationInstanceDetails:
             try:
                 panorama.delete_device(DeviceId=device_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_application_instance_details_not_found(self, panorama):
         with pytest.raises(ClientError) as exc_info:

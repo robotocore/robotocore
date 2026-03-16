@@ -33,13 +33,13 @@ def certificate_authority(acmpca):
     try:
         acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         acmpca.delete_certificate_authority(
             CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
         )
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestACMPCAOperations:
@@ -70,7 +70,7 @@ class TestACMPCAOperations:
         try:
             acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
         except Exception:
-            pass
+            pass  # best-effort cleanup
         acmpca.delete_certificate_authority(
             CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
         )
@@ -166,7 +166,7 @@ class TestACMPCAOperations:
         try:
             acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
         except Exception:
-            pass
+            pass  # best-effort cleanup
         acmpca.delete_certificate_authority(
             CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
         )
@@ -210,7 +210,7 @@ class TestACMPCAOperations:
         try:
             acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
         except Exception:
-            pass
+            pass  # best-effort cleanup
         acmpca.delete_certificate_authority(
             CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
         )

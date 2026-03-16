@@ -53,7 +53,7 @@ def role(iam):
     try:
         iam.delete_role(RoleName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestEventSourceMappingCRUD:
@@ -96,15 +96,15 @@ class TestEventSourceMappingCRUD:
         try:
             lam.delete_event_source_mapping(UUID=esm_uuid)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             lam.delete_function(FunctionName=func_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             sqs.delete_queue(QueueUrl=queue_url)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_list_event_source_mappings(self, lam, sqs, role):
         """Test listing event source mappings."""
@@ -140,15 +140,15 @@ class TestEventSourceMappingCRUD:
         try:
             lam.delete_event_source_mapping(UUID=esm_uuid)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             lam.delete_function(FunctionName=func_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             sqs.delete_queue(QueueUrl=queue_url)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_update_event_source_mapping(self, lam, sqs, role):
         """Test updating an event source mapping."""
@@ -187,15 +187,15 @@ class TestEventSourceMappingCRUD:
         try:
             lam.delete_event_source_mapping(UUID=esm_uuid)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             lam.delete_function(FunctionName=func_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             sqs.delete_queue(QueueUrl=queue_url)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 class TestSQSToLambdaTrigger:
@@ -267,4 +267,4 @@ class TestSQSToLambdaTrigger:
             try:
                 fn()
             except Exception:
-                pass
+                pass  # best-effort cleanup

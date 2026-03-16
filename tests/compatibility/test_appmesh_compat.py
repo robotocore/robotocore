@@ -20,7 +20,7 @@ def mesh_name(appmesh_client):
     try:
         appmesh_client.delete_mesh(meshName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestMeshOperations:
@@ -269,7 +269,7 @@ def router_name(appmesh_client, mesh_name):
     try:
         appmesh_client.delete_virtual_router(meshName=mesh_name, virtualRouterName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -287,7 +287,7 @@ def node_name(appmesh_client, mesh_name):
     try:
         appmesh_client.delete_virtual_node(meshName=mesh_name, virtualNodeName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def _route_spec(node_name):

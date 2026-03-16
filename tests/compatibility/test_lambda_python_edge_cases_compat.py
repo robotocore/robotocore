@@ -64,7 +64,7 @@ def iam():
     try:
         client.create_role(RoleName="lambda-edge-role", AssumeRolePolicyDocument=trust)
     except client.exceptions.EntityAlreadyExistsException:
-        pass
+        pass  # best-effort cleanup
     return client
 
 

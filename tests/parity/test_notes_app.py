@@ -168,11 +168,11 @@ class TestNotesApp:
                 try:
                     apigw.delete_rest_api(restApiId=rest_api_id)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 lam.delete_function(FunctionName=fn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_dynamodb_notes_crud(self, aws_client):
         """Verify DynamoDB supports the notes app data operations.
@@ -241,7 +241,7 @@ class TestNotesApp:
             try:
                 ddb.delete_table(TableName=table_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_lambda_invoke(self, aws_client, lambda_role_arn):
         """Verify Lambda function creation and invocation."""
@@ -283,4 +283,4 @@ class TestNotesApp:
             try:
                 lam.delete_function(FunctionName=fn_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

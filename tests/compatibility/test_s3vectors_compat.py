@@ -35,11 +35,11 @@ class TestS3VectorsIndexOperations:
             for idx in resp.get("indexes", []):
                 client.delete_index(vectorBucketName=bucket_name, indexName=idx["indexName"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             client.delete_vector_bucket(vectorBucketName=bucket_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_index(self, client, vector_bucket):
         """CreateIndex creates a vector index."""
@@ -210,11 +210,11 @@ class TestS3VectorsListVectors:
         try:
             client.delete_index(vectorBucketName=bucket_name, indexName=index_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             client.delete_vector_bucket(vectorBucketName=bucket_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_list_vectors_empty(self, client, vector_bucket_with_index):
         """ListVectors on empty index returns empty list."""

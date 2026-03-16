@@ -159,7 +159,7 @@ class TestErrorResponseFormat:
             json.loads(text)
             is_json = True
         except (json.JSONDecodeError, ValueError):
-            pass
+            pass  # best-effort cleanup
         if text.strip().startswith("<"):
             is_xml = True
         assert is_json or is_xml, f"Error response is neither JSON nor XML: {text[:200]}"

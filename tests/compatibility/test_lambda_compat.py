@@ -1877,7 +1877,7 @@ class TestLambdaProvisionedConcurrency:
             try:
                 lam.delete_provisioned_concurrency_config(FunctionName=fname, Qualifier=ver)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             lam.delete_function(FunctionName=fname)
 
     def test_delete_provisioned_concurrency(self, lam, role):
@@ -2282,7 +2282,7 @@ class TestLambdaGetEventInvokeConfig:
             try:
                 lam.delete_function_event_invoke_config(FunctionName=fname)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             lam.delete_function(FunctionName=fname)
 
 
@@ -2569,7 +2569,7 @@ class TestLambdaLayerVersionPermission:
         try:
             lam.delete_layer_version(LayerName=layer_name, VersionNumber=version)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_add_layer_version_permission(self, lam, layer):
         """AddLayerVersionPermission adds a permission statement."""
@@ -2645,7 +2645,7 @@ class TestLambdaListFunctionUrlConfigs:
         try:
             lam.delete_function_url_config(FunctionName=fname)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         lam.delete_function(FunctionName=fname)
 
     def test_list_function_url_configs_empty(self, lam, func):
@@ -2757,7 +2757,7 @@ class TestLambdaAliasRoutingConfig:
         try:
             lam.delete_alias(FunctionName=fname, Name="weighted")
         except Exception:
-            pass
+            pass  # best-effort cleanup
         lam.delete_function(FunctionName=fname)
 
     def test_create_alias_with_routing_config(self, lam, func_with_version):

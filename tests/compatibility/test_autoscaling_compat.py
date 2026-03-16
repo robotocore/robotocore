@@ -642,7 +642,7 @@ class TestAutoScalingWarmPool:
             assert resp.get("WarmPoolConfiguration") is None or resp.get("Instances") == []
         except Exception:
             # Some implementations raise an error after deletion
-            pass
+            pass  # best-effort cleanup
 
 
 class TestAutoScalingTagOperations:
@@ -1329,11 +1329,11 @@ class TestAutoScalingTerminateInstance:
                 AutoScalingGroupName=self.asg_name, ForceDelete=True
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             autoscaling.delete_launch_configuration(LaunchConfigurationName=self.lc_name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_terminate_instance_in_auto_scaling_group(self, autoscaling):
         """TerminateInstanceInAutoScalingGroup terminates an instance and returns Activity."""

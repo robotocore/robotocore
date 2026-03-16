@@ -38,8 +38,8 @@ def _get_system_dns() -> str:
                     parts = line.split()
                     if len(parts) >= 2:
                         return parts[1]
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("_get_system_dns: open failed (non-fatal): %s", exc)
     return "8.8.8.8"
 
 
@@ -112,8 +112,8 @@ def _handle_query(data: bytes, config: dict, upstream: str) -> bytes:
                 qid = struct.unpack("!H", data[:2])[0]
                 error_reply = DNSRecord(DNSHeader(id=qid, qr=1, ra=1, rcode=2))
                 return error_reply.pack()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("_handle_query: len failed (non-fatal): %s", exc)
         return b""
 
     # Try local resolution
@@ -169,8 +169,8 @@ class DNSServer:
         if self._socket is not None:
             try:
                 self._socket.close()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("stop: close failed (non-fatal): %s", exc)
             self._socket = None
         if self._thread is not None:
             self._thread.join(timeout=5.0)

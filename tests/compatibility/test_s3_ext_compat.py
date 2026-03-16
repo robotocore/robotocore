@@ -1460,7 +1460,7 @@ class TestS3RestoreObjectNotification:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     @pytest.fixture
     def unique_queue(self, sqs):
@@ -1471,7 +1471,7 @@ class TestS3RestoreObjectNotification:
         try:
             sqs.delete_queue(QueueUrl=url)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_restore_object_fires_restore_event(self, s3, sqs, unique_bucket, unique_queue):
         """Put Glacier object, set SQS notification, restore — assert ObjectRestore:Post arrives."""

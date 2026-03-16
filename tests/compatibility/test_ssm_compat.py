@@ -2372,7 +2372,7 @@ class TestSSMDescribeOperations:
             assert "State" in resp
         except ssm.exceptions.ClientError:
             # InvalidDocument or similar is acceptable
-            pass
+            pass  # resource may already be cleaned up
 
     def test_describe_patch_group_state(self, ssm):
         """DescribePatchGroupState returns patch group compliance."""

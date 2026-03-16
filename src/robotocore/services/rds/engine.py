@@ -4,10 +4,13 @@ Provides a SQLite-backed engine that executes real SQL queries in-memory,
 giving behavioral fidelity beyond Moto's metadata-only mock.
 """
 
+import logging
 import sqlite3
 import threading
 import uuid
 from typing import Protocol
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseEngine(Protocol):
@@ -114,9 +117,9 @@ class SQLiteEngine:
                 raise ValueError(f"Transaction {tx_id} not found or already completed")
             try:
                 self._conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError as exc:
                 # Savepoint may have been released by a parent commit
-                pass
+                logger.debug("rollback_transaction: execute failed (non-fatal): %s", exc)
 
     def execute_in_transaction(
         self, tx_id: str, sql: str, params: list | None = None

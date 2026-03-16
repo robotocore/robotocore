@@ -2154,7 +2154,7 @@ class TestRedshiftSnapshotAdvanced:
             try:
                 redshift.delete_cluster_snapshot(SnapshotIdentifier=copy_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             redshift.delete_cluster_snapshot(SnapshotIdentifier=snap_id)
 
     def test_authorize_and_revoke_snapshot_access(self, redshift, cluster):

@@ -106,7 +106,7 @@ class TestMalformedPackets:
                 assert response.header.rcode in (0, 2)  # NOERROR or SERVFAIL
             except TimeoutError:
                 # No response is also acceptable for garbage input
-                pass
+                pass  # timeout/connection failure; non-fatal
         finally:
             sock.close()
 
@@ -132,7 +132,7 @@ class TestMalformedPackets:
             try:
                 data, _ = sock.recvfrom(4096)
             except TimeoutError:
-                pass
+                pass  # timeout/connection failure; non-fatal
         finally:
             sock.close()
 

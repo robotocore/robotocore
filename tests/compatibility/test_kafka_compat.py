@@ -444,7 +444,7 @@ class TestMSKClusterDependentOperations:
             assert "CurrentVersion" in resp or "Policy" in resp
         except kafka.exceptions.NotFoundException:
             # No policy set yet is valid
-            pass
+            pass  # resource may not exist
 
     def test_list_client_vpc_connections(self, kafka, cluster_arn):
         resp = kafka.list_client_vpc_connections(ClusterArn=cluster_arn)

@@ -41,7 +41,7 @@ def permission_set(ssoadmin, instance_arn):
             PermissionSetArn=ps_arn,
         )
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestSSOAdminInstances:

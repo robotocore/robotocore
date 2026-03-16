@@ -878,7 +878,7 @@ class TestMediaLiveChannelAdvanced:
             try:
                 medialive.delete_channel(ChannelId=ch_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             medialive.delete_input(InputId=inp_id)
 
 

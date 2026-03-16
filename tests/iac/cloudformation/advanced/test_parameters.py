@@ -73,7 +73,7 @@ class TestParameters:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_deploy_with_custom_params(self, runner, cfn):
         """Deploy with custom BucketName, verify output matches."""
@@ -92,7 +92,7 @@ class TestParameters:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_invalid_allowed_value_rejected(self, runner):
         """Deploy with invalid Environment value should fail validation."""
@@ -108,4 +108,4 @@ class TestParameters:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

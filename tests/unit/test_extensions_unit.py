@@ -100,7 +100,7 @@ class TestExtensionRegistry:
             reg.register("not a plugin")
             assert False, "Should raise TypeError"
         except TypeError:
-            pass
+            pass  # conversion may fail; not critical
 
     def test_register_auto_names_unnamed(self):
         reg = ExtensionRegistry()

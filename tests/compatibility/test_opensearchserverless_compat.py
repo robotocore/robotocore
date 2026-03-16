@@ -83,7 +83,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_nonexistent_collection(self, client):
         """DeleteCollection with a non-existent ID raises an error."""
@@ -120,7 +120,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_security_policy(self, client):
         """GetSecurityPolicy retrieves a security policy by name and type."""
@@ -148,7 +148,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_security_policies(self, client):
         """ListSecurityPolicies returns policy summaries."""
@@ -193,7 +193,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_security_policy(self, client):
         """UpdateSecurityPolicy modifies a policy's description."""
@@ -227,7 +227,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_batch_get_collection_with_ids(self, client):
         """BatchGetCollection with specific IDs returns matching collections."""
@@ -260,7 +260,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_vpc_endpoint(self, client):
         """CreateVpcEndpoint creates a VPC endpoint and returns its details."""
@@ -303,7 +303,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="network")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_security_policies_network(self, client):
         """ListSecurityPolicies with type=network returns policy summaries."""
@@ -339,7 +339,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_batch_get_collection_empty(self, client):
         """BatchGetCollection with no args returns empty details."""
@@ -382,7 +382,7 @@ class TestOpensearchserverlessAutoCoverage:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestOpenSearchServerlessAccessPolicies:
@@ -420,7 +420,7 @@ class TestOpenSearchServerlessAccessPolicies:
             try:
                 client.delete_access_policy(name=name, type="data")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_access_policy(self, client):
         """GetAccessPolicy retrieves a policy by name and type."""
@@ -532,7 +532,7 @@ class TestOpenSearchServerlessLifecyclePolicies:
             try:
                 client.delete_lifecycle_policy(name=name, type="retention")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_lifecycle_policies(self, client):
         """ListLifecyclePolicies returns summaries."""
@@ -788,7 +788,7 @@ class TestOpenSearchServerlessAccountSettings:
             try:
                 client.delete_security_policy(name=pol_name, type="encryption")
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestOpenSearchServerlessUpdates:
@@ -825,4 +825,4 @@ class TestOpenSearchServerlessUpdates:
             try:
                 client.delete_vpc_endpoint(id=vpce_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup

@@ -411,7 +411,7 @@ class TestKinesisOperations:
             try:
                 kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_put_records_batch_all_succeed(self, kinesis, stream):
         """PutRecords with multiple records, verify all succeed."""
@@ -496,7 +496,7 @@ class TestKinesisOperations:
             try:
                 kinesis.delete_stream(StreamName=multi_stream, EnforceConsumerDeletion=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_increase_stream_retention_period_v2(self, kinesis, stream):
         """IncreaseStreamRetentionPeriod beyond default 24 hours."""
@@ -583,7 +583,7 @@ class TestKinesisOperations:
             try:
                 kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_stream_consumers_v2(self, kinesis, stream):
         """ListStreamConsumers."""
@@ -609,7 +609,7 @@ class TestKinesisExtended:
             try:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stream_all_fields(self, kinesis, stream):
         """Verify all expected fields in DescribeStream response."""
@@ -648,7 +648,7 @@ class TestKinesisExtended:
                 try:
                     kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_list_streams_has_more_streams(self, kinesis):
         """ListStreams HasMoreStreams field is correct with pagination."""
@@ -668,7 +668,7 @@ class TestKinesisExtended:
                 try:
                     kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_list_streams_exclusive_start(self, kinesis):
         """ListStreams with ExclusiveStartStreamName for pagination."""
@@ -691,7 +691,7 @@ class TestKinesisExtended:
                 try:
                     kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_after_sequence_number_iterator(self, kinesis, stream):
         """AFTER_SEQUENCE_NUMBER iterator skips the record at the given sequence."""
@@ -770,7 +770,7 @@ class TestKinesisExtended:
             try:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_shards_pagination_next_token(self, kinesis):
         """ListShards pagination using NextToken."""
@@ -793,7 +793,7 @@ class TestKinesisExtended:
             try:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_create_stream_duplicate_name_error(self, kinesis, stream):
         """Creating a stream with an existing name raises ResourceInUseException."""
@@ -871,7 +871,7 @@ class TestKinesisExtended:
             try:
                 kinesis.deregister_stream_consumer(ConsumerARN=consumer_arn)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_register_duplicate_consumer_error(self, kinesis, stream):
         """Registering a consumer with the same name raises ResourceInUseException."""
@@ -886,7 +886,7 @@ class TestKinesisExtended:
             try:
                 kinesis.deregister_stream_consumer(StreamARN=stream_arn, ConsumerName=consumer_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stream_summary_fields(self, kinesis, stream):
         """DescribeStreamSummary contains all expected fields."""
@@ -939,7 +939,7 @@ class TestKinesisExtended:
             try:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_stream_with_limit(self, kinesis):
         """DescribeStream with Limit returns partial shard list and HasMoreShards=True."""
@@ -955,7 +955,7 @@ class TestKinesisExtended:
             try:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestKinesisGapStubs:
@@ -1297,7 +1297,7 @@ class TestKinesisStreamManagement:
             try:
                 kinesis.delete_stream(StreamName=name, EnforceConsumerDeletion=True)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_enable_enhanced_monitoring(self, kinesis, stream):
         """EnableEnhancedMonitoring adds shard-level metrics."""

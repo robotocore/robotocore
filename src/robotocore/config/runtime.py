@@ -44,8 +44,8 @@ def _apply_setting(key: str, value: str) -> None:
             from robotocore.audit.log import get_audit_log
 
             get_audit_log().resize(int(value))
-        except (ImportError, ValueError):
-            pass
+        except (ImportError, ValueError) as exc:
+            logger.debug("_apply_setting: resize failed (non-fatal): %s", exc)
 
 
 class RuntimeConfig:

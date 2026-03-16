@@ -64,7 +64,7 @@ def role(iam):
     try:
         iam.delete_role(RoleName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestAPIGatewayLambdaProxy:
@@ -179,7 +179,7 @@ class TestAPIGatewayLambdaProxy:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_lambda_proxy_post(self, apigw, lam, role):
         """Test POST request through API Gateway → Lambda."""
@@ -249,7 +249,7 @@ class TestAPIGatewayLambdaProxy:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_lambda_proxy_path_params(self, apigw, lam, role):
         """Test that path parameters like /users/{userId} are extracted correctly."""
@@ -325,7 +325,7 @@ class TestAPIGatewayLambdaProxy:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_lambda_proxy_multiple_query_params(self, apigw, lam, role):
         """Test that multiple query string parameters are passed correctly."""
@@ -402,4 +402,4 @@ class TestAPIGatewayLambdaProxy:
                 try:
                     fn()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup

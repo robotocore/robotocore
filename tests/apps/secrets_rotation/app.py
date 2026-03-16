@@ -128,7 +128,7 @@ class SecretsVault:
             try:
                 self._ddb.delete_table(TableName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     # ------------------------------------------------------------------
     # Secret CRUD

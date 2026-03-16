@@ -19,6 +19,8 @@ from robotocore.services.s3.notifications import (
     set_notification_config,
 )
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Monkey-patch Moto's FakeBucket.get_permission to handle policy as str or bytes.
 # Moto assumes self.policy is always bytes, but put_bucket_policy passes self.body
@@ -36,8 +38,8 @@ try:
         return _orig_get_permission(self, action, resource)
 
     FakeBucket.get_permission = _patched_get_permission  # type: ignore[assignment]
-except Exception:
-    pass
+except Exception as exc:
+    logger.debug("<module>: _orig_get_permission failed (non-fatal): %s", exc)
 
 # Patterns to detect bucket and key from S3 paths
 # Path style: /<bucket>/<key>
@@ -250,8 +252,8 @@ def _parse_cors_xml(xml_str: str) -> list[dict]:
             elif tag == "MaxAgeSeconds":
                 try:
                     rule["MaxAgeSeconds"] = int(text)
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    logger.debug("_parse_cors_xml: int failed (non-fatal): %s", exc)
         rules.append(rule)
     return rules
 
@@ -665,8 +667,8 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                     if hname.lower() == "content-length":
                         try:
                             content_length = int(v)
-                        except (ValueError, TypeError):
-                            pass
+                        except (ValueError, TypeError) as exc:
+                            logger.debug("handle_s3_request: int failed (non-fatal): %s", exc)
                 etag = ""
                 for h, v in response.raw_headers:
                     hname = h.decode() if isinstance(h, bytes) else h

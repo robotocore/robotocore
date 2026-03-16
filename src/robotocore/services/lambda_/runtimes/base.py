@@ -105,8 +105,8 @@ def run_subprocess(
                 error_obj = json.loads(stdout)
                 if isinstance(error_obj, dict) and "errorMessage" in error_obj:
                     return error_obj, "Handled", logs
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                logger.debug("run_subprocess: loads failed (non-fatal): %s", exc)
         return (
             {
                 "errorMessage": stdout or logs.split("\n")[-1] if logs else "Unknown error",

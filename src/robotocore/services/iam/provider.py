@@ -75,10 +75,10 @@ def _inject_user_permissions_boundary(
                 headers=headers,
                 media_type="text/xml",
             )
-    except NoSuchEntity:
+    except NoSuchEntity as exc:
         # User not found in Moto backend — this is expected when GetUser
         # returns a default_user from access key lookup. Leave response as-is.
-        pass
+        logger.debug("_inject_user_permissions_boundary: get_user failed (non-fatal): %s", exc)
     except Exception:
         logger.warning("Failed to inject PermissionsBoundary into GetUser response", exc_info=True)
     return response

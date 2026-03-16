@@ -969,7 +969,7 @@ class TestCloudWatchOperations:
             try:
                 cw.delete_dashboards(DashboardNames=["test-dashboard"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_tag_untag_alarm(self, cw):
@@ -1164,7 +1164,7 @@ class TestCloudWatchOperations:
             try:
                 cw.delete_alarms(AlarmNames=[composite_name, child_name])
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_metrics_with_dimensions_filter(self, cw):
         """ListMetrics filtered by Dimensions."""

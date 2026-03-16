@@ -371,7 +371,7 @@ class EventChainOrchestrator:
             try:
                 self.lam.delete_event_source_mapping(UUID=esm_uuid)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # EventBridge rules and targets
         for rule_name, bus_name in self._rules:
@@ -387,7 +387,7 @@ class EventChainOrchestrator:
                     )
                 self.events.delete_rule(Name=rule_name, EventBusName=bus_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # SNS subscriptions
         for sub_arn in self._subscriptions:
@@ -395,14 +395,14 @@ class EventChainOrchestrator:
                 if sub_arn != "PendingConfirmation":
                     self.sns.unsubscribe(SubscriptionArn=sub_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # Lambda functions
         for fn in self._functions:
             try:
                 self.lam.delete_function(FunctionName=fn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # S3 buckets (empty then delete)
         for bucket in self._buckets:
@@ -412,25 +412,25 @@ class EventChainOrchestrator:
                     self.s3.delete_object(Bucket=bucket, Key=obj["Key"])
                 self.s3.delete_bucket(Bucket=bucket)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # DynamoDB tables
         for table in self._tables:
             try:
                 self.dynamodb.delete_table(TableName=table)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # SNS topics
         for topic in self._topics:
             try:
                 self.sns.delete_topic(TopicArn=topic)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
         # SQS queues
         for url in self._queues:
             try:
                 self.sqs.delete_queue(QueueUrl=url)
             except Exception:
-                pass
+                pass  # best-effort cleanup

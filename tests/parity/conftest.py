@@ -86,5 +86,5 @@ def lambda_role_arn():
             PolicyArn=("arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"),
         )
     except Exception:
-        pass
+        pass  # best-effort cleanup
     return role_arn

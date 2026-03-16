@@ -6,6 +6,7 @@ Falls back to query protocol parsing for legacy clients.
 
 import hashlib
 import json
+import logging
 import threading
 import time
 import uuid
@@ -36,6 +37,9 @@ _delete_tracker = QueueDeletedTracker()
 _retention_scanner = RetentionScanner()
 
 
+logger = logging.getLogger(__name__)
+
+
 def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> SqsStore:
     key = (account_id, region)
     with _store_lock:
@@ -61,8 +65,8 @@ def _background_worker():
         for store in list(_stores.values()):
             try:
                 store.requeue_all()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("_background_worker: requeue_all failed (non-fatal): %s", exc)
 
 
 def _md5(s: str) -> str:

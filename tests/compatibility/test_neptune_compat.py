@@ -203,7 +203,7 @@ class TestNeptuneDBClusterParameterGroupOperations:
             try:
                 neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=tgt)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestNeptuneTags:
@@ -542,11 +542,11 @@ class TestNeptuneDBClusterSnapshotOperations:
             try:
                 neptune.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=src)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 neptune.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=tgt)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_db_cluster_snapshot_attributes(self, neptune):
         snap_id = _unique("nep-snap")
@@ -666,11 +666,11 @@ class TestNeptuneDBParameterGroupOperations:
             try:
                 neptune.delete_db_parameter_group(DBParameterGroupName=src)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             try:
                 neptune.delete_db_parameter_group(DBParameterGroupName=tgt)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_parameter_group(self, neptune):
         name = _unique("nep-pg")
@@ -777,7 +777,7 @@ class TestNeptuneSubnetGroupModify:
         try:
             neptune.delete_db_subnet_group(DBSubnetGroupName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 class TestNeptuneOrderableInstances:
@@ -973,7 +973,7 @@ class TestNeptuneModifyGlobalCluster:
             try:
                 neptune.delete_global_cluster(GlobalClusterIdentifier=gc_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_modify_nonexistent_global_cluster(self, neptune):
@@ -1144,7 +1144,7 @@ class TestNeptuneClusterEndpointLifecycle:
             try:
                 neptune.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_cluster_endpoint(self, neptune):
         ep_id = _unique("epl-ep")

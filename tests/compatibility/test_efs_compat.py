@@ -336,11 +336,11 @@ class TestEFSMountTargetOperations:
         try:
             ec2.delete_subnet(SubnetId=self.subnet_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             ec2.delete_vpc(VpcId=self.vpc_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_mount_target(self, efs):
         fs_id = _create_fs(efs)
@@ -397,11 +397,11 @@ class TestEFSMountTargetSecurityGroupOperations:
         try:
             ec2.delete_subnet(SubnetId=self.subnet_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
         try:
             ec2.delete_vpc(VpcId=self.vpc_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_modify_and_describe_mount_target_security_groups(self, efs):
         """Modify then describe mount target security groups."""

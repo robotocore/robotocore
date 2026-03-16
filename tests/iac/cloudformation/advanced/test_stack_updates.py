@@ -97,7 +97,7 @@ class TestStackUpdates:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_remove_resource_via_update(self, runner, cfn, sqs):
         """Deploy with bucket + queue, update to remove queue, verify queue deleted."""
@@ -124,7 +124,7 @@ class TestStackUpdates:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_with_invalid_resource_fails(self, runner, cfn):
         """Update with an unsupported resource type should fail."""
@@ -158,4 +158,4 @@ class TestStackUpdates:
             try:
                 runner.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup

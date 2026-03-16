@@ -110,7 +110,7 @@ class TestCrossFrameworkConsistency:
                 try:
                     cfn.delete_stack(name)
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_resources_are_functional_after_deploy(self, cfn, test_run_id):
         """Resources from CFN deployment should be fully functional."""
@@ -141,7 +141,7 @@ class TestCrossFrameworkConsistency:
             try:
                 cfn.delete_stack(stack_name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_stack_deletion_cleans_up_resources(self, cfn, test_run_id):
         """After stack deletion, resources should not exist."""

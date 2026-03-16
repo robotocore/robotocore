@@ -632,7 +632,7 @@ class TestCodeBuildSourceCredentialOperations:
             try:
                 codebuild.delete_source_credentials(arn=resp["arn"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_list_source_credentials(self, codebuild):
         """ListSourceCredentials returns stored credentials info."""
@@ -653,7 +653,7 @@ class TestCodeBuildSourceCredentialOperations:
             try:
                 codebuild.delete_source_credentials(arn=imp["arn"])
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_source_credentials(self, codebuild):
         """DeleteSourceCredentials removes stored credentials."""
@@ -698,7 +698,7 @@ class TestCodeBuildWebhookOperations:
             try:
                 codebuild.delete_webhook(projectName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             codebuild.delete_project(name=name)
 
     def test_delete_webhook(self, codebuild):
@@ -723,7 +723,7 @@ class TestCodeBuildWebhookOperations:
             try:
                 codebuild.delete_webhook(projectName=name)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             codebuild.delete_project(name=name)
 
 
@@ -840,7 +840,7 @@ class TestCodeBuildResourcePolicyOperations:
             try:
                 codebuild.delete_resource_policy(resourceArn=resource_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_get_resource_policy(self, codebuild):
         """GetResourcePolicy retrieves a resource policy."""
@@ -857,7 +857,7 @@ class TestCodeBuildResourcePolicyOperations:
             try:
                 codebuild.delete_resource_policy(resourceArn=resource_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_resource_policy(self, codebuild):
         """DeleteResourcePolicy removes a resource policy."""

@@ -58,7 +58,7 @@ def website_resources(s3_client):
         for obj in objs.get("Contents", []):
             s3_client.delete_object(Bucket=bucket_name, Key=obj["Key"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
     s3_client.delete_bucket_policy(Bucket=bucket_name)
     s3_client.delete_bucket(Bucket=bucket_name)
 

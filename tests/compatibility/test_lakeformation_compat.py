@@ -420,7 +420,7 @@ class TestLakeFormationTransactions:
         try:
             client.cancel_transaction(TransactionId=resp["TransactionId"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_start_transaction_read_only(self, client):
         """StartTransaction with READ_ONLY type returns a TransactionId."""
@@ -430,7 +430,7 @@ class TestLakeFormationTransactions:
         try:
             client.cancel_transaction(TransactionId=resp["TransactionId"])
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_start_and_describe_transaction(self, client):
         """DescribeTransaction returns details for a started transaction."""
@@ -446,7 +446,7 @@ class TestLakeFormationTransactions:
             try:
                 client.cancel_transaction(TransactionId=txn_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_commit_transaction(self, client):
         """CommitTransaction commits a started transaction."""
@@ -474,7 +474,7 @@ class TestLakeFormationTransactions:
             try:
                 client.cancel_transaction(TransactionId=txn_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestLakeFormationDataCellsFilter:
@@ -572,7 +572,7 @@ class TestLakeFormationDeregisterDescribeResource:
             try:
                 client.deregister_resource(ResourceArn=resource_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_describe_resource_has_role_arn(self, client):
         """DescribeResource includes RoleArn field."""
@@ -589,7 +589,7 @@ class TestLakeFormationDeregisterDescribeResource:
             try:
                 client.deregister_resource(ResourceArn=resource_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestLakeFormationSearchByLFTags:

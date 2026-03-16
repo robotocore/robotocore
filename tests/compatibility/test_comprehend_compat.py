@@ -308,7 +308,7 @@ class TestComprehendEndpointTagging:
         try:
             client.delete_endpoint(EndpointArn=arn)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_tag_and_list_tags(self, client, endpoint_arn):
         """TagResource adds tags visible via ListTagsForResource."""

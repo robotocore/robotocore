@@ -613,7 +613,7 @@ class TestAppConfigExtensionOperations:
         try:
             appconfig.delete_extension(ExtensionIdentifier=ext_id)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_get_extension(self, appconfig):
         name = _unique("ext")

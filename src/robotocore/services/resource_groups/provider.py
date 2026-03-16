@@ -7,6 +7,7 @@ and operations missing from Moto's flask_paths routing table:
 """
 
 import json
+import logging
 import re
 import urllib.parse
 
@@ -19,6 +20,9 @@ _TAGS_RE = re.compile(r"^/resources/(.+)/tags$")
 _GET_ACCOUNT_SETTINGS_RE = re.compile(r"^/get-account-settings$")
 _LIST_GROUP_RESOURCES_RE = re.compile(r"^/list-group-resources$")
 _UPDATE_ACCOUNT_SETTINGS_RE = re.compile(r"^/update-account-settings$")
+
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_resource_groups_request(
@@ -155,8 +159,8 @@ def _list_group_resources(body: bytes, region: str, account_id: str) -> Response
                 break
         if group is None and group_name in backend.groups.by_arn:
             group = backend.groups.by_arn[group_name]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_list_group_resources: values failed (non-fatal): %s", exc)
 
     return Response(
         content=json.dumps(

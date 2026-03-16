@@ -867,7 +867,7 @@ class TestGetModelTemplate:
             assert "Value" in resp
         except apigwv2.exceptions.NotFoundException:
             # Some implementations don't support this path
-            pass
+            pass  # resource may not exist
 
 
 class TestPortalOperations:

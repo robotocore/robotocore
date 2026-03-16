@@ -80,8 +80,8 @@ async def _get_tag_keys(request: Request, body: bytes, region: str, account_id: 
         sqs_store = get_sqs_store(region)
         for queue in sqs_store.list_queues():
             tag_keys.update(queue.tags.keys())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_get_tag_keys: get_sqs_store failed (non-fatal): %s", exc)
 
     # Add keys from native SNS
     try:
@@ -91,8 +91,8 @@ async def _get_tag_keys(request: Request, body: bytes, region: str, account_id: 
         for topic in sns_store.topics.values():
             if hasattr(topic, "tags") and topic.tags:
                 tag_keys.update(topic.tags.keys())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_get_tag_keys: get_sns_store failed (non-fatal): %s", exc)
 
     response = {
         "TagKeys": sorted(tag_keys),

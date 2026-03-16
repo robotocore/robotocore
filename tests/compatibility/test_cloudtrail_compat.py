@@ -35,11 +35,11 @@ def trail_with_bucket(cloudtrail, s3):
     try:
         cloudtrail.delete_trail(Name=trail_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         s3.delete_bucket(Bucket=bucket_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestCloudTrailTrailOperations:
@@ -828,7 +828,7 @@ class TestCloudTrailUpdateEventDataStore:
             try:
                 cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_event_data_store_retention(self, cloudtrail):
         """UpdateEventDataStore can change retention period."""
@@ -842,7 +842,7 @@ class TestCloudTrailUpdateEventDataStore:
             try:
                 cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_update_event_data_store_verify_via_get(self, cloudtrail):
         """UpdateEventDataStore changes are visible via GetEventDataStore."""
@@ -858,7 +858,7 @@ class TestCloudTrailUpdateEventDataStore:
             try:
                 cloudtrail.delete_event_data_store(EventDataStore=eds_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestCloudTrailDeleteEventDataStore:
@@ -951,7 +951,7 @@ class TestCloudTrailUpdateChannel:
             try:
                 cloudtrail.delete_channel(Channel=ch_arn)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_channel(self, cloudtrail):
         """DeleteChannel removes the channel."""

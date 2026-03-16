@@ -1316,7 +1316,7 @@ class TestCognitoUserPoolDomains:
             try:
                 cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             cognito.delete_user_pool(UserPoolId=pool_id)
 
     def test_describe_user_pool_domain_exists(self, cognito):
@@ -1332,7 +1332,7 @@ class TestCognitoUserPoolDomains:
             try:
                 cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             cognito.delete_user_pool(UserPoolId=pool_id)
 
     def test_delete_user_pool_domain(self, cognito):
@@ -1564,7 +1564,7 @@ class TestCognitoAuthExtended:
             try:
                 cognito.delete_user_pool_domain(UserPoolId=pool_id, Domain=domain)
             except Exception:
-                pass
+                pass  # best-effort cleanup
             cognito.delete_user_pool(UserPoolId=pool_id)
 
     def test_respond_to_auth_challenge(self, cognito):

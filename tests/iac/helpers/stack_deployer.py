@@ -33,7 +33,7 @@ def delete_stack(stack_name: str) -> None:
     try:
         runner.delete_stack(stack_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def get_stack_outputs(stack: dict) -> dict[str, str]:

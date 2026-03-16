@@ -29,7 +29,7 @@ def instance_id(client):
     try:
         client.delete_instance(InstanceId=iid)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_agent_status_lifecycle(client, instance_id):

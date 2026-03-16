@@ -63,7 +63,7 @@ def firewall_rule_group_arn(r53r_client):
     try:
         r53r_client.delete_firewall_rule_group(FirewallRuleGroupId=resp["FirewallRuleGroup"]["Id"])
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_r53r_firewall_rule_group_policy(r53r_client, firewall_rule_group_arn):
@@ -124,7 +124,7 @@ def test_databrew_project_lifecycle(databrew_client):
         try:
             databrew_client.delete_dataset(Name="test-ds-b5")
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
 
 def test_databrew_project_not_found(databrew_client):
@@ -195,11 +195,11 @@ def oss_collection_id(oss_client):
     try:
         oss_client.delete_collection(id=coll_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
     try:
         oss_client.delete_security_policy(name="test-enc-b5", type="encryption")
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_oss_index_lifecycle(oss_client, oss_collection_id):

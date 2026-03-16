@@ -62,8 +62,8 @@ class StateHookRegistry:
         """Remove a previously registered callback."""
         try:
             self._hooks[hook_type].remove(callback)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.debug("unregister: remove failed (non-fatal): %s", exc)
 
     def fire(self, hook_type: HookType, context: dict) -> None:
         """Execute all callbacks registered for the given hook type.

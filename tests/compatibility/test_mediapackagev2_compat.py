@@ -20,7 +20,7 @@ def channel_group(mediapackagev2_client):
     try:
         mediapackagev2_client.delete_channel_group(ChannelGroupName=name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def channel(mediapackagev2_client, channel_group):
     try:
         mediapackagev2_client.delete_channel(ChannelGroupName=cg_name, ChannelName=ch_name)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestMediaPackageV2ChannelGroups:
@@ -475,7 +475,7 @@ class TestMediaPackageV2HarvestJobs:
                 OriginEndpointName=self.ep_name,
             )
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_list_harvest_jobs(self):
         """ListHarvestJobs returns a list of harvest jobs."""

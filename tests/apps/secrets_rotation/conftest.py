@@ -44,7 +44,7 @@ def vault(secretsmanager, dynamodb, unique_name):
         try:
             secretsmanager.delete_secret(SecretId=full_name, ForceDeleteWithoutRecovery=True)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     v.delete_tables()
 

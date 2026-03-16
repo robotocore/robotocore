@@ -25,7 +25,7 @@ def user_pool_id(client):
     try:
         client.delete_user_pool(UserPoolId=pool_id)
     except Exception:
-        pass
+        pass  # best-effort cleanup
 
 
 def test_group_lifecycle(client, user_pool_id):

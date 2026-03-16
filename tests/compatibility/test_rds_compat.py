@@ -38,7 +38,7 @@ def db_instance(rds):
     try:
         rds.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -59,16 +59,16 @@ def subnet_group(rds, ec2):
     try:
         rds.delete_db_subnet_group(DBSubnetGroupName=name)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
     for sid in subnet_ids:
         try:
             ec2.delete_subnet(SubnetId=sid)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
     try:
         ec2.delete_vpc(VpcId=vpc_id)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ def param_group(rds):
     try:
         rds.delete_db_parameter_group(DBParameterGroupName=name)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestRDSDBInstanceOperations:
@@ -206,11 +206,11 @@ class TestRDSSubnetGroupOperations:
             try:
                 ec2.delete_subnet(SubnetId=sid)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
         try:
             ec2.delete_vpc(VpcId=vpc_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
 
 class TestRDSParameterGroupOperations:
@@ -381,7 +381,7 @@ class TestRDSDBClusterParameterGroupOperations:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_modify_db_cluster_parameter_group(self, client):
         name = _unique("compat-cpg")
@@ -406,7 +406,7 @@ class TestRDSDBClusterParameterGroupOperations:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_cluster_parameter_group(self, client):
         name = _unique("compat-cpg")
@@ -441,7 +441,7 @@ class TestRDSDBClusterParameterGroupOperations:
                 try:
                     client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=n)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_describe_db_cluster_parameters(self, client):
         name = _unique("compat-cpg")
@@ -457,7 +457,7 @@ class TestRDSDBClusterParameterGroupOperations:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDBParameterGroupCRUDOperations:
@@ -485,7 +485,7 @@ class TestRDSDBParameterGroupCRUDOperations:
                 try:
                     client.delete_db_parameter_group(DBParameterGroupName=n)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_modify_db_parameter_group(self, client):
         name = _unique("compat-pg")
@@ -510,7 +510,7 @@ class TestRDSDBParameterGroupCRUDOperations:
             try:
                 client.delete_db_parameter_group(DBParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDBClusterOperations:
@@ -533,7 +533,7 @@ class TestRDSDBClusterOperations:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_stop_db_cluster(self, client):
         name = _unique("compat-cl")
@@ -550,7 +550,7 @@ class TestRDSDBClusterOperations:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_start_db_cluster(self, client):
         name = _unique("compat-cl")
@@ -568,7 +568,7 @@ class TestRDSDBClusterOperations:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDBClusterSnapshotOperations:
@@ -589,7 +589,7 @@ class TestRDSDBClusterSnapshotOperations:
         try:
             client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_db_cluster_snapshot(self, client, cluster):
         snap = _unique("compat-csnap")
@@ -603,7 +603,7 @@ class TestRDSDBClusterSnapshotOperations:
             try:
                 client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_cluster_snapshot(self, client, cluster):
         snap = _unique("compat-csnap")
@@ -632,7 +632,7 @@ class TestRDSDBClusterSnapshotOperations:
                 try:
                     client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=s)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_describe_db_cluster_snapshot_attributes(self, client, cluster):
         snap = _unique("compat-csnap")
@@ -647,7 +647,7 @@ class TestRDSDBClusterSnapshotOperations:
             try:
                 client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_modify_db_cluster_snapshot_attribute(self, client, cluster):
         snap = _unique("compat-csnap")
@@ -666,7 +666,7 @@ class TestRDSDBClusterSnapshotOperations:
             try:
                 client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDBSnapshotCRUDOperations:
@@ -688,7 +688,7 @@ class TestRDSDBSnapshotCRUDOperations:
         try:
             client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_copy_db_snapshot(self, client, instance):
         src = _unique("compat-snap-src")
@@ -708,7 +708,7 @@ class TestRDSDBSnapshotCRUDOperations:
                 try:
                     client.delete_db_snapshot(DBSnapshotIdentifier=s)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_describe_db_snapshot_attributes(self, client, instance):
         snap = _unique("compat-snap")
@@ -723,7 +723,7 @@ class TestRDSDBSnapshotCRUDOperations:
             try:
                 client.delete_db_snapshot(DBSnapshotIdentifier=snap)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_modify_db_snapshot_attribute(self, client, instance):
         snap = _unique("compat-snap")
@@ -742,7 +742,7 @@ class TestRDSDBSnapshotCRUDOperations:
             try:
                 client.delete_db_snapshot(DBSnapshotIdentifier=snap)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSOptionGroupOperations:
@@ -764,7 +764,7 @@ class TestRDSOptionGroupOperations:
             try:
                 client.delete_option_group(OptionGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_option_group(self, client):
         name = _unique("compat-og")
@@ -805,7 +805,7 @@ class TestRDSDBSecurityGroupOperations:
             try:
                 client.delete_db_security_group(DBSecurityGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_security_group(self, client):
         name = _unique("compat-dbsg")
@@ -834,7 +834,7 @@ class TestRDSDBSecurityGroupOperations:
             try:
                 client.delete_db_security_group(DBSecurityGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSEventSubscriptionOperations:
@@ -854,7 +854,7 @@ class TestRDSEventSubscriptionOperations:
             try:
                 client.delete_event_subscription(SubscriptionName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_event_subscription(self, client):
         name = _unique("compat-esub")
@@ -883,7 +883,7 @@ class TestRDSGlobalClusterOperations:
             try:
                 client.delete_global_cluster(GlobalClusterIdentifier=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDBLogFiles:
@@ -907,7 +907,7 @@ class TestRDSDBLogFiles:
             try:
                 client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSRoleOperations:
@@ -935,7 +935,7 @@ class TestRDSRoleOperations:
             try:
                 client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_add_role_to_db_cluster(self, client):
         name = _unique("compat-cl")
@@ -955,7 +955,7 @@ class TestRDSRoleOperations:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSBlueGreenDeploymentOperations:
@@ -977,7 +977,7 @@ class TestRDSBlueGreenDeploymentOperations:
         try:
             client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_blue_green_deployment(self, client, source_instance):
         bg_name = _unique("compat-bg")
@@ -994,7 +994,7 @@ class TestRDSBlueGreenDeploymentOperations:
             try:
                 client.delete_blue_green_deployment(BlueGreenDeploymentIdentifier=bg_id)
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_blue_green_deployment(self, client, source_instance):
         bg_name = _unique("compat-bg")
@@ -1043,16 +1043,16 @@ class TestRDSRestoreOperations:
                         DBClusterIdentifier=restored_name, SkipFinalSnapshot=True
                     )
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
                 try:
                     client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
         finally:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSModifyOptionGroupOperations:
@@ -1081,7 +1081,7 @@ class TestRDSModifyOptionGroupOperations:
             try:
                 client.delete_option_group(OptionGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSExportTaskOperations:
@@ -1130,12 +1130,12 @@ class TestRDSGlobalClusterMemberOperations:
                 try:
                     client.delete_db_cluster(DBClusterIdentifier=cl_name, SkipFinalSnapshot=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
         finally:
             try:
                 client.delete_global_cluster(GlobalClusterIdentifier=gc_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSSwitchoverOperations:
@@ -1193,11 +1193,11 @@ class TestRDSDBProxyCRUD:
             try:
                 ec2_client.delete_subnet(SubnetId=sid)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
         try:
             ec2_client.delete_vpc(VpcId=vpc_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_describe_delete_db_proxy(self, client, vpc_subnets):
         """Full CRUD lifecycle for DBProxy."""
@@ -1235,7 +1235,7 @@ class TestRDSDBProxyCRUD:
             try:
                 client.delete_db_proxy(DBProxyName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
 
@@ -1264,7 +1264,7 @@ class TestRDSModifyDBClusterOperations:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSModifyDBSubnetGroupOperations:
@@ -1312,7 +1312,7 @@ class TestRDSModifyDBSubnetGroupOperations:
             try:
                 client.delete_db_subnet_group(DBSubnetGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSGlobalClusterCRUD:
@@ -1365,7 +1365,7 @@ class TestRDSReadReplicaOperations:
         try:
             client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_read_replica(self, client, source_instance):
         """CreateDBInstanceReadReplica creates a replica and it appears in DescribeDBInstances."""
@@ -1386,7 +1386,7 @@ class TestRDSReadReplicaOperations:
             try:
                 client.delete_db_instance(DBInstanceIdentifier=rr_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_promote_read_replica(self, client, source_instance):
         """PromoteReadReplica promotes a replica to standalone."""
@@ -1402,7 +1402,7 @@ class TestRDSReadReplicaOperations:
             try:
                 client.delete_db_instance(DBInstanceIdentifier=rr_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSExportTaskCRUD:
@@ -1430,11 +1430,11 @@ class TestRDSExportTaskCRUD:
         try:
             client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_start_describe_cancel_export_task(self, client, snapshot):
         """Full export task lifecycle: start, describe, cancel."""
@@ -1481,7 +1481,7 @@ class TestRDSClusterTagOperations:
         try:
             client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_cluster_create_with_tags(self, client, cluster):
         """Tags passed at cluster creation time are visible."""
@@ -1548,7 +1548,7 @@ class TestRDSRestoreDBClusterToPointInTime:
                 try:
                     client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestRDSDBProxyTargetOperations:
@@ -1591,16 +1591,16 @@ class TestRDSDBProxyTargetOperations:
         try:
             client.delete_db_proxy(DBProxyName=name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         for sid in subnet_ids:
             try:
                 ec2_client.delete_subnet(SubnetId=sid)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
         try:
             ec2_client.delete_vpc(VpcId=vpc_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_describe_db_proxy_target_groups(self, client, proxy):
         """DescribeDBProxyTargetGroups returns target groups for a proxy."""
@@ -1662,7 +1662,7 @@ class TestRDSOptionGroupDescribeSpecific:
             try:
                 client.delete_option_group(OptionGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSRestoreDBInstanceOperations:
@@ -1698,11 +1698,11 @@ class TestRDSRestoreDBInstanceOperations:
                 try:
                     client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 client.delete_db_snapshot(DBSnapshotIdentifier=snap)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_restore_db_instance_to_point_in_time(self, client):
         """RestoreDBInstanceToPointInTime creates instance from point-in-time."""
@@ -1728,7 +1728,7 @@ class TestRDSRestoreDBInstanceOperations:
                 try:
                     client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestRDSDBShardGroupOperations:
@@ -1760,11 +1760,11 @@ class TestRDSDBShardGroupOperations:
             try:
                 client.delete_db_shard_group(DBShardGroupIdentifier=sg_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDBProxyTargetRegistration:
@@ -1816,20 +1816,20 @@ class TestRDSDBProxyTargetRegistration:
         try:
             client.delete_db_proxy(DBProxyName=proxy_name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         try:
             client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
         for sid in subnet_ids:
             try:
                 ec2_client.delete_subnet(SubnetId=sid)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
         try:
             ec2_client.delete_vpc(VpcId=vpc_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_register_and_deregister_db_proxy_targets(self, client, proxy_with_instance):
         """Register and deregister a DB instance as a proxy target."""
@@ -1888,7 +1888,7 @@ class TestRDSEventSubscriptionCRUD:
             try:
                 client.delete_event_subscription(SubscriptionName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_event_subscription_lifecycle(self, client):
         """Create → describe → delete → verify gone."""
@@ -1985,7 +1985,7 @@ class TestRDSOptionGroupCRUDLifecycle:
             try:
                 client.delete_option_group(OptionGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSTagsCRUD:
@@ -2029,7 +2029,7 @@ class TestRDSTagsCRUD:
             try:
                 client.delete_db_parameter_group(DBParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_tags_on_option_group(self, client):
         """Add and list tags on an option group."""
@@ -2053,7 +2053,7 @@ class TestRDSTagsCRUD:
             try:
                 client.delete_option_group(OptionGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSAdditionalDescribeOperations:
@@ -2268,11 +2268,11 @@ class TestRDSCopyOptionGroup:
             try:
                 client.delete_option_group(OptionGroupName=tgt_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 client.delete_option_group(OptionGroupName=src_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDescribeDBClusterEndpoints:
@@ -2305,7 +2305,7 @@ class TestRDSDescribeDBClusterEndpoints:
             try:
                 client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDescribeDBEngineVersions:
@@ -2559,7 +2559,7 @@ class TestRDSDescribeValidDBInstanceModifications:
             try:
                 client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSCustomDBEngineVersion:
@@ -2585,7 +2585,7 @@ class TestRDSCustomDBEngineVersion:
             try:
                 client.delete_custom_db_engine_version(Engine=engine, EngineVersion=version)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_custom_db_engine_version(self, client):
         """DeleteCustomDBEngineVersion removes a custom engine version."""
@@ -2621,7 +2621,7 @@ class TestRDSCustomDBEngineVersion:
             try:
                 client.delete_custom_db_engine_version(Engine=engine, EngineVersion=version)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSIntegration:
@@ -2651,7 +2651,7 @@ class TestRDSIntegration:
             try:
                 client.delete_integration(IntegrationIdentifier=integration_arn)
             except (ClientError, UnboundLocalError):
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_integration(self, client):
         """DeleteIntegration removes an integration."""
@@ -2704,7 +2704,7 @@ class TestRDSTenantDatabase:
         try:
             client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_tenant_database(self, client, db_instance):
         """CreateTenantDatabase creates a tenant database on an instance."""
@@ -2754,7 +2754,7 @@ class TestRDSDBClusterEndpoint:
         try:
             client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_db_cluster_endpoint(self, client, cluster):
         """CreateDBClusterEndpoint creates a custom endpoint."""
@@ -2773,7 +2773,7 @@ class TestRDSDBClusterEndpoint:
             try:
                 client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_modify_db_cluster_endpoint(self, client, cluster):
         """ModifyDBClusterEndpoint changes endpoint type."""
@@ -2793,7 +2793,7 @@ class TestRDSDBClusterEndpoint:
             try:
                 client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_cluster_endpoint(self, client, cluster):
         """DeleteDBClusterEndpoint removes an endpoint."""
@@ -2828,7 +2828,7 @@ class TestRDSActivityStream:
         try:
             client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_start_activity_stream(self, client, cluster):
         """StartActivityStream starts streaming for a cluster."""
@@ -2884,7 +2884,7 @@ class TestRDSEventSubscriptionSourceIds:
         try:
             client.delete_event_subscription(SubscriptionName=name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_add_source_identifier(self, client, subscription):
         """AddSourceIdentifierToSubscription adds a source."""
@@ -3006,7 +3006,7 @@ class TestRDSDBProxyEndpoint:
         try:
             client.delete_db_proxy(DBProxyName=proxy_name)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_db_proxy_endpoint(self, client, proxy_with_subnets):
         """CreateDBProxyEndpoint creates a proxy endpoint."""
@@ -3025,7 +3025,7 @@ class TestRDSDBProxyEndpoint:
             try:
                 client.delete_db_proxy_endpoint(DBProxyEndpointName=ep_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_delete_db_proxy_endpoint(self, client, proxy_with_subnets):
         """DeleteDBProxyEndpoint removes a proxy endpoint."""
@@ -3069,7 +3069,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_describe_valid_db_instance_modifications(self, rds, db_instance):
@@ -3091,7 +3091,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_instance(DBInstanceIdentifier=replica_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_restore_db_instance_from_db_snapshot(self, rds, db_instance):
         """RestoreDBInstanceFromDBSnapshot restores an instance from a snapshot."""
@@ -3112,11 +3112,11 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_instance(DBInstanceIdentifier=restored_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 rds.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     # -- DB CLUSTERS --
 
@@ -3141,7 +3141,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_describe_db_cluster_endpoints(self, rds):
@@ -3161,7 +3161,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_failover_db_cluster_nonexistent(self, rds):
         """FailoverDBCluster with nonexistent cluster raises error."""
@@ -3197,11 +3197,11 @@ class TestRDSCRUDBatch2:
                 try:
                     rds.delete_db_cluster(DBClusterIdentifier=cname, SkipFinalSnapshot=True)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 rds.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     # -- PARAMETER GROUPS --
 
@@ -3228,7 +3228,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_parameter_group(DBParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_create_and_delete_db_cluster_parameter_group(self, rds):
@@ -3250,7 +3250,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_copy_db_parameter_group(self, rds):
@@ -3275,7 +3275,7 @@ class TestRDSCRUDBatch2:
                 try:
                     rds.delete_db_parameter_group(DBParameterGroupName=pg)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_copy_db_cluster_parameter_group(self, rds):
         """CopyDBClusterParameterGroup copies a cluster parameter group."""
@@ -3299,7 +3299,7 @@ class TestRDSCRUDBatch2:
                 try:
                     rds.delete_db_cluster_parameter_group(DBClusterParameterGroupName=cpg)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     # -- SUBNET GROUPS --
 
@@ -3331,16 +3331,16 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_subnet_group(DBSubnetGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             for sid in subnet_ids:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     # -- SECURITY GROUPS --
 
@@ -3362,7 +3362,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_security_group(DBSecurityGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
     # -- SNAPSHOTS --
@@ -3384,7 +3384,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             raise
 
     def test_create_and_delete_db_cluster_snapshot(self, rds):
@@ -3411,11 +3411,11 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             try:
                 rds.delete_db_cluster(DBClusterIdentifier=cl_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     # -- PROXY --
 
@@ -3455,16 +3455,16 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_proxy(DBProxyName=proxy_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
             for sid in subnet_ids:
                 try:
                     ec2.delete_subnet(SubnetId=sid)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
             try:
                 ec2.delete_vpc(VpcId=vpc_id)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     # -- EVENT SUBSCRIPTION --
 
@@ -3487,7 +3487,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_event_subscription(SubscriptionName=sub_name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     # -- ROLES --
 
@@ -3514,7 +3514,7 @@ class TestRDSCRUDBatch2:
             try:
                 rds.delete_db_cluster(DBClusterIdentifier=cl_name, SkipFinalSnapshot=True)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_add_role_to_db_instance(self, rds, db_instance):
         """AddRoleToDBInstance attaches a role to an instance."""
@@ -3638,7 +3638,7 @@ class TestRDSClusterLifecycle:
         try:
             client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_and_delete_cluster(self, client):
         """Create a cluster and delete it."""
@@ -3965,7 +3965,7 @@ class TestRDSParameterGroupLifecycle:
             try:
                 client.delete_db_parameter_group(DBParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_parameter_group_modify_and_verify(self, client):
         """Create, modify a parameter, then verify modification."""
@@ -3991,7 +3991,7 @@ class TestRDSParameterGroupLifecycle:
             try:
                 client.delete_db_parameter_group(DBParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_parameter_group_copy(self, client):
         """Copy a parameter group and verify the copy exists."""
@@ -4018,7 +4018,7 @@ class TestRDSParameterGroupLifecycle:
                 try:
                     client.delete_db_parameter_group(DBParameterGroupName=n)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
     def test_parameter_group_describe_specific(self, client):
         """Describe a specific parameter group by name."""
@@ -4039,7 +4039,7 @@ class TestRDSParameterGroupLifecycle:
             try:
                 client.delete_db_parameter_group(DBParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSClusterParameterGroupLifecycle:
@@ -4066,7 +4066,7 @@ class TestRDSClusterParameterGroupLifecycle:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_cluster_parameter_group_describe_parameters(self, client):
         """Describe parameters of a cluster parameter group."""
@@ -4083,7 +4083,7 @@ class TestRDSClusterParameterGroupLifecycle:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_cluster_parameter_group_modify(self, client):
         """Modify a cluster parameter group."""
@@ -4109,7 +4109,7 @@ class TestRDSClusterParameterGroupLifecycle:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_cluster_parameter_group_copy(self, client):
         """Copy a cluster parameter group."""
@@ -4132,7 +4132,7 @@ class TestRDSClusterParameterGroupLifecycle:
                 try:
                     client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=n)
                 except ClientError:
-                    pass
+                    pass  # best-effort cleanup
 
 
 class TestRDSSecurityGroupLifecycle:
@@ -4172,7 +4172,7 @@ class TestRDSSecurityGroupLifecycle:
             try:
                 client.delete_db_security_group(DBSecurityGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSSubnetGroupLifecycleDeep:
@@ -4211,7 +4211,7 @@ class TestRDSSubnetGroupLifecycleDeep:
             try:
                 client.delete_db_subnet_group(DBSubnetGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
     def test_subnet_group_has_vpc_id(self, client, ec2_client):
         """Created subnet group includes VpcId in the response."""
@@ -4237,7 +4237,7 @@ class TestRDSSubnetGroupLifecycleDeep:
             try:
                 client.delete_db_subnet_group(DBSubnetGroupName=name)
             except ClientError:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestRDSDescribeWithFilters:
@@ -4344,7 +4344,7 @@ class TestRDSInstanceLifecycle:
         try:
             client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_and_describe_instance(self, client):
         """Create a DB instance and describe it."""
