@@ -292,11 +292,20 @@ class TestRAMErrorHandling:
             )
         assert exc_info.value.response["Error"]["Code"] == "UnknownResourceException"
 
-    def test_enable_sharing_with_aws_organization_error(self, ram):
-        """EnableSharingWithAwsOrganization raises OperationNotPermittedException."""
-        with pytest.raises(ClientError) as exc_info:
-            ram.enable_sharing_with_aws_organization()
-        assert exc_info.value.response["Error"]["Code"] == "OperationNotPermittedException"
+    def test_enable_sharing_with_aws_organization(self, ram):
+        """EnableSharingWithAwsOrganization is implemented (succeeds or raises expected error).
+
+        On a shared server, org state is non-deterministic (parallel tests may create/delete
+        organizations concurrently). We accept either outcome:
+          - returnValue True if an org happens to exist
+          - OperationNotPermittedException if no org exists
+        Both paths are exercised by unit tests in test_ram_unit.py.
+        """
+        try:
+            resp = ram.enable_sharing_with_aws_organization()
+            assert resp["returnValue"] is True
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] == "OperationNotPermittedException"
 
 
 class TestRAMPermissionLifecycle:
