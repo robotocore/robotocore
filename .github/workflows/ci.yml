@@ -89,7 +89,7 @@ jobs:
       - name: Upload structural lint report
         if: always()
         run: uv run python scripts/lint_project.py --json > lint-project.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-quality-report
@@ -124,7 +124,7 @@ jobs:
           -n4 -q --tb=short
           --junitxml=results-unit-gateway-${{ matrix.python-version }}.xml
           --cov=src/robotocore --cov-report=xml:coverage-unit-gateway-${{ matrix.python-version }}.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-unit-gateway-${{ matrix.python-version }}
@@ -158,7 +158,7 @@ jobs:
           -n4 -q --tb=short
           --junitxml=results-unit-services-${{ matrix.python-version }}.xml
           --cov=src/robotocore --cov-report=xml:coverage-unit-services-${{ matrix.python-version }}.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-unit-services-${{ matrix.python-version }}
@@ -194,7 +194,7 @@ jobs:
           -n4 -q --tb=short
           --junitxml=results-unit-infra-${{ matrix.python-version }}.xml
           --cov=src/robotocore --cov-report=xml:coverage-unit-infra-${{ matrix.python-version }}.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-unit-infra-${{ matrix.python-version }}
@@ -219,7 +219,7 @@ jobs:
           uv run pytest tests/integration/
           -v --tb=short
           --junitxml=results-integration.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-integration
@@ -263,14 +263,14 @@ jobs:
           -n4 --dist=loadfile -q --tb=short
           --reruns=2 --reruns-delay=1
           --junitxml=results-compat.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-compat
           path: results-compat.xml
       - name: Upload server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-logs-compat
           path: .robotocore.log
@@ -318,14 +318,14 @@ jobs:
         run: >
           uv run python scripts/validate_test_quality.py
           --file tests/compatibility/test_cross_service_compat.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-cross-service
           path: results-cross-service.xml
       - name: Upload server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-logs-cross-service
           path: .robotocore.log
@@ -371,14 +371,14 @@ jobs:
           -v --tb=short
           --reruns=2 --reruns-delay=1
           --junitxml=results-iac.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-iac
           path: results-iac.xml
       - name: Upload server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-logs-iac
           path: .robotocore.log
@@ -482,7 +482,7 @@ jobs:
           uv run python scripts/generate_parity_report.py
           --output parity-report.json
       - name: Upload parity report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: parity-report
           path: parity-report.json

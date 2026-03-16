@@ -40,7 +40,7 @@ jobs:
       - run: uv run pytest tests/unit/ -n4 -q --tb=short --junitxml=results-release-unit.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-release-unit
           path: results-release-unit.xml

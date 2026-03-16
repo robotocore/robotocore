@@ -58,14 +58,14 @@ jobs:
           ENDPOINT_URL=http://localhost:4566
           uv run pytest tests/iac/ -v --tb=short
           --junitxml=results-nightly-iac.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-iac-results
           path: results-nightly-iac.xml
       - name: Upload server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-server-log-iac
           path: .robotocore.log
@@ -108,14 +108,14 @@ jobs:
           uv run pytest tests/parity/ tests/compatibility/
           -v --tb=short
           --junitxml=results-nightly-parity.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-parity-results
           path: results-nightly-parity.xml
       - name: Upload server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-server-log-parity
           path: .robotocore.log
@@ -148,7 +148,7 @@ jobs:
       - name: Coverage summary
         run: |
           uv run coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-coverage
@@ -197,7 +197,7 @@ jobs:
           for t, name in cases[:20]:
               print(f'| {name} | {t:.2f}s |')
           " >> $GITHUB_STEP_SUMMARY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-timing

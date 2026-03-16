@@ -70,13 +70,13 @@ jobs:
         run: uv run pytest tests/apps/${{ matrix.app }}/ -v --tb=short --reruns=2 --reruns-delay=2 --junitxml=results-${{ matrix.app }}.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-app-${{ matrix.app }}
           path: results-${{ matrix.app }}.xml
       - name: Upload server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log-${{ matrix.app }}
           path: .robotocore.log
