@@ -157,6 +157,80 @@ jobs:
             htmlcov/
             results-nightly-unit.xml
 
+  full-shape-validation:
+    name: "nightly: full shape + error contract validation (all 147 services)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
+            uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          SERVER_PID=$!
+          for i in $(seq 1 60); do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "Server process exited early"
+              cat .robotocore.log 2>/dev/null || true
+              exit 1
+            fi
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+          curl -f http://localhost:4566/_robotocore/health || {
+            echo "=== Server logs ==="
+            cat .robotocore.log 2>/dev/null || true
+            exit 1
+          }
+      - name: Full response shape validation (all services)
+        run: >
+          PYTHONPATH=.
+          uv run python scripts/validate_response_shapes.py
+          --all --no-optional --json > shape-report.json || true
+      - name: Full error contract validation (all services)
+        run: >
+          PYTHONPATH=.
+          uv run python scripts/validate_error_contracts.py
+          --all --json > error-contract-report.json || true
+      - name: Shape validation summary
+        if: always()
+        run: |
+          echo "## Shape Validation Report" >> $GITHUB_STEP_SUMMARY
+          python3 -c "
+          import json
+          try:
+              data = json.load(open('shape-report.json'))
+              total_pass = sum(s['summary']['pass'] for s in data.values())
+              total_fail = sum(s['summary']['fail'] for s in data.values())
+              total_skip = sum(s['summary']['skip'] for s in data.values())
+              print(f'| Metric | Count |')
+              print(f'|--------|-------|')
+              print(f'| Pass | {total_pass} |')
+              print(f'| Fail | {total_fail} |')
+              print(f'| Skip | {total_skip} |')
+          except Exception as e:
+              print(f'Report unavailable: {e}')
+          " >> $GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nightly-shape-reports
+          path: |
+            shape-report.json
+            error-contract-report.json
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-server-log-shapes
+          path: .robotocore.log
+
   test-timing:
     name: "nightly: test timing analysis"
     runs-on: ubuntu-latest
@@ -207,7 +281,7 @@ jobs:
     name: "nightly: notify on failure"
     runs-on: ubuntu-latest
     if: failure()
-    needs: [full-iac, full-parity, full-coverage, test-timing]
+    needs: [full-iac, full-parity, full-coverage, full-shape-validation, test-timing]
     steps:
       - name: Create failure issue
         uses: actions/github-script@v8

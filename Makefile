@@ -4,7 +4,8 @@
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
         test-iac-pulumi test-iac-serverless test-iac-sam release \
         s3-semantic-audit s3-connectivity-matrix \
-        coverage pre-commit-install pre-commit
+        coverage pre-commit-install pre-commit \
+        shape-check error-check
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
@@ -105,6 +106,14 @@ pre-commit-install: ## Install pre-commit hooks into local git repo
 
 pre-commit: ## Run pre-commit checks on all files
 	uv run pre-commit run --all-files
+
+## ── Shape & contract validation ──────────────────────────────────────────
+
+shape-check: ## Validate response shapes against botocore (requires running server)
+	uv run python scripts/validate_response_shapes.py --top 20 --no-optional
+
+error-check: ## Validate error response contracts (requires running server)
+	uv run python scripts/validate_error_contracts.py --top 20
 
 ## ── Gap analysis ─────────────────────────────────────────────────────────────
 

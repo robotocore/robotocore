@@ -349,6 +349,54 @@ jobs:
           name: server-logs-cross-service
           path: .robotocore.log
 
+  shape-regression:
+    name: "shape: response shape + error contract validation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Start robotocore
+        run: |
+          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
+            uv run python -m robotocore.main > .robotocore.log 2>&1 &
+          SERVER_PID=$!
+          for i in $(seq 1 60); do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "Server process exited early"
+              cat .robotocore.log 2>/dev/null || true
+              exit 1
+            fi
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+          curl -f http://localhost:4566/_robotocore/health || {
+            echo "=== Server logs ==="
+            cat .robotocore.log 2>/dev/null || true
+            exit 1
+          }
+      - name: Validate response shapes (top 20 services)
+        run: >
+          PYTHONPATH=.
+          uv run python scripts/validate_response_shapes.py
+          --top 20 --no-optional
+      - name: Validate error contracts (top 20 services)
+        run: >
+          PYTHONPATH=.
+          uv run python scripts/validate_error_contracts.py
+          --top 20
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-logs-shape-regression
+          path: .robotocore.log
+
   iac-tests:
     name: "iac: CloudFormation + SAM + Serverless"
     runs-on: ubuntu-latest

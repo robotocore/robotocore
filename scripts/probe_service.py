@@ -19,13 +19,17 @@ Use this BEFORE writing compat tests. Only write tests for "working" ops.
 
 import argparse
 import json
-import re
 import sys
 
 import boto3
 import botocore.exceptions
 import botocore.loaders
-import botocore.session
+
+from scripts.lib.param_filler import (
+    KNOWN_PARAMS,
+    auto_fill_params,
+    to_snake_case,
+)
 
 # Operations that are destructive or have side effects we don't want.
 SKIP_OPERATIONS = {
@@ -84,145 +88,10 @@ IMPLEMENTED_ERROR_CODES = {
     "ValidationException",
 }
 
-# Hand-tuned params for operations where auto-fill isn't good enough.
-# These override auto-filled params.
-KNOWN_PARAMS = {
-    "sqs": {
-        "CreateQueue": {"QueueName": "probe-test-queue"},
-        "GetQueueUrl": {"QueueName": "probe-test-queue"},
-    },
-    "s3": {
-        "CreateBucket": {"Bucket": "probe-test-bucket"},
-    },
-    "sns": {
-        "CreateTopic": {"Name": "probe-test-topic"},
-    },
-    "sts": {
-        "GetCallerIdentity": {},
-    },
-}
 
-
-def _to_snake_case(name: str) -> str:
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
-
-
-def _build_fake_arn(service: str, resource_type: str = "thing") -> str:
-    """Build a syntactically valid fake ARN."""
-    return f"arn:aws:{service}:us-east-1:123456789012:{resource_type}/probe-test"
-
-
-def _auto_fill_params(service_name: str, operation_name: str) -> dict | None:
-    """Auto-fill required params from botocore shapes.
-
-    Returns a dict of params, or None if we can't fill them.
-    """
-    session = botocore.session.get_session()
-    try:
-        model = session.get_service_model(service_name)
-        op = model.operation_model(operation_name)
-    except Exception:
-        return None
-
-    if op.input_shape is None:
-        return {}
-
-    params = {}
-    required = set(getattr(op.input_shape, "required_members", []))
-
-    for name, shape in op.input_shape.members.items():
-        # Skip optional params
-        if name not in required:
-            continue
-
-        # Skip streaming body params
-        if hasattr(shape, "serialization") and shape.serialization.get("streaming"):
-            params[name] = b"probe-test-body"
-            continue
-
-        type_name = shape.type_name
-
-        if type_name == "string":
-            # Detect ARN-like params
-            name_lower = name.lower()
-            if "arn" in name_lower:
-                params[name] = _build_fake_arn(service_name)
-            elif name_lower in ("bucket", "bucketname"):
-                params[name] = "probe-test-bucket"
-            elif "name" in name_lower or "id" in name_lower:
-                params[name] = "probe-test-value"
-            elif "url" in name_lower:
-                params[name] = "http://localhost:4566/probe"
-            else:
-                params[name] = "probe-test-value"
-        elif type_name == "integer" or type_name == "long":
-            params[name] = 1
-        elif type_name == "boolean":
-            params[name] = False
-        elif type_name == "timestamp":
-            params[name] = "2024-01-01T00:00:00Z"
-        elif type_name == "blob":
-            params[name] = b"probe-test"
-        elif type_name == "list":
-            params[name] = []
-        elif type_name == "map":
-            params[name] = {}
-        elif type_name == "structure":
-            # Try to fill nested required structure
-            nested = _fill_structure(service_name, shape)
-            if nested is not None:
-                params[name] = nested
-            else:
-                return None  # Can't auto-fill this
-        else:
-            return None
-
-    return params
-
-
-def _fill_structure(service_name: str, shape) -> dict | None:
-    """Recursively fill a structure shape with minimal valid values."""
-    if not hasattr(shape, "members"):
-        return {}
-
-    result = {}
-    required = set(getattr(shape, "required_members", []))
-
-    for name, member in shape.members.items():
-        if name not in required:
-            continue
-
-        type_name = member.type_name
-        name_lower = name.lower()
-
-        if type_name == "string":
-            if "arn" in name_lower:
-                result[name] = _build_fake_arn(service_name)
-            else:
-                result[name] = "probe-test-value"
-        elif type_name in ("integer", "long"):
-            result[name] = 1
-        elif type_name == "boolean":
-            result[name] = False
-        elif type_name == "timestamp":
-            result[name] = "2024-01-01T00:00:00Z"
-        elif type_name == "blob":
-            result[name] = b"test"
-        elif type_name == "list":
-            result[name] = []
-        elif type_name == "map":
-            result[name] = {}
-        elif type_name == "structure":
-            nested = _fill_structure(service_name, member)
-            if nested is not None:
-                result[name] = nested
-            else:
-                return None
-        else:
-            return None
-
-    return result
+# Keep private aliases for backward compatibility with any callers
+_to_snake_case = to_snake_case
+_auto_fill_params = auto_fill_params
 
 
 def probe_operation(
