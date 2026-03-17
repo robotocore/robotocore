@@ -30,8 +30,63 @@ logger = logging.getLogger(__name__)
 _env_lock = threading.Lock()
 _path_lock = threading.Lock()
 
-# Thread-local storage for per-invocation environment variables
+# Thread-local storage for per-invocation environment variables and stdout capture
 _thread_local = threading.local()
+
+# Per-invocation stdout buffer: routes print() calls to the correct buffer per thread
+_invocation_output: threading.local = threading.local()
+_stdout_install_lock = threading.Lock()
+
+
+class _PerInvocationWriter(io.TextIOBase):
+    """Thread-local stdout/stderr proxy for concurrent Lambda invocations.
+
+    Each _run_handler worker thread registers its logs_output buffer via
+    _invocation_output.buffer. Writes from that thread go to its buffer;
+    writes from threads with no registered buffer fall through to the
+    original stream. This prevents concurrent invocations from clobbering
+    each other's captured output.
+    """
+
+    def __init__(self, real: io.TextIOBase) -> None:
+        self._real = real
+
+    def write(self, s: str) -> int:
+        buf = getattr(_invocation_output, "buffer", None)
+        if buf is not None:
+            return buf.write(s)
+        return self._real.write(s)
+
+    def flush(self) -> None:
+        buf = getattr(_invocation_output, "buffer", None)
+        if buf is not None:
+            buf.flush()
+        else:
+            self._real.flush()
+
+    @property
+    def encoding(self) -> str:
+        return self._real.encoding
+
+    @property
+    def errors(self) -> str | None:
+        return self._real.errors
+
+    def fileno(self) -> int:
+        return self._real.fileno()
+
+
+def _install_capturing_stdout() -> None:
+    """Wrap sys.stdout/stderr with thread-local proxy (thread-safe, re-entrant safe).
+
+    pytest replaces sys.stdout between tests, so we check isinstance each time
+    rather than caching a boolean flag.
+    """
+    with _stdout_install_lock:
+        if not isinstance(sys.stdout, _PerInvocationWriter):
+            sys.stdout = _PerInvocationWriter(sys.stdout)
+        if not isinstance(sys.stderr, _PerInvocationWriter):
+            sys.stderr = _PerInvocationWriter(sys.stderr)
 
 
 class _ThreadLocalEnviron:
@@ -533,6 +588,7 @@ def execute_python_handler(
 
     Returns (result, error_type, logs).
     """
+    _install_capturing_stdout()
     logs_output = io.StringIO()
 
     # Parse handler: "module.function" or "dir/module.function"
@@ -633,12 +689,6 @@ def execute_python_handler(
         # Use a function-scoped key so different Lambda functions don't collide
         modules_key = f"_lambda_{function_name}.{module_path}"
 
-        # Capture print output
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        sys.stdout = logs_output
-        sys.stderr = logs_output
-
         try:
             # Reuse cached module when hot_reload is off (matches real Lambda behavior:
             # modules persist across invocations within the same execution environment)
@@ -663,6 +713,8 @@ def execute_python_handler(
             handler_error = [None]
 
             def _run_handler():
+                # Route print() in this thread to the invocation's log buffer
+                _invocation_output.buffer = logs_output
                 # Set thread-local environment so os.environ reads in
                 # this thread see invocation-specific values
                 _thread_local.env = dict(invocation_env)
@@ -671,6 +723,7 @@ def execute_python_handler(
                 except Exception as exc:
                     handler_error[0] = exc
                 finally:
+                    _invocation_output.buffer = None
                     _thread_local.env = None
 
             worker = threading.Thread(target=_run_handler, daemon=True)
@@ -752,9 +805,6 @@ def execute_python_handler(
                 "stackTrace": _format_stacktrace(tb),
             }
             return error_result, "Handled", logs_output.getvalue()
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
     finally:
         # Remove only the paths we added (thread-safe: doesn't affect other threads)
         with _path_lock:

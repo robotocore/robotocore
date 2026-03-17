@@ -276,7 +276,6 @@ jobs:
           ENDPOINT_URL=http://localhost:4566
           uv run pytest ${{ matrix.pattern }}
           --ignore=tests/compatibility/test_cross_service_compat.py
-          --ignore=tests/compatibility/test_chaos_engineering_compat.py
           -n8 --dist=loadfile -q --tb=short
           --junitxml=results-compat-${{ matrix.shard }}.xml
       - uses: actions/upload-artifact@v7
@@ -327,7 +326,7 @@ jobs:
           ENDPOINT_URL=http://localhost:4566
           uv run pytest
           tests/compatibility/test_cross_service_compat.py
-          tests/compatibility/test_chaos_engineering_compat.py
+          tests/compatibility/chaos/test_chaos_engineering_compat.py
           -v --tb=short
           --junitxml=results-cross-service.xml
       - name: Validate test quality
@@ -335,7 +334,7 @@ jobs:
         run: >
           uv run python scripts/validate_test_quality.py
           --file tests/compatibility/test_cross_service_compat.py
-          --file tests/compatibility/test_chaos_engineering_compat.py
+          --file tests/compatibility/chaos/test_chaos_engineering_compat.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
