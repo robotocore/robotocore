@@ -80,8 +80,13 @@ def _install_capturing_stdout() -> None:
     """Wrap sys.stdout/stderr with thread-local proxy (thread-safe, re-entrant safe).
 
     pytest replaces sys.stdout between tests, so we check isinstance each time
-    rather than caching a boolean flag.
+    rather than caching a boolean flag. The unlocked isinstance check avoids
+    lock contention on the fast path (already installed).
     """
+    if isinstance(sys.stdout, _PerInvocationWriter) and isinstance(
+        sys.stderr, _PerInvocationWriter
+    ):
+        return
     with _stdout_install_lock:
         if not isinstance(sys.stdout, _PerInvocationWriter):
             sys.stdout = _PerInvocationWriter(sys.stdout)
@@ -689,6 +694,8 @@ def execute_python_handler(
         # Use a function-scoped key so different Lambda functions don't collide
         modules_key = f"_lambda_{function_name}.{module_path}"
 
+        # Route prints from module-level code (exec_module) to logs_output too
+        _invocation_output.buffer = logs_output
         try:
             # Reuse cached module when hot_reload is off (matches real Lambda behavior:
             # modules persist across invocations within the same execution environment)
@@ -806,6 +813,8 @@ def execute_python_handler(
             }
             return error_result, "Handled", logs_output.getvalue()
     finally:
+        # Stop routing this thread's prints to logs_output
+        _invocation_output.buffer = None
         # Remove only the paths we added (thread-safe: doesn't affect other threads)
         with _path_lock:
             for p in added_paths:
