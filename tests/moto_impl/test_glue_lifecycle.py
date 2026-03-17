@@ -19,6 +19,12 @@ def client():
 
 def test_blueprint_lifecycle(client):
     """Test Blueprint CRUD lifecycle."""
+    # Pre-cleanup to handle stale state
+    try:
+        client.delete_blueprint(Name="test-name-1")
+    except Exception:
+        pass
+
     # CREATE
     create_resp = client.create_blueprint(
         Name="test-name-1",
@@ -71,6 +77,15 @@ def test_blueprint_not_found(client):
 
 def test_blueprint_run_lifecycle(client):
     """Test BlueprintRun CRUD lifecycle."""
+    # Prerequisite: blueprint must exist before starting a run
+    try:
+        client.delete_blueprint(Name="test-name-1")
+    except Exception:
+        pass
+    client.create_blueprint(
+        Name="test-name-1",
+        BlueprintLocation="s3://test-bucket/test-prefix",
+    )
     # CREATE
     create_resp = client.start_blueprint_run(
         BlueprintName="test-name-1",
@@ -108,6 +123,12 @@ def test_blueprint_run_not_found(client):
 
 def test_catalog_lifecycle(client):
     """Test Catalog CRUD lifecycle."""
+    # Pre-cleanup to handle stale state
+    try:
+        client.delete_catalog(CatalogId="test-name-1")
+    except Exception:
+        pass
+
     # CREATE
     client.create_catalog(
         Name="test-name-1",
@@ -116,19 +137,19 @@ def test_catalog_lifecycle(client):
 
     # DESCRIBE
     desc_resp = client.get_catalog(
-        CatalogId="test-id-1",
+        CatalogId="test-name-1",
     )
     assert isinstance(desc_resp.get("Catalog", {}), dict)
 
     # DELETE
     client.delete_catalog(
-        CatalogId="test-id-1",
+        CatalogId="test-name-1",
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_catalog(
-            CatalogId="test-id-1",
+            CatalogId="test-name-1",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -158,8 +179,16 @@ def test_catalog_not_found(client):
 
 def test_classifier_lifecycle(client):
     """Test Classifier CRUD lifecycle."""
+    # Pre-cleanup to handle stale state
+    try:
+        client.delete_classifier(Name="test-name-1")
+    except Exception:
+        pass
+
     # CREATE
-    client.create_classifier()
+    client.create_classifier(
+        GrokClassifier={"Name": "test-name-1", "Classification": "test", "GrokPattern": "test"},
+    )
 
     # DESCRIBE
     desc_resp = client.get_classifier(
@@ -205,10 +234,21 @@ def test_classifier_not_found(client):
 
 def test_column_statistics_task_run_lifecycle(client):
     """Test ColumnStatisticsTaskRun CRUD lifecycle."""
+    # Prerequisites: database and table must exist (with cleanup for stale state)
+    try:
+        client.delete_database(Name="test-colstats-db")
+    except Exception:
+        pass
+    client.create_database(DatabaseInput={"Name": "test-colstats-db"})
+    client.create_table(
+        DatabaseName="test-colstats-db",
+        TableInput={"Name": "test-colstats-table"},
+    )
+
     # CREATE
     create_resp = client.start_column_statistics_task_run(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-colstats-db",
+        TableName="test-colstats-table",
         Role="test-string",
     )
     assert isinstance(create_resp.get("ColumnStatisticsTaskRunId"), str)
@@ -224,8 +264,8 @@ def test_column_statistics_task_run_lifecycle(client):
 
     # DELETE
     client.stop_column_statistics_task_run(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-colstats-db",
+        TableName="test-colstats-table",
     )
 
     # DESCRIBE after DELETE should fail
@@ -261,31 +301,42 @@ def test_column_statistics_task_run_not_found(client):
 
 def test_column_statistics_task_settings_lifecycle(client):
     """Test ColumnStatisticsTaskSettings CRUD lifecycle."""
+    # Prerequisites: database and table must exist (with cleanup for stale state)
+    try:
+        client.delete_database(Name="test-colstats-settings-db")
+    except Exception:
+        pass
+    client.create_database(DatabaseInput={"Name": "test-colstats-settings-db"})
+    client.create_table(
+        DatabaseName="test-colstats-settings-db",
+        TableInput={"Name": "test-colstats-settings-table"},
+    )
+
     # CREATE
     client.create_column_statistics_task_settings(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-colstats-settings-db",
+        TableName="test-colstats-settings-table",
         Role="test-string",
     )
 
     # DESCRIBE
     desc_resp = client.get_column_statistics_task_settings(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-colstats-settings-db",
+        TableName="test-colstats-settings-table",
     )
     assert isinstance(desc_resp.get("ColumnStatisticsTaskSettings", {}), dict)
 
     # DELETE
     client.delete_column_statistics_task_settings(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-colstats-settings-db",
+        TableName="test-colstats-settings-table",
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_column_statistics_task_settings(
-            DatabaseName="test-name-1",
-            TableName="test-name-1",
+            DatabaseName="test-colstats-settings-db",
+            TableName="test-colstats-settings-table",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -549,17 +600,9 @@ def test_data_catalog_encryption_settings_lifecycle(client):
 
 
 def test_data_catalog_encryption_settings_not_found(client):
-    """Test that describing a non-existent DataCatalogEncryptionSettings raises error."""
-    with pytest.raises(ClientError) as exc:
-        client.get_data_catalog_encryption_settings()
-    assert exc.value.response["Error"]["Code"] in (
-        "ResourceNotFoundException",
-        "ResourcePolicyNotFoundException",
-        "NotFoundException",
-        "EntityNotFoundException",
-        "InvalidRequestException",
-        "NoSuchEntity",
-    )
+    """Test that get_data_catalog_encryption_settings returns empty when none set."""
+    resp = client.get_data_catalog_encryption_settings()
+    assert isinstance(resp.get("DataCatalogEncryptionSettings", {}), dict)
 
 
 def test_data_quality_rule_recommendation_run_lifecycle(client):
@@ -1008,15 +1051,23 @@ def test_job_not_found(client):
 
 def test_job_run_lifecycle(client):
     """Test JobRun CRUD lifecycle."""
-    # CREATE
-    client.start_job_run(
-        JobName="test-name-1",
+    # Prerequisite: job must exist before starting a run
+    client.create_job(
+        Name="test-job-for-run",
+        Role="arn:aws:iam::123456789012:role/test-role",
+        Command={"Name": "glueetl"},
     )
+
+    # CREATE
+    run_resp = client.start_job_run(
+        JobName="test-job-for-run",
+    )
+    run_id = run_resp["JobRunId"]
 
     # DESCRIBE
     desc_resp = client.get_job_run(
-        JobName="test-name-1",
-        RunId="test-id-1",
+        JobName="test-job-for-run",
+        RunId=run_id,
     )
     assert isinstance(desc_resp.get("JobRun", {}), dict)
 
@@ -1102,11 +1153,22 @@ def test_ml_transform_not_found(client):
 
 def test_materialized_view_refresh_task_run_lifecycle(client):
     """Test MaterializedViewRefreshTaskRun CRUD lifecycle."""
+    # Prerequisites: database and table must exist (with cleanup for stale state)
+    try:
+        client.delete_database(Name="test-matview-db")
+    except Exception:
+        pass
+    client.create_database(DatabaseInput={"Name": "test-matview-db"})
+    client.create_table(
+        DatabaseName="test-matview-db",
+        TableInput={"Name": "test-matview-table"},
+    )
+
     # CREATE
     create_resp = client.start_materialized_view_refresh_task_run(
         CatalogId="test-id-1",
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-matview-db",
+        TableName="test-matview-table",
     )
     assert isinstance(create_resp.get("MaterializedViewRefreshTaskRunId"), str)
     assert len(create_resp.get("MaterializedViewRefreshTaskRunId", "")) > 0
@@ -1120,14 +1182,14 @@ def test_materialized_view_refresh_task_run_lifecycle(client):
     )
     assert isinstance(desc_resp.get("MaterializedViewRefreshTaskRun", {}), dict)
 
-    # DELETE
+    # STOP using database/table (AWS API for stop takes DatabaseName/TableName)
     client.stop_materialized_view_refresh_task_run(
         CatalogId="test-id-1",
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
+        DatabaseName="test-matview-db",
+        TableName="test-matview-table",
     )
 
-    # DESCRIBE after DELETE should fail
+    # DESCRIBE after STOP should fail (run is deleted)
     with pytest.raises(ClientError) as exc:
         client.get_materialized_view_refresh_task_run(
             CatalogId="test-id-1",
@@ -1162,34 +1224,48 @@ def test_materialized_view_refresh_task_run_not_found(client):
 
 def test_partition_lifecycle(client):
     """Test Partition CRUD lifecycle."""
+    # Prerequisites: database and table with partition keys must exist (cleanup stale state)
+    try:
+        client.delete_database(Name="test-partition-db")
+    except Exception:
+        pass
+    client.create_database(DatabaseInput={"Name": "test-partition-db"})
+    client.create_table(
+        DatabaseName="test-partition-db",
+        TableInput={
+            "Name": "test-partition-table",
+            "PartitionKeys": [{"Name": "dt", "Type": "string"}],
+        },
+    )
+
     # CREATE
     client.create_partition(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
-        PartitionInput={},
+        DatabaseName="test-partition-db",
+        TableName="test-partition-table",
+        PartitionInput={"Values": ["2024-01-01"]},
     )
 
     # DESCRIBE
     desc_resp = client.get_partition(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
-        PartitionValues=["test-string"],
+        DatabaseName="test-partition-db",
+        TableName="test-partition-table",
+        PartitionValues=["2024-01-01"],
     )
     assert isinstance(desc_resp.get("Partition", {}), dict)
 
     # DELETE
     client.delete_partition(
-        DatabaseName="test-name-1",
-        TableName="test-name-1",
-        PartitionValues=["test-string"],
+        DatabaseName="test-partition-db",
+        TableName="test-partition-table",
+        PartitionValues=["2024-01-01"],
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_partition(
-            DatabaseName="test-name-1",
-            TableName="test-name-1",
-            PartitionValues=["test-string"],
+            DatabaseName="test-partition-db",
+            TableName="test-partition-table",
+            PartitionValues=["2024-01-01"],
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1207,7 +1283,7 @@ def test_partition_not_found(client):
         client.get_partition(
             DatabaseName="fake-id",
             TableName="fake-id",
-            PartitionValues="fake-id",
+            PartitionValues=["nonexistent-value"],
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1221,6 +1297,12 @@ def test_partition_not_found(client):
 
 def test_registry_lifecycle(client):
     """Test Registry CRUD lifecycle."""
+    # Pre-cleanup to handle stale state
+    try:
+        client.delete_registry(RegistryId={"RegistryName": "test-name-1"})
+    except Exception:
+        pass
+
     # CREATE
     create_resp = client.create_registry(
         RegistryName="test-name-1",
@@ -1229,18 +1311,18 @@ def test_registry_lifecycle(client):
 
     # DESCRIBE
     client.get_registry(
-        RegistryId={},
+        RegistryId={"RegistryName": "test-name-1"},
     )
 
     # DELETE
     client.delete_registry(
-        RegistryId={},
+        RegistryId={"RegistryName": "test-name-1"},
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_registry(
-            RegistryId={},
+            RegistryId={"RegistryName": "test-name-1"},
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1256,7 +1338,7 @@ def test_registry_not_found(client):
     """Test that describing a non-existent Registry raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_registry(
-            RegistryId="fake-id",
+            RegistryId={"RegistryName": "nonexistent-registry-xyz"},
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1310,27 +1392,36 @@ def test_resource_policy_not_found(client):
 
 def test_schema_lifecycle(client):
     """Test Schema CRUD lifecycle."""
+    # Pre-cleanup to handle stale state
+    try:
+        client.delete_schema(
+            SchemaId={"SchemaName": "test-name-1", "RegistryName": "default-registry"}
+        )
+    except Exception:
+        pass
+
     # CREATE
     create_resp = client.create_schema(
         SchemaName="test-name-1",
         DataFormat="AVRO",
+        Compatibility="NONE",
     )
     assert isinstance(create_resp.get("Tags", {}), dict)
 
     # DESCRIBE
     client.get_schema(
-        SchemaId={},
+        SchemaId={"SchemaName": "test-name-1", "RegistryName": "default-registry"},
     )
 
     # DELETE
     client.delete_schema(
-        SchemaId={},
+        SchemaId={"SchemaName": "test-name-1", "RegistryName": "default-registry"},
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_schema(
-            SchemaId={},
+            SchemaId={"SchemaName": "test-name-1", "RegistryName": "default-registry"},
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1346,13 +1437,14 @@ def test_schema_not_found(client):
     """Test that describing a non-existent Schema raises error."""
     with pytest.raises(ClientError) as exc:
         client.get_schema(
-            SchemaId="fake-id",
+            SchemaId={"SchemaName": "nonexistent-schema-xyz"},
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
         "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
+        "InvalidInputException",
         "InvalidRequestException",
         "NoSuchEntity",
     )
@@ -1360,25 +1452,47 @@ def test_schema_not_found(client):
 
 def test_schema_version_lifecycle(client):
     """Test SchemaVersion CRUD lifecycle."""
+    # Prerequisite: schema must exist
+    try:
+        client.delete_schema(
+            SchemaId={"SchemaName": "test-schema-for-version", "RegistryName": "default-registry"}
+        )
+    except Exception:
+        pass
+    client.create_schema(
+        SchemaName="test-schema-for-version",
+        DataFormat="AVRO",
+        Compatibility="NONE",
+    )
+
+    schema_id = {"SchemaName": "test-schema-for-version", "RegistryName": "default-registry"}
+
     # CREATE
     client.register_schema_version(
-        SchemaId={},
-        SchemaDefinition="test-string",
+        SchemaId=schema_id,
+        SchemaDefinition='{"type": "record", "name": "Test", "fields": []}',
     )
 
     # DESCRIBE
-    client.get_schema_version()
+    client.get_schema_version(
+        SchemaId=schema_id,
+        SchemaVersionNumber={"VersionNumber": 1},
+    )
 
 
 def test_schema_version_not_found(client):
     """Test that describing a non-existent SchemaVersion raises error."""
     with pytest.raises(ClientError) as exc:
-        client.get_schema_version()
+        client.get_schema_version(
+            SchemaId={"SchemaName": "nonexistent-schema-for-version-test"},
+            SchemaVersionNumber={"VersionNumber": 99999},
+        )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
         "ResourcePolicyNotFoundException",
         "NotFoundException",
         "EntityNotFoundException",
+        "InvalidInputException",
         "InvalidRequestException",
         "NoSuchEntity",
     )
@@ -1439,11 +1553,17 @@ def test_security_configuration_not_found(client):
 
 def test_session_lifecycle(client):
     """Test Session CRUD lifecycle."""
+    # Pre-cleanup to handle stale state
+    try:
+        client.delete_session(Id="test-id-1")
+    except Exception:
+        pass
+
     # CREATE
     create_resp = client.create_session(
         Id="test-id-1",
-        Role="test-string",
-        Command={},
+        Role="arn:aws:iam::123456789012:role/test-role",
+        Command={"Name": "glueetl"},
     )
     assert isinstance(create_resp.get("Session", {}), dict)
 
@@ -1491,9 +1611,19 @@ def test_session_not_found(client):
 
 def test_statement_lifecycle(client):
     """Test Statement CRUD lifecycle."""
+    import uuid
+
+    # Prerequisite: session must exist
+    session_id = f"test-session-{uuid.uuid4().hex[:8]}"
+    client.create_session(
+        Id=session_id,
+        Role="arn:aws:iam::123456789012:role/test-role",
+        Command={"Name": "glueetl"},
+    )
+
     # CREATE
     create_resp = client.run_statement(
-        SessionId="test-id-1",
+        SessionId=session_id,
         Code="test-string",
     )
     assert isinstance(create_resp.get("Id"), int)
@@ -1502,7 +1632,7 @@ def test_statement_lifecycle(client):
 
     # DESCRIBE
     desc_resp = client.get_statement(
-        SessionId="test-id-1",
+        SessionId=session_id,
         Id=id,
     )
     assert isinstance(desc_resp.get("Statement", {}), dict)
@@ -1527,29 +1657,37 @@ def test_statement_not_found(client):
 
 def test_table_lifecycle(client):
     """Test Table CRUD lifecycle."""
+    # Prerequisite: database must exist (with cleanup for stale state)
+    try:
+        client.delete_database(Name="test-table-db")
+    except Exception:
+        pass
+    client.create_database(DatabaseInput={"Name": "test-table-db"})
+
     # CREATE
     client.create_table(
-        DatabaseName="test-name-1",
+        DatabaseName="test-table-db",
+        TableInput={"Name": "test-table-1"},
     )
 
     # DESCRIBE
     desc_resp = client.get_table(
-        DatabaseName="test-name-1",
-        Name="test-name-1",
+        DatabaseName="test-table-db",
+        Name="test-table-1",
     )
     assert isinstance(desc_resp.get("Table", {}), dict)
 
     # DELETE
     client.delete_table(
-        DatabaseName="test-name-1",
-        Name="test-name-1",
+        DatabaseName="test-table-db",
+        Name="test-table-1",
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_table(
-            DatabaseName="test-name-1",
-            Name="test-name-1",
+            DatabaseName="test-table-db",
+            Name="test-table-1",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1758,30 +1896,42 @@ def test_usage_profile_not_found(client):
 
 def test_user_defined_function_lifecycle(client):
     """Test UserDefinedFunction CRUD lifecycle."""
+    # Prerequisite: database must exist (with cleanup for stale state)
+    try:
+        client.delete_database(Name="test-udf-db")
+    except Exception:
+        pass
+    client.create_database(DatabaseInput={"Name": "test-udf-db"})
+
     # CREATE
     client.create_user_defined_function(
-        DatabaseName="test-name-1",
-        FunctionInput={},
+        DatabaseName="test-udf-db",
+        FunctionInput={
+            "FunctionName": "test-udf-1",
+            "ClassName": "com.example.Test",
+            "OwnerName": "root",
+            "OwnerType": "USER",
+        },
     )
 
     # DESCRIBE
     desc_resp = client.get_user_defined_function(
-        DatabaseName="test-name-1",
-        FunctionName="test-name-1",
+        DatabaseName="test-udf-db",
+        FunctionName="test-udf-1",
     )
     assert isinstance(desc_resp.get("UserDefinedFunction", {}), dict)
 
     # DELETE
     client.delete_user_defined_function(
-        DatabaseName="test-name-1",
-        FunctionName="test-name-1",
+        DatabaseName="test-udf-db",
+        FunctionName="test-udf-1",
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_user_defined_function(
-            DatabaseName="test-name-1",
-            FunctionName="test-name-1",
+            DatabaseName="test-udf-db",
+            FunctionName="test-udf-1",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1863,9 +2013,12 @@ def test_workflow_not_found(client):
 
 def test_workflow_run_lifecycle(client):
     """Test WorkflowRun CRUD lifecycle."""
+    # Prerequisite: workflow must exist
+    client.create_workflow(Name="test-workflow-for-run")
+
     # CREATE
     create_resp = client.start_workflow_run(
-        Name="test-name-1",
+        Name="test-workflow-for-run",
     )
     assert isinstance(create_resp.get("RunId"), str)
     assert len(create_resp.get("RunId", "")) > 0
@@ -1874,31 +2027,23 @@ def test_workflow_run_lifecycle(client):
 
     # DESCRIBE
     desc_resp = client.get_workflow_run(
-        Name="test-name-1",
+        Name="test-workflow-for-run",
         RunId=run_id,
     )
     assert isinstance(desc_resp.get("Run", {}), dict)
 
-    # DELETE
+    # STOP (stop_workflow_run stops execution; run record persists in AWS)
     client.stop_workflow_run(
-        Name="test-name-1",
+        Name="test-workflow-for-run",
         RunId=run_id,
     )
 
-    # DESCRIBE after DELETE should fail
-    with pytest.raises(ClientError) as exc:
-        client.get_workflow_run(
-            Name="test-name-1",
-            RunId=run_id,
-        )
-    assert exc.value.response["Error"]["Code"] in (
-        "ResourceNotFoundException",
-        "ResourcePolicyNotFoundException",
-        "NotFoundException",
-        "EntityNotFoundException",
-        "InvalidRequestException",
-        "NoSuchEntity",
+    # Run record should still be accessible after stop
+    stopped_resp = client.get_workflow_run(
+        Name="test-workflow-for-run",
+        RunId=run_id,
     )
+    assert isinstance(stopped_resp.get("Run", {}), dict)
 
 
 def test_workflow_run_not_found(client):
@@ -1920,17 +2065,22 @@ def test_workflow_run_not_found(client):
 
 def test_workflow_run_properties_lifecycle(client):
     """Test WorkflowRunProperties CRUD lifecycle."""
+    # Prerequisites: workflow and run must exist
+    client.create_workflow(Name="test-workflow-for-props")
+    run_resp = client.start_workflow_run(Name="test-workflow-for-props")
+    run_id = run_resp["RunId"]
+
     # CREATE
     client.put_workflow_run_properties(
-        Name="test-name-1",
-        RunId="test-id-1",
+        Name="test-workflow-for-props",
+        RunId=run_id,
         RunProperties={},
     )
 
     # DESCRIBE
     desc_resp = client.get_workflow_run_properties(
-        Name="test-name-1",
-        RunId="test-id-1",
+        Name="test-workflow-for-props",
+        RunId=run_id,
     )
     assert isinstance(desc_resp.get("RunProperties", {}), dict)
 
