@@ -292,6 +292,20 @@ jobs:
           name: server-logs-compat-${{ matrix.shard }}
           path: .robotocore.log
 
+  # Roll-up so the "compatibility-tests" branch protection rule resolves.
+  # The matrix shards report as "compat: a-g" etc., not "compatibility-tests".
+  compatibility-tests-rollup:
+    name: compatibility-tests
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [compatibility-tests]
+    steps:
+      - run: |
+          if [ "${{ needs.compatibility-tests.result }}" != "success" ]; then
+            echo "One or more compat shards failed"
+            exit 1
+          fi
+
   cross-service-tests:
     name: "compat: cross-service integrations"
     runs-on: ubuntu-latest
