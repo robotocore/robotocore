@@ -78,7 +78,7 @@ async def handle_cloudformation_request(request: Request, region: str, account_i
         return _xml_response(action + "Response", result)
     except CfnError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 
@@ -237,7 +237,7 @@ def _check_duplicate_exports(
                             export_name_raw, resources, parameters, region, account_id
                         )
                     )
-                except Exception:
+                except Exception:  # noqa: BLE001
                     continue
             if export_name in store.exports:
                 raise CfnError(
@@ -382,7 +382,7 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         _deploy_stack(stack, region, account_id, store)
         stack.status = "CREATE_COMPLETE"
         _add_event(stack, name, "AWS::CloudFormation::Stack", stack_id, "CREATE_COMPLETE")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Rollback: delete any resources that were created, with per-resource events
         for logical_id in reversed(list(stack.resources.keys())):
             res = stack.resources[logical_id]
@@ -391,7 +391,7 @@ def _create_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             )
             try:
                 delete_resource(res, region, account_id)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("_create_stack: delete_resource failed (non-fatal): %s", exc)
             _add_event(
                 stack, logical_id, res.resource_type, res.physical_id or "", "DELETE_COMPLETE"
@@ -549,7 +549,7 @@ def _delete_stack_action(store: CfnStore, params: dict, region: str, account_id:
             continue  # Skip deletion for Retain policy
         try:
             delete_resource(resource, region, account_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_delete_stack_action: delete_resource failed (non-fatal): %s", exc)
 
     # Clean up exports from the global store (categorical: deletion must cascade)
@@ -742,7 +742,7 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
             if logical_id in stack.resources:
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug("_update_stack: delete_resource failed (non-fatal): %s", exc)
                 del stack.resources[logical_id]
 
@@ -755,7 +755,7 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
                 if logical_id in stack.resources:
                     try:
                         delete_resource(stack.resources[logical_id], region, account_id)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001
                         logger.debug("_update_stack: delete_resource failed (non-fatal): %s", exc)
                     del stack.resources[logical_id]
             # If unchanged, keep the existing resource (in-place)
@@ -773,14 +773,14 @@ def _update_stack(store: CfnStore, params: dict, region: str, account_id: str) -
         _deploy_stack(stack, region, account_id, store)
         stack.status = "UPDATE_COMPLETE"
         _add_event(stack, name, "AWS::CloudFormation::Stack", stack.stack_id, "UPDATE_COMPLETE")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Rollback: restore old state
         # Delete any newly created resources
         for logical_id in list(stack.resources.keys()):
             if logical_id not in old_resources:
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug("_update_stack: delete_resource failed (non-fatal): %s", exc)
 
         stack.template_body = old_template_body
@@ -810,7 +810,7 @@ def _validate_template(store: CfnStore, params: dict, region: str, account_id: s
 
     try:
         template = parse_template(template_body)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise CfnError("ValidationError", f"Template format error: {e}")
 
     if "Resources" not in template or not template.get("Resources"):
@@ -1034,7 +1034,7 @@ def _describe_change_set(store: CfnStore, params: dict, region: str, account_id:
                             },
                         }
                     )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_describe_change_set: parse_template failed (non-fatal): %s", exc)
 
     return {
@@ -1125,11 +1125,11 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
                 stack.stack_id,
                 "CREATE_COMPLETE",
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             for logical_id in reversed(list(stack.resources.keys())):
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug("_execute_change_set: delete_resource failed (non-fatal): %s", exc)
             stack.status = "ROLLBACK_COMPLETE"
             stack.status_reason = str(e)
@@ -1161,7 +1161,7 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
             for logical_id in reversed(list(stack.resources.keys())):
                 try:
                     delete_resource(stack.resources[logical_id], region, account_id)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug("_execute_change_set: delete_resource failed (non-fatal): %s", exc)
 
             stack.resources = OrderedDict()
@@ -1178,7 +1178,7 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
                 stack.stack_id,
                 "UPDATE_COMPLETE",
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             stack.status = "UPDATE_FAILED"
             stack.status_reason = str(e)
             _add_event(

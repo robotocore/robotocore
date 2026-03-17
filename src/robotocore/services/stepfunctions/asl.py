@@ -142,7 +142,7 @@ class ASLExecutor:
                         self.history.execution_failed(e.error, e.cause, last_event_id)
                     raise
                 error_caught = True
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Check for Retry/Catch
                 next_state, data = self._handle_error(state_def, data, type(e).__name__, str(e))
                 if next_state is None:
@@ -390,7 +390,7 @@ class ASLExecutor:
 
         try:
             self._dispatch_task(resource, input_with_token)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass  # For callback, we don't fail on dispatch errors
 
         # Wait for callback with heartbeat checking
@@ -533,7 +533,7 @@ class ASLExecutor:
                         results[idx] = result
                 finally:
                     semaphore.release()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 with lock:
                     errors.append(e)
 
@@ -573,7 +573,7 @@ class ASLExecutor:
             acct = self.account_id if self.account_id != "123456789012" else DEFAULT_ACCOUNT_ID
             backend = get_backend("lambda")[acct][self.region]
             fn = backend.get_function(function_name)
-        except Exception:
+        except Exception:  # noqa: BLE001
             raise ASLExecutionError(
                 "Lambda.ServiceException", f"Function not found: {function_name}"
             )
@@ -653,7 +653,7 @@ class ASLExecutor:
 
             acct = self.account_id if self.account_id != "123456789012" else DEFAULT_ACCOUNT_ID
             backend = get_backend("dynamodb")[acct][self.region]
-        except Exception:
+        except Exception:  # noqa: BLE001
             raise ASLExecutionError("DynamoDB.ServiceException", "DynamoDB backend not available")
 
         table_name = input_data.get("TableName", "")
@@ -678,7 +678,7 @@ class ASLExecutor:
         ddb_item = _to_dynamodb_item(item) if not _is_ddb_typed(item) else item
         try:
             backend.put_item(table_name, ddb_item)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ASLExecutionError("DynamoDB.AmazonDynamoDBException", str(e))
         return {}
 
@@ -691,7 +691,7 @@ class ASLExecutor:
             if result and hasattr(result, "attrs"):
                 return {"Item": _from_dynamodb_item(result.attrs)}
             return {"Item": {}}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ASLExecutionError("DynamoDB.AmazonDynamoDBException", str(e))
 
     def _dynamodb_delete_item(self, backend: Any, table_name: str, params: dict) -> dict:
@@ -700,7 +700,7 @@ class ASLExecutor:
         ddb_key = _to_dynamodb_item(key) if not _is_ddb_typed(key) else key
         try:
             backend.delete_item(table_name, ddb_key)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ASLExecutionError("DynamoDB.AmazonDynamoDBException", str(e))
         return {}
 
@@ -719,7 +719,7 @@ class ASLExecutor:
                 expression_attribute_values=expr_attr_values or None,
                 expression_attribute_names=expr_attr_names or None,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ASLExecutionError("DynamoDB.AmazonDynamoDBException", str(e))
         return {}
 
@@ -739,7 +739,7 @@ class ASLExecutor:
                 "Items": [_from_dynamodb_item(item.attrs) for item in items],
                 "Count": len(items),
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ASLExecutionError("DynamoDB.AmazonDynamoDBException", str(e))
 
     def _invoke_step_functions(self, input_data: Any) -> Any:
@@ -751,7 +751,7 @@ class ASLExecutor:
 
         try:
             return _start_execution_internal(sm_arn, sf_input, self.region, self.account_id)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Nested execution failed: {e}")
             return input_data
 
@@ -785,7 +785,7 @@ class ASLExecutor:
                             return self._execute_state(state_name, state_def, data)
                         except ASLExecutionError as e:
                             return self._handle_error(state_def, data, e.error, e.cause)
-                        except Exception as e:
+                        except Exception as e:  # noqa: BLE001
                             return self._handle_error(state_def, data, type(e).__name__, str(e))
                     # Retries exhausted, fall through to Catch
                     break

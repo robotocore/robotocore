@@ -102,7 +102,7 @@ def run_init_hooks(stage: str) -> list[dict]:
             tracker.record_failure(
                 script.name, stage, error="Timeout after 30 seconds", duration=elapsed
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             elapsed = __import__("time").monotonic() - start_time
             logger.error("Hook %s failed: %s", script.name, exc)
             results.append(

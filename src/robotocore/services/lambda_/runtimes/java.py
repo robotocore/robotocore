@@ -43,7 +43,7 @@ def _ensure_bootstrap_compiled() -> str | None:
         if os.path.exists(os.path.join(outdir, "Bootstrap.class")):
             _bootstrap_compiled_dir = outdir
             return outdir
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_ensure_bootstrap_compiled: run failed (non-fatal): %s", exc)
     return None
 

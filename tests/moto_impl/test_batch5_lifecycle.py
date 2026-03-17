@@ -4,6 +4,7 @@ import json
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 CREDS = {
     "endpoint_url": "http://localhost:4566",
@@ -62,7 +63,7 @@ def firewall_rule_group_arn(r53r_client):
     yield arn
     try:
         r53r_client.delete_firewall_rule_group(FirewallRuleGroupId=resp["FirewallRuleGroup"]["Id"])
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 
@@ -123,7 +124,7 @@ def test_databrew_project_lifecycle(databrew_client):
     finally:
         try:
             databrew_client.delete_dataset(Name="test-ds-b5")
-        except Exception:
+        except ClientError:
             pass  # best-effort cleanup
 
 
@@ -194,11 +195,11 @@ def oss_collection_id(oss_client):
     yield coll_id
     try:
         oss_client.delete_collection(id=coll_id)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
     try:
         oss_client.delete_security_policy(name="test-enc-b5", type="encryption")
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 

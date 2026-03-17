@@ -44,7 +44,7 @@ async def handle_ec2_request(request: Request, region: str, account_id: str) -> 
                 f"<Message>{xml_escape(str(e))}</Message></Error></Errors></Response>"
             )
             return Response(content=xml, status_code=501, media_type="text/xml")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             xml = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'
                 f"<Response><Errors><Error><Code>InternalError</Code>"

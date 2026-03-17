@@ -195,7 +195,7 @@ def _gather_policies(access_key_id: str, account_id: str, region: str) -> list[d
         from moto.backends import get_backend
 
         iam_backend = get_backend("iam")[account_id]["global"]
-    except Exception:
+    except Exception:  # noqa: BLE001
         return []
 
     policies: list[dict] = []

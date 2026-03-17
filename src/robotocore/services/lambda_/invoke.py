@@ -45,7 +45,7 @@ def invoke_lambda_sync(
         return future.result(timeout=30)
     except concurrent.futures.TimeoutError:
         return None, "TaskTimedOut", "Lambda execution timed out"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return None, "ServiceException", str(e)
 
 
@@ -96,7 +96,7 @@ def _invoke_lambda_sync(
             acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
             backend = get_backend("lambda")[acct][region]
             fn = backend.get_function(function_name)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error("Lambda invoke: function not found: %s (%s)", function_name, e)
             return None, "ResourceNotFoundException", f"Function not found: {function_name}"
 

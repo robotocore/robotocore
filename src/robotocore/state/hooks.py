@@ -80,7 +80,7 @@ class StateHookRegistry:
             if is_after:
                 try:
                     callback(context)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning(
                         "After-hook %s raised an exception",
                         _callback_name(callback),

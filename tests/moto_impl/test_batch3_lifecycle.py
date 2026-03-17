@@ -11,6 +11,7 @@ import json
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 ENDPOINT = "http://localhost:4566"
 CREDS = {
@@ -38,7 +39,7 @@ def state_machine_arn(sfn_client):
             AssumeRolePolicyDocument="{}",
             Path="/",
         )
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
     sm = sfn_client.create_state_machine(
         name="test-sm-alias",
@@ -55,7 +56,7 @@ def state_machine_arn(sfn_client):
     yield sm_arn
     try:
         sfn_client.delete_state_machine(stateMachineArn=sm["stateMachineArn"])
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 
@@ -122,7 +123,7 @@ def ddb_table(ddb_client):
     yield table_name
     try:
         ddb_client.delete_table(TableName=table_name)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 
@@ -231,7 +232,7 @@ def ecs_service(ecs_client):
             force=True,
         )
         ecs_client.delete_cluster(cluster=cluster_name)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 

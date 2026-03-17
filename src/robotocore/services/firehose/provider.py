@@ -98,7 +98,7 @@ def _write_to_s3(bucket: str, key: str, data: bytes, region: str) -> None:
 
         s3_backend = get_backend("s3")[DEFAULT_ACCOUNT_ID]["global"]
         s3_backend.put_object(bucket, key, data)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_write_to_s3: put_object failed (non-fatal): %s", exc)
 
 
@@ -129,7 +129,7 @@ async def handle_firehose_request(request: Request, region: str, account_id: str
         )
     except FirehoseError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 

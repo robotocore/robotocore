@@ -363,7 +363,7 @@ async def handle_appsync_request(request: Request, region: str, account_id: str)
 
     except AppSyncError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 
@@ -1247,6 +1247,6 @@ def _get_introspection_schema_response(
 
         try:
             definition = base64.b64decode(definition).decode("utf-8")
-        except Exception:
+        except Exception:  # noqa: BLE001
             definition = definition.decode("utf-8", errors="replace")
     return Response(content=definition, status_code=200, media_type="text/plain")

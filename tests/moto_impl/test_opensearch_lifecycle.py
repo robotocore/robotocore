@@ -22,7 +22,7 @@ def domain_name(client):
     name = "test-domain-1"
     try:
         client.create_domain(DomainName=name)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
     yield name
 

@@ -108,7 +108,7 @@ async def api_proxy(request: Request) -> Response:
                 status_code=response.status_code,
                 headers={"Content-Type": response.headers.get("content-type", "application/json")},
             )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

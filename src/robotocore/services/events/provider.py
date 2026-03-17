@@ -89,7 +89,7 @@ async def handle_events_request(request: Request, region: str, account_id: str) 
         return _json(200, result)
     except EventsError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 
@@ -784,7 +784,7 @@ def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
         backend.get_function(func_name)
     except (ImportError, KeyError, TypeError):
         pass  # Backend not available (e.g. unit tests) — skip check
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise RuntimeError(f"Lambda function not found: {func_name}")
 
     from robotocore.services.lambda_.invoke import (
@@ -979,13 +979,13 @@ def _invoke_logs_target(arn: str, payload: str, region: str, account_id: str):
         # Create log group if not exists (best effort)
         try:
             logs_backend.create_log_group(log_group_name, {})
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass  # already exists
 
         stream_name = f"eventbridge-{uuid.uuid4().hex[:8]}"
         try:
             logs_backend.create_log_stream(log_group_name, stream_name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_invoke_logs_target: create_log_stream failed (non-fatal): %s", exc)
 
         logs_backend.put_log_events(

@@ -56,13 +56,13 @@ async def handle_dynamodb_request(request: Request, region: str, account_id: str
     if target in _MUTATION_OPS and 200 <= response.status_code < 300:
         try:
             _fire_stream_hooks(target, body_bytes, response, region, account_id)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("Failed to fire stream hooks for %s", target, exc_info=True)
 
         # Replicate writes to global table replicas
         try:
             _replicate_mutation(target, body_bytes, region, account_id)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("Failed to replicate mutation for %s", target, exc_info=True)
 
     return response
@@ -137,7 +137,7 @@ def _fire_stream_hooks(
                         if existing:
                             event_name = "MODIFY"
                             old_image = existing
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001
                         logger.debug(
                             "_fire_stream_hooks: _get_existing_item failed (non-fatal): %s", exc
                         )
@@ -204,7 +204,7 @@ def _fire_stream_hooks(
                         # After the update, the item has been modified
                         new_image = existing  # Best effort: current state after update
                         old_image = existing  # Approximate: we don't have pre-update state
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug(
                         "_fire_stream_hooks: _get_existing_item failed (non-fatal): %s", exc
                     )
@@ -308,7 +308,7 @@ def _get_existing_item(table_name: str, keys: dict, region: str, account_id: str
         result = backend.get_item(table_name, keys)
         if result and hasattr(result, "to_json"):
             return result.to_json().get("Attributes", result.to_json())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_get_existing_item: get_item failed (non-fatal): %s", exc)
     return None
 
@@ -330,7 +330,7 @@ def _extract_keys_from_item(table_name: str, item: dict, region: str, account_id
                 keys[table.range_key_attr] = item.get(table.range_key_attr, {})
             if keys:
                 return keys
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_extract_keys_from_item: get_table failed (non-fatal): %s", exc)
     return item  # Fallback: return full item as keys
 
@@ -452,7 +452,7 @@ def _table_exists(table_name: str, region: str, account_id: str) -> bool:
         backend = get_backend("dynamodb")[acct][region]
         table = backend.get_table(table_name)
         return table is not None
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 

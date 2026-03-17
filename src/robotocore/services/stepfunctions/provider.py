@@ -97,7 +97,7 @@ async def handle_stepfunctions_request(request: Request, region: str, account_id
         return _json(200, result)
     except SfnError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 
@@ -630,7 +630,7 @@ def _validate_state_machine_definition(params: dict, region: str, account_id: st
     diagnostics: list[dict] = []
     try:
         json.loads(definition)
-    except Exception:
+    except Exception:  # noqa: BLE001
         result = "FAIL"
         diagnostics.append(
             {

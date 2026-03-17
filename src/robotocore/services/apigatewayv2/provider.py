@@ -394,7 +394,7 @@ async def handle_apigatewayv2_request(
 
     except ApiGatewayV2Error as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalServerException", str(e), 500)
 
 

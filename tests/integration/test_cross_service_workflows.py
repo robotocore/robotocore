@@ -12,6 +12,7 @@ from contextlib import contextmanager
 
 import pytest
 import requests
+from botocore.exceptions import ClientError
 
 from tests.integration.conftest import make_lambda_zip
 
@@ -1090,5 +1091,5 @@ def _suppress():
     """Suppress any exception during cleanup."""
     try:
         yield
-    except Exception:
+    except ClientError:
         pass  # Intentional: cleanup should never fail the test

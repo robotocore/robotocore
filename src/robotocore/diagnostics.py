@@ -115,7 +115,7 @@ def header_value(exc: BaseException) -> str:
     """
     try:
         val = f"{type(exc).__name__}: {exc}"
-    except Exception:
+    except Exception:  # noqa: BLE001
         val = "UnknownError"
     if len(val) > _MAX_HEADER_LEN:
         val = val[: _MAX_HEADER_LEN - 3] + "..."

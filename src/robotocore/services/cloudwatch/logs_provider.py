@@ -84,7 +84,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             return _error_response(e.code, e.message, e.status)
         except InsightsError as e:
             return _error_response(e.code, e.message, 400)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return _error_response("InternalError", str(e), 500)
 
     # PutRetentionPolicy: validate, then forward to Moto
@@ -121,7 +121,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
                 log_stream_name = params.get("logStreamName", "")
                 events = params.get("logEvents", [])
                 process_log_events(log_group_name, log_stream_name, events, region, account_id)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Failed to process log filters", exc_info=True)
         return response
 
@@ -138,7 +138,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             logs_backend = get_backend("logs")[acct][region]
             tags = logs_backend.list_tags_for_resource(resource_arn)
             return _json_response(200, {"tags": tags})
-        except Exception:
+        except Exception:  # noqa: BLE001
             return await forward_to_moto(request, "logs", account_id=account_id)
 
     # TagResource: normalize ARN (strip trailing :*) before forwarding
@@ -155,7 +155,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             logs_backend = get_backend("logs")[acct][region]
             logs_backend.tag_resource(resource_arn, tags)
             return _json_response(200, {})
-        except Exception:
+        except Exception:  # noqa: BLE001
             return await forward_to_moto(request, "logs", account_id=account_id)
 
     # UntagResource: normalize ARN (strip trailing :*) before forwarding
@@ -172,7 +172,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             logs_backend = get_backend("logs")[acct][region]
             logs_backend.untag_resource(resource_arn, tag_keys)
             return _json_response(200, {})
-        except Exception:
+        except Exception:  # noqa: BLE001
             return await forward_to_moto(request, "logs", account_id=account_id)
 
     # Fall back to Moto for everything else
@@ -208,7 +208,7 @@ async def _filter_log_events_with_prefix(
             )
         log_group = logs_backend.groups[log_group_name]
         matching_streams = [name for name in log_group.streams if name.startswith(prefix)]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error_response("InternalError", str(e), 500)
 
     # Call Moto's filter_log_events with resolved stream names
@@ -238,7 +238,7 @@ async def _filter_log_events_with_prefix(
                 "searchedLogStreams": searched_streams,
             },
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error_response("InternalError", str(e), 500)
 
 

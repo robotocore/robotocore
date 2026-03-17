@@ -28,7 +28,7 @@ def instance_id(client):
     yield iid
     try:
         client.delete_instance(InstanceId=iid)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 

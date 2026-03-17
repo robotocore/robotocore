@@ -129,7 +129,7 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         else:
             return _error("InvalidRequest", f"Unknown path: {path}", 400)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         error_type = type(e).__name__
         error_msg = str(e)
 
@@ -425,7 +425,7 @@ def _handle_recursion_config(
     # Verify function exists
     try:
         backend.get_function(func_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _error(
             "ResourceNotFoundException",
             f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
@@ -464,7 +464,7 @@ def _handle_scaling_config(
     backend = _get_moto_backend(account_id, region)
     try:
         backend.get_function(func_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _error(
             "ResourceNotFoundException",
             f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
@@ -507,7 +507,7 @@ def _handle_code_signing_config(
     backend = _get_moto_backend(account_id, region)
     try:
         backend.get_function(func_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _error(
             "ResourceNotFoundException",
             f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
@@ -552,7 +552,7 @@ def _handle_runtime_management_config(
     backend = _get_moto_backend(account_id, region)
     try:
         backend.get_function(func_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _error(
             "ResourceNotFoundException",
             f"Function not found: arn:aws:lambda:{region}:{account_id}:function:{func_name}",
@@ -1566,7 +1566,7 @@ def _dispatch_async_result(
     try:
         backend = _get_moto_backend(account_id, region)
         invoke_config = backend.get_function_event_invoke_config(func_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         invoke_config = None
 
     # Get max retry attempts and max event age (AWS defaults)

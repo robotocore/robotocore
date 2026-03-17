@@ -16,7 +16,7 @@ def get_service_protocol(service_name: str) -> str | None:
     try:
         model = _get_session().get_service_model(service_name)
         return model.protocol
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -26,7 +26,7 @@ def get_service_json_version(service_name: str) -> str | None:
     try:
         model = _get_session().get_service_model(service_name)
         return model.metadata.get("jsonVersion")
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -36,5 +36,5 @@ def get_service_operations(service_name: str) -> frozenset[str]:
     try:
         model = _get_session().get_service_model(service_name)
         return frozenset(model.operation_names)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return frozenset()

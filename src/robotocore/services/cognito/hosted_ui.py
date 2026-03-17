@@ -140,7 +140,7 @@ def _parse_basic_auth(auth_header: str) -> tuple[str, str] | None:
         decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
         client_id, client_secret = decoded.split(":", 1)
         return client_id, client_secret
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -375,7 +375,7 @@ async def oauth2_token(request: Request) -> Response:
                 params = dict(
                     item.split("=", 1) for item in body.decode().split("&") if "=" in item
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 params = {}
         else:
             params = {}
@@ -650,7 +650,7 @@ async def oauth2_userinfo(request: Request) -> Response:
         if padding != 4:
             payload_part += "=" * padding
         payload = json.loads(base64.urlsafe_b64decode(payload_part))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return JSONResponse(
             {"error": "invalid_token", "error_description": "Invalid access token"},
             status_code=401,

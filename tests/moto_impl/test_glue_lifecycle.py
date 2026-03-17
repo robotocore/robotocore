@@ -22,7 +22,7 @@ def test_blueprint_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_blueprint(Name="test-name-1")
-    except Exception:
+    except ClientError:
         pass
 
     # CREATE
@@ -80,7 +80,7 @@ def test_blueprint_run_lifecycle(client):
     # Prerequisite: blueprint must exist before starting a run
     try:
         client.delete_blueprint(Name="test-name-1")
-    except Exception:
+    except ClientError:
         pass
     client.create_blueprint(
         Name="test-name-1",
@@ -126,7 +126,7 @@ def test_catalog_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_catalog(CatalogId="test-name-1")
-    except Exception:
+    except ClientError:
         pass
 
     # CREATE
@@ -182,7 +182,7 @@ def test_classifier_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_classifier(Name="test-name-1")
-    except Exception:
+    except ClientError:
         pass
 
     # CREATE
@@ -237,7 +237,7 @@ def test_column_statistics_task_run_lifecycle(client):
     # Prerequisites: database and table must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-colstats-db")
-    except Exception:
+    except ClientError:
         pass
     client.create_database(DatabaseInput={"Name": "test-colstats-db"})
     client.create_table(
@@ -304,7 +304,7 @@ def test_column_statistics_task_settings_lifecycle(client):
     # Prerequisites: database and table must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-colstats-settings-db")
-    except Exception:
+    except ClientError:
         pass
     client.create_database(DatabaseInput={"Name": "test-colstats-settings-db"})
     client.create_table(
@@ -1156,7 +1156,7 @@ def test_materialized_view_refresh_task_run_lifecycle(client):
     # Prerequisites: database and table must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-matview-db")
-    except Exception:
+    except ClientError:
         pass
     client.create_database(DatabaseInput={"Name": "test-matview-db"})
     client.create_table(
@@ -1227,7 +1227,7 @@ def test_partition_lifecycle(client):
     # Prerequisites: database and table with partition keys must exist (cleanup stale state)
     try:
         client.delete_database(Name="test-partition-db")
-    except Exception:
+    except ClientError:
         pass
     client.create_database(DatabaseInput={"Name": "test-partition-db"})
     client.create_table(
@@ -1300,7 +1300,7 @@ def test_registry_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_registry(RegistryId={"RegistryName": "test-name-1"})
-    except Exception:
+    except ClientError:
         pass
 
     # CREATE
@@ -1397,7 +1397,7 @@ def test_schema_lifecycle(client):
         client.delete_schema(
             SchemaId={"SchemaName": "test-name-1", "RegistryName": "default-registry"}
         )
-    except Exception:
+    except ClientError:
         pass
 
     # CREATE
@@ -1457,7 +1457,7 @@ def test_schema_version_lifecycle(client):
         client.delete_schema(
             SchemaId={"SchemaName": "test-schema-for-version", "RegistryName": "default-registry"}
         )
-    except Exception:
+    except ClientError:
         pass
     client.create_schema(
         SchemaName="test-schema-for-version",
@@ -1556,7 +1556,7 @@ def test_session_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_session(Id="test-id-1")
-    except Exception:
+    except ClientError:
         pass
 
     # CREATE
@@ -1660,7 +1660,7 @@ def test_table_lifecycle(client):
     # Prerequisite: database must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-table-db")
-    except Exception:
+    except ClientError:
         pass
     client.create_database(DatabaseInput={"Name": "test-table-db"})
 
@@ -1899,7 +1899,7 @@ def test_user_defined_function_lifecycle(client):
     # Prerequisite: database must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-udf-db")
-    except Exception:
+    except ClientError:
         pass
     client.create_database(DatabaseInput={"Name": "test-udf-db"})
 

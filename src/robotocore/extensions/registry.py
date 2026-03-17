@@ -351,7 +351,7 @@ def _discover_entry_points() -> list[RobotocorePlugin]:
                     logger.warning(f"Entry point {ep.name} is not a RobotocorePlugin: {plugin_cls}")
             except Exception:
                 logger.exception(f"Failed to load entry point: {ep.name}")
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("No entry points found for robotocore.extensions")
 
     return plugins

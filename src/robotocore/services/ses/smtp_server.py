@@ -32,7 +32,7 @@ def _get_verified_identities(account_id: str, region: str) -> set[str]:
         identities.update(backend.email_identities)
         identities.update(backend.domains)
         return identities
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Could not load SES identities, allowing all senders")
         return set()
 

@@ -60,7 +60,7 @@ async def _publish(request: Request, topic: str, region: str, account_id: str) -
                 account_id=account_id,
                 error_action=rule.error_action,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to dispatch IoT rule '%s': %s", rule.rule_name, exc)
 
     return Response(content=b"", status_code=200, media_type="application/json")

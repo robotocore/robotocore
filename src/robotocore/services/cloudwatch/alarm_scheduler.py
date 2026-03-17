@@ -77,7 +77,7 @@ class AlarmScheduler:
         """Iterate over all accounts/regions and evaluate every alarm."""
         try:
             cw_backends = get_backend("cloudwatch")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return
 
         # Iterate all accounts and regions

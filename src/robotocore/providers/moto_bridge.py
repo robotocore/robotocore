@@ -163,7 +163,7 @@ async def forward_to_moto(
     raw_path = request.url.path
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _error_response(
             service_name,
             "NotImplemented",
@@ -233,7 +233,7 @@ async def forward_to_moto(
             501,
             {"x-robotocore-diag": _diag_header(e)},
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Werkzeug HTTPExceptions from Moto contain the proper error response
         from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
 
@@ -269,7 +269,7 @@ async def forward_to_moto_with_body(
     raw_path = request.url.path
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return _error_response(
             service_name,
             "NotImplemented",
@@ -334,7 +334,7 @@ async def forward_to_moto_with_body(
             501,
             {"x-robotocore-diag": _diag_header(e)},
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
 
         if isinstance(e, WerkzeugHTTPException):

@@ -115,7 +115,7 @@ async def handle_batch_request(request: Request, region: str, account_id: str) -
 
     except BatchError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("ServerException", str(e), 500)
 
 

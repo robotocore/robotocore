@@ -77,7 +77,7 @@ async def _handle_tags(
 
     try:
         rest_api = backend.get_rest_api(api_id)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return Response(
             content=json.dumps({"message": "Invalid API identifier specified"}),
             status_code=404,
@@ -117,7 +117,7 @@ def _delete_model(rest_api_id: str, model_name: str, account_id: str, region: st
     backend = get_backend("apigateway")[account_id][region]
     try:
         rest_api = backend.get_rest_api(rest_api_id)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return Response(
             content=json.dumps({"message": "Invalid API identifier specified"}),
             status_code=404,

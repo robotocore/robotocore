@@ -7,7 +7,7 @@ def _get_version() -> str:
     """Derive version from package metadata (set by git tag at install time)."""
     try:
         return _pkg_version("robotocore")
-    except Exception:
+    except Exception:  # noqa: BLE001
         return "dev"
 
 

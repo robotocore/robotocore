@@ -95,7 +95,7 @@ def execute_api_request(
 
     try:
         backend = get_backend("apigateway")[acct][region]
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 404, {}, json.dumps({"message": "API Gateway backend not found"})
 
     # Find the REST API
@@ -553,7 +553,7 @@ def _check_cognito_authorizer(
                 # Be lenient — if we can't verify, allow it
                 pass
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 401, {}, json.dumps({"message": "Invalid token"})
 
     return None  # Authorized
@@ -1080,7 +1080,7 @@ def _forward_dynamodb_action(
         elif action == "Query":
             return json.dumps({"Items": [], "Count": 0})
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error("DynamoDB integration error: %s", e)
     return json.dumps({"message": "DynamoDB integration executed"})
 
@@ -1223,7 +1223,7 @@ def _invoke_lambda(function_name: str, event: dict, region: str, account_id: str
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
         backend = get_backend("lambda")[acct][region]
         fn = backend.get_function(function_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.error(f"API Gateway: Lambda function not found: {function_name}")
         return None
 

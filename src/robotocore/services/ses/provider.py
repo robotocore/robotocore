@@ -163,7 +163,7 @@ def _create_receipt_rule(params: dict, region: str, account_id: str) -> str:
 
     try:
         backend.create_receipt_rule(rule_set_name, rule, after)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         error_name = type(e).__name__
         raise SesError(error_name, str(e))
 

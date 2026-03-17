@@ -491,7 +491,7 @@ def _poll_sqs_source(source_arn: str, src_params: dict, region: str, account_id:
             # Delete message after successful receive (auto-acknowledge)
             try:
                 backend.delete_message(queue_name, msg.receipt_handle)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("_poll_sqs_source: delete_message failed (non-fatal): %s", exc)
 
         return records
@@ -573,7 +573,7 @@ def _poll_dynamodb_stream_source(
                     record["eventSourceARN"] = source_arn
                     record["awsRegion"] = region
                     records.append(record)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
 
         return records[:batch_size]

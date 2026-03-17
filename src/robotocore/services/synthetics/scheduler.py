@@ -138,7 +138,7 @@ class CanaryScheduler:
         """Check all canaries across all accounts/regions for due executions."""
         try:
             syn_backends = get_backend("synthetics")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return
 
         now = time.monotonic()

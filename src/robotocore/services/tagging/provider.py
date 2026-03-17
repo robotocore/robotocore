@@ -80,7 +80,7 @@ async def _get_tag_keys(request: Request, body: bytes, region: str, account_id: 
         sqs_store = get_sqs_store(region)
         for queue in sqs_store.list_queues():
             tag_keys.update(queue.tags.keys())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_get_tag_keys: get_sqs_store failed (non-fatal): %s", exc)
 
     # Add keys from native SNS
@@ -91,7 +91,7 @@ async def _get_tag_keys(request: Request, body: bytes, region: str, account_id: 
         for topic in sns_store.topics.values():
             if hasattr(topic, "tags") and topic.tags:
                 tag_keys.update(topic.tags.keys())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_get_tag_keys: get_sns_store failed (non-fatal): %s", exc)
 
     response = {
@@ -118,7 +118,7 @@ def _get_native_sqs_resources(region: str, tag_filters: list) -> list:
             if not _matches_tag_filters(tags, tag_filters):
                 continue
             results.append({"ResourceARN": queue.arn, "Tags": tags})
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to get native SQS resources for tagging", exc_info=True)
     return results
 
@@ -136,7 +136,7 @@ def _get_native_sns_resources(region: str, tag_filters: list) -> list:
             if not _matches_tag_filters(tags, tag_filters):
                 continue
             results.append({"ResourceARN": topic.arn, "Tags": tags})
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to get native SNS resources for tagging", exc_info=True)
     return results
 

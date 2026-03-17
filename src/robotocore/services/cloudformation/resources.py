@@ -155,7 +155,7 @@ def _create_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
                 xml_parts.append(f"<ErrorDocument><Key>{error_doc}</Key></ErrorDocument>")
             xml_parts.append("</WebsiteConfiguration>")
             s3.put_bucket_website(name, "".join(xml_parts).encode())
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_s3_bucket: get failed (non-fatal): %s", exc)
 
     # Apply versioning configuration if present
@@ -164,7 +164,7 @@ def _create_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
         try:
             status = versioning_config.get("Status", "Suspended")
             s3.put_bucket_versioning(name, status)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_s3_bucket: get failed (non-fatal): %s", exc)
 
     # Apply tags if present (Moto expects dict[str, str])
@@ -173,7 +173,7 @@ def _create_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
         try:
             tags_dict = {t["Key"]: t["Value"] for t in bucket_tags if "Key" in t}
             s3.put_bucket_tagging(name, tags_dict)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_s3_bucket: put_bucket_tagging failed (non-fatal): %s", exc)
 
     resource.physical_id = name
@@ -189,7 +189,7 @@ def _delete_s3_bucket(resource: CfnResource, region: str, account_id: str) -> No
         s3 = _moto_global_backend("s3", account_id)
         if resource.physical_id:
             s3.delete_bucket(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_s3_bucket: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -223,7 +223,7 @@ def _delete_iam_role(resource: CfnResource, region: str, account_id: str) -> Non
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
             iam.delete_role(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_iam_role: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -244,21 +244,21 @@ def _create_iam_policy(resource: CfnResource, region: str, account_id: str) -> N
     for role_name in roles:
         try:
             iam.put_role_policy(role_name, name, doc)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_iam_policy: put_role_policy failed (non-fatal): %s", exc)
 
     users = resource.properties.get("Users", [])
     for user_name in users:
         try:
             iam.put_user_policy(user_name, name, doc)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_iam_policy: put_user_policy failed (non-fatal): %s", exc)
 
     groups = resource.properties.get("Groups", [])
     for group_name in groups:
         try:
             iam.put_group_policy(group_name, name, doc)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_iam_policy: put_group_policy failed (non-fatal): %s", exc)
 
     resource.physical_id = name
@@ -271,7 +271,7 @@ def _delete_iam_policy(resource: CfnResource, region: str, account_id: str) -> N
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
             iam.delete_policy(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_iam_policy: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -287,7 +287,7 @@ def _create_log_group(resource: CfnResource, region: str, account_id: str) -> No
     if retention:
         try:
             logs.put_retention_policy(name, int(retention))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_create_log_group: put_retention_policy failed (non-fatal): %s", exc)
     resource.physical_id = name
     resource.attributes["Arn"] = f"arn:aws:logs:{region}:{account_id}:log-group:{name}"
@@ -299,7 +299,7 @@ def _delete_log_group(resource: CfnResource, region: str, account_id: str) -> No
         logs = _moto_backend("logs", account_id, region)
         if resource.physical_id:
             logs.delete_log_group(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_log_group: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -347,7 +347,7 @@ def _delete_dynamodb_table(resource: CfnResource, region: str, account_id: str) 
         ddb = _moto_backend("dynamodb", account_id, region)
         if resource.physical_id:
             ddb.delete_table(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_dynamodb_table: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -382,7 +382,7 @@ def _delete_events_rule(resource: CfnResource, region: str, account_id: str) -> 
         events = _moto_backend("events", account_id, region)
         if resource.physical_id:
             events.delete_rule(resource.physical_id, None)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_events_rule: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -409,7 +409,7 @@ def _delete_kms_key(resource: CfnResource, region: str, account_id: str) -> None
         kms = _moto_backend("kms", account_id, region)
         if resource.physical_id:
             kms.schedule_key_deletion(resource.physical_id, 7)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_kms_key: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -434,7 +434,7 @@ def _delete_ssm_parameter(resource: CfnResource, region: str, account_id: str) -
         ssm = _moto_backend("ssm", account_id, region)
         if resource.physical_id:
             ssm.delete_parameter(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ssm_parameter: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -468,7 +468,7 @@ def _create_lambda_function(resource: CfnResource, region: str, account_id: str)
                 code_obj = {"ZipFile": zip_file}
             else:
                 raise ValueError("not a zip")
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Treat as inline source code — wrap in a zip
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w") as zf:
@@ -502,7 +502,7 @@ def _delete_lambda_function(resource: CfnResource, region: str, account_id: str)
             parts = resource.physical_id.split(":")
             fn_name = parts[-1] if parts else resource.physical_id
             lmbda.delete_function(fn_name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_lambda_function: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -524,7 +524,7 @@ def _create_iam_managed_policy(resource: CfnResource, region: str, account_id: s
         policy = iam.create_policy(desc, path, doc, name, [])
         resource.physical_id = policy.arn
         resource.attributes["Arn"] = policy.arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:iam::{account_id}:policy{path}{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -536,7 +536,7 @@ def _delete_iam_managed_policy(resource: CfnResource, region: str, account_id: s
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
             iam.delete_policy(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_iam_managed_policy: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -554,7 +554,7 @@ def _create_iam_instance_profile(resource: CfnResource, region: str, account_id:
         profile = iam.create_instance_profile(name, path, tags=[])
         resource.physical_id = name
         resource.attributes["Arn"] = profile.arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = name
         resource.attributes["Arn"] = f"arn:aws:iam::{account_id}:instance-profile{path}{name}"
     # Attach roles
@@ -562,7 +562,7 @@ def _create_iam_instance_profile(resource: CfnResource, region: str, account_id:
     for role_name in roles:
         try:
             iam.add_role_to_instance_profile(name, role_name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug(
                 "_create_iam_instance_profile: add_role_to_instance_profile failed (non-fatal): %s",
                 exc,
@@ -575,7 +575,7 @@ def _delete_iam_instance_profile(resource: CfnResource, region: str, account_id:
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
             iam.delete_instance_profile(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug(
             "_delete_iam_instance_profile: _moto_global_backend failed (non-fatal): %s", exc
         )
@@ -592,7 +592,7 @@ def _create_iam_user(resource: CfnResource, region: str, account_id: str) -> Non
         user = iam.create_user(name, path, tags=[])
         resource.physical_id = name
         resource.attributes["Arn"] = user.arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = name
         resource.attributes["Arn"] = f"arn:aws:iam::{account_id}:user{path}{name}"
     resource.status = "CREATE_COMPLETE"
@@ -603,7 +603,7 @@ def _delete_iam_user(resource: CfnResource, region: str, account_id: str) -> Non
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
             iam.delete_user(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_iam_user: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -618,7 +618,7 @@ def _create_iam_group(resource: CfnResource, region: str, account_id: str) -> No
         group = iam.create_group(name, path)
         resource.physical_id = name
         resource.attributes["Arn"] = group.arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = name
         resource.attributes["Arn"] = f"arn:aws:iam::{account_id}:group{path}{name}"
     resource.status = "CREATE_COMPLETE"
@@ -629,7 +629,7 @@ def _delete_iam_group(resource: CfnResource, region: str, account_id: str) -> No
         iam = _moto_global_backend("iam", account_id)
         if resource.physical_id:
             iam.delete_group(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_iam_group: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -643,7 +643,7 @@ def _create_iam_access_key(resource: CfnResource, region: str, account_id: str) 
         key = iam.create_access_key(user_name)
         resource.physical_id = key.access_key_id
         resource.attributes["SecretAccessKey"] = key.secret_access_key
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = f"AKIA{uuid.uuid4().hex[:16].upper()}"
         resource.attributes["SecretAccessKey"] = uuid.uuid4().hex
     resource.status = "CREATE_COMPLETE"
@@ -655,7 +655,7 @@ def _delete_iam_access_key(resource: CfnResource, region: str, account_id: str) 
         user_name = resource.properties.get("UserName", "")
         if resource.physical_id and user_name:
             iam.delete_access_key(resource.physical_id, user_name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_iam_access_key: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -687,7 +687,7 @@ def _create_lambda_version(resource: CfnResource, region: str, account_id: str) 
         ver = lmbda.publish_version_with_name(fn_name, desc)
         resource.physical_id = ver.function_arn
         resource.attributes["Version"] = ver.version
-    except Exception:
+    except Exception:  # noqa: BLE001
         version_num = "1"
         arn = f"arn:aws:lambda:{region}:{account_id}:function:{fn_name}:{version_num}"
         resource.physical_id = arn
@@ -759,7 +759,7 @@ def _delete_lambda_event_source_mapping(
         lmbda = _moto_backend("lambda", account_id, region)
         if resource.physical_id:
             lmbda.delete_event_source_mapping(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug(
             "_delete_lambda_event_source_mapping: _moto_backend failed (non-fatal): %s", exc
         )
@@ -783,7 +783,7 @@ def _create_lambda_permission(resource: CfnResource, region: str, account_id: st
                 "StatementId": sid,
             },
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_create_lambda_permission: _moto_backend failed (non-fatal): %s", exc)
     resource.physical_id = sid
     resource.status = "CREATE_COMPLETE"
@@ -795,7 +795,7 @@ def _delete_lambda_permission(resource: CfnResource, region: str, account_id: st
         fn_name = resource.properties.get("FunctionName", "")
         if resource.physical_id and fn_name:
             lmbda.remove_permission(fn_name, resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_lambda_permission: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -828,7 +828,7 @@ def _create_ec2_vpc(resource: CfnResource, region: str, account_id: str) -> None
         resource.physical_id = vpc.id
         resource.attributes["VpcId"] = vpc.id
         resource.attributes["CidrBlock"] = cidr
-    except Exception:
+    except Exception:  # noqa: BLE001
         vid = f"vpc-{uuid.uuid4().hex[:8]}"
         resource.physical_id = vid
         resource.attributes["VpcId"] = vid
@@ -841,7 +841,7 @@ def _delete_ec2_vpc(resource: CfnResource, region: str, account_id: str) -> None
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.delete_vpc(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_vpc: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -860,7 +860,7 @@ def _create_ec2_subnet(resource: CfnResource, region: str, account_id: str) -> N
         resource.attributes["AvailabilityZone"] = az
         resource.attributes["CidrBlock"] = cidr
         resource.attributes["VpcId"] = vpc_id
-    except Exception:
+    except Exception:  # noqa: BLE001
         sid = f"subnet-{uuid.uuid4().hex[:8]}"
         resource.physical_id = sid
         resource.attributes["SubnetId"] = sid
@@ -875,7 +875,7 @@ def _delete_ec2_subnet(resource: CfnResource, region: str, account_id: str) -> N
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.delete_subnet(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_subnet: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -908,7 +908,7 @@ def _create_ec2_security_group(resource: CfnResource, region: str, account_id: s
                 str(rule.get("ToPort", 0)),
                 ip_ranges,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass  # Duplicate rules are OK
 
     resource.status = "CREATE_COMPLETE"
@@ -919,7 +919,7 @@ def _delete_ec2_security_group(resource: CfnResource, region: str, account_id: s
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.delete_security_group(group_id=resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_security_group: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -932,7 +932,7 @@ def _create_ec2_internet_gateway(resource: CfnResource, region: str, account_id:
         igw = ec2.create_internet_gateway()
         resource.physical_id = igw.id
         resource.attributes["InternetGatewayId"] = igw.id
-    except Exception:
+    except Exception:  # noqa: BLE001
         gid = f"igw-{uuid.uuid4().hex[:8]}"
         resource.physical_id = gid
         resource.attributes["InternetGatewayId"] = gid
@@ -944,7 +944,7 @@ def _delete_ec2_internet_gateway(resource: CfnResource, region: str, account_id:
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.delete_internet_gateway(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_internet_gateway: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -957,7 +957,7 @@ def _create_ec2_vpc_gateway_attachment(resource: CfnResource, region: str, accou
     vpc_id = resource.properties.get("VpcId", "")
     try:
         ec2.attach_internet_gateway(igw_id, vpc_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug(
             "_create_ec2_vpc_gateway_attachment: attach_internet_gateway failed (non-fatal): %s",
             exc,
@@ -973,7 +973,7 @@ def _delete_ec2_vpc_gateway_attachment(resource: CfnResource, region: str, accou
             parts = resource.physical_id.split("|")
             if len(parts) == 2:
                 ec2.detach_internet_gateway(parts[0], parts[1])
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug(
             "_delete_ec2_vpc_gateway_attachment: _moto_backend failed (non-fatal): %s", exc
         )
@@ -989,7 +989,7 @@ def _create_ec2_route_table(resource: CfnResource, region: str, account_id: str)
         rt = ec2.create_route_table(vpc_id)
         resource.physical_id = rt.id
         resource.attributes["RouteTableId"] = rt.id
-    except Exception:
+    except Exception:  # noqa: BLE001
         rid = f"rtb-{uuid.uuid4().hex[:8]}"
         resource.physical_id = rid
         resource.attributes["RouteTableId"] = rid
@@ -1001,7 +1001,7 @@ def _delete_ec2_route_table(resource: CfnResource, region: str, account_id: str)
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.delete_route_table(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_route_table: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1021,7 +1021,7 @@ def _create_ec2_route(resource: CfnResource, region: str, account_id: str) -> No
             gateway_id=gw_id or None,
             nat_gateway_id=nat_gw_id or None,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_create_ec2_route: create_route failed (non-fatal): %s", exc)
     resource.physical_id = f"{rt_id}|{cidr}"
     resource.status = "CREATE_COMPLETE"
@@ -1034,7 +1034,7 @@ def _delete_ec2_route(resource: CfnResource, region: str, account_id: str) -> No
             parts = resource.physical_id.split("|")
             if len(parts) == 2:
                 ec2.delete_route(parts[0], parts[1])
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_route: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1052,7 +1052,7 @@ def _create_ec2_subnet_route_table_assoc(
         resource.physical_id = (
             assoc_id if isinstance(assoc_id, str) else f"rtbassoc-{uuid.uuid4().hex[:8]}"
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = f"rtbassoc-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
 
@@ -1064,7 +1064,7 @@ def _delete_ec2_subnet_route_table_assoc(
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.disassociate_route_table(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug(
             "_delete_ec2_subnet_route_table_assoc: _moto_backend failed (non-fatal): %s", exc
         )
@@ -1097,7 +1097,7 @@ def _create_ec2_eip(resource: CfnResource, region: str, account_id: str) -> None
         resource.physical_id = eip.allocation_id
         resource.attributes["AllocationId"] = eip.allocation_id
         resource.attributes["PublicIp"] = eip.public_ip
-    except Exception:
+    except Exception:  # noqa: BLE001
         aid = f"eipalloc-{uuid.uuid4().hex[:8]}"
         resource.physical_id = aid
         resource.attributes["AllocationId"] = aid
@@ -1110,7 +1110,7 @@ def _delete_ec2_eip(resource: CfnResource, region: str, account_id: str) -> None
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.release_address(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_eip: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1145,7 +1145,7 @@ def _create_ec2_key_pair(resource: CfnResource, region: str, account_id: str) ->
         kp = ec2.create_key_pair(name)
         resource.physical_id = name
         resource.attributes["KeyPairId"] = getattr(kp, "id", f"key-{uuid.uuid4().hex[:8]}")
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = name
         resource.attributes["KeyPairId"] = f"key-{uuid.uuid4().hex[:8]}"
     resource.status = "CREATE_COMPLETE"
@@ -1156,7 +1156,7 @@ def _delete_ec2_key_pair(resource: CfnResource, region: str, account_id: str) ->
         ec2 = _moto_backend("ec2", account_id, region)
         if resource.physical_id:
             ec2.delete_key_pair(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ec2_key_pair: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1171,7 +1171,7 @@ def _create_s3_bucket_policy(resource: CfnResource, region: str, account_id: str
         policy = json.dumps(policy)
     try:
         s3.put_bucket_policy(bucket_name, policy)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_create_s3_bucket_policy: put_bucket_policy failed (non-fatal): %s", exc)
     resource.physical_id = bucket_name
     resource.status = "CREATE_COMPLETE"
@@ -1182,7 +1182,7 @@ def _delete_s3_bucket_policy(resource: CfnResource, region: str, account_id: str
         s3 = _moto_global_backend("s3", account_id)
         if resource.physical_id:
             s3.delete_bucket_policy(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_s3_bucket_policy: _moto_global_backend failed (non-fatal): %s", exc)
 
 
@@ -1231,7 +1231,7 @@ def _create_dynamodb_global_table(resource: CfnResource, region: str, account_id
             deletion_protection_enabled=None,
             warm_throughput=None,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_create_dynamodb_global_table: _moto_backend failed (non-fatal): %s", exc)
     resource.physical_id = name
     arn = f"arn:aws:dynamodb:{region}:{account_id}:table/{name}"
@@ -1246,7 +1246,7 @@ def _delete_dynamodb_global_table(resource: CfnResource, region: str, account_id
         ddb = _moto_backend("dynamodb", account_id, region)
         if resource.physical_id:
             ddb.delete_table(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_dynamodb_global_table: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1279,7 +1279,7 @@ def _create_apigw_rest_api(resource: CfnResource, region: str, account_id: str) 
             "root_resource_id",
             api.resources.get("/", SimpleNameHolder("")).id if hasattr(api, "resources") else "",
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         aid = f"api-{uuid.uuid4().hex[:8]}"
         resource.physical_id = aid
         resource.attributes["RestApiId"] = aid
@@ -1299,7 +1299,7 @@ def _delete_apigw_rest_api(resource: CfnResource, region: str, account_id: str) 
         apigw = _moto_backend("apigateway", account_id, region)
         if resource.physical_id:
             apigw.delete_rest_api(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_apigw_rest_api: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1315,7 +1315,7 @@ def _create_apigw_resource(resource: CfnResource, region: str, account_id: str) 
         res_obj = apigw.create_resource(rest_api_id, parent_id, path_part)
         resource.physical_id = res_obj.id
         resource.attributes["ResourceId"] = res_obj.id
-    except Exception:
+    except Exception:  # noqa: BLE001
         rid = uuid.uuid4().hex[:10]
         resource.physical_id = rid
         resource.attributes["ResourceId"] = rid
@@ -1328,7 +1328,7 @@ def _delete_apigw_resource(resource: CfnResource, region: str, account_id: str) 
         rest_api_id = resource.properties.get("RestApiId", "")
         if resource.physical_id and rest_api_id:
             apigw.delete_resource(rest_api_id, resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_apigw_resource: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1351,7 +1351,7 @@ def _create_apigw_method(resource: CfnResource, region: str, account_id: str) ->
         int_method = integration.get("IntegrationHttpMethod", "POST")
         try:
             apigw.put_integration(rest_api_id, resource_id, http_method, int_type, uri, int_method)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass  # Integration setup is best-effort
 
     pid = f"{rest_api_id}/{resource_id}/{http_method}"
@@ -1372,7 +1372,7 @@ def _create_apigw_deployment(resource: CfnResource, region: str, account_id: str
     try:
         dep = apigw.create_deployment(rest_api_id)
         resource.physical_id = dep.id if hasattr(dep, "id") else dep["id"]
-    except Exception:
+    except Exception:  # noqa: BLE001
         resource.physical_id = uuid.uuid4().hex[:10]
     resource.status = "CREATE_COMPLETE"
 
@@ -1481,7 +1481,7 @@ def _delete_cloudwatch_alarm(resource: CfnResource, region: str, account_id: str
         cw = _moto_backend("cloudwatch", account_id, region)
         if resource.physical_id:
             cw.delete_alarms([resource.physical_id])
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_cloudwatch_alarm: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1494,7 +1494,7 @@ def _create_log_stream(resource: CfnResource, region: str, account_id: str) -> N
     stream_name = resource.properties.get("LogStreamName", resource.logical_id)
     try:
         logs.create_log_stream(group_name, stream_name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_create_log_stream: create_log_stream failed (non-fatal): %s", exc)
     resource.physical_id = stream_name
     resource.status = "CREATE_COMPLETE"
@@ -1506,7 +1506,7 @@ def _delete_log_stream(resource: CfnResource, region: str, account_id: str) -> N
         group_name = resource.properties.get("LogGroupName", "")
         if resource.physical_id and group_name:
             logs.delete_log_stream(group_name, resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_log_stream: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1535,7 +1535,7 @@ def _create_events_event_bus(resource: CfnResource, region: str, account_id: str
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
         resource.attributes["Name"] = name
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:events:{region}:{account_id}:event-bus/{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -1549,7 +1549,7 @@ def _delete_events_event_bus(resource: CfnResource, region: str, account_id: str
         name = resource.properties.get("Name", "")
         if name:
             events.delete_event_bus(name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_events_event_bus: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1591,7 +1591,7 @@ def _create_sfn_state_machine(resource: CfnResource, region: str, account_id: st
         resource.physical_id = sm.arn
         resource.attributes["Arn"] = sm.arn
         resource.attributes["Name"] = name
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:states:{region}:{account_id}:stateMachine:{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -1604,7 +1604,7 @@ def _delete_sfn_state_machine(resource: CfnResource, region: str, account_id: st
         sfn = _moto_backend("stepfunctions", account_id, region)
         if resource.physical_id:
             sfn.delete_state_machine(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_sfn_state_machine: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1624,7 +1624,7 @@ def _create_sfn_activity(resource: CfnResource, region: str, account_id: str) ->
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
         resource.attributes["Name"] = name
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:states:{region}:{account_id}:activity:{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -1637,7 +1637,7 @@ def _delete_sfn_activity(resource: CfnResource, region: str, account_id: str) ->
         sfn = _moto_backend("stepfunctions", account_id, region)
         if resource.physical_id:
             sfn.delete_activity(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_sfn_activity: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1650,7 +1650,7 @@ def _create_kms_alias(resource: CfnResource, region: str, account_id: str) -> No
     target_key = resource.properties.get("TargetKeyId", "")
     try:
         kms.create_alias(alias_name, target_key)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_create_kms_alias: create_alias failed (non-fatal): %s", exc)
     resource.physical_id = alias_name
     resource.status = "CREATE_COMPLETE"
@@ -1661,7 +1661,7 @@ def _delete_kms_alias(resource: CfnResource, region: str, account_id: str) -> No
         kms = _moto_backend("kms", account_id, region)
         if resource.physical_id:
             kms.delete_alias(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_kms_alias: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1688,7 +1688,7 @@ def _create_secretsmanager_secret(resource: CfnResource, region: str, account_id
         )
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:secretsmanager:{region}:{account_id}:secret:{name}-{uuid.uuid4().hex[:6]}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -1704,7 +1704,7 @@ def _delete_secretsmanager_secret(resource: CfnResource, region: str, account_id
                 recovery_window_in_days=0,
                 force_delete_without_recovery=True,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_secretsmanager_secret: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1751,7 +1751,7 @@ def _delete_kinesis_stream(resource: CfnResource, region: str, account_id: str) 
         store = _get_kinesis_store(region, account_id)
         if resource.physical_id:
             store.delete_stream(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_kinesis_stream: _get_kinesis_store failed (non-fatal): %s", exc)
 
 
@@ -1769,7 +1769,7 @@ def _create_ecs_cluster(resource: CfnResource, region: str, account_id: str) -> 
         arn = getattr(cluster, "arn", None) or (f"arn:aws:ecs:{region}:{account_id}:cluster/{name}")
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:ecs:{region}:{account_id}:cluster/{name}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -1781,7 +1781,7 @@ def _delete_ecs_cluster(resource: CfnResource, region: str, account_id: str) -> 
         ecs = _moto_backend("ecs", account_id, region)
         if resource.physical_id:
             ecs.delete_cluster(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ecs_cluster: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1802,7 +1802,7 @@ def _create_ecs_task_definition(resource: CfnResource, region: str, account_id: 
         )
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:ecs:{region}:{account_id}:task-definition/{family}:1"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -1814,7 +1814,7 @@ def _delete_ecs_task_definition(resource: CfnResource, region: str, account_id: 
         ecs = _moto_backend("ecs", account_id, region)
         if resource.physical_id:
             ecs.deregister_task_definition(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_ecs_task_definition: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1866,7 +1866,7 @@ def _create_elbv2_load_balancer(resource: CfnResource, region: str, account_id: 
         dns = getattr(lb, "dns_name", f"{name}.{region}.elb.amazonaws.com")
         resource.attributes["DNSName"] = dns
         resource.attributes["LoadBalancerName"] = name
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = (
             f"arn:aws:elasticloadbalancing:{region}:{account_id}"
             f":loadbalancer/app/{name}/{uuid.uuid4().hex[:16]}"
@@ -1883,7 +1883,7 @@ def _delete_elbv2_load_balancer(resource: CfnResource, region: str, account_id: 
         elbv2 = _moto_backend("elbv2", account_id, region)
         if resource.physical_id:
             elbv2.delete_load_balancer(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_elbv2_load_balancer: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1911,7 +1911,7 @@ def _create_elbv2_target_group(resource: CfnResource, region: str, account_id: s
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
         resource.attributes["TargetGroupName"] = name
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = (
             f"arn:aws:elasticloadbalancing:{region}:{account_id}"
             f":targetgroup/{name}/{uuid.uuid4().hex[:16]}"
@@ -1927,7 +1927,7 @@ def _delete_elbv2_target_group(resource: CfnResource, region: str, account_id: s
         elbv2 = _moto_backend("elbv2", account_id, region)
         if resource.physical_id:
             elbv2.delete_target_group(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_elbv2_target_group: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -1981,7 +1981,7 @@ def _create_route53_hosted_zone(resource: CfnResource, region: str, account_id: 
         resource.attributes["Id"] = zone_id
         ns = getattr(zone, "nameservers", None) or [f"ns-{i}.awsdns-{i:02d}.com" for i in range(4)]
         resource.attributes["NameServers"] = ns
-    except Exception:
+    except Exception:  # noqa: BLE001
         zone_id = f"Z{uuid.uuid4().hex[:13].upper()}"
         resource.physical_id = zone_id
         resource.attributes["Id"] = zone_id
@@ -1994,7 +1994,7 @@ def _delete_route53_hosted_zone(resource: CfnResource, region: str, account_id: 
         r53 = _moto_backend("route53", account_id, region)
         if resource.physical_id:
             r53.delete_hosted_zone(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_route53_hosted_zone: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -2026,7 +2026,7 @@ def _create_acm_certificate(resource: CfnResource, region: str, account_id: str)
             cert_arn = cert_arn.get("CertificateArn", cert_arn)
         resource.physical_id = cert_arn
         resource.attributes["Arn"] = cert_arn
-    except Exception:
+    except Exception:  # noqa: BLE001
         arn = f"arn:aws:acm:{region}:{account_id}:certificate/{uuid.uuid4()}"
         resource.physical_id = arn
         resource.attributes["Arn"] = arn
@@ -2038,7 +2038,7 @@ def _delete_acm_certificate(resource: CfnResource, region: str, account_id: str)
         acm = _moto_backend("acm", account_id, region)
         if resource.physical_id:
             acm.delete_certificate(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_acm_certificate: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -2088,7 +2088,7 @@ def _delete_cognito_user_pool(resource: CfnResource, region: str, account_id: st
         cognito = _moto_backend("cognitoidp", account_id, region)
         if resource.physical_id:
             cognito.delete_user_pool(resource.physical_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_cognito_user_pool: _moto_backend failed (non-fatal): %s", exc)
 
 
@@ -2126,7 +2126,7 @@ def _create_custom_resource(resource: CfnResource, region: str, account_id: str)
                     resource.attributes.update(data)
             else:
                 resource.physical_id = f"custom-{uuid.uuid4().hex[:8]}"
-        except Exception:
+        except Exception:  # noqa: BLE001
             resource.physical_id = f"custom-{uuid.uuid4().hex[:8]}"
     else:
         resource.physical_id = f"custom-{uuid.uuid4().hex[:8]}"
@@ -2154,7 +2154,7 @@ def _delete_custom_resource(resource: CfnResource, region: str, account_id: str)
                 "ResourceProperties": resource.properties,
             }
             invoke_lambda_sync(service_token, json.dumps(event), region, account_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_delete_custom_resource: invoke_lambda_sync failed (non-fatal): %s", exc)
 
 
@@ -2479,7 +2479,7 @@ def _fetch_template_from_s3(template_url: str, account_id: str, region: str) -> 
             s3_backend = _moto_global_backend("s3", account_id)
             obj = s3_backend.get_object(bucket, key)
             return obj.value.decode("utf-8")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug(
                 "_fetch_template_from_s3: _moto_global_backend failed (non-fatal): %s", exc
             )
@@ -2610,7 +2610,7 @@ def _delete_cfn_stack(resource: CfnResource, region: str, account_id: str) -> No
         child_resource = child_stack.resources[logical_id]
         try:
             delete_resource(child_resource, region, account_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_delete_cfn_stack: delete_resource failed (non-fatal): %s", exc)
 
     child_stack.status = "DELETE_COMPLETE"
@@ -2787,7 +2787,7 @@ def compute_cidr(ip_block: str, count: int, cidr_bits: int) -> list[str]:
         new_prefix = network.max_prefixlen - cidr_bits
         subnets = list(network.subnets(new_prefix=new_prefix))
         return [str(s) for s in subnets[:count]]
-    except Exception:
+    except Exception:  # noqa: BLE001
         return [ip_block]
 
 

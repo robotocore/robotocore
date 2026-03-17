@@ -8,6 +8,7 @@ ECR: GetSigningConfiguration
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 ENDPOINT = "http://localhost:4566"
 CREDS = {
@@ -42,7 +43,7 @@ def test_iot_get_thing_connectivity_data(iot_client):
     finally:
         try:
             iot_client.delete_thing(thingName="test-conn-thing")
-        except Exception:
+        except ClientError:
             pass  # best-effort cleanup
 
 
@@ -80,7 +81,7 @@ def test_config_describe_aggregator_sources_status(config_client):
     finally:
         try:
             config_client.delete_configuration_aggregator(ConfigurationAggregatorName="test-agg-b4")
-        except Exception:
+        except ClientError:
             pass  # best-effort cleanup
 
 
@@ -111,7 +112,7 @@ def test_rekognition_list_users(rek_client):
     finally:
         try:
             rek_client.delete_collection(CollectionId="test-coll-b4")
-        except Exception:
+        except ClientError:
             pass  # best-effort cleanup
 
 

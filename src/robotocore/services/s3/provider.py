@@ -38,7 +38,7 @@ try:
         return _orig_get_permission(self, action, resource)
 
     FakeBucket.get_permission = _patched_get_permission  # type: ignore[assignment]
-except Exception as exc:
+except Exception as exc:  # noqa: BLE001
     logger.debug("<module>: _orig_get_permission failed (non-fatal): %s", exc)
 
 # Patterns to detect bucket and key from S3 paths
@@ -656,7 +656,7 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                                 "type": "Directory",
                                 "location_type": "AvailabilityZone",
                             }
-                except Exception:
+                except Exception:  # noqa: BLE001
                     # Best-effort tracking — body may already be consumed
                     logging.debug("Failed to detect directory bucket type from request body")
 

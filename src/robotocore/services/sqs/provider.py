@@ -65,7 +65,7 @@ def _background_worker():
         for store in list(_stores.values()):
             try:
                 store.requeue_all()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("_background_worker: requeue_all failed (non-fatal): %s", exc)
 
 
@@ -137,7 +137,7 @@ async def handle_sqs_request(request: Request, region: str, account_id: str) -> 
             400,
             use_json,
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500, use_json)
 
 

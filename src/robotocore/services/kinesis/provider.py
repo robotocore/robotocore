@@ -52,7 +52,7 @@ def _decode_iterator(token: str) -> dict:
     try:
         payload = base64.b64decode(token)
         return json.loads(payload)
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise KinesisError("InvalidArgumentException", "Invalid ShardIterator.")
 
 
@@ -84,7 +84,7 @@ async def handle_kinesis_request(request: Request, region: str, account_id: str)
         )
     except KinesisError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 

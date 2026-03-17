@@ -59,7 +59,7 @@ def scan_and_remove_expired_items() -> int:
 
     try:
         dynamodb_backends = get_backend("dynamodb")
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Could not get dynamodb backend", exc_info=True)
         return 0
 
@@ -71,7 +71,7 @@ def scan_and_remove_expired_items() -> int:
             try:
                 removed = _scan_backend(backend, region, account_id)
                 total_removed += removed
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug(
                     "Error scanning TTL for account=%s region=%s",
                     account_id,
@@ -93,13 +93,13 @@ def _scan_backend(backend, region: str, account_id: str) -> int:
     # Get a snapshot of table names to avoid mutation during iteration
     try:
         table_names = list(backend.tables.keys())
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 0
 
     for table_name in table_names:
         try:
             table = backend.get_table(table_name)
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Table may have been deleted between listing and access
             continue
 
@@ -148,7 +148,7 @@ def _remove_expired_items(
                 # Hash-only table -- val is the Item directly
                 if _is_item_expired(val, ttl_attr, now):
                     expired_keys.append((hash_key, None))
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Error iterating items in table %s", table_name, exc_info=True)
         return 0
 
@@ -169,7 +169,7 @@ def _remove_expired_items(
                 hash_key,
                 range_key,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("Failed to delete expired item from %s", table_name, exc_info=True)
 
     return removed
@@ -269,7 +269,7 @@ def _emit_ttl_stream_event(
             )
             records.append(record)
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to emit TTL stream event for %s", table_name, exc_info=True)
 
 
@@ -309,7 +309,7 @@ class TTLScanner:
         while not self._stop_event.is_set():
             try:
                 scan_and_remove_expired_items()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("TTL scan iteration failed", exc_info=True)
             self._stop_event.wait(self._interval)
 

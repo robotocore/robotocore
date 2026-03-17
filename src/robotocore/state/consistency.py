@@ -114,7 +114,7 @@ class CopyOnWriteSnapshot:
                 state = save_fn()
                 # Shallow copy to isolate from further mutations
                 snapshot[service] = copy.copy(state) if isinstance(state, dict) else state
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Could not snapshot native state for %s", service, exc_info=True)
         self._snapshot = snapshot
         return snapshot

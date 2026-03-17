@@ -23,7 +23,7 @@ def org(client):
     yield resp["Organization"]
     try:
         client.delete_organization()
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 

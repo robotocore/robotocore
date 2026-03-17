@@ -103,7 +103,7 @@ def _handle_query(data: bytes, config: dict, upstream: str) -> bytes:
     """Handle a single DNS query: resolve locally or forward upstream."""
     try:
         request = DNSRecord.parse(data)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to parse DNS query, dropping")
         # Return SERVFAIL for malformed packets
         try:
@@ -112,7 +112,7 @@ def _handle_query(data: bytes, config: dict, upstream: str) -> bytes:
                 qid = struct.unpack("!H", data[:2])[0]
                 error_reply = DNSRecord(DNSHeader(id=qid, qr=1, ra=1, rcode=2))
                 return error_reply.pack()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug("_handle_query: len failed (non-fatal): %s", exc)
         return b""
 

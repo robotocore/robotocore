@@ -147,7 +147,7 @@ class RetentionScanner:
             for store in list(stores.values()):
                 try:
                     self.scan_store(store)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning(
                         "Failed to scan store for expired messages",
                         exc_info=True,

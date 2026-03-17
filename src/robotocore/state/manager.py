@@ -503,7 +503,7 @@ class StateManager:
         try:
             self.save()
             self.change_tracker.mark_clean()
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Scheduled save failed", exc_info=True)
 
     # ------------------------------------------------------------------
@@ -798,7 +798,7 @@ class StateManager:
                     continue
                 try:
                     load_fn({})
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug("Failed to reset native state for %s", service, exc_info=True)
             logger.info("State reset for services: %s", services)
         else:
@@ -807,7 +807,7 @@ class StateManager:
             for service, (_, load_fn) in self._native_handlers.items():
                 try:
                     load_fn({})
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug("Failed to reset native state for %s", service, exc_info=True)
             logger.info("All state reset")
 
@@ -823,7 +823,7 @@ class StateManager:
         for service, (save_fn, _) in self._native_handlers.items():
             try:
                 state["native_state"][service] = save_fn()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Could not export state for %s", service, exc_info=True)
         return state
 
@@ -834,7 +834,7 @@ class StateManager:
             if service in native_state:
                 try:
                     load_fn(native_state[service])
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug(
                         "Could not import state for %s",
                         service,
@@ -1024,7 +1024,7 @@ class StateManager:
             return True
         except ValueError:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Failed to load compressed state from %s", archive_path, exc_info=True)
             return False
 
@@ -1047,7 +1047,7 @@ class StateManager:
                         return json.loads(f.read())
                 except KeyError as exc:
                     logger.debug("_read_compressed_metadata: getmember failed (non-fatal): %s", exc)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("Could not read metadata from %s", archive_path, exc_info=True)
         return None
 
@@ -1071,7 +1071,7 @@ class StateManager:
                     # Verify this service is picklable (threading objects handled)
                     _safe_pickle_dumps(service_state)
                     state[service_name] = service_state
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug(
                         "Could not save Moto state for %s",
                         service_name,
@@ -1081,7 +1081,7 @@ class StateManager:
             with open(path, "wb") as f:
                 _ThreadSafePickler(f, protocol=pickle.HIGHEST_PROTOCOL).dump(state)
 
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Failed to save Moto state", exc_info=True)
             # Remove corrupt/partial pickle so load doesn't choke on it
             try:
@@ -1112,7 +1112,7 @@ class StateManager:
                     for account_id, account_state in service_state.items():
                         for region, backend in account_state.items():
                             backend_dict[account_id][region] = backend
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug(
                         "Could not load Moto state for %s",
                         service_name,
@@ -1123,7 +1123,7 @@ class StateManager:
         except _DisallowedClassError:
             # Security violations must propagate -- don't silently swallow them
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("Failed to load Moto state", exc_info=True)
             return False
 
@@ -1147,7 +1147,7 @@ class StateManager:
                 continue
             try:
                 state[service] = save_fn()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug(
                     "Could not save native state for %s",
                     service,
@@ -1170,7 +1170,7 @@ class StateManager:
             if service in state:
                 try:
                     load_fn(state[service])
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug(
                         "Could not load native state for %s",
                         service,
@@ -1199,9 +1199,9 @@ class StateManager:
                     for account_id in list(backend_dict.keys()):
                         for region in list(backend_dict[account_id].keys()):
                             backend_dict[account_id][region].reset()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug("_reset_moto_state: get_backend failed (non-fatal): %s", exc)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("Failed to reset Moto state", exc_info=True)
 
     def _list_moto_services(self, services: list[str] | None = None) -> list[str]:
@@ -1243,10 +1243,10 @@ class StateManager:
                     # Verify this service is picklable (threading objects handled)
                     _safe_pickle_dumps(service_state)
                     moto_state[service_name] = service_state
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug("Could not capture Moto state for %s", service_name, exc_info=True)
             state["moto"] = _safe_pickle_dumps(moto_state)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("Could not capture Moto state", exc_info=True)
             state["moto"] = b""
 
@@ -1257,7 +1257,7 @@ class StateManager:
                 continue
             try:
                 native[service] = copy.deepcopy(save_fn())
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Could not capture native state for %s", service, exc_info=True)
         state["native"] = native
 
@@ -1282,13 +1282,13 @@ class StateManager:
                         for account_id, account_state in service_state.items():
                             for region, backend in account_state.items():
                                 backend_dict[account_id][region] = backend
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         logger.debug(
                             "Could not restore Moto state for %s",
                             service_name,
                             exc_info=True,
                         )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Could not restore Moto state", exc_info=True)
 
         # Restore native provider state
@@ -1299,7 +1299,7 @@ class StateManager:
             if service in native:
                 try:
                     load_fn(copy.deepcopy(native[service]))
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.debug("Could not restore native state for %s", service, exc_info=True)
 
     def _estimate_size(self, state: dict[str, Any]) -> int:
@@ -1308,7 +1308,7 @@ class StateManager:
         try:
             native_json = json.dumps(state.get("native", {}), default=str)
             size += len(native_json.encode())
-        except Exception:
+        except Exception:  # noqa: BLE001
             size += sys.getsizeof(state.get("native", {}))
         return size
 

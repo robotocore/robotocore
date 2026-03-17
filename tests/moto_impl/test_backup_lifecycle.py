@@ -24,7 +24,7 @@ def vault_name(client):
     yield name
     try:
         client.delete_backup_vault(BackupVaultName=name)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 

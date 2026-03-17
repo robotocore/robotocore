@@ -42,7 +42,7 @@ async def handle_resource_groups_request(
                 return _tag(arn, body, region, account_id)
             elif request.method == "PATCH":
                 return _untag(arn, body, region, account_id)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return Response(
                 content=json.dumps({"__type": "InternalError", "message": str(e)}),
                 status_code=500,
@@ -159,7 +159,7 @@ def _list_group_resources(body: bytes, region: str, account_id: str) -> Response
                 break
         if group is None and group_name in backend.groups.by_arn:
             group = backend.groups.by_arn[group_name]
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_list_group_resources: values failed (non-fatal): %s", exc)
 
     return Response(

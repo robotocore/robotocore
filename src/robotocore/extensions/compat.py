@@ -91,9 +91,9 @@ def discover_external_extensions() -> list[RobotocorePlugin]:
                 adapter = ExternalExtensionAdapter(ext)
                 plugins.append(adapter)
                 logger.info(f"Loaded external extension: {ep.name} as {adapter}")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug(f"Could not load extension: {ep.name}")
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("No external extensions found")
 
     return plugins

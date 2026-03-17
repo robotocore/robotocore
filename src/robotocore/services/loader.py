@@ -183,7 +183,7 @@ def initialize_service(service_name: str) -> None:
         from moto.backends import get_backend
 
         get_backend(service_name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # Some services may not have Moto backends (native-only)
         logger.debug("initialize_service: get_backend failed (non-fatal): %s", exc)
     _initialized_services.add(service_name)

@@ -34,7 +34,7 @@ def cluster_name(client):
             AssumeRolePolicyDocument="{}",
             Path="/",
         )
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
     name = "test-cluster-1"
     try:
@@ -43,7 +43,7 @@ def cluster_name(client):
             roleArn="arn:aws:iam::123456789012:role/eks-test-role",
             resourcesVpcConfig={"subnetIds": ["subnet-12345"], "securityGroupIds": ["sg-12345"]},
         )
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
     yield name
 

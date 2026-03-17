@@ -30,5 +30,5 @@ def record_chaos_event(rule_name: str, fault_type: str, details: dict) -> None:
             status_code=details.get("status_code", 0),
             error=f"chaos_injection:{rule_name}",
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Could not record chaos event in audit log", exc_info=True)

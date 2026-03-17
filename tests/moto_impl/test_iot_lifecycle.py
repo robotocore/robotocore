@@ -61,7 +61,7 @@ def test_audit_suppression_lifecycle(client):
     # Cleanup in case of previous test run leaving state
     try:
         client.delete_audit_suppression(checkName="test-name-1", resourceIdentifier=ri)
-    except Exception:
+    except ClientError:
         pass
     # CREATE
     client.create_audit_suppression(
@@ -973,7 +973,11 @@ def test_package_not_found(client):
 
 def test_package_version_lifecycle(client):
     """Test PackageVersion CRUD lifecycle."""
-    # Prerequisite: create package
+    # Pre-cleanup + create package prerequisite
+    try:
+        client.delete_package(packageName="test-pkg-for-version")
+    except ClientError:
+        pass
     client.create_package(packageName="test-pkg-for-version")
     # CREATE
     create_resp = client.create_package_version(
@@ -1093,7 +1097,11 @@ def test_policy_not_found(client):
 
 def test_policy_version_lifecycle(client):
     """Test PolicyVersion CRUD lifecycle."""
-    # Prerequisite: create policy (policy must exist)
+    # Pre-cleanup + create policy prerequisite
+    try:
+        client.delete_policy(policyName="test-policy-for-version")
+    except ClientError:
+        pass
     client.create_policy(
         policyName="test-policy-for-version",
         policyDocument='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iot:*","Resource":"*"}]}',
@@ -1214,7 +1222,11 @@ def test_provisioning_template_not_found(client):
 
 def test_provisioning_template_version_lifecycle(client):
     """Test ProvisioningTemplateVersion CRUD lifecycle."""
-    # Prerequisite: create provisioning template
+    # Pre-cleanup + create provisioning template prerequisite
+    try:
+        client.delete_provisioning_template(templateName="test-tmpl-for-version")
+    except ClientError:
+        pass
     client.create_provisioning_template(
         templateName="test-tmpl-for-version",
         templateBody='{"Parameters":{},"Resources":{}}',

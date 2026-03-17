@@ -106,7 +106,7 @@ def _describe_stream(params: dict, region: str, account_id: str) -> dict:
 
     try:
         table = _get_table_from_stream_arn(arn, account_id, region)
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise StreamsError(
             "ResourceNotFoundException",
             f"Requested resource not found: Stream: {arn} not found",
@@ -152,7 +152,7 @@ def _get_shard_iterator(params: dict, region: str, account_id: str) -> dict:
 
     try:
         table = _get_table_from_stream_arn(arn, account_id, region)
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise StreamsError(
             "ResourceNotFoundException",
             f"Requested resource not found: Stream: {arn} not found",
@@ -212,7 +212,7 @@ def _get_records(params: dict, region: str, account_id: str) -> dict:
         # Try decoding from base64
         try:
             state = json.loads(base64.b64decode(iterator_id).decode())
-        except Exception:
+        except Exception:  # noqa: BLE001
             raise StreamsError(
                 "ExpiredIteratorException",
                 "The shard iterator has expired",
@@ -226,7 +226,7 @@ def _get_records(params: dict, region: str, account_id: str) -> dict:
 
     try:
         table = _get_table_from_stream_arn(stream_arn, iter_account_id, iter_region)
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise StreamsError(
             "ResourceNotFoundException",
             "Requested resource not found",

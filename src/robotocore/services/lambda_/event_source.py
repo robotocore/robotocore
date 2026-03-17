@@ -549,7 +549,7 @@ class EventSourceEngine:
             acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
             backend = get_backend("lambda")[acct][region]
             fn = backend.get_function(function_name)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.error("Could not find Lambda function: %s", function_name)
             return False, None
 

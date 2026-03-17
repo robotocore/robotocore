@@ -73,7 +73,7 @@ def replicate_write(
                 source_region=source_region,
                 account_id=account_id,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug(
                 "Failed to replicate %s to %s for table %s",
                 operation,
@@ -218,7 +218,7 @@ def create_replica_table(
         # Check if table already exists in target
         try:
             existing = target_backend.get_table(table_name)
-        except Exception:
+        except Exception:  # noqa: BLE001
             existing = None
         if existing is not None:
             logger.debug(
@@ -283,7 +283,7 @@ def create_replica_table(
         )
         return True
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning(
             "Failed to create replica table %s in %s",
             table_name,
@@ -342,7 +342,7 @@ def backfill_replica(
             target_region,
         )
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning(
             "Failed to backfill replica %s from %s to %s",
             table_name,
@@ -373,7 +373,7 @@ def delete_replica_table(
         target_backend.delete_table(table_name)
         logger.info("Deleted replica table %s in %s", table_name, target_region)
         return True
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug(
             "Failed to delete replica table %s in %s",
             table_name,

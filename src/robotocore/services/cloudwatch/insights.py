@@ -534,7 +534,7 @@ def _execute_query(query_id: str, region: str, account_id: str) -> None:
                             "eventId": getattr(event, "event_id", ""),
                         }
                     )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_execute_query: get failed (non-fatal): %s", exc)
 
     # Execute pipeline

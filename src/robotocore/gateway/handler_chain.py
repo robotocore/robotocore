@@ -52,7 +52,7 @@ class HandlerChain:
                 handler(context)
                 if context.response is not None:
                     stopped = True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self._handle_exception(context, exc)
 
     def _handle_exception(self, context: RequestContext, exc: Exception) -> None:

@@ -93,7 +93,7 @@ async def handle_ecs_request(request: Request, region: str, account_id: str) -> 
         return _json_response(result)
     except EcsError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("ServerException", str(e), 500)
 
 

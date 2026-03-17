@@ -227,7 +227,7 @@ class BootOrchestrator:
                     status.state = ComponentState.HEALTHY
                     status.ready_at = time.monotonic()
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass  # Health check failed, retry
 
             await asyncio.sleep(min(delay, max(0, deadline - time.monotonic())))
@@ -284,7 +284,7 @@ class BootOrchestrator:
                     ret = component.start()
                     if asyncio.iscoroutine(ret):
                         await ret
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 status.state = ComponentState.FAILED
                 status.error = str(e)
                 logger.error("Component '%s' failed to start: %s", name, e)
@@ -360,7 +360,7 @@ class BootOrchestrator:
                 status.state = ComponentState.STOPPED
                 status.stopped_at = time.monotonic()
                 logger.info("Component '%s' stopped", name)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 status.state = ComponentState.FAILED
                 status.error = f"Shutdown error: {e}"
                 logger.error("Component '%s' failed to stop: %s", name, e)

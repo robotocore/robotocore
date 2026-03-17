@@ -53,7 +53,7 @@ def _get_backend(service_name: str, account_id: str = DEFAULT_ACCOUNT_ID):
                 for region in regions:
                     return regions[region]
         return None
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -111,7 +111,7 @@ def get_service_resources(service_name: str, account_id: str = DEFAULT_ACCOUNT_I
                             entry["name"] = str(val)
                             break
                     resources.append(entry)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Error browsing %s.%s", service_name, attr, exc_info=True)
     else:
         # Generic: list all dict-like attributes that might hold resources

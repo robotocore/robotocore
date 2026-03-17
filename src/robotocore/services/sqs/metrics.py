@@ -183,7 +183,7 @@ def _put_metric(
                 }
             ],
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to put metric %s", metric_name, exc_info=True)
 
 
@@ -233,7 +233,7 @@ class SqsMetricsPublisher:
                 break
             try:
                 publish_metrics()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("SQS metrics publish error", exc_info=True)
 
     @staticmethod

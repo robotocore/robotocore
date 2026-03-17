@@ -138,7 +138,7 @@ async def handle_cognito_request(request: Request, region: str, account_id: str)
         return _json_response(result)
     except CognitoError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 
@@ -164,7 +164,7 @@ def _sync_pool_to_moto(
         # Remove the auto-generated key and re-key with our ID
         backend.user_pools.pop(old_id, None)
         backend.user_pools[pool_id] = moto_pool
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass  # Best-effort: if Moto isn't available, native-only ops still work
 
 
@@ -177,7 +177,7 @@ def _sync_user_to_moto(
 
         backend = get_backend("cognito-idp")[account_id][region]
         backend.admin_create_user(pool_id, username, password, {})
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_sync_user_to_moto: admin_create_user failed (non-fatal): %s", exc)
 
 
@@ -197,7 +197,7 @@ def _sync_client_to_moto(
         if pool:
             pool.clients.pop(old_id, None)
             pool.clients[client_id] = moto_client
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_sync_client_to_moto: create_user_pool_client failed (non-fatal): %s", exc)
 
 
@@ -208,7 +208,7 @@ def _delete_pool_from_moto(pool_id: str, region: str, account_id: str) -> None:
 
         backend = get_backend("cognito-idp")[account_id][region]
         backend.user_pools.pop(pool_id, None)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_delete_pool_from_moto: pop failed (non-fatal): %s", exc)
 
 
@@ -619,7 +619,7 @@ def _get_user(store: CognitoStore, params: dict, region: str, account_id: str) -
         if padding != 4:
             payload_part += "=" * padding
         payload = json.loads(base64.urlsafe_b64decode(payload_part))
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise CognitoError("NotAuthorizedException", "Invalid access token.")
 
     sub = payload.get("sub", "")
@@ -797,7 +797,7 @@ def _change_password(store: CognitoStore, params: dict, region: str, account_id:
         if padding != 4:
             payload_part += "=" * padding
         payload = json.loads(base64.urlsafe_b64decode(payload_part))
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise CognitoError("NotAuthorizedException", "Invalid access token.")
 
     sub = payload.get("sub", "")
@@ -1448,7 +1448,7 @@ def _user_from_token(store: CognitoStore, access_token: str) -> tuple:
         if padding != 4:
             payload_part += "=" * padding
         payload = json.loads(base64.urlsafe_b64decode(payload_part))
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise CognitoError("NotAuthorizedException", "Invalid access token.")
 
     sub = payload.get("sub", "")

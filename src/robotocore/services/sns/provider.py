@@ -83,7 +83,7 @@ async def handle_sns_request(request: Request, region: str, account_id: str) -> 
             return _xml_response(action + "Response", result)
     except SnsError as e:
         return _error(e.code, e.message, e.status, use_json)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500, use_json)
 
 
@@ -978,7 +978,7 @@ def _deliver_to_http(
         with urllib.request.urlopen(req, timeout=5) as resp:
             resp.read()  # consume response to ensure connection is closed
         logger.debug("SNS: Delivered to HTTP endpoint %s", sub.endpoint)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(
             "SNS: Failed to deliver to HTTP endpoint %s: %s",
             sub.endpoint,
@@ -1022,7 +1022,7 @@ def _deliver_to_firehose(
             "SNS: Firehose provider not available for delivery to %s",
             sub.endpoint,
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning("SNS: Failed to deliver to Firehose %s: %s", sub.endpoint, e)
 
 
@@ -1065,7 +1065,7 @@ def _send_subscription_confirmation(sub: SnsSubscription, topic_arn: str, region
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             resp.read()  # consume response to ensure connection is closed
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.debug(
             "SNS: Failed to send subscription confirmation to %s: %s",
             sub.endpoint,

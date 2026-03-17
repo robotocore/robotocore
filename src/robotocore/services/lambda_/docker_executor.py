@@ -384,7 +384,7 @@ class DockerLambdaExecutor:
                 capture_output=True,
                 timeout=10,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass  # Best-effort cleanup; container may already be gone
 
     def _execute_local_fallback(

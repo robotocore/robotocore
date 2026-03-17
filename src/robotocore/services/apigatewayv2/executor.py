@@ -468,7 +468,7 @@ def _validate_jwt(
             if not any(a in token_aud for a in audience):
                 return 401, {}, json.dumps({"message": "Invalid audience"})
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 401, {}, json.dumps({"message": "Invalid token"})
 
     return None
@@ -670,7 +670,7 @@ def _invoke_lambda(function_name: str, event: dict, region: str, account_id: str
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
         backend = get_backend("lambda")[acct][region]
         fn = backend.get_function(function_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.error("API Gateway V2: Lambda function not found: %s", function_name)
         return None
 

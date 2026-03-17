@@ -52,7 +52,7 @@ def dispatch_actions(
         try:
             result = _dispatch_single(action, payload, topic, region, account_id)
             results.append(result)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("IoT rule action failed: %s - %s", action, exc)
             error_result = {"action": action, "error": str(exc), "success": False}
             results.append(error_result)
@@ -60,7 +60,7 @@ def dispatch_actions(
             if error_action:
                 try:
                     _dispatch_single(error_action, payload, topic, region, account_id)
-                except Exception as err_exc:
+                except Exception as err_exc:  # noqa: BLE001
                     logger.error("IoT rule error action also failed: %s", err_exc)
     return results
 
@@ -130,7 +130,7 @@ def _dispatch_lambda(
 
         invoke_lambda_async(function_arn, payload, region, account_id)
         return {"action_type": "lambda", "success": True, "functionArn": function_arn}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {"action_type": "lambda", "success": False, "error": str(exc)}
 
 
@@ -169,7 +169,7 @@ def _dispatch_sqs(
         msg.md5_of_body = hashlib.md5(msg.body.encode()).hexdigest()
         queue.send(msg)
         return {"action_type": "sqs", "success": True, "queueUrl": queue_url}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {"action_type": "sqs", "success": False, "error": str(exc)}
 
 
@@ -210,7 +210,7 @@ def _dispatch_sns(
             "targetArn": target_arn,
             "messageId": message_id,
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {"action_type": "sns", "success": False, "error": str(exc)}
 
 

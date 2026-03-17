@@ -226,7 +226,7 @@ async def _execute_statement(request: Request, region: str, account_id: str) -> 
             rows = engine.execute_in_transaction(transaction_id, sql, sql_params)
         else:
             rows = engine.execute_sql(sql, sql_params)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error_response("BadRequestException", f"SQL error: {e}")
 
     # Build response
@@ -291,7 +291,7 @@ async def _batch_execute_statement(request: Request, region: str, account_id: st
                 update_results.append({"generatedFields": []})
             else:
                 update_results.append({"generatedFields": []})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error_response("BadRequestException", f"SQL error: {e}")
 
     return _json_response({"updateResults": update_results})
@@ -349,7 +349,7 @@ async def _commit_transaction(request: Request, region: str, account_id: str) ->
 
     try:
         engine.commit_transaction(transaction_id)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error_response("BadRequestException", f"Transaction error: {e}")
 
     return _json_response({"transactionStatus": "Transaction Committed"})
@@ -379,7 +379,7 @@ async def _rollback_transaction(request: Request, region: str, account_id: str) 
 
     try:
         engine.rollback_transaction(transaction_id)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error_response("BadRequestException", f"Transaction error: {e}")
 
     return _json_response({"transactionStatus": "Transaction Rolledback"})

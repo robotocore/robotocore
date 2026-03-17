@@ -24,7 +24,7 @@ def user_pool_id(client):
     yield pool_id
     try:
         client.delete_user_pool(UserPoolId=pool_id)
-    except Exception:
+    except ClientError:
         pass  # best-effort cleanup
 
 

@@ -327,7 +327,7 @@ def validate_operation_response(
     try:
         model = session.get_service_model(service_name)
         op_model = model.operation_model(operation_name)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         result.skipped = True
         result.skip_reason = f"cannot load model: {e}"
         return result

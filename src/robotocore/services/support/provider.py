@@ -187,7 +187,7 @@ def _describe_communications(params: dict, region: str, account_id: str) -> dict
                 "attachmentSet": [],
             }
             comms = [initial_comm] + comms
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_describe_communications: get_backend failed (non-fatal): %s", exc)
 
     return {"communications": comms, "nextToken": None}

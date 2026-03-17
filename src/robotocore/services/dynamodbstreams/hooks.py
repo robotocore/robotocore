@@ -73,5 +73,5 @@ def notify_table_change(
             view_type=view_type,
         )
 
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Could not record stream change for table %s", table_name, exc_info=True)

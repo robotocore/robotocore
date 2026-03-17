@@ -251,7 +251,7 @@ def put_composite_alarm(params: dict, region: str, account_id: str) -> dict:
         rule_ast = parse_alarm_rule(alarm_rule)
     except CloudWatchError:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise CloudWatchError("InvalidParameterValue", f"Invalid AlarmRule: {e}")
 
     store = _get_composite_store(region)
@@ -628,7 +628,7 @@ def _dispatch_sns_action(
 
         sns_backend = get_backend("sns")[sns_account][sns_region]
         sns_backend.publish(message=message, arn=topic_arn, subject=f"ALARM: {alarm_name}")
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to publish alarm to SNS %s", topic_arn, exc_info=True)
 
 
@@ -653,7 +653,7 @@ def _dispatch_lambda_action(
             "reason": reason,
         }
         invoke_lambda_async(function_arn, event, region, account_id)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to invoke Lambda %s", function_arn, exc_info=True)
 
 
@@ -754,7 +754,7 @@ async def handle_cloudwatch_request(request: Request, region: str, account_id: s
                         media_type="application/x-amz-json-1.0",
                     )
                 return _xml_response("GetMetricStatisticsResponse", result)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.error("ExtendedStatistics error: %s", e)
 
     handler = _ACTION_MAP.get(action)
@@ -775,7 +775,7 @@ async def handle_cloudwatch_request(request: Request, region: str, account_id: s
                     content=err_body, status_code=e.status, media_type="application/x-amz-json-1.0"
                 )
             return _error_response(e.code, e.message, e.status)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if use_json_protocol:
                 err_body = json.dumps({"__type": "InternalError", "message": str(e)})
                 return Response(
@@ -873,7 +873,7 @@ def _handle_delete_alarms(params: dict, region: str, account_id: str) -> dict:
         backend = get_backend("cloudwatch")[account_id][region]
         for name in alarm_names:
             backend.delete_alarms([name])
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("_handle_delete_alarms: delete_alarms failed (non-fatal): %s", exc)
 
     return {}

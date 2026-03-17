@@ -122,7 +122,7 @@ async def handle_scheduler_request(request: Request, region: str, account_id: st
 
     except SchedulerError as e:
         return _error(e.code, e.message, e.status)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return _error("InternalError", str(e), 500)
 
 

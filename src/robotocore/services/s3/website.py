@@ -152,7 +152,7 @@ def _get_bucket(backend, bucket_name: str):
     """Get a bucket from the Moto S3 backend, or None."""
     try:
         return backend.get_bucket(bucket_name)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -171,7 +171,7 @@ def _get_object_body(backend, bucket_name: str, key: str) -> tuple[bytes, str] |
         if not ct:
             ct = guess_content_type(key)
         return (body, ct)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 

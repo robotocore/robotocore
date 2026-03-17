@@ -254,9 +254,9 @@ def get_layer_zips(fn, account_id: str, region: str) -> list[bytes]:
                             layer_zips.append(zip_data)
                         elif hasattr(layer_ver, "code_bytes") and layer_ver.code_bytes:
                             layer_zips.append(layer_ver.code_bytes)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("get_layer_zips: split failed (non-fatal): %s", exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("get_layer_zips: isinstance failed (non-fatal): %s", exc)
 
     return layer_zips
@@ -731,7 +731,7 @@ def execute_python_handler(
                 _thread_local.env = dict(invocation_env)
                 try:
                     handler_result[0] = handler_func(event, context)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     handler_error[0] = exc
                 finally:
                     _invocation_output.buffer = None
@@ -749,7 +749,7 @@ def execute_python_handler(
                         ctypes.pythonapi.PyThreadState_SetAsyncExc(
                             ctypes.c_ulong(tid), ctypes.py_object(SystemExit)
                         )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.debug(
                         "execute_python_handler: pythreadstate_setasyncexc failed (non-fatal): %s",
                         exc,
@@ -806,7 +806,7 @@ def execute_python_handler(
                 f"\tMax Memory Used: {memory_size} MB\n"
             )
             return handler_result[0], None, logs_output.getvalue()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # Catch module-level errors (SyntaxError, ImportError, etc.)
             tb = traceback.format_exc()
             logs_output.write(tb)

@@ -184,7 +184,7 @@ def _execute_python_canary(
             # Try to decode base64 content and write to temp file
             try:
                 script_bytes = base64.b64decode(code_content)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # If not base64, treat as raw script text
                 script_bytes = code_content.encode("utf-8") if code_content else b""
 
@@ -230,7 +230,7 @@ def _execute_python_canary(
                     # Clean up module from sys.modules
                     sys.modules.pop(module_name, None)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             exception_holder.append(exc)
 
     # Run in a thread with timeout

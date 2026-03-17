@@ -365,7 +365,7 @@ def _emit_metric_from_filter(mf: MetricFilter, region: str, account_id: str) -> 
                     }
                 ],
             )
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("Failed to emit metric from filter %s", mf.filter_name, exc_info=True)
 
 
