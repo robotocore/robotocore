@@ -81,6 +81,8 @@ jobs:
         run: uv run python scripts/fix_empty_except.py --check
       - name: Check wire name correctness
         run: uv run python scripts/fix_moto_param_names.py --all
+      - name: Check compat test sharding coverage
+        run: uv run python scripts/check_compat_sharding.py
       - name: Audit fallthrough coverage (informational)
         run: uv run python scripts/audit_fallthrough.py --all --max-uncovered 400
       - name: Project structural lint

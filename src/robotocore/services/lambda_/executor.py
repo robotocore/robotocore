@@ -412,11 +412,12 @@ class CodeCache:
                 self._refcounts.pop(path, None)
                 self._pending_cleanup.discard(path)
                 shutil.rmtree(path, ignore_errors=True)
-        # Also clear function-scoped module cache in sys.modules
-        prefix = f"_lambda_{function_name}."
-        for name in list(sys.modules.keys()):
-            if name.startswith(prefix):
-                sys.modules.pop(name, None)
+            # Also clear function-scoped module cache in sys.modules
+            # (inside lock to prevent concurrent imports from re-adding)
+            prefix = f"_lambda_{function_name}."
+            for name in list(sys.modules.keys()):
+                if name.startswith(prefix):
+                    sys.modules.pop(name, None)
 
     def invalidate_all(self) -> None:
         """Remove all cached entries and clean up all tmpdirs.
@@ -432,10 +433,11 @@ class CodeCache:
             for path in self._pending_cleanup:
                 shutil.rmtree(path, ignore_errors=True)
             self._pending_cleanup.clear()
-        # Also clear all function-scoped module cache entries
-        for name in list(sys.modules.keys()):
-            if name.startswith("_lambda_"):
-                sys.modules.pop(name, None)
+            # Also clear all function-scoped module cache entries
+            # (inside lock to prevent concurrent imports from re-adding)
+            for name in list(sys.modules.keys()):
+                if name.startswith("_lambda_"):
+                    sys.modules.pop(name, None)
 
     def __len__(self) -> int:
         with self._lock:
@@ -523,7 +525,9 @@ def _clear_modules_for_dir(code_dir: str) -> None:
     # Also clear function-scoped module cache keys (_lambda_* entries)
     for name in list(sys.modules.keys()):
         if name.startswith("_lambda_"):
-            mod = sys.modules[name]
+            mod = sys.modules.get(name)
+            if mod is None:
+                continue
             mod_file = getattr(mod, "__file__", None)
             if mod_file:
                 try:

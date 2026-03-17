@@ -196,6 +196,51 @@ class TestSysPathConcurrency:
 
 
 # ---------------------------------------------------------------------------
+# 3b. Concurrent stdout capture isolation
+#
+# When multiple Lambda invocations run concurrently, each invocation's
+# print() output must go to its own log buffer, not leak into others.
+# ---------------------------------------------------------------------------
+
+
+class TestConcurrentStdoutCapture:
+    def test_concurrent_prints_go_to_correct_logs(self):
+        """Each concurrent invocation's print output appears only in its own logs."""
+        results = {}
+        errors = []
+
+        def invoke(fn_name, marker):
+            code = f"def handler(event, context):\n    print('{marker}')\n    return '{marker}'\n"
+            code_zip = _make_zip({"lambda_function.py": code})
+            try:
+                result, error_type, logs = execute_python_handler(
+                    code_zip=code_zip,
+                    handler="lambda_function.handler",
+                    event={},
+                    function_name=fn_name,
+                )
+                results[fn_name] = (result, error_type, logs)
+            except Exception as e:
+                errors.append((fn_name, e))
+
+        threads = [
+            threading.Thread(target=invoke, args=(f"fn-{i}", f"MARKER_{i}")) for i in range(8)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Invocations raised errors: {errors}"
+        for i in range(8):
+            fn = f"fn-{i}"
+            marker = f"MARKER_{i}"
+            result, error_type, logs = results[fn]
+            assert error_type is None, f"{fn} had error: {error_type}"
+            assert marker in logs, f"{fn}: expected '{marker}' in logs but got:\n{logs}"
+
+
+# ---------------------------------------------------------------------------
 # 4. Error reporting format matching real AWS Lambda
 #
 # AWS Lambda's stackTrace field is a list of frame descriptions, not raw
