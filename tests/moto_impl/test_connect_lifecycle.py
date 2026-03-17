@@ -246,30 +246,31 @@ def test_contact_flow_not_found(client, instance_id):
 def test_contact_flow_module_lifecycle(client, instance_id):
     """Test ContactFlowModule CRUD lifecycle."""
     # CREATE
-    client.create_contact_flow_module(
+    create_resp = client.create_contact_flow_module(
         InstanceId=instance_id,
         Name="test-name-1",
         Content="test-string",
     )
+    module_id = create_resp["Id"]
 
     # DESCRIBE
     desc_resp = client.describe_contact_flow_module(
         InstanceId=instance_id,
-        ContactFlowModuleId="test-id-1",
+        ContactFlowModuleId=module_id,
     )
     assert isinstance(desc_resp.get("ContactFlowModule", {}), dict)
 
     # DELETE
     client.delete_contact_flow_module(
         InstanceId=instance_id,
-        ContactFlowModuleId="test-id-1",
+        ContactFlowModuleId=module_id,
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.describe_contact_flow_module(
             InstanceId=instance_id,
-            ContactFlowModuleId="test-id-1",
+            ContactFlowModuleId=module_id,
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -298,35 +299,44 @@ def test_contact_flow_module_not_found(client, instance_id):
 
 def test_contact_flow_module_alias_lifecycle(client, instance_id):
     """Test ContactFlowModuleAlias CRUD lifecycle."""
-    # CREATE
-    client.create_contact_flow_module_alias(
+    # CREATE a module first to get a real ID
+    module_resp = client.create_contact_flow_module(
         InstanceId=instance_id,
-        ContactFlowModuleId="test-id-1",
+        Name="test-module-for-alias",
+        Content="test-content",
+    )
+    module_id = module_resp["Id"]
+
+    # CREATE alias
+    alias_resp = client.create_contact_flow_module_alias(
+        InstanceId=instance_id,
+        ContactFlowModuleId=module_id,
         ContactFlowModuleVersion=1,
         AliasName="test-name-1",
     )
+    alias_id = alias_resp["Id"]
 
     # DESCRIBE
     desc_resp = client.describe_contact_flow_module_alias(
         InstanceId=instance_id,
-        ContactFlowModuleId="test-id-1",
-        AliasId="test-id-1",
+        ContactFlowModuleId=module_id,
+        AliasId=alias_id,
     )
     assert isinstance(desc_resp.get("ContactFlowModuleAlias", {}), dict)
 
     # DELETE
     client.delete_contact_flow_module_alias(
         InstanceId=instance_id,
-        ContactFlowModuleId="test-id-1",
-        AliasId="test-id-1",
+        ContactFlowModuleId=module_id,
+        AliasId=alias_id,
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.describe_contact_flow_module_alias(
             InstanceId=instance_id,
-            ContactFlowModuleId="test-id-1",
-            AliasId="test-id-1",
+            ContactFlowModuleId=module_id,
+            AliasId=alias_id,
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -367,25 +377,26 @@ def test_data_table_lifecycle(client, instance_id):
     assert isinstance(create_resp.get("Id"), str)
     assert isinstance(create_resp.get("Arn"), str)
     assert isinstance(create_resp.get("LockVersion", {}), dict)
+    table_id = create_resp["Id"]
 
     # DESCRIBE
     desc_resp = client.describe_data_table(
         InstanceId=instance_id,
-        DataTableId="test-id-1",
+        DataTableId=table_id,
     )
     assert isinstance(desc_resp.get("DataTable", {}), dict)
 
     # DELETE
     client.delete_data_table(
         InstanceId=instance_id,
-        DataTableId="test-id-1",
+        DataTableId=table_id,
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.describe_data_table(
             InstanceId=instance_id,
-            DataTableId="test-id-1",
+            DataTableId=table_id,
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -414,10 +425,20 @@ def test_data_table_not_found(client, instance_id):
 
 def test_data_table_attribute_lifecycle(client, instance_id):
     """Test DataTableAttribute CRUD lifecycle."""
-    # CREATE
+    # CREATE a data table first
+    table_resp = client.create_data_table(
+        InstanceId=instance_id,
+        Name="test-table-for-attr",
+        TimeZone="UTC",
+        ValueLockLevel="NONE",
+        Status="PUBLISHED",
+    )
+    table_id = table_resp["Id"]
+
+    # CREATE attribute
     create_resp = client.create_data_table_attribute(
         InstanceId=instance_id,
-        DataTableId="test-id-1",
+        DataTableId=table_id,
         Name="test-name-1",
         ValueType="TEXT",
     )
@@ -427,7 +448,7 @@ def test_data_table_attribute_lifecycle(client, instance_id):
     # DESCRIBE
     desc_resp = client.describe_data_table_attribute(
         InstanceId=instance_id,
-        DataTableId="test-id-1",
+        DataTableId=table_id,
         AttributeName="test-name-1",
     )
     assert isinstance(desc_resp.get("Attribute", {}), dict)
@@ -435,7 +456,7 @@ def test_data_table_attribute_lifecycle(client, instance_id):
     # DELETE
     client.delete_data_table_attribute(
         InstanceId=instance_id,
-        DataTableId="test-id-1",
+        DataTableId=table_id,
         AttributeName="test-name-1",
     )
 
@@ -443,7 +464,7 @@ def test_data_table_attribute_lifecycle(client, instance_id):
     with pytest.raises(ClientError) as exc:
         client.describe_data_table_attribute(
             InstanceId=instance_id,
-            DataTableId="test-id-1",
+            DataTableId=table_id,
             AttributeName="test-name-1",
         )
     assert exc.value.response["Error"]["Code"] in (
@@ -537,7 +558,15 @@ def test_evaluation_form_lifecycle(client, instance_id):
     create_resp = client.create_evaluation_form(
         InstanceId=instance_id,
         Title="test-string",
-        Items=[{}],
+        Items=[
+            {
+                "Section": {
+                    "Title": "section-1",
+                    "RefId": "ref-1",
+                    "Items": [],
+                }
+            }
+        ],
     )
     assert isinstance(create_resp.get("EvaluationFormId"), str)
     assert len(create_resp.get("EvaluationFormId", "")) > 0
@@ -752,11 +781,11 @@ def test_instance_lifecycle(client, instance_id):
     )
 
 
-def test_instance_not_found(client, instance_id):
+def test_instance_not_found(client):
     """Test that describing a non-existent Instance raises error."""
     with pytest.raises(ClientError) as exc:
         client.describe_instance(
-            InstanceId=instance_id,
+            InstanceId="00000000-0000-0000-0000-000000000000",
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1234,11 +1263,12 @@ def test_task_template_lifecycle(client, instance_id):
     )
     assert isinstance(create_resp.get("Id"), str)
     assert isinstance(create_resp.get("Arn"), str)
+    template_id = create_resp["Id"]
 
     # DESCRIBE
     desc_resp = client.get_task_template(
         InstanceId=instance_id,
-        TaskTemplateId="test-id-1",
+        TaskTemplateId=template_id,
     )
     assert isinstance(desc_resp.get("InstanceId"), str)
     assert len(desc_resp.get("InstanceId", "")) > 0
@@ -1250,14 +1280,14 @@ def test_task_template_lifecycle(client, instance_id):
     # DELETE
     client.delete_task_template(
         InstanceId=instance_id,
-        TaskTemplateId="test-id-1",
+        TaskTemplateId=template_id,
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.get_task_template(
             InstanceId=instance_id,
-            TaskTemplateId="test-id-1",
+            TaskTemplateId=template_id,
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1344,26 +1374,27 @@ def test_test_case_not_found(client, instance_id):
 def test_traffic_distribution_group_lifecycle(client, instance_id):
     """Test TrafficDistributionGroup CRUD lifecycle."""
     # CREATE
-    client.create_traffic_distribution_group(
+    create_resp = client.create_traffic_distribution_group(
         Name="test-name-1",
         InstanceId=instance_id,
     )
+    group_id = create_resp["Id"]
 
     # DESCRIBE
     desc_resp = client.describe_traffic_distribution_group(
-        TrafficDistributionGroupId="test-id-1",
+        TrafficDistributionGroupId=group_id,
     )
     assert isinstance(desc_resp.get("TrafficDistributionGroup", {}), dict)
 
     # DELETE
     client.delete_traffic_distribution_group(
-        TrafficDistributionGroupId="test-id-1",
+        TrafficDistributionGroupId=group_id,
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.describe_traffic_distribution_group(
-            TrafficDistributionGroupId="test-id-1",
+            TrafficDistributionGroupId=group_id,
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
@@ -1513,25 +1544,26 @@ def test_view_lifecycle(client, instance_id):
         Name="test-name-1",
     )
     assert isinstance(create_resp.get("View", {}), dict)
+    view_id = create_resp["View"]["Id"]
 
     # DESCRIBE
     desc_resp = client.describe_view(
         InstanceId=instance_id,
-        ViewId="test-id-1",
+        ViewId=view_id,
     )
     assert isinstance(desc_resp.get("View", {}), dict)
 
     # DELETE
     client.delete_view(
         InstanceId=instance_id,
-        ViewId="test-id-1",
+        ViewId=view_id,
     )
 
     # DESCRIBE after DELETE should fail
     with pytest.raises(ClientError) as exc:
         client.describe_view(
             InstanceId=instance_id,
-            ViewId="test-id-1",
+            ViewId=view_id,
         )
     assert exc.value.response["Error"]["Code"] in (
         "ResourceNotFoundException",
