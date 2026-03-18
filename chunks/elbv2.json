@@ -1,0 +1,205 @@
+[
+  {
+    "noun": "SSLPolicies",
+    "operations": [
+      "DescribeSSLPolicies"
+    ],
+    "tested": [
+      "DescribeSSLPolicies"
+    ],
+    "untested": [],
+    "size": 1,
+    "untested_count": 0,
+    "probe_status": {
+      "DescribeSSLPolicies": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservation",
+    "operations": [
+      "DescribeCapacityReservation",
+      "ModifyCapacityReservation"
+    ],
+    "tested": [
+      "DescribeCapacityReservation"
+    ],
+    "untested": [
+      "ModifyCapacityReservation"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeCapacityReservation": "working",
+      "ModifyCapacityReservation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpPools",
+    "operations": [
+      "ModifyIpPools"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyIpPools"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyIpPools": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourcePolicy",
+    "operations": [
+      "GetResourcePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResourcePolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetResourcePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SharedTrustStoreAssociation",
+    "operations": [
+      "DeleteSharedTrustStoreAssociation"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteSharedTrustStoreAssociation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteSharedTrustStoreAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStore",
+    "operations": [
+      "CreateTrustStore",
+      "DeleteTrustStore",
+      "ModifyTrustStore"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTrustStore",
+      "DeleteTrustStore",
+      "ModifyTrustStore"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateTrustStore": "not_implemented",
+      "DeleteTrustStore": "not_implemented",
+      "ModifyTrustStore": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStoreAssociations",
+    "operations": [
+      "DescribeTrustStoreAssociations"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeTrustStoreAssociations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeTrustStoreAssociations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStoreCaCertificatesBundle",
+    "operations": [
+      "GetTrustStoreCaCertificatesBundle"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTrustStoreCaCertificatesBundle"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTrustStoreCaCertificatesBundle": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStoreRevocationContent",
+    "operations": [
+      "GetTrustStoreRevocationContent"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTrustStoreRevocationContent"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTrustStoreRevocationContent": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStoreRevocations",
+    "operations": [
+      "AddTrustStoreRevocations",
+      "DescribeTrustStoreRevocations",
+      "RemoveTrustStoreRevocations"
+    ],
+    "tested": [],
+    "untested": [
+      "AddTrustStoreRevocations",
+      "DescribeTrustStoreRevocations",
+      "RemoveTrustStoreRevocations"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "AddTrustStoreRevocations": "not_implemented",
+      "DescribeTrustStoreRevocations": "not_implemented",
+      "RemoveTrustStoreRevocations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStores",
+    "operations": [
+      "DescribeTrustStores"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeTrustStores"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeTrustStores": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]
