@@ -497,3 +497,69 @@ class TestCodePipelineMiscOps:
                 conditionType="BEFORE_ENTRY",
             )
         assert exc_info.value.response["Error"]["Code"] == "PipelineNotFoundException"
+
+    def test_list_deploy_action_execution_targets_nonexistent(self, codepipeline):
+        with pytest.raises(ClientError) as exc_info:
+            codepipeline.list_deploy_action_execution_targets(
+                pipelineName="nonexistent-pipeline",
+                actionExecutionId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "PipelineNotFoundException"
+
+
+class TestCodePipelineActionRevision:
+    def test_put_action_revision(self, codepipeline, pipeline):
+        resp = codepipeline.put_action_revision(
+            pipelineName=pipeline["name"],
+            stageName="Source",
+            actionName="SourceAction",
+            actionRevision={
+                "revisionId": "rev-abc123",
+                "revisionChangeId": "change-abc123",
+                "created": "2024-01-01T00:00:00Z",
+            },
+        )
+        assert "pipelineExecutionId" in resp
+        assert "newRevision" in resp
+
+    def test_put_action_revision_nonexistent_pipeline(self, codepipeline):
+        with pytest.raises(ClientError) as exc_info:
+            codepipeline.put_action_revision(
+                pipelineName="nonexistent-pipeline",
+                stageName="Source",
+                actionName="SourceAction",
+                actionRevision={
+                    "revisionId": "rev-abc123",
+                    "revisionChangeId": "change-abc123",
+                    "created": "2024-01-01T00:00:00Z",
+                },
+            )
+        assert exc_info.value.response["Error"]["Code"] == "PipelineNotFoundException"
+
+    def test_update_action_type(self, codepipeline):
+        provider_name = _unique("update-provider")
+        codepipeline.create_custom_action_type(
+            category="Test",
+            provider=provider_name,
+            version="1",
+            inputArtifactDetails={"minimumCount": 0, "maximumCount": 1},
+            outputArtifactDetails={"minimumCount": 0, "maximumCount": 1},
+        )
+        resp = codepipeline.update_action_type(
+            actionType={
+                "id": {
+                    "category": "Test",
+                    "owner": "Custom",
+                    "provider": provider_name,
+                    "version": "1",
+                },
+                "executor": {
+                    "configuration": {"jobWorkerExecutorConfiguration": {}},
+                    "type": "JobWorker",
+                },
+                "inputArtifactDetails": {"minimumCount": 0, "maximumCount": 2},
+                "outputArtifactDetails": {"minimumCount": 0, "maximumCount": 1},
+            }
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        codepipeline.delete_custom_action_type(category="Test", provider=provider_name, version="1")
