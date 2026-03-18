@@ -57,8 +57,13 @@ class TestEventPipelineFunctional:
         assert returned["payload"] == {"S": '{"event": "order_placed"}'}
 
     def test_sqs_multiple_messages(self, deploy_stack):
-        """Send multiple messages and verify each is received."""
-        stack = deploy_stack("evt-pipe-func-multi", TEMPLATE)
+        """Send multiple messages and verify each is received.
+
+        ESM is disabled to prevent the Lambda poller from racing with the
+        test's receive_message calls (the poller runs every 1 second and
+        would consume messages before the test can).
+        """
+        stack = deploy_stack("evt-pipe-func-multi", TEMPLATE, {"EsmEnabled": "false"})
         assert stack["StackStatus"] == "CREATE_COMPLETE"
 
         outputs = _get_outputs(stack)

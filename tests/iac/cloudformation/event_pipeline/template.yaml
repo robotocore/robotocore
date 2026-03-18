@@ -1,6 +1,16 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Event pipeline with SQS, Lambda, and DynamoDB
 
+Parameters:
+  EsmEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Enable or disable the Lambda Event Source Mapping
+
+Conditions:
+  EsmEnabledCondition: !Equals [!Ref EsmEnabled, "true"]
+
 Resources:
   EventQueue:
     Type: AWS::SQS::Queue
@@ -82,7 +92,7 @@ Resources:
       EventSourceArn: !GetAtt EventQueue.Arn
       FunctionName: !Ref ProcessorFunction
       BatchSize: 10
-      Enabled: true
+      Enabled: !If [EsmEnabledCondition, true, false]
 
 Outputs:
   QueueName:

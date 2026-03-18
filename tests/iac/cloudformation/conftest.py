@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from tests.iac.helpers.tool_runner import CloudFormationRunner
@@ -37,5 +39,5 @@ def deploy_stack(cfn_runner, test_run_id):
     for name in reversed(created_stacks):
         try:
             cfn_runner.delete_stack(name)
-        except Exception:
-            pass  # best-effort cleanup
+        except Exception as e:
+            logging.debug("pre-cleanup stack delete skipped: %s", e)
