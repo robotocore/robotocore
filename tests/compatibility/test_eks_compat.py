@@ -1576,6 +1576,34 @@ class TestEKSClusterCRUDExplicit:
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
+class TestEKSInsightsRefreshOperations:
+    """Tests for EKS StartInsightsRefresh operation."""
+
+    def test_start_insights_refresh(self, eks):
+        """StartInsightsRefresh triggers an insights refresh on a cluster."""
+        cluster_name = _unique("cluster")
+        eks.create_cluster(
+            name=cluster_name,
+            roleArn="arn:aws:iam::123456789012:role/eks-role",
+            resourcesVpcConfig={
+                "subnetIds": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = eks.start_insights_refresh(clusterName=cluster_name)
+            assert "status" in resp
+            assert resp["status"] == "COMPLETED"
+        finally:
+            eks.delete_cluster(name=cluster_name)
+
+    def test_start_insights_refresh_nonexistent_cluster(self, eks):
+        """StartInsightsRefresh on nonexistent cluster raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.start_insights_refresh(clusterName="nonexistent-cluster-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestEKSCapabilityOperations:
     """Tests for EKS capability create, describe, update, list, and delete."""
 
