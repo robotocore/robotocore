@@ -1,5 +1,6 @@
 """CloudWatch Metrics compatibility tests."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -924,8 +925,9 @@ class TestCloudWatchOperations:
 
     def test_set_alarm_state_and_verify(self, cw):
         """Test SetAlarmState and verify with DescribeAlarms."""
+        alarm_name = f"verify-state-alarm-{uuid.uuid4().hex[:8]}"
         cw.put_metric_alarm(
-            AlarmName="verify-state-alarm",
+            AlarmName=alarm_name,
             Namespace="VerifyNS",
             MetricName="M1",
             ComparisonOperator="GreaterThanThreshold",
@@ -936,16 +938,16 @@ class TestCloudWatchOperations:
         )
         try:
             cw.set_alarm_state(
-                AlarmName="verify-state-alarm",
+                AlarmName=alarm_name,
                 StateValue="OK",
                 StateReason="Manually set to OK",
             )
-            response = cw.describe_alarms(AlarmNames=["verify-state-alarm"])
+            response = cw.describe_alarms(AlarmNames=[alarm_name])
             alarm = response["MetricAlarms"][0]
             assert alarm["StateValue"] == "OK"
             assert alarm["StateReason"] == "Manually set to OK"
         finally:
-            cw.delete_alarms(AlarmNames=["verify-state-alarm"])
+            cw.delete_alarms(AlarmNames=[alarm_name])
 
     def test_put_get_delete_dashboard(self, cw):
         """Test PutDashboard, GetDashboard, DeleteDashboards, ListDashboards."""
