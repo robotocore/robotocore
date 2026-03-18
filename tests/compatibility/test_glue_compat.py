@@ -646,8 +646,11 @@ class TestGlueAutoCoverage:
         assert "DevEndpoints" in resp
 
     def test_get_resource_policy(self, client):
-        """GetResourcePolicy returns a response."""
-        client.get_resource_policy()
+        """GetResourcePolicy returns a response or EntityNotFoundException when no policy exists."""
+        try:
+            client.get_resource_policy()
+        except ClientError as e:
+            assert e.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_security_configurations(self, client):
         """GetSecurityConfigurations returns a response."""
