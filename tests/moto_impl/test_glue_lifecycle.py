@@ -1,5 +1,7 @@
 """Resource lifecycle tests for glue (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -22,8 +24,8 @@ def test_blueprint_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_blueprint(Name="test-name-1")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
     # CREATE
     create_resp = client.create_blueprint(
@@ -80,8 +82,8 @@ def test_blueprint_run_lifecycle(client):
     # Prerequisite: blueprint must exist before starting a run
     try:
         client.delete_blueprint(Name="test-name-1")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_blueprint(
         Name="test-name-1",
         BlueprintLocation="s3://test-bucket/test-prefix",
@@ -126,8 +128,8 @@ def test_catalog_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_catalog(CatalogId="test-name-1")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
     # CREATE
     client.create_catalog(
@@ -182,8 +184,8 @@ def test_classifier_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_classifier(Name="test-name-1")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
     # CREATE
     client.create_classifier(
@@ -237,8 +239,8 @@ def test_column_statistics_task_run_lifecycle(client):
     # Prerequisites: database and table must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-colstats-db")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_database(DatabaseInput={"Name": "test-colstats-db"})
     client.create_table(
         DatabaseName="test-colstats-db",
@@ -304,8 +306,8 @@ def test_column_statistics_task_settings_lifecycle(client):
     # Prerequisites: database and table must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-colstats-settings-db")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_database(DatabaseInput={"Name": "test-colstats-settings-db"})
     client.create_table(
         DatabaseName="test-colstats-settings-db",
@@ -1156,8 +1158,8 @@ def test_materialized_view_refresh_task_run_lifecycle(client):
     # Prerequisites: database and table must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-matview-db")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_database(DatabaseInput={"Name": "test-matview-db"})
     client.create_table(
         DatabaseName="test-matview-db",
@@ -1227,8 +1229,8 @@ def test_partition_lifecycle(client):
     # Prerequisites: database and table with partition keys must exist (cleanup stale state)
     try:
         client.delete_database(Name="test-partition-db")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_database(DatabaseInput={"Name": "test-partition-db"})
     client.create_table(
         DatabaseName="test-partition-db",
@@ -1300,8 +1302,8 @@ def test_registry_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_registry(RegistryId={"RegistryName": "test-name-1"})
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
     # CREATE
     create_resp = client.create_registry(
@@ -1397,8 +1399,8 @@ def test_schema_lifecycle(client):
         client.delete_schema(
             SchemaId={"SchemaName": "test-name-1", "RegistryName": "default-registry"}
         )
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
     # CREATE
     create_resp = client.create_schema(
@@ -1457,8 +1459,8 @@ def test_schema_version_lifecycle(client):
         client.delete_schema(
             SchemaId={"SchemaName": "test-schema-for-version", "RegistryName": "default-registry"}
         )
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_schema(
         SchemaName="test-schema-for-version",
         DataFormat="AVRO",
@@ -1556,8 +1558,8 @@ def test_session_lifecycle(client):
     # Pre-cleanup to handle stale state
     try:
         client.delete_session(Id="test-id-1")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
     # CREATE
     create_resp = client.create_session(
@@ -1660,8 +1662,8 @@ def test_table_lifecycle(client):
     # Prerequisite: database must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-table-db")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_database(DatabaseInput={"Name": "test-table-db"})
 
     # CREATE
@@ -1899,8 +1901,8 @@ def test_user_defined_function_lifecycle(client):
     # Prerequisite: database must exist (with cleanup for stale state)
     try:
         client.delete_database(Name="test-udf-db")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_database(DatabaseInput={"Name": "test-udf-db"})
 
     # CREATE

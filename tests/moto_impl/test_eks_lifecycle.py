@@ -1,5 +1,7 @@
 """Resource lifecycle tests for eks (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -34,8 +36,8 @@ def cluster_name(client):
             AssumeRolePolicyDocument="{}",
             Path="/",
         )
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     name = "test-cluster-1"
     try:
         client.create_cluster(
@@ -43,8 +45,8 @@ def cluster_name(client):
             roleArn="arn:aws:iam::123456789012:role/eks-test-role",
             resourcesVpcConfig={"subnetIds": ["subnet-12345"], "securityGroupIds": ["sg-12345"]},
         )
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     yield name
 
 

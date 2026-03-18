@@ -354,8 +354,8 @@ class DockerLambdaExecutor:
                     error_obj = json.loads(stdout)
                     if isinstance(error_obj, dict) and "errorMessage" in error_obj:
                         return error_obj, "Handled", logs
-                except json.JSONDecodeError:
-                    pass  # stdout isn't JSON; fall through to generic error
+                except json.JSONDecodeError as e:
+                    logger.debug("stdout isn't JSON, falling through to generic error: %s", e)
             return (
                 {
                     "errorMessage": stdout or "Function execution failed",
@@ -384,8 +384,8 @@ class DockerLambdaExecutor:
                 capture_output=True,
                 timeout=10,
             )
-        except Exception:  # noqa: BLE001
-            pass  # Best-effort cleanup; container may already be gone
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Container removal skipped (best-effort, may already be gone): %s", e)
 
     def _execute_local_fallback(
         self,

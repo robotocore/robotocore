@@ -1,5 +1,7 @@
 """Resource lifecycle tests for iot (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -61,8 +63,8 @@ def test_audit_suppression_lifecycle(client):
     # Cleanup in case of previous test run leaving state
     try:
         client.delete_audit_suppression(checkName="test-name-1", resourceIdentifier=ri)
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     # CREATE
     client.create_audit_suppression(
         checkName="test-name-1",
@@ -976,8 +978,8 @@ def test_package_version_lifecycle(client):
     # Pre-cleanup + create package prerequisite
     try:
         client.delete_package(packageName="test-pkg-for-version")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_package(packageName="test-pkg-for-version")
     # CREATE
     create_resp = client.create_package_version(
@@ -1100,8 +1102,8 @@ def test_policy_version_lifecycle(client):
     # Pre-cleanup + create policy prerequisite
     try:
         client.delete_policy(policyName="test-policy-for-version")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_policy(
         policyName="test-policy-for-version",
         policyDocument='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iot:*","Resource":"*"}]}',
@@ -1225,8 +1227,8 @@ def test_provisioning_template_version_lifecycle(client):
     # Pre-cleanup + create provisioning template prerequisite
     try:
         client.delete_provisioning_template(templateName="test-tmpl-for-version")
-    except ClientError:
-        pass
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     client.create_provisioning_template(
         templateName="test-tmpl-for-version",
         templateBody='{"Parameters":{},"Resources":{}}',

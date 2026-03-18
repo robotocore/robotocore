@@ -390,8 +390,8 @@ class ASLExecutor:
 
         try:
             self._dispatch_task(resource, input_with_token)
-        except Exception:  # noqa: BLE001
-            pass  # For callback, we don't fail on dispatch errors
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Task dispatch error (non-fatal for callback pattern): %s", e)
 
         # Wait for callback with heartbeat checking
         if heartbeat_seconds and heartbeat_seconds > 0:

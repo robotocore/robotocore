@@ -1,5 +1,7 @@
 """Resource lifecycle tests for connect (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -28,8 +30,8 @@ def instance_id(client):
     yield iid
     try:
         client.delete_instance(InstanceId=iid)
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_agent_status_lifecycle(client, instance_id):

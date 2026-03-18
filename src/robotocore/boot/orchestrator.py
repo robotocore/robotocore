@@ -227,8 +227,8 @@ class BootOrchestrator:
                     status.state = ComponentState.HEALTHY
                     status.ready_at = time.monotonic()
                     return True
-            except Exception:  # noqa: BLE001
-                pass  # Health check failed, retry
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Health check attempt failed: %s", e)
 
             await asyncio.sleep(min(delay, max(0, deadline - time.monotonic())))
             delay = min(delay * 2, max_delay)

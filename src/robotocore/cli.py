@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -233,8 +234,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             version = data.get("version", "?")
             print(f"Version:    {version}")
             print(f"Services:   {svc_count}")
-        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-            pass  # Container running but not yet healthy
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
+            logging.debug("Container running but not yet healthy: %s", e)
 
     return 0
 
@@ -295,8 +296,8 @@ def cmd_wait(args: argparse.Namespace) -> int:
             if data.get("status") == "ok":
                 print("Robotocore is ready.")
                 return 0
-        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-            pass  # Server not ready yet, retry after sleep
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
+            logging.debug("Server not ready yet, retry after sleep: %s", e)
         time.sleep(1)
 
     print(f"Timed out after {timeout}s waiting for robotocore to become healthy.", file=sys.stderr)

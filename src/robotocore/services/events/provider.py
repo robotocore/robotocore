@@ -555,8 +555,8 @@ def _start_replay(store: EventsStore, params: dict, region: str, account_id: str
                 evt_epoch = evt_dt.timestamp()
                 if evt_epoch < start_time or evt_epoch >= end_time:
                     continue
-            except (ValueError, TypeError):
-                pass  # Can't parse time, include the event
+            except (ValueError, TypeError) as e:
+                logger.debug("Cannot parse event time, including event: %s", e)
         bus = store.get_bus(bus_name)
         if bus:
             for rule in bus.rules.values():
@@ -782,8 +782,8 @@ def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
 
         backend = get_backend("lambda")[account_id][region]
         backend.get_function(func_name)
-    except (ImportError, KeyError, TypeError):
-        pass  # Backend not available (e.g. unit tests) — skip check
+    except (ImportError, KeyError, TypeError) as e:
+        logger.debug("Lambda backend not available, skipping check: %s", e)
     except Exception:  # noqa: BLE001
         raise RuntimeError(f"Lambda function not found: {func_name}")
 
@@ -979,8 +979,8 @@ def _invoke_logs_target(arn: str, payload: str, region: str, account_id: str):
         # Create log group if not exists (best effort)
         try:
             logs_backend.create_log_group(log_group_name, {})
-        except Exception:  # noqa: BLE001
-            pass  # already exists
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Log group already exists or creation failed (non-fatal): %s", e)
 
         stream_name = f"eventbridge-{uuid.uuid4().hex[:8]}"
         try:

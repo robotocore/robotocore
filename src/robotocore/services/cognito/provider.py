@@ -164,8 +164,8 @@ def _sync_pool_to_moto(
         # Remove the auto-generated key and re-key with our ID
         backend.user_pools.pop(old_id, None)
         backend.user_pools[pool_id] = moto_pool
-    except Exception:  # noqa: BLE001
-        pass  # Best-effort: if Moto isn't available, native-only ops still work
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Moto sync skipped (best-effort, native-only ops still work): %s", e)
 
 
 def _sync_user_to_moto(

@@ -1,5 +1,7 @@
 """Resource lifecycle tests for backup (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -24,8 +26,8 @@ def vault_name(client):
     yield name
     try:
         client.delete_backup_vault(BackupVaultName=name)
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_backup_job_lifecycle(client, vault_name):

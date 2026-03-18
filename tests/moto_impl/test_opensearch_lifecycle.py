@@ -1,5 +1,7 @@
 """Resource lifecycle tests for opensearch (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -22,8 +24,8 @@ def domain_name(client):
     name = "test-domain-1"
     try:
         client.create_domain(DomainName=name)
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     yield name
 
 

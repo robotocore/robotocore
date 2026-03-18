@@ -1,6 +1,7 @@
 """Batch 5 lifecycle tests: Athena, Route53Resolver, DataBrew, OpenSearchServerless."""
 
 import json
+import logging
 
 import boto3
 import pytest
@@ -63,8 +64,8 @@ def firewall_rule_group_arn(r53r_client):
     yield arn
     try:
         r53r_client.delete_firewall_rule_group(FirewallRuleGroupId=resp["FirewallRuleGroup"]["Id"])
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_r53r_firewall_rule_group_policy(r53r_client, firewall_rule_group_arn):
@@ -124,8 +125,8 @@ def test_databrew_project_lifecycle(databrew_client):
     finally:
         try:
             databrew_client.delete_dataset(Name="test-ds-b5")
-        except ClientError:
-            pass  # best-effort cleanup
+        except ClientError as e:
+            logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_databrew_project_not_found(databrew_client):
@@ -195,12 +196,12 @@ def oss_collection_id(oss_client):
     yield coll_id
     try:
         oss_client.delete_collection(id=coll_id)
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     try:
         oss_client.delete_security_policy(name="test-enc-b5", type="encryption")
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_oss_index_lifecycle(oss_client, oss_collection_id):

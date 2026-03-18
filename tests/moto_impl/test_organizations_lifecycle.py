@@ -1,5 +1,7 @@
 """Resource lifecycle tests for organizations (auto-generated)."""
 
+import logging
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -23,8 +25,8 @@ def org(client):
     yield resp["Organization"]
     try:
         client.delete_organization()
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_organization_lifecycle(client):

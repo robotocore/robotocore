@@ -13,10 +13,13 @@ Supports:
 - Built-in functions: topic(), timestamp(), clientid()
 """
 
+import logging
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -324,13 +327,13 @@ def _coerce_types(left: Any, right: Any) -> tuple[Any, Any]:
     if isinstance(left, (int, float)) and isinstance(right, str):
         try:
             right = float(right) if "." in right else int(right)
-        except (ValueError, TypeError):
-            pass  # best-effort; failures are non-fatal
+        except (ValueError, TypeError) as e:
+            logger.debug("Type coercion skipped (best-effort): %s", e)
     elif isinstance(right, (int, float)) and isinstance(left, str):
         try:
             left = float(left) if "." in left else int(left)
-        except (ValueError, TypeError):
-            pass  # best-effort; failures are non-fatal
+        except (ValueError, TypeError) as e:
+            logger.debug("Type coercion skipped (best-effort): %s", e)
     return left, right
 
 

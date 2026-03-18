@@ -8,6 +8,7 @@ ECS: DescribeServiceDeployments, ListServiceDeployments, DescribeServiceRevision
 """
 
 import json
+import logging
 
 import boto3
 import pytest
@@ -39,8 +40,8 @@ def state_machine_arn(sfn_client):
             AssumeRolePolicyDocument="{}",
             Path="/",
         )
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
     sm = sfn_client.create_state_machine(
         name="test-sm-alias",
         definition=json.dumps(
@@ -56,8 +57,8 @@ def state_machine_arn(sfn_client):
     yield sm_arn
     try:
         sfn_client.delete_state_machine(stateMachineArn=sm["stateMachineArn"])
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_state_machine_alias_lifecycle(sfn_client, state_machine_arn):
@@ -123,8 +124,8 @@ def ddb_table(ddb_client):
     yield table_name
     try:
         ddb_client.delete_table(TableName=table_name)
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_describe_contributor_insights(ddb_client, ddb_table):
@@ -232,8 +233,8 @@ def ecs_service(ecs_client):
             force=True,
         )
         ecs_client.delete_cluster(cluster=cluster_name)
-    except ClientError:
-        pass  # best-effort cleanup
+    except ClientError as e:
+        logging.debug("pre-cleanup skipped: %s", e)
 
 
 def test_list_service_deployments(ecs_client, ecs_service):

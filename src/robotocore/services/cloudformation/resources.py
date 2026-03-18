@@ -908,8 +908,8 @@ def _create_ec2_security_group(resource: CfnResource, region: str, account_id: s
                 str(rule.get("ToPort", 0)),
                 ip_ranges,
             )
-        except Exception:  # noqa: BLE001
-            pass  # Duplicate rules are OK
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Duplicate security group rule skipped (non-fatal): %s", e)
 
     resource.status = "CREATE_COMPLETE"
 
@@ -1351,8 +1351,8 @@ def _create_apigw_method(resource: CfnResource, region: str, account_id: str) ->
         int_method = integration.get("IntegrationHttpMethod", "POST")
         try:
             apigw.put_integration(rest_api_id, resource_id, http_method, int_type, uri, int_method)
-        except Exception:  # noqa: BLE001
-            pass  # Integration setup is best-effort
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Integration setup skipped (best-effort): %s", e)
 
     pid = f"{rest_api_id}/{resource_id}/{http_method}"
     resource.physical_id = pid
