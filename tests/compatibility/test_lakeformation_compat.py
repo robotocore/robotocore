@@ -726,6 +726,44 @@ class TestLakeFormationDataCellsFilterCRUD:
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
+class TestLakeFormationLFTagExpressions:
+    """Tests for LFTagExpression operations: ListLFTagExpressions, GetLFTagExpression."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_list_lf_tag_expressions_empty(self, client):
+        """ListLFTagExpressions returns a response with LFTagExpressions list."""
+        resp = client.list_lf_tag_expressions()
+        assert "LFTagExpressions" in resp
+        assert isinstance(resp["LFTagExpressions"], list)
+
+    def test_get_lf_tag_expression_not_found(self, client):
+        """GetLFTagExpression raises EntityNotFoundException for nonexistent expression."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.get_lf_tag_expression(Name="nonexistent-expression-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestLakeFormationIdentityCenter:
+    """Tests for DescribeLakeFormationIdentityCenterConfiguration."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_describe_identity_center_configuration_not_found(self, client):
+        """DescribeLakeFormationIdentityCenterConfiguration raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.describe_lake_formation_identity_center_configuration()
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
 class TestLakeFormationLFTags:
     """Tests for LF Tag full lifecycle and resource tagging."""
 
