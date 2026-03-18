@@ -1485,3 +1485,54 @@ class TestOpenSearchNewOps2:
                 ReservationName="test-reservation",
                 InstanceCount=1,
             )
+
+
+class TestOpenSearchDataSourceOps:
+    """Tests for DataSource operations on OpenSearch domains."""
+
+    @pytest.fixture
+    def opensearch(self):
+        return make_client("opensearch")
+
+    def test_add_data_source_nonexistent_domain(self, opensearch):
+        """AddDataSource with non-existent domain raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.add_data_source(
+                DomainName="fake-domain-ds-test",
+                Name="my-data-source",
+                DataSourceType={
+                    "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
+                },
+            )
+
+    def test_delete_data_source_nonexistent_domain(self, opensearch):
+        """DeleteDataSource with non-existent domain raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.delete_data_source(
+                DomainName="fake-domain-ds-test",
+                Name="my-data-source",
+            )
+
+    def test_get_data_source_nonexistent_domain(self, opensearch):
+        """GetDataSource with non-existent domain raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.get_data_source(
+                DomainName="fake-domain-ds-test",
+                Name="my-data-source",
+            )
+
+    def test_list_data_sources_nonexistent_domain(self, opensearch):
+        """ListDataSources with non-existent domain raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.list_data_sources(DomainName="fake-domain-ds-test")
+
+    def test_update_data_source_nonexistent_domain(self, opensearch):
+        """UpdateDataSource with non-existent domain raises ResourceNotFoundException."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.update_data_source(
+                DomainName="fake-domain-ds-test",
+                Name="my-data-source",
+                DataSourceType={
+                    "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
+                },
+            )
