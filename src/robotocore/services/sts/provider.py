@@ -5,11 +5,14 @@ Intercepts operations Moto doesn't support:
 - AssumeRole policy size validation
 - AssumeRoleWithSAML (skips SAML XML validation)
 - DecodeAuthorizationMessage
+- GetWebIdentityToken (moto's response class uses missing _get_multi_param)
 
 Delegates everything else to Moto via forward_to_moto.
 Uses query protocol (Action parameter).
 """
 
+import base64
+import hashlib
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -25,6 +28,10 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 MAX_PACKED_POLICY_SIZE = 2048
 MIN_DURATION_SECONDS = 900
 MAX_DURATION_SECONDS = 43200
+WIT_MIN_DURATION = 60
+WIT_MAX_DURATION = 3600
+WIT_DEFAULT_DURATION = 300
+VALID_SIGNING_ALGORITHMS = ("RS256", "ES384")
 
 
 def _new_request_id() -> str:
@@ -59,6 +66,9 @@ async def handle_sts_request(request: Request, region: str, account_id: str) -> 
 
     if action == "AssumeRoleWithSAML":
         return _assume_role_with_saml(params, account_id)
+
+    if action == "GetWebIdentityToken":
+        return _get_web_identity_token(parsed, account_id)
 
     return await forward_to_moto_with_body(request, "sts", body, account_id=account_id)
 
@@ -201,6 +211,129 @@ def _assume_role_with_saml(params: dict, account_id: str) -> Response:
         f"<RequestId>{request_id}</RequestId>"
         "</ResponseMetadata>"
         "</AssumeRoleWithSAMLResponse>"
+    )
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _extract_audiences(parsed: dict[str, list[str]]) -> list[str] | Response:
+    """Extract Audience.member.N values from raw query params."""
+    audiences: list[str] = []
+    for key, vals in parsed.items():
+        if key.startswith("Audience.member."):
+            audiences.extend(vals)
+    if not audiences:
+        return _missing_param_response("Audience")
+    if len(audiences) > 10:
+        return _error_response(
+            "ValidationError",
+            "Value at 'audience' failed to satisfy constraint: "
+            "Member must have length less than or equal to 10",
+            400,
+        )
+    return audiences
+
+
+def _validate_signing_algorithm(parsed: dict[str, list[str]]) -> str | Response:
+    """Validate and return the SigningAlgorithm parameter."""
+    algo_vals = parsed.get("SigningAlgorithm", [])
+    algo = algo_vals[0] if algo_vals else ""
+    if not algo:
+        return _missing_param_response("SigningAlgorithm")
+    if algo not in VALID_SIGNING_ALGORITHMS:
+        return _error_response(
+            "ValidationError",
+            f"Value '{algo}' at 'signingAlgorithm' failed to satisfy "
+            f"constraint: Member must satisfy enum value set: [RS256, ES384]",
+            400,
+        )
+    return algo
+
+
+def _validate_wit_duration(parsed: dict[str, list[str]]) -> int | Response:
+    """Validate DurationSeconds for GetWebIdentityToken (60-3600, default 300)."""
+    dur_vals = parsed.get("DurationSeconds", [])
+    raw = dur_vals[0] if dur_vals else str(WIT_DEFAULT_DURATION)
+    try:
+        duration = int(raw)
+    except (ValueError, TypeError):
+        return _error_response(
+            "ValidationError",
+            f"Value '{raw}' at 'durationSeconds' failed to satisfy constraint: "
+            f"Member must be a valid integer.",
+            400,
+        )
+    if duration < WIT_MIN_DURATION or duration > WIT_MAX_DURATION:
+        return _error_response(
+            "ValidationError",
+            f"Value '{duration}' at 'durationSeconds' failed to satisfy constraint: "
+            f"Member must have value between {WIT_MIN_DURATION} and {WIT_MAX_DURATION}.",
+            400,
+        )
+    return duration
+
+
+def _build_mock_jwt(
+    audiences: list[str],
+    signing_algorithm: str,
+    account_id: str,
+    issued_at: datetime,
+    expires_at: datetime,
+) -> str:
+    """Build a plausible mock JWT (header.payload.signature)."""
+
+    def _b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    header = {"alg": signing_algorithm, "typ": "JWT", "kid": uuid.uuid4().hex[:16]}
+    payload = {
+        "sub": f"arn:aws:iam::{account_id}:root",
+        "aud": audiences,
+        "iss": f"https://sts.amazonaws.com/{account_id}",
+        "iat": int(issued_at.timestamp()),
+        "exp": int(expires_at.timestamp()),
+        "jti": uuid.uuid4().hex,
+    }
+    h = _b64url(json.dumps(header, separators=(",", ":")).encode())
+    p = _b64url(json.dumps(payload, separators=(",", ":")).encode())
+    sig = _b64url(hashlib.sha256(f"{h}.{p}".encode()).digest())
+    return f"{h}.{p}.{sig}"
+
+
+def _get_web_identity_token(parsed: dict[str, list[str]], account_id: str) -> Response:
+    """GetWebIdentityToken -- return a mock signed JWT.
+
+    Uses ``parsed`` (raw parse_qs output with list values) because
+    Audience is a multi-value param (Audience.member.1, …).
+    """
+    audiences = _extract_audiences(parsed)
+    if isinstance(audiences, Response):
+        return audiences
+
+    algo = _validate_signing_algorithm(parsed)
+    if isinstance(algo, Response):
+        return algo
+
+    duration = _validate_wit_duration(parsed)
+    if isinstance(duration, Response):
+        return duration
+
+    now = datetime.now(UTC)
+    expiration = now + timedelta(seconds=duration)
+    exp_str = expiration.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+00:00"
+    token = _build_mock_jwt(audiences, algo, account_id, now, expiration)
+
+    request_id = _new_request_id()
+    xml = (
+        "<GetWebIdentityTokenResponse "
+        'xmlns="https://sts.amazonaws.com/doc/2011-06-15/">'
+        "<GetWebIdentityTokenResult>"
+        f"<WebIdentityToken>{xml_escape(token)}</WebIdentityToken>"
+        f"<Expiration>{xml_escape(exp_str)}</Expiration>"
+        "</GetWebIdentityTokenResult>"
+        "<ResponseMetadata>"
+        f"<RequestId>{request_id}</RequestId>"
+        "</ResponseMetadata>"
+        "</GetWebIdentityTokenResponse>"
     )
     return Response(content=xml, status_code=200, media_type="text/xml")
 

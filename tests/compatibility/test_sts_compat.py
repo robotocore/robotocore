@@ -662,6 +662,135 @@ class TestSTSExtended:
             iam.delete_role(RoleName=role_name)
 
 
+class TestSTSGetWebIdentityToken:
+    """Tests for the GetWebIdentityToken operation (IAM Outbound Identity Federation)."""
+
+    def test_get_web_identity_token_basic(self, sts):
+        """GetWebIdentityToken returns a token and expiration."""
+        response = sts.get_web_identity_token(
+            Audience=["gitops-promoter"],
+            SigningAlgorithm="ES384",
+        )
+        assert "WebIdentityToken" in response
+        assert "Expiration" in response
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_web_identity_token_rs256(self, sts):
+        """GetWebIdentityToken accepts RS256 signing algorithm."""
+        response = sts.get_web_identity_token(
+            Audience=["my-app"],
+            SigningAlgorithm="RS256",
+        )
+        assert "WebIdentityToken" in response
+        assert len(response["WebIdentityToken"]) > 0
+
+    def test_get_web_identity_token_with_duration(self, sts):
+        """GetWebIdentityToken respects DurationSeconds."""
+        response = sts.get_web_identity_token(
+            Audience=["my-app"],
+            SigningAlgorithm="ES384",
+            DurationSeconds=60,
+        )
+        assert "WebIdentityToken" in response
+        assert "Expiration" in response
+
+    def test_get_web_identity_token_multiple_audiences(self, sts):
+        """GetWebIdentityToken accepts multiple audience values."""
+        response = sts.get_web_identity_token(
+            Audience=["aud-1", "aud-2", "aud-3"],
+            SigningAlgorithm="RS256",
+        )
+        assert "WebIdentityToken" in response
+
+    def test_get_web_identity_token_is_jwt_format(self, sts):
+        """Token has three dot-separated parts (JWT header.payload.signature)."""
+        response = sts.get_web_identity_token(
+            Audience=["test"],
+            SigningAlgorithm="ES384",
+        )
+        token = response["WebIdentityToken"]
+        parts = token.split(".")
+        assert len(parts) == 3, f"Expected 3 JWT parts, got {len(parts)}"
+
+    def test_get_web_identity_token_expiration_is_datetime(self, sts):
+        """Expiration is parsed as a datetime by botocore."""
+        import datetime
+
+        response = sts.get_web_identity_token(
+            Audience=["test"],
+            SigningAlgorithm="RS256",
+        )
+        assert isinstance(response["Expiration"], datetime.datetime)
+
+    def test_get_web_identity_token_max_duration(self, sts):
+        """GetWebIdentityToken with max duration (3600s)."""
+        response = sts.get_web_identity_token(
+            Audience=["test"],
+            SigningAlgorithm="ES384",
+            DurationSeconds=3600,
+        )
+        assert "WebIdentityToken" in response
+
+    def test_put_role_policy_with_get_web_identity_token_action(self, sts):
+        """IAM PutRolePolicy accepts sts:GetWebIdentityToken as a valid action."""
+        iam = make_client("iam")
+        role_name = f"wit-pol-role-{uuid.uuid4().hex[:8]}"
+        trust_policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=trust_policy,
+        )
+        try:
+            policy_doc = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowCallGitopsPromoter",
+                            "Effect": "Allow",
+                            "Action": ["sts:GetWebIdentityToken"],
+                            "Resource": "*",
+                            "Condition": {
+                                "NumericLessThanEquals": {"sts:DurationSeconds": "60"},
+                                "StringEquals": {
+                                    "sts:SigningAlgorithm": "ES384",
+                                    "sts:IdentityTokenAudience": "gitops-promoter",
+                                },
+                            },
+                        }
+                    ],
+                }
+            )
+            iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName="wit-policy",
+                PolicyDocument=policy_doc,
+            )
+            # Verify it was stored
+            resp = iam.get_role_policy(
+                RoleName=role_name,
+                PolicyName="wit-policy",
+            )
+            assert resp["PolicyName"] == "wit-policy"
+        finally:
+            try:
+                iam.delete_role_policy(RoleName=role_name, PolicyName="wit-policy")
+            except Exception:
+                pass
+            iam.delete_role(RoleName=role_name)
+
+
 class TestSTSAdditionalOps:
     """Additional STS operations."""
 
