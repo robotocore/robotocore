@@ -316,6 +316,68 @@ class TestDataSyncAgentOperations:
         assert "Status" in desc
 
 
+class TestDataSyncAgentUpdateDeleteOperations:
+    """Tests for DataSync Agent UpdateAgent and DeleteAgent operations."""
+
+    def test_update_agent(self, datasync):
+        """UpdateAgent changes the agent's name."""
+        create_resp = datasync.create_agent(
+            ActivationKey="AAAAA-BBBBB-CCCCC-DDDDD-UUUUU",
+            AgentName=_unique("upd-agent"),
+        )
+        agent_arn = create_resp["AgentArn"]
+
+        datasync.update_agent(AgentArn=agent_arn, Name="updated-agent-name")
+
+        desc = datasync.describe_agent(AgentArn=agent_arn)
+        assert desc["Name"] == "updated-agent-name"
+
+    def test_delete_agent(self, datasync):
+        """DeleteAgent removes the agent; DescribeAgent raises InvalidRequestException."""
+        create_resp = datasync.create_agent(
+            ActivationKey="AAAAA-BBBBB-CCCCC-DDDDD-VVVVV",
+            AgentName=_unique("del-agent"),
+        )
+        agent_arn = create_resp["AgentArn"]
+
+        datasync.delete_agent(AgentArn=agent_arn)
+
+        with pytest.raises(ClientError) as exc:
+            datasync.describe_agent(AgentArn=agent_arn)
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_delete_agent_removes_from_list(self, datasync):
+        """DeleteAgent causes the agent to no longer appear in ListAgents."""
+        create_resp = datasync.create_agent(
+            ActivationKey="AAAAA-BBBBB-CCCCC-DDDDD-WWWWW",
+            AgentName=_unique("dellist-agent"),
+        )
+        agent_arn = create_resp["AgentArn"]
+
+        datasync.delete_agent(AgentArn=agent_arn)
+
+        list_resp = datasync.list_agents()
+        arns = [a["AgentArn"] for a in list_resp["Agents"]]
+        assert agent_arn not in arns
+
+    def test_update_agent_nonexistent(self, datasync):
+        """UpdateAgent for nonexistent agent raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.update_agent(
+                AgentArn="arn:aws:datasync:us-east-1:123456789012:agent/agent-00000000000000000",
+                Name="new-name",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+    def test_delete_agent_nonexistent(self, datasync):
+        """DeleteAgent for nonexistent agent raises InvalidRequestException."""
+        with pytest.raises(ClientError) as exc:
+            datasync.delete_agent(
+                AgentArn="arn:aws:datasync:us-east-1:123456789012:agent/agent-00000000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+
 class TestDataSyncLocationAzureBlobOperations:
     """Tests for DataSync Azure Blob location operations."""
 
