@@ -2086,3 +2086,31 @@ class TestBackupAdditionalOperations:
             )
         finally:
             backup.delete_backup_vault(BackupVaultName=vault_name)
+
+
+class TestBackupScanJobOperations:
+    def test_list_scan_jobs_returns_key(self, backup):
+        """ListScanJobs returns a ScanJobs list key."""
+        resp = backup.list_scan_jobs()
+        assert "ScanJobs" in resp
+
+    def test_describe_scan_job_not_found(self, backup):
+        """DescribeScanJob with fake ID returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            backup.describe_scan_job(ScanJobId="fake-scan-job-id-00000000")
+        err = exc_info.value.response["Error"]
+        assert err["Code"] in ("ResourceNotFoundException", "NotFoundException")
+
+
+class TestBackupTieringConfigurationOperations:
+    def test_list_tiering_configurations_returns_key(self, backup):
+        """ListTieringConfigurations returns a TieringConfigurations list key."""
+        resp = backup.list_tiering_configurations()
+        assert "TieringConfigurations" in resp
+
+    def test_get_tiering_configuration_not_found(self, backup):
+        """GetTieringConfiguration with fake name returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            backup.get_tiering_configuration(TieringConfigurationName="nonexistent-tiering-cfg")
+        err = exc_info.value.response["Error"]
+        assert err["Code"] in ("ResourceNotFoundException", "NotFoundException")
