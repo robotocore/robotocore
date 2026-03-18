@@ -1002,7 +1002,10 @@ class TestOrganizationsResourcePolicy:
         original = '{"Version":"2012-10-17","Statement":[]}'
         orgs.put_resource_policy(Content=original)
 
-        updated = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"organizations:*","Resource":"*"}]}'
+        updated = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":"*","Action":"organizations:*","Resource":"*"}]}'
+        )
         put_resp = orgs.put_resource_policy(Content=updated)
         assert put_resp["ResourcePolicy"]["Content"] == updated
 
