@@ -1055,10 +1055,10 @@ class TestStepFunctionsMapRun:
         return make_client("stepfunctions")
 
     def test_describe_map_run(self, sfn):
-        """DescribeMapRun accepts a mapRunArn and returns 200."""
+        """DescribeMapRun raises ExecutionDoesNotExist for an unknown mapRunArn."""
         fake_arn = "arn:aws:states:us-east-1:123456789012:mapRun:my-sm/exec-id:map-run-id"
-        resp = sfn.describe_map_run(mapRunArn=fake_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        with pytest.raises(sfn.exceptions.ExecutionDoesNotExist):
+            sfn.describe_map_run(mapRunArn=fake_arn)
 
     def test_update_map_run(self, sfn):
         """UpdateMapRun accepts a mapRunArn and maxConcurrency, returns 200."""
