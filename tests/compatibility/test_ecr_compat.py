@@ -1059,3 +1059,15 @@ class TestECRLifecyclePolicyPreview:
             assert "previewResults" in resp
         finally:
             ecr.delete_repository(repositoryName=repo_name, force=True)
+
+
+class TestECRSigningConfiguration:
+    """Tests for ECR signing configuration operations."""
+
+    def test_get_signing_configuration(self, ecr):
+        """GetSigningConfiguration returns registry signing config."""
+        resp = ecr.get_signing_configuration()
+        assert "registryId" in resp
+        assert "signingConfiguration" in resp
+        assert "rules" in resp["signingConfiguration"]
+        assert isinstance(resp["signingConfiguration"]["rules"], list)
