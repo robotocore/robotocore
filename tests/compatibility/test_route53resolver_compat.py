@@ -903,3 +903,194 @@ class TestRoute53ResolverQueryLogConfigCleanup:
         assoc = resp["ResolverQueryLogConfigAssociation"]
         assert assoc["ResolverQueryLogConfigId"] == qlc_id
         assert assoc["ResourceId"] == vpc_id
+
+
+class TestRoute53ResolverRuleUpdate:
+    """Tests for UpdateResolverRule operation."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_update_resolver_rule(self, resolver):
+        uid = _uid()
+        create = resolver.create_resolver_rule(
+            CreatorRequestId=uid,
+            Name=f"upd-rule-{uid}",
+            RuleType="SYSTEM",
+            DomainName=f"update-{uid}.example.com.",
+        )
+        rule_id = create["ResolverRule"]["Id"]
+        new_name = f"renamed-rule-{uid}"
+        try:
+            resp = resolver.update_resolver_rule(
+                ResolverRuleId=rule_id,
+                Config={"Name": new_name},
+            )
+            assert resp["ResolverRule"]["Id"] == rule_id
+            assert resp["ResolverRule"]["Name"] == new_name
+        finally:
+            resolver.delete_resolver_rule(ResolverRuleId=rule_id)
+
+
+class TestRoute53ResolverRulePolicy:
+    """Tests for Put/Get ResolverRulePolicy operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_put_resolver_rule_policy(self, resolver):
+        uid = _uid()
+        create = resolver.create_resolver_rule(
+            CreatorRequestId=uid,
+            Name=f"policy-rule-{uid}",
+            RuleType="SYSTEM",
+            DomainName=f"policy-{uid}.example.com.",
+        )
+        rule_arn = create["ResolverRule"]["Arn"]
+        rule_id = create["ResolverRule"]["Id"]
+        policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
+            '"Action":["route53resolver:GetResolverRule","route53resolver:AssociateResolverRule",'
+            '"route53resolver:ListResolverRules"],'
+            f'"Resource":"{rule_arn}"}}]}}'
+        )
+        try:
+            resp = resolver.put_resolver_rule_policy(Arn=rule_arn, ResolverRulePolicy=policy)
+            assert resp["ReturnValue"] is True
+        finally:
+            resolver.delete_resolver_rule(ResolverRuleId=rule_id)
+
+    def test_get_resolver_rule_policy(self, resolver):
+        uid = _uid()
+        create = resolver.create_resolver_rule(
+            CreatorRequestId=uid,
+            Name=f"get-policy-rule-{uid}",
+            RuleType="SYSTEM",
+            DomainName=f"get-policy-{uid}.example.com.",
+        )
+        rule_arn = create["ResolverRule"]["Arn"]
+        rule_id = create["ResolverRule"]["Id"]
+        policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
+            '"Action":"route53resolver:GetResolverRule",'
+            f'"Resource":"{rule_arn}"}}]}}'
+        )
+        try:
+            resolver.put_resolver_rule_policy(Arn=rule_arn, ResolverRulePolicy=policy)
+            resp = resolver.get_resolver_rule_policy(Arn=rule_arn)
+            assert "ResolverRulePolicy" in resp
+            assert len(resp["ResolverRulePolicy"]) > 0
+        finally:
+            resolver.delete_resolver_rule(ResolverRuleId=rule_id)
+
+
+class TestRoute53ResolverFirewallRuleGroupPolicy:
+    """Tests for Put/Get FirewallRuleGroupPolicy operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_put_firewall_rule_group_policy(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"policy-frg-{uid}",
+        )
+        frg_arn = create["FirewallRuleGroup"]["Arn"]
+        frg_id = create["FirewallRuleGroup"]["Id"]
+        policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
+            '"Action":"route53resolver:AssociateFirewallRuleGroup",'
+            f'"Resource":"{frg_arn}"}}]}}'
+        )
+        try:
+            resp = resolver.put_firewall_rule_group_policy(
+                Arn=frg_arn, FirewallRuleGroupPolicy=policy
+            )
+            assert resp["ReturnValue"] is True
+        finally:
+            resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+
+    def test_get_firewall_rule_group_policy(self, resolver):
+        uid = _uid()
+        create = resolver.create_firewall_rule_group(
+            CreatorRequestId=uid,
+            Name=f"get-policy-frg-{uid}",
+        )
+        frg_arn = create["FirewallRuleGroup"]["Arn"]
+        frg_id = create["FirewallRuleGroup"]["Id"]
+        policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
+            '"Action":"route53resolver:AssociateFirewallRuleGroup",'
+            f'"Resource":"{frg_arn}"}}]}}'
+        )
+        try:
+            resolver.put_firewall_rule_group_policy(Arn=frg_arn, FirewallRuleGroupPolicy=policy)
+            resp = resolver.get_firewall_rule_group_policy(Arn=frg_arn)
+            assert "FirewallRuleGroupPolicy" in resp
+            assert len(resp["FirewallRuleGroupPolicy"]) > 0
+        finally:
+            resolver.delete_firewall_rule_group(FirewallRuleGroupId=frg_id)
+
+
+class TestRoute53ResolverQueryLogConfigPolicy:
+    """Tests for Put/Get ResolverQueryLogConfigPolicy operations."""
+
+    @pytest.fixture
+    def resolver(self):
+        return make_client("route53resolver")
+
+    def test_put_resolver_query_log_config_policy(self, resolver):
+        uid = _uid()
+        create = resolver.create_resolver_query_log_config(
+            Name=f"policy-qlc-{uid}",
+            DestinationArn=f"arn:aws:s3:::policy-bucket-{uid}",
+            CreatorRequestId=uid,
+        )
+        qlc_arn = create["ResolverQueryLogConfig"]["Arn"]
+        qlc_id = create["ResolverQueryLogConfig"]["Id"]
+        policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
+            '"Action":"route53resolver:AssociateResolverQueryLogConfig",'
+            f'"Resource":"{qlc_arn}"}}]}}'
+        )
+        try:
+            resp = resolver.put_resolver_query_log_config_policy(
+                Arn=qlc_arn, ResolverQueryLogConfigPolicy=policy
+            )
+            assert resp["ReturnValue"] is True
+        finally:
+            resolver.delete_resolver_query_log_config(ResolverQueryLogConfigId=qlc_id)
+
+    def test_get_resolver_query_log_config_policy(self, resolver):
+        uid = _uid()
+        create = resolver.create_resolver_query_log_config(
+            Name=f"get-policy-qlc-{uid}",
+            DestinationArn=f"arn:aws:s3:::get-policy-bucket-{uid}",
+            CreatorRequestId=uid,
+        )
+        qlc_arn = create["ResolverQueryLogConfig"]["Arn"]
+        qlc_id = create["ResolverQueryLogConfig"]["Id"]
+        policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
+            '"Action":"route53resolver:AssociateResolverQueryLogConfig",'
+            f'"Resource":"{qlc_arn}"}}]}}'
+        )
+        try:
+            resolver.put_resolver_query_log_config_policy(
+                Arn=qlc_arn, ResolverQueryLogConfigPolicy=policy
+            )
+            resp = resolver.get_resolver_query_log_config_policy(Arn=qlc_arn)
+            assert "ResolverQueryLogConfigPolicy" in resp
+            assert len(resp["ResolverQueryLogConfigPolicy"]) > 0
+        finally:
+            resolver.delete_resolver_query_log_config(ResolverQueryLogConfigId=qlc_id)
