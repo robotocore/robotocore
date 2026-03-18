@@ -289,6 +289,7 @@ def _handle_list_traffic_policies() -> Response:
 <ListTrafficPoliciesResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
   <TrafficPolicySummaries/>
   <IsTruncated>false</IsTruncated>
+  <TrafficPolicyIdMarker></TrafficPolicyIdMarker>
   <MaxItems>100</MaxItems>
 </ListTrafficPoliciesResponse>"""
     return Response(content=xml, status_code=200, media_type="text/xml")
