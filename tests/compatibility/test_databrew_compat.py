@@ -452,6 +452,146 @@ class TestDataBrewNotFound:
             databrew_client.publish_recipe(Name="nonexistent-recipe")
 
 
+@pytest.fixture
+def created_schedule(databrew_client):
+    """Create a schedule and clean up after the test."""
+    name = f"sched-{uuid.uuid4().hex[:8]}"
+    databrew_client.create_schedule(
+        Name=name,
+        CronExpression="cron(0 * * * ? *)",
+        JobNames=["placeholder-job"],
+    )
+    yield name
+    try:
+        databrew_client.delete_schedule(Name=name)
+    except Exception:
+        pass  # best-effort cleanup
+
+
+@pytest.fixture
+def created_project(databrew_client, created_dataset, created_recipe):
+    """Create a project and clean up after the test."""
+    name = f"proj-{uuid.uuid4().hex[:8]}"
+    databrew_client.create_project(
+        Name=name,
+        RecipeName=created_recipe,
+        DatasetName=created_dataset,
+        RoleArn="arn:aws:iam::123456789012:role/test-role",
+        Sample={"Type": "FIRST_N", "Size": 500},
+    )
+    yield name
+    try:
+        databrew_client.delete_project(Name=name)
+    except Exception:
+        pass  # best-effort cleanup
+
+
+class TestDataBrewSchedules:
+    def test_create_schedule(self, databrew_client):
+        name = f"sched-{uuid.uuid4().hex[:8]}"
+        resp = databrew_client.create_schedule(
+            Name=name,
+            CronExpression="cron(0 * * * ? *)",
+            JobNames=["placeholder-job"],
+        )
+        assert resp["Name"] == name
+        databrew_client.delete_schedule(Name=name)
+
+    def test_list_schedules(self, databrew_client):
+        resp = databrew_client.list_schedules()
+        assert "Schedules" in resp
+        assert isinstance(resp["Schedules"], list)
+
+    def test_describe_schedule(self, databrew_client, created_schedule):
+        resp = databrew_client.describe_schedule(Name=created_schedule)
+        assert resp["Name"] == created_schedule
+        assert "CronExpression" in resp
+
+    def test_update_schedule(self, databrew_client, created_schedule):
+        resp = databrew_client.update_schedule(
+            Name=created_schedule,
+            CronExpression="cron(0 1 * * ? *)",
+            JobNames=["updated-job"],
+        )
+        assert resp["Name"] == created_schedule
+
+    def test_delete_schedule(self, databrew_client):
+        name = f"sched-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_schedule(
+            Name=name,
+            CronExpression="cron(0 * * * ? *)",
+            JobNames=["placeholder-job"],
+        )
+        resp = databrew_client.delete_schedule(Name=name)
+        assert resp["Name"] == name
+        with pytest.raises(Exception):
+            databrew_client.describe_schedule(Name=name)
+
+    def test_created_schedule_appears_in_list(self, databrew_client, created_schedule):
+        resp = databrew_client.list_schedules()
+        names = [s["Name"] for s in resp["Schedules"]]
+        assert created_schedule in names
+
+
+class TestDataBrewProjects:
+    def test_create_project(self, databrew_client, created_dataset, created_recipe):
+        name = f"proj-{uuid.uuid4().hex[:8]}"
+        resp = databrew_client.create_project(
+            Name=name,
+            RecipeName=created_recipe,
+            DatasetName=created_dataset,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            Sample={"Type": "FIRST_N", "Size": 500},
+        )
+        assert resp["Name"] == name
+        databrew_client.delete_project(Name=name)
+
+    def test_list_projects(self, databrew_client):
+        resp = databrew_client.list_projects()
+        assert "Projects" in resp
+        assert isinstance(resp["Projects"], list)
+
+    def test_describe_project(self, databrew_client, created_project):
+        resp = databrew_client.describe_project(Name=created_project)
+        assert resp["Name"] == created_project
+        assert "RoleArn" in resp
+
+    def test_update_project(self, databrew_client, created_project):
+        resp = databrew_client.update_project(
+            Name=created_project,
+            RoleArn="arn:aws:iam::123456789012:role/updated-role",
+            Sample={"Type": "FIRST_N", "Size": 100},
+        )
+        assert resp["Name"] == created_project
+
+    def test_delete_project(self, databrew_client, created_dataset, created_recipe):
+        name = f"proj-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_project(
+            Name=name,
+            RecipeName=created_recipe,
+            DatasetName=created_dataset,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            Sample={"Type": "FIRST_N", "Size": 500},
+        )
+        resp = databrew_client.delete_project(Name=name)
+        assert resp["Name"] == name
+        with pytest.raises(Exception):
+            databrew_client.describe_project(Name=name)
+
+    def test_created_project_appears_in_list(self, databrew_client, created_project):
+        resp = databrew_client.list_projects()
+        names = [p["Name"] for p in resp["Projects"]]
+        assert created_project in names
+
+    def test_describe_project_not_found(self, databrew_client):
+        with pytest.raises(databrew_client.exceptions.ResourceNotFoundException):
+            databrew_client.describe_project(Name="nonexistent-project")
+
+    def test_delete_project_not_found(self, databrew_client):
+        with pytest.raises(databrew_client.exceptions.ResourceNotFoundException):
+            databrew_client.delete_project(Name="nonexistent-project")
+
+
 class TestDatabrewAutoCoverage:
     """Auto-generated coverage tests for databrew."""
 
