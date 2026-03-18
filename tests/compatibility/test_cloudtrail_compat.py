@@ -1207,3 +1207,71 @@ class TestCloudTrailResourcePolicy:
         finally:
             cloudtrail.delete_trail(Name=trail)
             s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_resource_policy(self, cloudtrail, s3):
+        """DeleteResourcePolicy removes the resource policy for a trail ARN."""
+        import json
+
+        bucket = _unique("ct-drp-bucket")
+        trail = _unique("ct-drp-trail")
+        s3.create_bucket(Bucket=bucket)
+        try:
+            trail_resp = cloudtrail.create_trail(Name=trail, S3BucketName=bucket)
+            trail_arn = trail_resp["TrailARN"]
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "test-policy",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "cloudtrail.amazonaws.com"},
+                            "Action": "cloudtrail:CreateTrail",
+                            "Resource": trail_arn,
+                        }
+                    ],
+                }
+            )
+            cloudtrail.put_resource_policy(ResourceArn=trail_arn, ResourcePolicy=policy)
+            del_resp = cloudtrail.delete_resource_policy(ResourceArn=trail_arn)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            with pytest.raises(ClientError) as exc_info:
+                cloudtrail.get_resource_policy(ResourceArn=trail_arn)
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            cloudtrail.delete_trail(Name=trail)
+            s3.delete_bucket(Bucket=bucket)
+
+    def test_delete_resource_policy_nonexistent(self, cloudtrail):
+        """DeleteResourcePolicy for a nonexistent resource raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:cloudtrail:us-east-1:123456789012:trail/nonexistent-trail"
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.delete_resource_policy(ResourceArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCloudTrailDashboardList:
+    """Tests for ListDashboards operation."""
+
+    def test_list_dashboards_empty(self, cloudtrail):
+        """ListDashboards returns a Dashboards list (may be empty)."""
+        resp = cloudtrail.list_dashboards()
+        assert "Dashboards" in resp
+        assert isinstance(resp["Dashboards"], list)
+
+    def test_list_dashboards_response_structure(self, cloudtrail):
+        """ListDashboards response contains expected keys."""
+        resp = cloudtrail.list_dashboards()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Dashboards" in resp
+
+
+class TestCloudTrailImportGet:
+    """Tests for GetImport operation with nonexistent import ID."""
+
+    def test_get_import_nonexistent(self, cloudtrail):
+        """GetImport for a nonexistent import ID raises ImportNotFoundException."""
+        fake_import_id = str(uuid.uuid4())
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_import(ImportId=fake_import_id)
+        assert exc_info.value.response["Error"]["Code"] == "ImportNotFoundException"
