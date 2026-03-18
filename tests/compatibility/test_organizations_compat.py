@@ -974,3 +974,54 @@ class TestOrganizationsHandshakeOps:
         assert "Handshake" in resp
         assert resp["Handshake"]["State"] == "ACCEPTED"
         assert resp["Handshake"]["Id"] == handshake_id
+
+
+class TestOrganizationsResourcePolicy:
+    """Tests for ResourcePolicy CRUD operations."""
+
+    def test_put_and_describe_resource_policy(self, orgs):
+        """PutResourcePolicy creates a policy; DescribeResourcePolicy retrieves it."""
+        orgs.create_organization(FeatureSet="ALL")
+        content = '{"Version":"2012-10-17","Statement":[]}'
+        put_resp = orgs.put_resource_policy(Content=content)
+        assert "ResourcePolicy" in put_resp
+        summary = put_resp["ResourcePolicy"]["ResourcePolicySummary"]
+        assert "Id" in summary
+        assert summary["Id"].startswith("rp-")
+        assert "Arn" in summary
+        assert put_resp["ResourcePolicy"]["Content"] == content
+
+        desc_resp = orgs.describe_resource_policy()
+        assert "ResourcePolicy" in desc_resp
+        assert desc_resp["ResourcePolicy"]["ResourcePolicySummary"]["Id"] == summary["Id"]
+        assert desc_resp["ResourcePolicy"]["Content"] == content
+
+    def test_put_resource_policy_update(self, orgs):
+        """PutResourcePolicy can update the existing policy content."""
+        orgs.create_organization(FeatureSet="ALL")
+        original = '{"Version":"2012-10-17","Statement":[]}'
+        orgs.put_resource_policy(Content=original)
+
+        updated = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"organizations:*","Resource":"*"}]}'
+        put_resp = orgs.put_resource_policy(Content=updated)
+        assert put_resp["ResourcePolicy"]["Content"] == updated
+
+        desc_resp = orgs.describe_resource_policy()
+        assert desc_resp["ResourcePolicy"]["Content"] == updated
+
+    def test_delete_resource_policy(self, orgs):
+        """DeleteResourcePolicy removes the policy; subsequent describe raises error."""
+        orgs.create_organization(FeatureSet="ALL")
+        content = '{"Version":"2012-10-17","Statement":[]}'
+        orgs.put_resource_policy(Content=content)
+
+        orgs.delete_resource_policy()
+
+        with pytest.raises(orgs.exceptions.ResourcePolicyNotFoundException):
+            orgs.describe_resource_policy()
+
+    def test_describe_resource_policy_not_found(self, orgs):
+        """DescribeResourcePolicy raises ResourcePolicyNotFoundException when none exists."""
+        orgs.create_organization(FeatureSet="ALL")
+        with pytest.raises(orgs.exceptions.ResourcePolicyNotFoundException):
+            orgs.describe_resource_policy()
