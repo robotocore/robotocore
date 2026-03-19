@@ -1338,3 +1338,358 @@ class TestNeptuneFailoverDBCluster:
         finally:
             neptune.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
             neptune.delete_db_subnet_group(DBSubnetGroupName=sg_name)
+
+
+class TestNeptuneDBParameterGroupCRUD:
+    """Tests for Neptune DB parameter group create, copy, modify, delete."""
+
+    def test_create_and_describe_parameter_group(self, neptune):
+        name = _unique("npg")
+        resp = neptune.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="compat test",
+        )
+        assert resp["DBParameterGroup"]["DBParameterGroupName"] == name
+        assert resp["DBParameterGroup"]["DBParameterGroupFamily"] == "neptune1"
+
+        desc = neptune.describe_db_parameter_groups(DBParameterGroupName=name)
+        assert len(desc["DBParameterGroups"]) == 1
+        assert desc["DBParameterGroups"][0]["DBParameterGroupName"] == name
+
+        neptune.delete_db_parameter_group(DBParameterGroupName=name)
+
+    def test_describe_db_parameters(self, neptune):
+        name = _unique("npg-params")
+        neptune.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="params test",
+        )
+        try:
+            resp = neptune.describe_db_parameters(DBParameterGroupName=name)
+            assert "Parameters" in resp
+            assert isinstance(resp["Parameters"], list)
+        finally:
+            neptune.delete_db_parameter_group(DBParameterGroupName=name)
+
+    def test_copy_db_parameter_group(self, neptune):
+        src = _unique("npg-src")
+        tgt = _unique("npg-tgt")
+        neptune.create_db_parameter_group(
+            DBParameterGroupName=src,
+            DBParameterGroupFamily="neptune1",
+            Description="source",
+        )
+        try:
+            resp = neptune.copy_db_parameter_group(
+                SourceDBParameterGroupIdentifier=src,
+                TargetDBParameterGroupIdentifier=tgt,
+                TargetDBParameterGroupDescription="copy",
+            )
+            assert resp["DBParameterGroup"]["DBParameterGroupName"] == tgt
+            neptune.delete_db_parameter_group(DBParameterGroupName=tgt)
+        finally:
+            neptune.delete_db_parameter_group(DBParameterGroupName=src)
+
+    def test_modify_db_parameter_group(self, neptune):
+        name = _unique("npg-mod")
+        neptune.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="modify test",
+        )
+        try:
+            resp = neptune.modify_db_parameter_group(
+                DBParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "neptune_enable_audit_log",
+                        "ParameterValue": "1",
+                        "ApplyMethod": "pending-reboot",
+                    }
+                ],
+            )
+            assert resp["DBParameterGroupName"] == name
+        finally:
+            neptune.delete_db_parameter_group(DBParameterGroupName=name)
+
+
+class TestNeptuneDBClusterParameterGroupCRUD:
+    """Tests for Neptune cluster parameter group create, copy, modify, delete."""
+
+    def test_create_and_describe_cluster_parameter_group(self, neptune):
+        name = _unique("ncpg")
+        resp = neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="compat test",
+        )
+        pg = resp["DBClusterParameterGroup"]
+        assert pg["DBClusterParameterGroupName"] == name
+
+        desc = neptune.describe_db_cluster_parameter_groups(DBClusterParameterGroupName=name)
+        assert len(desc["DBClusterParameterGroups"]) == 1
+        neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+    def test_describe_db_cluster_parameters(self, neptune):
+        name = _unique("ncpg-p")
+        neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="params test",
+        )
+        try:
+            resp = neptune.describe_db_cluster_parameters(DBClusterParameterGroupName=name)
+            assert "Parameters" in resp
+        finally:
+            neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+    def test_copy_db_cluster_parameter_group(self, neptune):
+        src = _unique("ncpg-s")
+        tgt = _unique("ncpg-t")
+        neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=src,
+            DBParameterGroupFamily="neptune1",
+            Description="source",
+        )
+        try:
+            resp = neptune.copy_db_cluster_parameter_group(
+                SourceDBClusterParameterGroupIdentifier=src,
+                TargetDBClusterParameterGroupIdentifier=tgt,
+                TargetDBClusterParameterGroupDescription="copy",
+            )
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == tgt
+            neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=tgt)
+        finally:
+            neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=src)
+
+    def test_modify_db_cluster_parameter_group(self, neptune):
+        name = _unique("ncpg-m")
+        neptune.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="neptune1",
+            Description="modify test",
+        )
+        try:
+            resp = neptune.modify_db_cluster_parameter_group(
+                DBClusterParameterGroupName=name,
+                Parameters=[
+                    {
+                        "ParameterName": "neptune_enable_audit_log",
+                        "ParameterValue": "1",
+                        "ApplyMethod": "pending-reboot",
+                    }
+                ],
+            )
+            assert resp["DBClusterParameterGroupName"] == name
+        finally:
+            neptune.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+
+class TestNeptuneDBClusterCRUD:
+    """Tests for Neptune cluster create, modify, snapshot, endpoint ops."""
+
+    def test_create_and_describe_cluster(self, neptune, subnet_ids):
+        sg = _unique("nsg")
+        cl = _unique("ncl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg,
+            DBSubnetGroupDescription="test",
+            SubnetIds=subnet_ids,
+        )
+        try:
+            resp = neptune.create_db_cluster(
+                DBClusterIdentifier=cl,
+                Engine="neptune",
+                DBSubnetGroupName=sg,
+            )
+            assert resp["DBCluster"]["DBClusterIdentifier"] == cl
+            assert resp["DBCluster"]["Engine"] == "neptune"
+
+            desc = neptune.describe_db_clusters(DBClusterIdentifier=cl)
+            assert len(desc["DBClusters"]) == 1
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg)
+
+    def test_modify_cluster(self, neptune, subnet_ids):
+        sg = _unique("nsg")
+        cl = _unique("ncl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg,
+            DBSubnetGroupDescription="test",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cl,
+            Engine="neptune",
+            DBSubnetGroupName=sg,
+        )
+        try:
+            resp = neptune.modify_db_cluster(
+                DBClusterIdentifier=cl,
+                ApplyImmediately=True,
+                BackupRetentionPeriod=7,
+            )
+            assert resp["DBCluster"]["DBClusterIdentifier"] == cl
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg)
+
+    def test_cluster_snapshot_lifecycle(self, neptune, subnet_ids):
+        sg = _unique("nsg")
+        cl = _unique("ncl")
+        snap = _unique("nsnap")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg,
+            DBSubnetGroupDescription="test",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cl,
+            Engine="neptune",
+            DBSubnetGroupName=sg,
+        )
+        try:
+            create = neptune.create_db_cluster_snapshot(
+                DBClusterIdentifier=cl,
+                DBClusterSnapshotIdentifier=snap,
+            )
+            assert create["DBClusterSnapshot"]["DBClusterSnapshotIdentifier"] == snap
+
+            desc = neptune.describe_db_cluster_snapshots(DBClusterSnapshotIdentifier=snap)
+            assert len(desc["DBClusterSnapshots"]) == 1
+
+            attrs = neptune.describe_db_cluster_snapshot_attributes(
+                DBClusterSnapshotIdentifier=snap
+            )
+            assert "DBClusterSnapshotAttributesResult" in attrs
+
+            neptune.modify_db_cluster_snapshot_attribute(
+                DBClusterSnapshotIdentifier=snap,
+                AttributeName="restore",
+                ValuesToAdd=["all"],
+            )
+
+            neptune.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg)
+
+    def test_cluster_endpoint_lifecycle(self, neptune, subnet_ids):
+        sg = _unique("nsg")
+        cl = _unique("ncl")
+        ep = _unique("nep")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg,
+            DBSubnetGroupDescription="test",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cl,
+            Engine="neptune",
+            DBSubnetGroupName=sg,
+        )
+        try:
+            create = neptune.create_db_cluster_endpoint(
+                DBClusterIdentifier=cl,
+                DBClusterEndpointIdentifier=ep,
+                EndpointType="reader",
+            )
+            assert create["DBClusterEndpointIdentifier"] == ep
+
+            desc = neptune.describe_db_cluster_endpoints(DBClusterIdentifier=cl)
+            assert "DBClusterEndpoints" in desc
+
+            neptune.modify_db_cluster_endpoint(
+                DBClusterEndpointIdentifier=ep,
+                EndpointType="ANY",
+            )
+
+            neptune.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=ep)
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg)
+
+
+class TestNeptuneDBInstanceCRUD:
+    """Tests for Neptune instance create, modify, reboot."""
+
+    def test_create_modify_reboot_instance(self, neptune, subnet_ids):
+        sg = _unique("nsg")
+        cl = _unique("ncl")
+        inst = _unique("ni")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg,
+            DBSubnetGroupDescription="test",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cl,
+            Engine="neptune",
+            DBSubnetGroupName=sg,
+        )
+        try:
+            create = neptune.create_db_instance(
+                DBInstanceIdentifier=inst,
+                DBInstanceClass="db.t3.medium",
+                Engine="neptune",
+                DBClusterIdentifier=cl,
+            )
+            assert create["DBInstance"]["DBInstanceIdentifier"] == inst
+
+            desc = neptune.describe_db_instances(DBInstanceIdentifier=inst)
+            assert len(desc["DBInstances"]) == 1
+
+            mod = neptune.modify_db_instance(
+                DBInstanceIdentifier=inst,
+                ApplyImmediately=True,
+            )
+            assert mod["DBInstance"]["DBInstanceIdentifier"] == inst
+
+            reboot = neptune.reboot_db_instance(DBInstanceIdentifier=inst)
+            assert reboot["DBInstance"]["DBInstanceIdentifier"] == inst
+
+            neptune.delete_db_instance(DBInstanceIdentifier=inst)
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg)
+
+
+class TestNeptuneDescribeOpsExpanded:
+    """Tests for Neptune describe/list operations (expanded)."""
+
+    def test_describe_db_engine_versions(self, neptune):
+        resp = neptune.describe_db_engine_versions()
+        assert "DBEngineVersions" in resp
+        assert isinstance(resp["DBEngineVersions"], list)
+
+    def test_describe_orderable_db_instance_options(self, neptune):
+        resp = neptune.describe_orderable_db_instance_options(Engine="neptune")
+        assert "OrderableDBInstanceOptions" in resp
+        assert isinstance(resp["OrderableDBInstanceOptions"], list)
+
+    def test_add_role_to_db_cluster(self, neptune, subnet_ids):
+        sg = _unique("nsg")
+        cl = _unique("ncl")
+        neptune.create_db_subnet_group(
+            DBSubnetGroupName=sg,
+            DBSubnetGroupDescription="test",
+            SubnetIds=subnet_ids,
+        )
+        neptune.create_db_cluster(
+            DBClusterIdentifier=cl,
+            Engine="neptune",
+            DBSubnetGroupName=sg,
+        )
+        try:
+            role_arn = "arn:aws:iam::123456789012:role/NeptuneS3Role"
+            resp = neptune.add_role_to_db_cluster(
+                DBClusterIdentifier=cl,
+                RoleArn=role_arn,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            neptune.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+            neptune.delete_db_subnet_group(DBSubnetGroupName=sg)
