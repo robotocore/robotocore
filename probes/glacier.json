@@ -1,0 +1,176 @@
+{
+  "service": "glacier",
+  "counts": {
+    "working": 33,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AbortMultipartUpload",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "AbortVaultLock",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "AddTagsToVault",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "CompleteMultipartUpload",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "CompleteVaultLock",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "CreateVault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteArchive",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteVault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteVaultAccessPolicy",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "DeleteVaultNotifications",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "DescribeJob",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "DescribeVault",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "GetDataRetrievalPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetJobOutput",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "GetVaultAccessPolicy",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "GetVaultLock",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "GetVaultNotifications",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "InitiateJob",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "InitiateMultipartUpload",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "InitiateVaultLock",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "ListJobs",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "ListMultipartUploads",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "ListParts",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "ListProvisionedCapacity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForVault",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "ListVaults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PurchaseProvisionedCapacity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveTagsFromVault",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "SetDataRetrievalPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetVaultAccessPolicy",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "SetVaultNotifications",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "UploadArchive",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    },
+    {
+      "operation": "UploadMultipartPart",
+      "status": "working",
+      "message": "likely implemented (VaultNotFound: Vault not found)"
+    }
+  ]
+}

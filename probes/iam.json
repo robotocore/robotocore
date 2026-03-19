@@ -1,0 +1,891 @@
+{
+  "service": "iam",
+  "counts": {
+    "working": 152,
+    "needs_params": 17,
+    "not_implemented": 7,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptDelegationRequest",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AddClientIDToOpenIDConnectProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "AddRoleToInstanceProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "AddUserToGroup",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "AssociateDelegationRequest",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AttachGroupPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "AttachRolePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "AttachUserPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ChangePassword",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAccessKey",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "CreateAccountAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDelegationRequest",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInstanceProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLoginProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "CreateOpenIDConnectProvider",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePolicy",
+      "status": "working",
+      "message": "implemented (MalformedPolicyDocument)"
+    },
+    {
+      "operation": "CreatePolicyVersion",
+      "status": "working",
+      "message": "implemented (MalformedPolicyDocument)"
+    },
+    {
+      "operation": "CreateRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSAMLProvider",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateServiceLinkedRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateServiceSpecificCredential",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "CreateUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVirtualMFADevice",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeactivateMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteAccessKey",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteAccountAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccountPasswordPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGroupPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteInstanceProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLoginProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteOpenIDConnectProvider",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeletePolicyVersion",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRolePermissionsBoundary",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteRolePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteSAMLProvider",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSSHPublicKey",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteServerCertificate",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteServiceLinkedRole",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteServiceSpecificCredential",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteSigningCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUserPermissionsBoundary",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteUserPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DeleteVirtualMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DetachGroupPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DetachRolePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DetachUserPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "DisableOrganizationsRootCredentialsManagement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableOrganizationsRootSessions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableOutboundWebIdentityFederation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "EnableOrganizationsRootCredentialsManagement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableOrganizationsRootSessions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableOutboundWebIdentityFederation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GenerateCredentialReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GenerateOrganizationsAccessReport",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GenerateServiceLastAccessedDetails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccessKeyLastUsed",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetAccountAuthorizationDetails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccountPasswordPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetAccountSummary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetContextKeysForCustomPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetContextKeysForPrincipalPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCredentialReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDelegationRequest",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetGroupPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetHumanReadableSummary",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetInstanceProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetLoginProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetOpenIDConnectProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetOrganizationsAccessReport",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetOutboundWebIdentityFederationInfo",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetPolicyVersion",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetRole",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetRolePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetSAMLProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetSSHPublicKey",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetServerCertificate",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "GetServiceLastAccessedDetails",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetServiceLastAccessedDetailsWithEntities",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetServiceLinkedRoleDeletionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetUserPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListAccessKeys",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListAccountAliases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAttachedGroupPolicies",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListAttachedRolePolicies",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListAttachedUserPolicies",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListDelegationRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEntitiesForPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGroupPolicies",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGroupsForUser",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListInstanceProfileTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListInstanceProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInstanceProfilesForRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMFADeviceTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListMFADevices",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListOpenIDConnectProviderTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListOpenIDConnectProviders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOrganizationsFeatures",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPoliciesGrantingServiceAccess",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListPolicyTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListPolicyVersions",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListRolePolicies",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListRoleTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListRoles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSAMLProviderTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListSAMLProviders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSSHPublicKeys",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListServerCertificateTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListServerCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServiceSpecificCredentials",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSigningCertificates",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListUserPolicies",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListUserTags",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVirtualMFADevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutGroupPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "PutRolePermissionsBoundary",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutRolePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "PutUserPermissionsBoundary",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutUserPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "RejectDelegationRequest",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RemoveClientIDFromOpenIDConnectProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "RemoveRoleFromInstanceProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "RemoveUserFromGroup",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "ResetServiceSpecificCredential",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ResyncMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "SendDelegationToken",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetDefaultPolicyVersion",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "SetSecurityTokenServicePreferences",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SimulateCustomPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SimulatePrincipalPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagInstanceProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagOpenIDConnectProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagRole",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagSAMLProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagServerCertificate",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "TagUser",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagInstanceProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagMFADevice",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagOpenIDConnectProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagRole",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagSAMLProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagServerCertificate",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UntagUser",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateAccessKey",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateAccountPasswordPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAssumeRolePolicy",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateDelegationRequest",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateLoginProfile",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateOpenIDConnectProviderThumbprint",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateRole",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateRoleDescription",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateSAMLProvider",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateSSHPublicKey",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateServerCertificate",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UpdateServiceSpecificCredential",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateSigningCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateUser",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UploadSSHPublicKey",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    },
+    {
+      "operation": "UploadServerCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UploadSigningCertificate",
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
+    }
+  ]
+}

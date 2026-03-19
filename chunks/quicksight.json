@@ -1,0 +1,453 @@
+[
+  {
+    "noun": "IAMPolicyAssignment",
+    "operations": [
+      "CreateIAMPolicyAssignment",
+      "DeleteIAMPolicyAssignment",
+      "DescribeIAMPolicyAssignment",
+      "UpdateIAMPolicyAssignment"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIAMPolicyAssignment",
+      "DeleteIAMPolicyAssignment",
+      "DescribeIAMPolicyAssignment",
+      "UpdateIAMPolicyAssignment"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateIAMPolicyAssignment": "working",
+      "DeleteIAMPolicyAssignment": "working",
+      "DescribeIAMPolicyAssignment": "working",
+      "UpdateIAMPolicyAssignment": "working"
+    },
+    "working_untested": [
+      "CreateIAMPolicyAssignment",
+      "DeleteIAMPolicyAssignment",
+      "DescribeIAMPolicyAssignment",
+      "UpdateIAMPolicyAssignment"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "DashboardsQAConfiguration",
+    "operations": [
+      "DescribeDashboardsQAConfiguration",
+      "UpdateDashboardsQAConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDashboardsQAConfiguration",
+      "UpdateDashboardsQAConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeDashboardsQAConfiguration": "working",
+      "UpdateDashboardsQAConfiguration": "working"
+    },
+    "working_untested": [
+      "DescribeDashboardsQAConfiguration",
+      "UpdateDashboardsQAConfiguration"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "VPCConnection",
+    "operations": [
+      "CreateVPCConnection",
+      "DeleteVPCConnection",
+      "DescribeVPCConnection",
+      "UpdateVPCConnection"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVPCConnection",
+      "DeleteVPCConnection",
+      "DescribeVPCConnection",
+      "UpdateVPCConnection"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateVPCConnection": "needs_params",
+      "DeleteVPCConnection": "working",
+      "DescribeVPCConnection": "working",
+      "UpdateVPCConnection": "needs_params"
+    },
+    "working_untested": [
+      "DeleteVPCConnection",
+      "DescribeVPCConnection"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "IAMPolicyAssignments",
+    "operations": [
+      "ListIAMPolicyAssignments"
+    ],
+    "tested": [],
+    "untested": [
+      "ListIAMPolicyAssignments"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListIAMPolicyAssignments": "working"
+    },
+    "working_untested": [
+      "ListIAMPolicyAssignments"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "IAMPolicyAssignmentsForUser",
+    "operations": [
+      "ListIAMPolicyAssignmentsForUser"
+    ],
+    "tested": [],
+    "untested": [
+      "ListIAMPolicyAssignmentsForUser"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListIAMPolicyAssignmentsForUser": "working"
+    },
+    "working_untested": [
+      "ListIAMPolicyAssignmentsForUser"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "PredictQAResults",
+    "operations": [
+      "PredictQAResults"
+    ],
+    "tested": [],
+    "untested": [
+      "PredictQAResults"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PredictQAResults": "working"
+    },
+    "working_untested": [
+      "PredictQAResults"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SPICECapacityConfiguration",
+    "operations": [
+      "UpdateSPICECapacityConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateSPICECapacityConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateSPICECapacityConfiguration": "working"
+    },
+    "working_untested": [
+      "UpdateSPICECapacityConfiguration"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "VPCConnections",
+    "operations": [
+      "ListVPCConnections"
+    ],
+    "tested": [],
+    "untested": [
+      "ListVPCConnections"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListVPCConnections": "working"
+    },
+    "working_untested": [
+      "ListVPCConnections"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ActionConnector",
+    "operations": [
+      "CreateActionConnector",
+      "DeleteActionConnector",
+      "DescribeActionConnector",
+      "UpdateActionConnector"
+    ],
+    "tested": [
+      "DeleteActionConnector",
+      "DescribeActionConnector"
+    ],
+    "untested": [
+      "CreateActionConnector",
+      "UpdateActionConnector"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateActionConnector": "needs_params",
+      "DeleteActionConnector": "working",
+      "DescribeActionConnector": "working",
+      "UpdateActionConnector": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AssetBundleExportJob",
+    "operations": [
+      "DescribeAssetBundleExportJob",
+      "StartAssetBundleExportJob"
+    ],
+    "tested": [
+      "DescribeAssetBundleExportJob"
+    ],
+    "untested": [
+      "StartAssetBundleExportJob"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeAssetBundleExportJob": "working",
+      "StartAssetBundleExportJob": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DashboardSnapshotJob",
+    "operations": [
+      "DescribeDashboardSnapshotJob",
+      "StartDashboardSnapshotJob"
+    ],
+    "tested": [
+      "DescribeDashboardSnapshotJob"
+    ],
+    "untested": [
+      "StartDashboardSnapshotJob"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDashboardSnapshotJob": "working",
+      "StartDashboardSnapshotJob": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DashboardSnapshotJobResult",
+    "operations": [
+      "DescribeDashboardSnapshotJobResult"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDashboardSnapshotJobResult"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDashboardSnapshotJobResult": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FolderResolvedPermissions",
+    "operations": [
+      "DescribeFolderResolvedPermissions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeFolderResolvedPermissions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeFolderResolvedPermissions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FoldersForResource",
+    "operations": [
+      "ListFoldersForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListFoldersForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListFoldersForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IdentityContext",
+    "operations": [
+      "GetIdentityContext"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIdentityContext"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIdentityContext": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Namespace",
+    "operations": [
+      "CreateNamespace",
+      "DeleteNamespace",
+      "DescribeNamespace"
+    ],
+    "tested": [
+      "DeleteNamespace",
+      "DescribeNamespace"
+    ],
+    "untested": [
+      "CreateNamespace"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateNamespace": "not_implemented",
+      "DeleteNamespace": "working",
+      "DescribeNamespace": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchAnalyses",
+    "operations": [
+      "SearchAnalyses"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchAnalyses"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchAnalyses": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchDashboards",
+    "operations": [
+      "SearchDashboards"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchDashboards"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchDashboards": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchDataSets",
+    "operations": [
+      "SearchDataSets"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchDataSets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchDataSets": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchDataSources",
+    "operations": [
+      "SearchDataSources"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchDataSources"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchDataSources": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchTopics",
+    "operations": [
+      "SearchTopics"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchTopics"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchTopics": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Topic",
+    "operations": [
+      "CreateTopic",
+      "DeleteTopic",
+      "DescribeTopic",
+      "UpdateTopic"
+    ],
+    "tested": [
+      "CreateTopic",
+      "DescribeTopic",
+      "UpdateTopic"
+    ],
+    "untested": [
+      "DeleteTopic"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTopic": "working",
+      "DeleteTopic": "unknown",
+      "DescribeTopic": "working",
+      "UpdateTopic": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,172 @@
+[
+  {
+    "noun": "ClusterCredentialsWithIAM",
+    "operations": [
+      "GetClusterCredentialsWithIAM"
+    ],
+    "tested": [],
+    "untested": [
+      "GetClusterCredentialsWithIAM"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetClusterCredentialsWithIAM": "working"
+    },
+    "working_untested": [
+      "GetClusterCredentialsWithIAM"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "FailoverPrimaryCompute",
+    "operations": [
+      "FailoverPrimaryCompute"
+    ],
+    "tested": [],
+    "untested": [
+      "FailoverPrimaryCompute"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "FailoverPrimaryCompute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Integration",
+    "operations": [
+      "CreateIntegration",
+      "DeleteIntegration",
+      "ModifyIntegration"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIntegration",
+      "DeleteIntegration",
+      "ModifyIntegration"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateIntegration": "not_implemented",
+      "DeleteIntegration": "not_implemented",
+      "ModifyIntegration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LakehouseConfiguration",
+    "operations": [
+      "ModifyLakehouseConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyLakehouseConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyLakehouseConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Namespace",
+    "operations": [
+      "DeregisterNamespace",
+      "RegisterNamespace"
+    ],
+    "tested": [],
+    "untested": [
+      "DeregisterNamespace",
+      "RegisterNamespace"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeregisterNamespace": "needs_params",
+      "RegisterNamespace": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseReservedNodeOffering",
+    "operations": [
+      "PurchaseReservedNodeOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedNodeOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedNodeOffering": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RedshiftIdcApplication",
+    "operations": [
+      "CreateRedshiftIdcApplication",
+      "DeleteRedshiftIdcApplication",
+      "ModifyRedshiftIdcApplication"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateRedshiftIdcApplication",
+      "DeleteRedshiftIdcApplication",
+      "ModifyRedshiftIdcApplication"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateRedshiftIdcApplication": "not_implemented",
+      "DeleteRedshiftIdcApplication": "not_implemented",
+      "ModifyRedshiftIdcApplication": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResizeCluster",
+    "operations": [
+      "ResizeCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "ResizeCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ResizeCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableFromClusterSnapshot",
+    "operations": [
+      "RestoreTableFromClusterSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreTableFromClusterSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreTableFromClusterSnapshot": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

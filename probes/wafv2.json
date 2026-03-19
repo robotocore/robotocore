@@ -1,0 +1,286 @@
+{
+  "service": "wafv2",
+  "counts": {
+    "working": 49,
+    "needs_params": 4,
+    "not_implemented": 1,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AssociateWebACL",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "CheckCapacity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAPIKey",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateIPSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRegexPatternSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRuleGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWebACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAPIKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFirewallManagerRuleGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIPSet",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "DeleteLoggingConfiguration",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "DeletePermissionPolicy",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "DeleteRegexPatternSet",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "DeleteRuleGroup",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "DeleteWebACL",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "DescribeAllManagedProducts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeManagedProductsByVendor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeManagedRuleGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateWebACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GenerateMobileSdkReleaseUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDecryptedAPIKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIPSet",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "GetLoggingConfiguration",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "GetManagedRuleSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMobileSdkRelease",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPermissionPolicy",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "GetRateBasedStatementManagedKeys",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRegexPatternSet",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "GetRuleGroup",
+      "status": "working",
+      "message": "likely implemented (AcessDeniedException: Critical information is missing in your request: GetRuleGrou)"
+    },
+    {
+      "operation": "GetSampledRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTopPathStatisticsByTraffic",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetWebACL",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "GetWebACLForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAPIKeys",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAvailableManagedRuleGroupVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAvailableManagedRuleGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIPSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLoggingConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListManagedRuleSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMobileSdkReleases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRegexPatternSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourcesForWebACL",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "ListRuleGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListWebACLs",
+      "status": "500_error",
+      "message": "exception: 'WAFV2' object has no attribute 'list_web_ac_ls'"
+    },
+    {
+      "operation": "PutLoggingConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutManagedRuleSetVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutPermissionPolicy",
+      "status": "working",
+      "message": "likely implemented (WAFInvalidParameterException: The ARN isn't valid. A valid ARN starts with arn: and includ)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateIPSet",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "UpdateManagedRuleSetVersionExpiryDate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateRegexPatternSet",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "UpdateRuleGroup",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    },
+    {
+      "operation": "UpdateWebACL",
+      "status": "working",
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
+    }
+  ]
+}

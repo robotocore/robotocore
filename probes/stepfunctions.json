@@ -1,0 +1,196 @@
+{
+  "service": "stepfunctions",
+  "counts": {
+    "working": 27,
+    "needs_params": 1,
+    "not_implemented": 6,
+    "500_error": 3
+  },
+  "operations": [
+    {
+      "operation": "CreateActivity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStateMachine",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateStateMachineAlias",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteActivity",
+      "status": "working",
+      "message": "likely implemented (InvalidArn: Invalid Activity Arn: 'arn:aws:stepfunctions:us-east-1:12345)"
+    },
+    {
+      "operation": "DeleteStateMachine",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteStateMachineAlias",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteStateMachineVersion",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeActivity",
+      "status": "working",
+      "message": "likely implemented (InvalidArn: Invalid Activity Arn: 'arn:aws:stepfunctions:us-east-1:12345)"
+    },
+    {
+      "operation": "DescribeExecution",
+      "status": "working",
+      "message": "likely implemented (ExecutionDoesNotExist: Execution not found: arn:aws:stepfunctions:us-east-1:1234567)"
+    },
+    {
+      "operation": "DescribeMapRun",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStateMachine",
+      "status": "working",
+      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+    },
+    {
+      "operation": "DescribeStateMachineAlias",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeStateMachineForExecution",
+      "status": "working",
+      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
+    },
+    {
+      "operation": "GetActivityTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetExecutionHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListActivities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMapRuns",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStateMachineAliases",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListStateMachineVersions",
+      "status": "working",
+      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+    },
+    {
+      "operation": "ListStateMachines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PublishStateMachineVersion",
+      "status": "working",
+      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+    },
+    {
+      "operation": "RedriveExecution",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SendTaskFailure",
+      "status": "working",
+      "message": "likely implemented (TaskDoesNotExist: Task token not found: probe-test-value)"
+    },
+    {
+      "operation": "SendTaskHeartbeat",
+      "status": "working",
+      "message": "likely implemented (TaskDoesNotExist: Task token not found: probe-test-value)"
+    },
+    {
+      "operation": "SendTaskSuccess",
+      "status": "working",
+      "message": "likely implemented (TaskDoesNotExist: Task token not found: probe-test-value)"
+    },
+    {
+      "operation": "StartExecution",
+      "status": "working",
+      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+    },
+    {
+      "operation": "StartSyncExecution",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://sync-localhos"
+    },
+    {
+      "operation": "StopExecution",
+      "status": "working",
+      "message": "likely implemented (ExecutionDoesNotExist: Execution not found: arn:aws:stepfunctions:us-east-1:1234567)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Resource not found: arn:aws:stepfunctions:us-east-1:12345678)"
+    },
+    {
+      "operation": "TestState",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://sync-localhos"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Resource not found: arn:aws:stepfunctions:us-east-1:12345678)"
+    },
+    {
+      "operation": "UpdateMapRun",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateStateMachine",
+      "status": "working",
+      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+    },
+    {
+      "operation": "UpdateStateMachineAlias",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ValidateStateMachineDefinition",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

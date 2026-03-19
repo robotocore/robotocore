@@ -1,0 +1,106 @@
+{
+  "service": "signer",
+  "counts": {
+    "working": 16,
+    "needs_params": 1,
+    "not_implemented": 0,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "AddProfilePermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CancelSigningProfile",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeSigningJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRevocationStatus",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://data-localhos"
+    },
+    {
+      "operation": "GetSigningPlatform",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetSigningProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListProfilePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListSigningJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSigningPlatforms",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSigningProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutSigningProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveProfilePermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RevokeSignature",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RevokeSigningProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SignPayload",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartSigningJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

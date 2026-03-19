@@ -1,0 +1,466 @@
+{
+  "service": "workspaces",
+  "counts": {
+    "working": 74,
+    "needs_params": 12,
+    "not_implemented": 0,
+    "500_error": 5
+  },
+  "operations": [
+    {
+      "operation": "AcceptAccountLinkInvitation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateConnectionAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateIpGroups",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateWorkspaceApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AuthorizeIpRules",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CopyWorkspaceImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAccountLinkInvitation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConnectClientAddIn",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConnectionAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIpGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStandbyWorkspaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateUpdatedWorkspaceImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWorkspaceBundle",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWorkspaceImage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateWorkspaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateWorkspacesPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccountLinkInvitation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteClientBranding",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteConnectClientAddIn",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteConnectionAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteIpGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteWorkspaceBundle",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteWorkspaceImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeployWorkspaceApplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterWorkspaceDirectory",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountModifications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeApplicationAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeApplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBundleAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClientBranding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeClientProperties",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeConnectClientAddIns",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConnectionAliasPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeConnectionAliases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCustomWorkspaceImageImport",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeImageAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspaceAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspaceBundles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspaceDirectories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspaceImagePermissions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeWorkspaceImages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspaceSnapshots",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeWorkspaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspacesConnectionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeWorkspacesPoolSessions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeWorkspacesPools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateConnectionAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateIpGroups",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateWorkspaceApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccountLink",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportClientBranding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportCustomWorkspaceImage",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ImportWorkspaceImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccountLinks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAvailableManagementCidrRanges",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "MigrateWorkspace",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifyAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyCertificateBasedAuthProperties",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifyClientProperties",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ModifyEndpointEncryptionMode",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifySamlProperties",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifySelfservicePermissions",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ModifyStreamingProperties",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifyWorkspaceAccessProperties",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifyWorkspaceCreationProperties",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ModifyWorkspaceProperties",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifyWorkspaceState",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RebootWorkspaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RebuildWorkspaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RegisterWorkspaceDirectory",
+      "status": "500_error",
+      "message": "server crash (InternalError: expected string or bytes-like object, got 'NoneType')"
+    },
+    {
+      "operation": "RejectAccountLinkInvitation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RestoreWorkspace",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RevokeIpRules",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartWorkspaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartWorkspacesPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopWorkspaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StopWorkspacesPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TerminateWorkspaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TerminateWorkspacesPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TerminateWorkspacesPoolSession",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateConnectClientAddIn",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateConnectionAliasPermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRulesOfIpGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateWorkspaceBundle",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateWorkspaceImagePermission",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "UpdateWorkspacesPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

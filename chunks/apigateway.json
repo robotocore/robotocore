@@ -1,0 +1,402 @@
+[
+  {
+    "noun": "ApiKeys",
+    "operations": [
+      "GetApiKeys",
+      "ImportApiKeys"
+    ],
+    "tested": [
+      "GetApiKeys"
+    ],
+    "untested": [
+      "ImportApiKeys"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetApiKeys": "working",
+      "ImportApiKeys": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Deployment",
+    "operations": [
+      "CreateDeployment",
+      "DeleteDeployment",
+      "GetDeployment",
+      "UpdateDeployment"
+    ],
+    "tested": [
+      "CreateDeployment",
+      "DeleteDeployment",
+      "GetDeployment"
+    ],
+    "untested": [
+      "UpdateDeployment"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateDeployment": "working",
+      "DeleteDeployment": "working",
+      "GetDeployment": "working",
+      "UpdateDeployment": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DocumentationParts",
+    "operations": [
+      "GetDocumentationParts",
+      "ImportDocumentationParts"
+    ],
+    "tested": [
+      "GetDocumentationParts"
+    ],
+    "untested": [
+      "ImportDocumentationParts"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDocumentationParts": "working",
+      "ImportDocumentationParts": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DomainName",
+    "operations": [
+      "CreateDomainName",
+      "DeleteDomainName",
+      "GetDomainName",
+      "UpdateDomainName"
+    ],
+    "tested": [
+      "CreateDomainName",
+      "DeleteDomainName",
+      "GetDomainName"
+    ],
+    "untested": [
+      "UpdateDomainName"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateDomainName": "working",
+      "DeleteDomainName": "working",
+      "GetDomainName": "working",
+      "UpdateDomainName": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DomainNameAccessAssociation",
+    "operations": [
+      "CreateDomainNameAccessAssociation",
+      "DeleteDomainNameAccessAssociation",
+      "RejectDomainNameAccessAssociation"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDomainNameAccessAssociation",
+      "DeleteDomainNameAccessAssociation",
+      "RejectDomainNameAccessAssociation"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDomainNameAccessAssociation": "not_implemented",
+      "DeleteDomainNameAccessAssociation": "not_implemented",
+      "RejectDomainNameAccessAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DomainNameAccessAssociations",
+    "operations": [
+      "GetDomainNameAccessAssociations"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDomainNameAccessAssociations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDomainNameAccessAssociations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IntegrationResponse",
+    "operations": [
+      "DeleteIntegrationResponse",
+      "GetIntegrationResponse",
+      "PutIntegrationResponse",
+      "UpdateIntegrationResponse"
+    ],
+    "tested": [
+      "DeleteIntegrationResponse",
+      "GetIntegrationResponse",
+      "PutIntegrationResponse"
+    ],
+    "untested": [
+      "UpdateIntegrationResponse"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteIntegrationResponse": "not_implemented",
+      "GetIntegrationResponse": "not_implemented",
+      "PutIntegrationResponse": "not_implemented",
+      "UpdateIntegrationResponse": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MethodResponse",
+    "operations": [
+      "DeleteMethodResponse",
+      "GetMethodResponse",
+      "PutMethodResponse",
+      "UpdateMethodResponse"
+    ],
+    "tested": [
+      "DeleteMethodResponse",
+      "GetMethodResponse",
+      "PutMethodResponse"
+    ],
+    "untested": [
+      "UpdateMethodResponse"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteMethodResponse": "not_implemented",
+      "GetMethodResponse": "not_implemented",
+      "PutMethodResponse": "not_implemented",
+      "UpdateMethodResponse": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Model",
+    "operations": [
+      "CreateModel",
+      "DeleteModel",
+      "GetModel",
+      "UpdateModel"
+    ],
+    "tested": [
+      "CreateModel",
+      "DeleteModel",
+      "GetModel"
+    ],
+    "untested": [
+      "UpdateModel"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateModel": "working",
+      "DeleteModel": "working",
+      "GetModel": "working",
+      "UpdateModel": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ModelTemplate",
+    "operations": [
+      "GetModelTemplate"
+    ],
+    "tested": [],
+    "untested": [
+      "GetModelTemplate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetModelTemplate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "CreateResource",
+      "DeleteResource",
+      "GetResource",
+      "TagResource",
+      "UntagResource",
+      "UpdateResource"
+    ],
+    "tested": [
+      "CreateResource",
+      "DeleteResource",
+      "GetResource",
+      "TagResource",
+      "UntagResource"
+    ],
+    "untested": [
+      "UpdateResource"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateResource": "working",
+      "DeleteResource": "working",
+      "GetResource": "working",
+      "TagResource": "working",
+      "UntagResource": "working",
+      "UpdateResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Sdk",
+    "operations": [
+      "GetSdk"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSdk"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSdk": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SdkType",
+    "operations": [
+      "GetSdkType"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSdkType"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSdkType": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SdkTypes",
+    "operations": [
+      "GetSdkTypes"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSdkTypes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSdkTypes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestInvokeAuthorizer",
+    "operations": [
+      "TestInvokeAuthorizer"
+    ],
+    "tested": [],
+    "untested": [
+      "TestInvokeAuthorizer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestInvokeAuthorizer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestInvokeMethod",
+    "operations": [
+      "TestInvokeMethod"
+    ],
+    "tested": [],
+    "untested": [
+      "TestInvokeMethod"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestInvokeMethod": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Usage",
+    "operations": [
+      "GetUsage",
+      "UpdateUsage"
+    ],
+    "tested": [
+      "GetUsage"
+    ],
+    "untested": [
+      "UpdateUsage"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUsage": "working",
+      "UpdateUsage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcLink",
+    "operations": [
+      "CreateVpcLink",
+      "DeleteVpcLink",
+      "GetVpcLink",
+      "UpdateVpcLink"
+    ],
+    "tested": [
+      "CreateVpcLink",
+      "DeleteVpcLink",
+      "GetVpcLink"
+    ],
+    "untested": [
+      "UpdateVpcLink"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVpcLink": "working",
+      "DeleteVpcLink": "working",
+      "GetVpcLink": "working",
+      "UpdateVpcLink": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

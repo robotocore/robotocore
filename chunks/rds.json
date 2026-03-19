@@ -1,0 +1,1489 @@
+[
+  {
+    "noun": "DBInstance",
+    "operations": [
+      "CreateDBInstance",
+      "DeleteDBInstance",
+      "ModifyDBInstance",
+      "RebootDBInstance",
+      "StartDBInstance",
+      "StopDBInstance"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBInstance",
+      "DeleteDBInstance",
+      "ModifyDBInstance",
+      "RebootDBInstance",
+      "StartDBInstance",
+      "StopDBInstance"
+    ],
+    "size": 6,
+    "untested_count": 6,
+    "probe_status": {
+      "CreateDBInstance": "working",
+      "DeleteDBInstance": "unknown",
+      "ModifyDBInstance": "working",
+      "RebootDBInstance": "working",
+      "StartDBInstance": "working",
+      "StopDBInstance": "working"
+    },
+    "working_untested": [
+      "CreateDBInstance",
+      "ModifyDBInstance",
+      "RebootDBInstance",
+      "StartDBInstance",
+      "StopDBInstance"
+    ],
+    "working_untested_count": 5
+  },
+  {
+    "noun": "DBCluster",
+    "operations": [
+      "CreateDBCluster",
+      "DeleteDBCluster",
+      "ModifyDBCluster",
+      "RebootDBCluster",
+      "StartDBCluster",
+      "StopDBCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBCluster",
+      "DeleteDBCluster",
+      "ModifyDBCluster",
+      "RebootDBCluster",
+      "StartDBCluster",
+      "StopDBCluster"
+    ],
+    "size": 6,
+    "untested_count": 6,
+    "probe_status": {
+      "CreateDBCluster": "working",
+      "DeleteDBCluster": "unknown",
+      "ModifyDBCluster": "working",
+      "RebootDBCluster": "not_implemented",
+      "StartDBCluster": "working",
+      "StopDBCluster": "working"
+    },
+    "working_untested": [
+      "CreateDBCluster",
+      "ModifyDBCluster",
+      "StartDBCluster",
+      "StopDBCluster"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "DBClusterParameterGroup",
+    "operations": [
+      "CopyDBClusterParameterGroup",
+      "CreateDBClusterParameterGroup",
+      "DeleteDBClusterParameterGroup",
+      "ModifyDBClusterParameterGroup",
+      "ResetDBClusterParameterGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CopyDBClusterParameterGroup",
+      "CreateDBClusterParameterGroup",
+      "DeleteDBClusterParameterGroup",
+      "ModifyDBClusterParameterGroup",
+      "ResetDBClusterParameterGroup"
+    ],
+    "size": 5,
+    "untested_count": 5,
+    "probe_status": {
+      "CopyDBClusterParameterGroup": "working",
+      "CreateDBClusterParameterGroup": "working",
+      "DeleteDBClusterParameterGroup": "working",
+      "ModifyDBClusterParameterGroup": "working",
+      "ResetDBClusterParameterGroup": "not_implemented"
+    },
+    "working_untested": [
+      "CopyDBClusterParameterGroup",
+      "CreateDBClusterParameterGroup",
+      "DeleteDBClusterParameterGroup",
+      "ModifyDBClusterParameterGroup"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "DBParameterGroup",
+    "operations": [
+      "CopyDBParameterGroup",
+      "CreateDBParameterGroup",
+      "DeleteDBParameterGroup",
+      "ModifyDBParameterGroup",
+      "ResetDBParameterGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CopyDBParameterGroup",
+      "CreateDBParameterGroup",
+      "DeleteDBParameterGroup",
+      "ModifyDBParameterGroup",
+      "ResetDBParameterGroup"
+    ],
+    "size": 5,
+    "untested_count": 5,
+    "probe_status": {
+      "CopyDBParameterGroup": "working",
+      "CreateDBParameterGroup": "working",
+      "DeleteDBParameterGroup": "working",
+      "ModifyDBParameterGroup": "working",
+      "ResetDBParameterGroup": "not_implemented"
+    },
+    "working_untested": [
+      "CopyDBParameterGroup",
+      "CreateDBParameterGroup",
+      "DeleteDBParameterGroup",
+      "ModifyDBParameterGroup"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "CustomDBEngineVersion",
+    "operations": [
+      "CreateCustomDBEngineVersion",
+      "DeleteCustomDBEngineVersion",
+      "ModifyCustomDBEngineVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCustomDBEngineVersion",
+      "DeleteCustomDBEngineVersion",
+      "ModifyCustomDBEngineVersion"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateCustomDBEngineVersion": "working",
+      "DeleteCustomDBEngineVersion": "working",
+      "ModifyCustomDBEngineVersion": "working"
+    },
+    "working_untested": [
+      "CreateCustomDBEngineVersion",
+      "DeleteCustomDBEngineVersion",
+      "ModifyCustomDBEngineVersion"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DBClusterEndpoint",
+    "operations": [
+      "CreateDBClusterEndpoint",
+      "DeleteDBClusterEndpoint",
+      "ModifyDBClusterEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBClusterEndpoint",
+      "DeleteDBClusterEndpoint",
+      "ModifyDBClusterEndpoint"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDBClusterEndpoint": "working",
+      "DeleteDBClusterEndpoint": "working",
+      "ModifyDBClusterEndpoint": "working"
+    },
+    "working_untested": [
+      "CreateDBClusterEndpoint",
+      "DeleteDBClusterEndpoint",
+      "ModifyDBClusterEndpoint"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DBClusterSnapshot",
+    "operations": [
+      "CopyDBClusterSnapshot",
+      "CreateDBClusterSnapshot",
+      "DeleteDBClusterSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "CopyDBClusterSnapshot",
+      "CreateDBClusterSnapshot",
+      "DeleteDBClusterSnapshot"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CopyDBClusterSnapshot": "working",
+      "CreateDBClusterSnapshot": "working",
+      "DeleteDBClusterSnapshot": "working"
+    },
+    "working_untested": [
+      "CopyDBClusterSnapshot",
+      "CreateDBClusterSnapshot",
+      "DeleteDBClusterSnapshot"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DBShardGroup",
+    "operations": [
+      "CreateDBShardGroup",
+      "DeleteDBShardGroup",
+      "ModifyDBShardGroup",
+      "RebootDBShardGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBShardGroup",
+      "DeleteDBShardGroup",
+      "ModifyDBShardGroup",
+      "RebootDBShardGroup"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateDBShardGroup": "needs_params",
+      "DeleteDBShardGroup": "working",
+      "ModifyDBShardGroup": "working",
+      "RebootDBShardGroup": "working"
+    },
+    "working_untested": [
+      "DeleteDBShardGroup",
+      "ModifyDBShardGroup",
+      "RebootDBShardGroup"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DBSnapshot",
+    "operations": [
+      "CopyDBSnapshot",
+      "CreateDBSnapshot",
+      "DeleteDBSnapshot",
+      "ModifyDBSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "CopyDBSnapshot",
+      "CreateDBSnapshot",
+      "DeleteDBSnapshot",
+      "ModifyDBSnapshot"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CopyDBSnapshot": "working",
+      "CreateDBSnapshot": "working",
+      "DeleteDBSnapshot": "working",
+      "ModifyDBSnapshot": "not_implemented"
+    },
+    "working_untested": [
+      "CopyDBSnapshot",
+      "CreateDBSnapshot",
+      "DeleteDBSnapshot"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DBSubnetGroup",
+    "operations": [
+      "CreateDBSubnetGroup",
+      "DeleteDBSubnetGroup",
+      "ModifyDBSubnetGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBSubnetGroup",
+      "DeleteDBSubnetGroup",
+      "ModifyDBSubnetGroup"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDBSubnetGroup": "working",
+      "DeleteDBSubnetGroup": "working",
+      "ModifyDBSubnetGroup": "working"
+    },
+    "working_untested": [
+      "CreateDBSubnetGroup",
+      "DeleteDBSubnetGroup",
+      "ModifyDBSubnetGroup"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DBProxyEndpoint",
+    "operations": [
+      "CreateDBProxyEndpoint",
+      "DeleteDBProxyEndpoint",
+      "ModifyDBProxyEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBProxyEndpoint",
+      "DeleteDBProxyEndpoint",
+      "ModifyDBProxyEndpoint"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDBProxyEndpoint": "working",
+      "DeleteDBProxyEndpoint": "working",
+      "ModifyDBProxyEndpoint": "not_implemented"
+    },
+    "working_untested": [
+      "CreateDBProxyEndpoint",
+      "DeleteDBProxyEndpoint"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "DBSecurityGroup",
+    "operations": [
+      "CreateDBSecurityGroup",
+      "DeleteDBSecurityGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBSecurityGroup",
+      "DeleteDBSecurityGroup"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateDBSecurityGroup": "working",
+      "DeleteDBSecurityGroup": "working"
+    },
+    "working_untested": [
+      "CreateDBSecurityGroup",
+      "DeleteDBSecurityGroup"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "DBClusterAutomatedBackups",
+    "operations": [
+      "DescribeDBClusterAutomatedBackups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterAutomatedBackups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterAutomatedBackups": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusterAutomatedBackups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterEndpoints",
+    "operations": [
+      "DescribeDBClusterEndpoints"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterEndpoints"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterEndpoints": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusterEndpoints"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterFromSnapshot",
+    "operations": [
+      "RestoreDBClusterFromSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreDBClusterFromSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreDBClusterFromSnapshot": "working"
+    },
+    "working_untested": [
+      "RestoreDBClusterFromSnapshot"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterParameterGroups",
+    "operations": [
+      "DescribeDBClusterParameterGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterParameterGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterParameterGroups": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusterParameterGroups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterParameters",
+    "operations": [
+      "DescribeDBClusterParameters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterParameters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterParameters": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusterParameters"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterSnapshotAttribute",
+    "operations": [
+      "ModifyDBClusterSnapshotAttribute"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyDBClusterSnapshotAttribute"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyDBClusterSnapshotAttribute": "working"
+    },
+    "working_untested": [
+      "ModifyDBClusterSnapshotAttribute"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterSnapshotAttributes",
+    "operations": [
+      "DescribeDBClusterSnapshotAttributes"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterSnapshotAttributes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterSnapshotAttributes": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusterSnapshotAttributes"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusterSnapshots",
+    "operations": [
+      "DescribeDBClusterSnapshots"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterSnapshots"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterSnapshots": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusterSnapshots"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBClusters",
+    "operations": [
+      "DescribeDBClusters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusters": "working"
+    },
+    "working_untested": [
+      "DescribeDBClusters"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBEngineVersions",
+    "operations": [
+      "DescribeDBEngineVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBEngineVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBEngineVersions": "working"
+    },
+    "working_untested": [
+      "DescribeDBEngineVersions"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBInstanceAutomatedBackup",
+    "operations": [
+      "DeleteDBInstanceAutomatedBackup"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteDBInstanceAutomatedBackup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteDBInstanceAutomatedBackup": "working"
+    },
+    "working_untested": [
+      "DeleteDBInstanceAutomatedBackup"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBInstanceAutomatedBackups",
+    "operations": [
+      "DescribeDBInstanceAutomatedBackups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBInstanceAutomatedBackups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBInstanceAutomatedBackups": "working"
+    },
+    "working_untested": [
+      "DescribeDBInstanceAutomatedBackups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBInstanceFromDBSnapshot",
+    "operations": [
+      "RestoreDBInstanceFromDBSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreDBInstanceFromDBSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreDBInstanceFromDBSnapshot": "working"
+    },
+    "working_untested": [
+      "RestoreDBInstanceFromDBSnapshot"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBInstanceToPointInTime",
+    "operations": [
+      "RestoreDBInstanceToPointInTime"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreDBInstanceToPointInTime"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreDBInstanceToPointInTime": "working"
+    },
+    "working_untested": [
+      "RestoreDBInstanceToPointInTime"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBInstances",
+    "operations": [
+      "DescribeDBInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBInstances": "working"
+    },
+    "working_untested": [
+      "DescribeDBInstances"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBLogFiles",
+    "operations": [
+      "DescribeDBLogFiles"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBLogFiles"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBLogFiles": "working"
+    },
+    "working_untested": [
+      "DescribeDBLogFiles"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBParameterGroups",
+    "operations": [
+      "DescribeDBParameterGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBParameterGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBParameterGroups": "working"
+    },
+    "working_untested": [
+      "DescribeDBParameterGroups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBParameters",
+    "operations": [
+      "DescribeDBParameters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBParameters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBParameters": "working"
+    },
+    "working_untested": [
+      "DescribeDBParameters"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBProxies",
+    "operations": [
+      "DescribeDBProxies"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBProxies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBProxies": "working"
+    },
+    "working_untested": [
+      "DescribeDBProxies"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBProxy",
+    "operations": [
+      "CreateDBProxy",
+      "DeleteDBProxy",
+      "ModifyDBProxy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBProxy",
+      "DeleteDBProxy",
+      "ModifyDBProxy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDBProxy": "500_error",
+      "DeleteDBProxy": "working",
+      "ModifyDBProxy": "not_implemented"
+    },
+    "working_untested": [
+      "DeleteDBProxy"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBProxyEndpoints",
+    "operations": [
+      "DescribeDBProxyEndpoints"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBProxyEndpoints"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBProxyEndpoints": "working"
+    },
+    "working_untested": [
+      "DescribeDBProxyEndpoints"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBProxyTargetGroups",
+    "operations": [
+      "DescribeDBProxyTargetGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBProxyTargetGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBProxyTargetGroups": "working"
+    },
+    "working_untested": [
+      "DescribeDBProxyTargetGroups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBProxyTargets",
+    "operations": [
+      "DeregisterDBProxyTargets",
+      "DescribeDBProxyTargets",
+      "RegisterDBProxyTargets"
+    ],
+    "tested": [],
+    "untested": [
+      "DeregisterDBProxyTargets",
+      "DescribeDBProxyTargets",
+      "RegisterDBProxyTargets"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeregisterDBProxyTargets": "500_error",
+      "DescribeDBProxyTargets": "working",
+      "RegisterDBProxyTargets": "500_error"
+    },
+    "working_untested": [
+      "DescribeDBProxyTargets"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBRecommendations",
+    "operations": [
+      "DescribeDBRecommendations"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBRecommendations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBRecommendations": "working"
+    },
+    "working_untested": [
+      "DescribeDBRecommendations"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSecurityGroupIngress",
+    "operations": [
+      "AuthorizeDBSecurityGroupIngress",
+      "RevokeDBSecurityGroupIngress"
+    ],
+    "tested": [],
+    "untested": [
+      "AuthorizeDBSecurityGroupIngress",
+      "RevokeDBSecurityGroupIngress"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AuthorizeDBSecurityGroupIngress": "working",
+      "RevokeDBSecurityGroupIngress": "not_implemented"
+    },
+    "working_untested": [
+      "AuthorizeDBSecurityGroupIngress"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSecurityGroups",
+    "operations": [
+      "DescribeDBSecurityGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBSecurityGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBSecurityGroups": "working"
+    },
+    "working_untested": [
+      "DescribeDBSecurityGroups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBShardGroups",
+    "operations": [
+      "DescribeDBShardGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBShardGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBShardGroups": "working"
+    },
+    "working_untested": [
+      "DescribeDBShardGroups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSnapshotAttribute",
+    "operations": [
+      "ModifyDBSnapshotAttribute"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyDBSnapshotAttribute"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyDBSnapshotAttribute": "working"
+    },
+    "working_untested": [
+      "ModifyDBSnapshotAttribute"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSnapshotAttributes",
+    "operations": [
+      "DescribeDBSnapshotAttributes"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBSnapshotAttributes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBSnapshotAttributes": "working"
+    },
+    "working_untested": [
+      "DescribeDBSnapshotAttributes"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSnapshotTenantDatabases",
+    "operations": [
+      "DescribeDBSnapshotTenantDatabases"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBSnapshotTenantDatabases"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBSnapshotTenantDatabases": "working"
+    },
+    "working_untested": [
+      "DescribeDBSnapshotTenantDatabases"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSnapshots",
+    "operations": [
+      "DescribeDBSnapshots"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBSnapshots"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBSnapshots": "working"
+    },
+    "working_untested": [
+      "DescribeDBSnapshots"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DBSubnetGroups",
+    "operations": [
+      "DescribeDBSubnetGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBSubnetGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBSubnetGroups": "working"
+    },
+    "working_untested": [
+      "DescribeDBSubnetGroups"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "FailoverDBCluster",
+    "operations": [
+      "FailoverDBCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "FailoverDBCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "FailoverDBCluster": "working"
+    },
+    "working_untested": [
+      "FailoverDBCluster"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "OrderableDBInstanceOptions",
+    "operations": [
+      "DescribeOrderableDBInstanceOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeOrderableDBInstanceOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeOrderableDBInstanceOptions": "working"
+    },
+    "working_untested": [
+      "DescribeOrderableDBInstanceOptions"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "PromoteReadReplicaDBCluster",
+    "operations": [
+      "PromoteReadReplicaDBCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "PromoteReadReplicaDBCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PromoteReadReplicaDBCluster": "working"
+    },
+    "working_untested": [
+      "PromoteReadReplicaDBCluster"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "PurchaseReservedDBInstancesOffering",
+    "operations": [
+      "PurchaseReservedDBInstancesOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedDBInstancesOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedDBInstancesOffering": "working"
+    },
+    "working_untested": [
+      "PurchaseReservedDBInstancesOffering"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ReservedDBInstances",
+    "operations": [
+      "DescribeReservedDBInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeReservedDBInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReservedDBInstances": "working"
+    },
+    "working_untested": [
+      "DescribeReservedDBInstances"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ReservedDBInstancesOfferings",
+    "operations": [
+      "DescribeReservedDBInstancesOfferings"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeReservedDBInstancesOfferings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReservedDBInstancesOfferings": "working"
+    },
+    "working_untested": [
+      "DescribeReservedDBInstancesOfferings"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "RoleToDBCluster",
+    "operations": [
+      "AddRoleToDBCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "AddRoleToDBCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AddRoleToDBCluster": "working"
+    },
+    "working_untested": [
+      "AddRoleToDBCluster"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "RoleToDBInstance",
+    "operations": [
+      "AddRoleToDBInstance"
+    ],
+    "tested": [],
+    "untested": [
+      "AddRoleToDBInstance"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AddRoleToDBInstance": "working"
+    },
+    "working_untested": [
+      "AddRoleToDBInstance"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ValidDBInstanceModifications",
+    "operations": [
+      "DescribeValidDBInstanceModifications"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeValidDBInstanceModifications"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeValidDBInstanceModifications": "working"
+    },
+    "working_untested": [
+      "DescribeValidDBInstanceModifications"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "BacktrackDBCluster",
+    "operations": [
+      "BacktrackDBCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "BacktrackDBCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BacktrackDBCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Certificates",
+    "operations": [
+      "DescribeCertificates",
+      "ModifyCertificates"
+    ],
+    "tested": [
+      "DescribeCertificates"
+    ],
+    "untested": [
+      "ModifyCertificates"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeCertificates": "working",
+      "ModifyCertificates": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CurrentDBClusterCapacity",
+    "operations": [
+      "ModifyCurrentDBClusterCapacity"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyCurrentDBClusterCapacity"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyCurrentDBClusterCapacity": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBClusterAutomatedBackup",
+    "operations": [
+      "DeleteDBClusterAutomatedBackup"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteDBClusterAutomatedBackup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteDBClusterAutomatedBackup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBClusterBacktracks",
+    "operations": [
+      "DescribeDBClusterBacktracks"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBClusterBacktracks"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBClusterBacktracks": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBClusterFromS3",
+    "operations": [
+      "RestoreDBClusterFromS3"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreDBClusterFromS3"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreDBClusterFromS3": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBClusterToPointInTime",
+    "operations": [
+      "RestoreDBClusterToPointInTime"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreDBClusterToPointInTime"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreDBClusterToPointInTime": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBInstanceAutomatedBackupsReplication",
+    "operations": [
+      "StartDBInstanceAutomatedBackupsReplication",
+      "StopDBInstanceAutomatedBackupsReplication"
+    ],
+    "tested": [],
+    "untested": [
+      "StartDBInstanceAutomatedBackupsReplication",
+      "StopDBInstanceAutomatedBackupsReplication"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "StartDBInstanceAutomatedBackupsReplication": "not_implemented",
+      "StopDBInstanceAutomatedBackupsReplication": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBInstanceFromS3",
+    "operations": [
+      "RestoreDBInstanceFromS3"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreDBInstanceFromS3"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreDBInstanceFromS3": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBInstanceReadReplica",
+    "operations": [
+      "CreateDBInstanceReadReplica"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDBInstanceReadReplica"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateDBInstanceReadReplica": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBMajorEngineVersions",
+    "operations": [
+      "DescribeDBMajorEngineVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDBMajorEngineVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDBMajorEngineVersions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBProxyTargetGroup",
+    "operations": [
+      "ModifyDBProxyTargetGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyDBProxyTargetGroup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyDBProxyTargetGroup": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DBRecommendation",
+    "operations": [
+      "ModifyDBRecommendation"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyDBRecommendation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyDBRecommendation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DownloadDBLogFilePortion",
+    "operations": [
+      "DownloadDBLogFilePortion"
+    ],
+    "tested": [],
+    "untested": [
+      "DownloadDBLogFilePortion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DownloadDBLogFilePortion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HttpEndpoint",
+    "operations": [
+      "DisableHttpEndpoint",
+      "EnableHttpEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableHttpEndpoint",
+      "EnableHttpEndpoint"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableHttpEndpoint": "not_implemented",
+      "EnableHttpEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RoleFromDBCluster",
+    "operations": [
+      "RemoveRoleFromDBCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "RemoveRoleFromDBCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RemoveRoleFromDBCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RoleFromDBInstance",
+    "operations": [
+      "RemoveRoleFromDBInstance"
+    ],
+    "tested": [],
+    "untested": [
+      "RemoveRoleFromDBInstance"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RemoveRoleFromDBInstance": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SourceRegions",
+    "operations": [
+      "DescribeSourceRegions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeSourceRegions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeSourceRegions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SwitchoverReadReplica",
+    "operations": [
+      "SwitchoverReadReplica"
+    ],
+    "tested": [],
+    "untested": [
+      "SwitchoverReadReplica"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SwitchoverReadReplica": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

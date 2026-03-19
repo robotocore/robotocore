@@ -1,0 +1,165 @@
+[
+  {
+    "noun": "Group",
+    "operations": [
+      "CreateGroup",
+      "DeleteGroup",
+      "DescribeGroup",
+      "UpdateGroup"
+    ],
+    "tested": [
+      "CreateGroup",
+      "DeleteGroup",
+      "DescribeGroup"
+    ],
+    "untested": [
+      "UpdateGroup"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateGroup": "working",
+      "DeleteGroup": "working",
+      "DescribeGroup": "working",
+      "UpdateGroup": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupId",
+    "operations": [
+      "GetGroupId"
+    ],
+    "tested": [],
+    "untested": [
+      "GetGroupId"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetGroupId": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupMembership",
+    "operations": [
+      "CreateGroupMembership",
+      "DeleteGroupMembership",
+      "DescribeGroupMembership"
+    ],
+    "tested": [
+      "CreateGroupMembership",
+      "DeleteGroupMembership"
+    ],
+    "untested": [
+      "DescribeGroupMembership"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateGroupMembership": "needs_params",
+      "DeleteGroupMembership": "working",
+      "DescribeGroupMembership": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupMembershipId",
+    "operations": [
+      "GetGroupMembershipId"
+    ],
+    "tested": [],
+    "untested": [
+      "GetGroupMembershipId"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetGroupMembershipId": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupMembershipsForMember",
+    "operations": [
+      "ListGroupMembershipsForMember"
+    ],
+    "tested": [],
+    "untested": [
+      "ListGroupMembershipsForMember"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListGroupMembershipsForMember": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IsMemberInGroups",
+    "operations": [
+      "IsMemberInGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "IsMemberInGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "IsMemberInGroups": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "User",
+    "operations": [
+      "CreateUser",
+      "DeleteUser",
+      "DescribeUser",
+      "UpdateUser"
+    ],
+    "tested": [
+      "CreateUser",
+      "DeleteUser",
+      "DescribeUser"
+    ],
+    "untested": [
+      "UpdateUser"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateUser": "working",
+      "DeleteUser": "working",
+      "DescribeUser": "working",
+      "UpdateUser": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UserId",
+    "operations": [
+      "GetUserId"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUserId"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUserId": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

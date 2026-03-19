@@ -1,0 +1,90 @@
+[
+  {
+    "noun": "Group",
+    "operations": [
+      "CreateGroup",
+      "DeleteGroup",
+      "GetGroup",
+      "UpdateGroup"
+    ],
+    "tested": [
+      "CreateGroup",
+      "DeleteGroup",
+      "GetGroup"
+    ],
+    "untested": [
+      "UpdateGroup"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateGroup": "working",
+      "DeleteGroup": "working",
+      "GetGroup": "working",
+      "UpdateGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IndexingRule",
+    "operations": [
+      "UpdateIndexingRule"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateIndexingRule"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateIndexingRule": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SamplingRule",
+    "operations": [
+      "CreateSamplingRule",
+      "DeleteSamplingRule",
+      "UpdateSamplingRule"
+    ],
+    "tested": [
+      "CreateSamplingRule",
+      "DeleteSamplingRule"
+    ],
+    "untested": [
+      "UpdateSamplingRule"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateSamplingRule": "needs_params",
+      "DeleteSamplingRule": "working",
+      "UpdateSamplingRule": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TraceSegmentDestination",
+    "operations": [
+      "GetTraceSegmentDestination",
+      "UpdateTraceSegmentDestination"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTraceSegmentDestination",
+      "UpdateTraceSegmentDestination"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetTraceSegmentDestination": "not_implemented",
+      "UpdateTraceSegmentDestination": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

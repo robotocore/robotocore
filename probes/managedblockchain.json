@@ -1,0 +1,146 @@
+{
+  "service": "managedblockchain",
+  "counts": {
+    "working": 17,
+    "needs_params": 0,
+    "not_implemented": 7,
+    "500_error": 3
+  },
+  "operations": [
+    {
+      "operation": "CreateAccessor",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateMember",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateNetwork",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: An error occurred (BadRequestException) when calling the Cre)"
+    },
+    {
+      "operation": "CreateNode",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'MemberId')"
+    },
+    {
+      "operation": "CreateProposal",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAccessor",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteMember",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteNode",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAccessor",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMember",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetNetwork",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetNode",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetProposal",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAccessors",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMembers",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListNetworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNodes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListProposalVotes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListProposals",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RejectInvitation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateMember",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'MemberId')"
+    },
+    {
+      "operation": "UpdateNode",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'MemberId')"
+    },
+    {
+      "operation": "VoteOnProposal",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

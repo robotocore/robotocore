@@ -1,0 +1,266 @@
+{
+  "service": "es",
+  "counts": {
+    "working": 39,
+    "needs_params": 0,
+    "not_implemented": 11,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AcceptInboundCrossClusterSearchConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AddTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociatePackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AuthorizeVpcEndpointAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelDomainConfigChange",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelElasticsearchServiceSoftwareUpdate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateElasticsearchDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOutboundCrossClusterSearchConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePackage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVpcEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteElasticsearchDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteElasticsearchServiceRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteInboundCrossClusterSearchConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteOutboundCrossClusterSearchConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeletePackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteVpcEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDomainAutoTunes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDomainChangeProgress",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeElasticsearchDomain",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeElasticsearchDomainConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeElasticsearchDomains",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeElasticsearchInstanceTypeLimits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInboundCrossClusterSearchConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOutboundCrossClusterSearchConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePackages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedElasticsearchInstanceOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedElasticsearchInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DissociatePackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCompatibleElasticsearchVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPackageVersionHistory",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetUpgradeHistory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetUpgradeStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDomainNames",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDomainsForPackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListElasticsearchInstanceTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListElasticsearchVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPackagesForDomain",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVpcEndpointAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListVpcEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVpcEndpointsForDomain",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PurchaseReservedElasticsearchInstanceOffering",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RejectInboundCrossClusterSearchConnection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RemoveTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RevokeVpcEndpointAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartElasticsearchServiceSoftwareUpdate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateElasticsearchDomainConfig",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "UpdatePackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateVpcEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpgradeElasticsearchDomain",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

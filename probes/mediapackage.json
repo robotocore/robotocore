@@ -1,0 +1,106 @@
+{
+  "service": "mediapackage",
+  "counts": {
+    "working": 9,
+    "needs_params": 0,
+    "not_implemented": 10,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "ConfigureLogs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateChannel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHarvestJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateOriginEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteChannel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteOriginEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeChannel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeHarvestJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeOriginEndpoint",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListChannels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHarvestJobs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListOriginEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RotateChannelCredentials",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RotateIngestEndpointCredentials",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateChannel",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateOriginEndpoint",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

@@ -1,0 +1,699 @@
+[
+  {
+    "noun": "MLTransform",
+    "operations": [
+      "CreateMLTransform",
+      "DeleteMLTransform",
+      "GetMLTransform",
+      "UpdateMLTransform"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateMLTransform",
+      "DeleteMLTransform",
+      "GetMLTransform",
+      "UpdateMLTransform"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateMLTransform": "working",
+      "DeleteMLTransform": "working",
+      "GetMLTransform": "working",
+      "UpdateMLTransform": "working"
+    },
+    "working_untested": [
+      "CreateMLTransform",
+      "DeleteMLTransform",
+      "GetMLTransform",
+      "UpdateMLTransform"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "MLTransforms",
+    "operations": [
+      "GetMLTransforms",
+      "ListMLTransforms"
+    ],
+    "tested": [],
+    "untested": [
+      "GetMLTransforms",
+      "ListMLTransforms"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetMLTransforms": "working",
+      "ListMLTransforms": "working"
+    },
+    "working_untested": [
+      "GetMLTransforms",
+      "ListMLTransforms"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "MLTaskRun",
+    "operations": [
+      "CancelMLTaskRun",
+      "GetMLTaskRun"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelMLTaskRun",
+      "GetMLTaskRun"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelMLTaskRun": "not_implemented",
+      "GetMLTaskRun": "working"
+    },
+    "working_untested": [
+      "GetMLTaskRun"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "MLTaskRuns",
+    "operations": [
+      "GetMLTaskRuns"
+    ],
+    "tested": [],
+    "untested": [
+      "GetMLTaskRuns"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetMLTaskRuns": "working"
+    },
+    "working_untested": [
+      "GetMLTaskRuns"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ConnectionType",
+    "operations": [
+      "DeleteConnectionType",
+      "DescribeConnectionType",
+      "RegisterConnectionType"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteConnectionType",
+      "DescribeConnectionType",
+      "RegisterConnectionType"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteConnectionType": "not_implemented",
+      "DescribeConnectionType": "not_implemented",
+      "RegisterConnectionType": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectionTypes",
+    "operations": [
+      "ListConnectionTypes"
+    ],
+    "tested": [],
+    "untested": [
+      "ListConnectionTypes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListConnectionTypes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DataQualityRulesetEvaluationRun",
+    "operations": [
+      "CancelDataQualityRulesetEvaluationRun",
+      "GetDataQualityRulesetEvaluationRun",
+      "StartDataQualityRulesetEvaluationRun"
+    ],
+    "tested": [
+      "CancelDataQualityRulesetEvaluationRun",
+      "GetDataQualityRulesetEvaluationRun"
+    ],
+    "untested": [
+      "StartDataQualityRulesetEvaluationRun"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelDataQualityRulesetEvaluationRun": "working",
+      "GetDataQualityRulesetEvaluationRun": "working",
+      "StartDataQualityRulesetEvaluationRun": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DataflowGraph",
+    "operations": [
+      "GetDataflowGraph"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDataflowGraph"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDataflowGraph": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Entities",
+    "operations": [
+      "ListEntities"
+    ],
+    "tested": [],
+    "untested": [
+      "ListEntities"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListEntities": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Entity",
+    "operations": [
+      "DescribeEntity"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeEntity"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeEntity": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ExportLabelsTaskRun",
+    "operations": [
+      "StartExportLabelsTaskRun"
+    ],
+    "tested": [],
+    "untested": [
+      "StartExportLabelsTaskRun"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartExportLabelsTaskRun": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetDataQualityResult",
+    "operations": [
+      "BatchGetDataQualityResult"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetDataQualityResult"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetDataQualityResult": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetTableOptimizer",
+    "operations": [
+      "BatchGetTableOptimizer"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetTableOptimizer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetTableOptimizer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GlueIdentityCenterConfiguration",
+    "operations": [
+      "CreateGlueIdentityCenterConfiguration",
+      "DeleteGlueIdentityCenterConfiguration",
+      "GetGlueIdentityCenterConfiguration",
+      "UpdateGlueIdentityCenterConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateGlueIdentityCenterConfiguration",
+      "DeleteGlueIdentityCenterConfiguration",
+      "GetGlueIdentityCenterConfiguration",
+      "UpdateGlueIdentityCenterConfiguration"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateGlueIdentityCenterConfiguration": "not_implemented",
+      "DeleteGlueIdentityCenterConfiguration": "not_implemented",
+      "GetGlueIdentityCenterConfiguration": "not_implemented",
+      "UpdateGlueIdentityCenterConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImportLabelsTaskRun",
+    "operations": [
+      "StartImportLabelsTaskRun"
+    ],
+    "tested": [],
+    "untested": [
+      "StartImportLabelsTaskRun"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartImportLabelsTaskRun": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Integration",
+    "operations": [
+      "CreateIntegration",
+      "DeleteIntegration",
+      "ModifyIntegration"
+    ],
+    "tested": [
+      "CreateIntegration",
+      "ModifyIntegration"
+    ],
+    "untested": [
+      "DeleteIntegration"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateIntegration": "working",
+      "DeleteIntegration": "500_error",
+      "ModifyIntegration": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IntegrationResourceProperties",
+    "operations": [
+      "ListIntegrationResourceProperties"
+    ],
+    "tested": [],
+    "untested": [
+      "ListIntegrationResourceProperties"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListIntegrationResourceProperties": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "JobFromSourceControl",
+    "operations": [
+      "UpdateJobFromSourceControl"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateJobFromSourceControl"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateJobFromSourceControl": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MLEvaluationTaskRun",
+    "operations": [
+      "StartMLEvaluationTaskRun"
+    ],
+    "tested": [],
+    "untested": [
+      "StartMLEvaluationTaskRun"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartMLEvaluationTaskRun": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MLLabelingSetGenerationTaskRun",
+    "operations": [
+      "StartMLLabelingSetGenerationTaskRun"
+    ],
+    "tested": [],
+    "untested": [
+      "StartMLLabelingSetGenerationTaskRun"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartMLLabelingSetGenerationTaskRun": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MaterializedViewRefreshTaskRun",
+    "operations": [
+      "GetMaterializedViewRefreshTaskRun",
+      "StartMaterializedViewRefreshTaskRun",
+      "StopMaterializedViewRefreshTaskRun"
+    ],
+    "tested": [],
+    "untested": [
+      "GetMaterializedViewRefreshTaskRun",
+      "StartMaterializedViewRefreshTaskRun",
+      "StopMaterializedViewRefreshTaskRun"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "GetMaterializedViewRefreshTaskRun": "not_implemented",
+      "StartMaterializedViewRefreshTaskRun": "not_implemented",
+      "StopMaterializedViewRefreshTaskRun": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MaterializedViewRefreshTaskRuns",
+    "operations": [
+      "ListMaterializedViewRefreshTaskRuns"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMaterializedViewRefreshTaskRuns"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListMaterializedViewRefreshTaskRuns": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Plan",
+    "operations": [
+      "GetPlan"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPlan"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPlan": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "QuerySchemaVersionMetadata",
+    "operations": [
+      "QuerySchemaVersionMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "QuerySchemaVersionMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "QuerySchemaVersionMetadata": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Registry",
+    "operations": [
+      "CreateRegistry",
+      "DeleteRegistry",
+      "GetRegistry",
+      "UpdateRegistry"
+    ],
+    "tested": [
+      "CreateRegistry",
+      "DeleteRegistry",
+      "GetRegistry"
+    ],
+    "untested": [
+      "UpdateRegistry"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateRegistry": "working",
+      "DeleteRegistry": "working",
+      "GetRegistry": "working",
+      "UpdateRegistry": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SchemaVersionMetadata",
+    "operations": [
+      "PutSchemaVersionMetadata",
+      "RemoveSchemaVersionMetadata"
+    ],
+    "tested": [
+      "PutSchemaVersionMetadata"
+    ],
+    "untested": [
+      "RemoveSchemaVersionMetadata"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "PutSchemaVersionMetadata": "working",
+      "RemoveSchemaVersionMetadata": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SchemaVersionsDiff",
+    "operations": [
+      "GetSchemaVersionsDiff"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSchemaVersionsDiff"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSchemaVersionsDiff": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Script",
+    "operations": [
+      "CreateScript"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateScript"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateScript": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SourceControlFromJob",
+    "operations": [
+      "UpdateSourceControlFromJob"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateSourceControlFromJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateSourceControlFromJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableOptimizer",
+    "operations": [
+      "CreateTableOptimizer",
+      "DeleteTableOptimizer",
+      "GetTableOptimizer",
+      "UpdateTableOptimizer"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTableOptimizer",
+      "DeleteTableOptimizer",
+      "GetTableOptimizer",
+      "UpdateTableOptimizer"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateTableOptimizer": "not_implemented",
+      "DeleteTableOptimizer": "not_implemented",
+      "GetTableOptimizer": "not_implemented",
+      "UpdateTableOptimizer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableOptimizerRuns",
+    "operations": [
+      "ListTableOptimizerRuns"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTableOptimizerRuns"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTableOptimizerRuns": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestConnection",
+    "operations": [
+      "TestConnection"
+    ],
+    "tested": [],
+    "untested": [
+      "TestConnection"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestConnection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UnfilteredPartitionMetadata",
+    "operations": [
+      "GetUnfilteredPartitionMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUnfilteredPartitionMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUnfilteredPartitionMetadata": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UnfilteredPartitionsMetadata",
+    "operations": [
+      "GetUnfilteredPartitionsMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUnfilteredPartitionsMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUnfilteredPartitionsMetadata": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UnfilteredTableMetadata",
+    "operations": [
+      "GetUnfilteredTableMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUnfilteredTableMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUnfilteredTableMetadata": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UserDefinedFunctions",
+    "operations": [
+      "GetUserDefinedFunctions"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUserDefinedFunctions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUserDefinedFunctions": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

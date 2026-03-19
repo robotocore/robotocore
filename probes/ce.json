@@ -1,0 +1,246 @@
+{
+  "service": "ce",
+  "counts": {
+    "working": 41,
+    "needs_params": 6,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateAnomalyMonitor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAnomalySubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCostCategoryDefinition",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteAnomalyMonitor",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAnomalySubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCostCategoryDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCostCategoryDefinition",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAnomalies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAnomalyMonitors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAnomalySubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetApproximateUsageRecords",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCommitmentPurchaseAnalysis",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCostAndUsage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCostAndUsageComparisons",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCostAndUsageWithResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCostCategories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCostComparisonDrivers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCostForecast",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDimensionValues",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetReservationCoverage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetReservationPurchaseRecommendation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetReservationUtilization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRightsizingRecommendation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSavingsPlanPurchaseRecommendationDetails",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetSavingsPlansCoverage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSavingsPlansPurchaseRecommendation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSavingsPlansUtilization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSavingsPlansUtilizationDetails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetUsageForecast",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCommitmentPurchaseAnalyses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCostAllocationTagBackfillHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCostAllocationTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCostCategoryDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCostCategoryResourceAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSavingsPlansPurchaseRecommendationGeneration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ProvideAnomalyFeedback",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartCommitmentPurchaseAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartCostAllocationTagBackfill",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartSavingsPlansPurchaseRecommendationGeneration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAnomalyMonitor",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAnomalySubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateCostAllocationTagsStatus",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCostCategoryDefinition",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

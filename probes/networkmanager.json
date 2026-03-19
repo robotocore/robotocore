@@ -1,0 +1,486 @@
+{
+  "service": "networkmanager",
+  "counts": {
+    "working": 93,
+    "needs_params": 0,
+    "not_implemented": 2,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "AssociateConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "AssociateCustomerGateway",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "AssociateLink",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "AssociateTransitGatewayConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateConnectAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateConnection",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateCoreNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateCoreNetworkPrefixListAssociation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateDirectConnectGatewayAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateGlobalNetwork",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLink",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateSite",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateSiteToSiteVpnAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateTransitGatewayPeering",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateTransitGatewayRouteTableAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateVpcAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteConnection",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteCoreNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteCoreNetworkPolicyVersion",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteCoreNetworkPrefixListAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteGlobalNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteLink",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeletePeering",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSite",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeregisterTransitGateway",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeGlobalNetworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DisassociateCustomerGateway",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DisassociateLink",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DisassociateTransitGatewayConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ExecuteCoreNetworkChangeSet",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetConnectAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetConnectPeer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetConnectPeerAssociations",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetConnections",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetCoreNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCoreNetworkChangeEvents",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCoreNetworkChangeSet",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCoreNetworkPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCustomerGatewayAssociations",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetDevices",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetDirectConnectGatewayAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetLinkAssociations",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetLinks",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetNetworkResourceCounts",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetNetworkResourceRelationships",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetNetworkResources",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetNetworkRoutes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetNetworkTelemetry",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRouteAnalysis",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetSiteToSiteVpnAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetSites",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetTransitGatewayConnectPeerAssociations",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetTransitGatewayPeering",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTransitGatewayRegistrations",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetTransitGatewayRouteTableAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetVpcAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListAttachmentRoutingPolicyAssociations",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListAttachments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConnectPeers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCoreNetworkPolicyVersions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListCoreNetworkPrefixListAssociations",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListCoreNetworkRoutingInformation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListCoreNetworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOrganizationServiceAccessStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPeerings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutAttachmentRoutingPolicyLabel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutCoreNetworkPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterTransitGateway",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "RejectAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "RemoveAttachmentRoutingPolicyLabel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RestoreCoreNetworkPolicyVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartOrganizationServiceAccessUpdate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartRouteAnalysis",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateConnection",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateCoreNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateDirectConnectGatewayAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateGlobalNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateLink",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateNetworkResourceMetadata",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateSite",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateVpcAttachment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

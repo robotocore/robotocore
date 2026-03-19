@@ -1,0 +1,21 @@
+[
+  {
+    "noun": "JobOutput",
+    "operations": [
+      "GetJobOutput"
+    ],
+    "tested": [],
+    "untested": [
+      "GetJobOutput"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetJobOutput": "working"
+    },
+    "working_untested": [
+      "GetJobOutput"
+    ],
+    "working_untested_count": 1
+  }
+]

@@ -1,0 +1,361 @@
+{
+  "service": "athena",
+  "counts": {
+    "working": 62,
+    "needs_params": 4,
+    "not_implemented": 0,
+    "500_error": 4
+  },
+  "operations": [
+    {
+      "operation": "BatchGetNamedQuery",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetPreparedStatement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetQueryExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CancelCapacityReservation",
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: Capacity Reservation does not exist)"
+    },
+    {
+      "operation": "CreateCapacityReservation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDataCatalog",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNamedQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNotebook",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreatePreparedStatement",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreatePresignedNotebookUrl",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreateWorkGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCapacityReservation",
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: Capacity Reservation does not exist)"
+    },
+    {
+      "operation": "DeleteDataCatalog",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNamedQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNotebook",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePreparedStatement",
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: PreparedStatement probe-test-value was not found)"
+    },
+    {
+      "operation": "DeleteWorkGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ExportNotebook",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetCalculationExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetCalculationExecutionCode",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetCalculationExecutionStatus",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetCapacityAssignmentConfiguration",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetCapacityReservation",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetDataCatalog",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDatabase",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetNamedQuery",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'name')"
+    },
+    {
+      "operation": "GetNotebookMetadata",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetPreparedStatement",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'statement_name')"
+    },
+    {
+      "operation": "GetQueryExecution",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "GetQueryResults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetQueryRuntimeStatistics",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetResourceDashboard",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSession",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetSessionEndpoint",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetSessionStatus",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetTableMetadata",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetWorkGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ImportNotebook",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListApplicationDPUSizes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCalculationExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCapacityReservations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDataCatalogs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDatabases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEngineVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListExecutors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNamedQueries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNotebookMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNotebookSessions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPreparedStatements",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListQueryExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSessions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTableMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListWorkGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutCapacityAssignmentConfiguration",
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: Capacity Reservation does not exist)"
+    },
+    {
+      "operation": "StartCalculationExecution",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartQueryExecution",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartSession",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "StopCalculationExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "StopQueryExecution",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TerminateSession",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCapacityReservation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDataCatalog",
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: DataCatalog probe-test-value is not found)"
+    },
+    {
+      "operation": "UpdateNamedQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateNotebook",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateNotebookMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePreparedStatement",
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: PreparedStatement probe-test-value was not found)"
+    },
+    {
+      "operation": "UpdateWorkGroup",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    }
+  ]
+}

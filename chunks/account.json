@@ -1,0 +1,164 @@
+[
+  {
+    "noun": "AccountInformation",
+    "operations": [
+      "GetAccountInformation"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAccountInformation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAccountInformation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AccountName",
+    "operations": [
+      "PutAccountName"
+    ],
+    "tested": [],
+    "untested": [
+      "PutAccountName"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PutAccountName": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ContactInformation",
+    "operations": [
+      "GetContactInformation",
+      "PutContactInformation"
+    ],
+    "tested": [],
+    "untested": [
+      "GetContactInformation",
+      "PutContactInformation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetContactInformation": "not_implemented",
+      "PutContactInformation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GovCloudAccountInformation",
+    "operations": [
+      "GetGovCloudAccountInformation"
+    ],
+    "tested": [],
+    "untested": [
+      "GetGovCloudAccountInformation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetGovCloudAccountInformation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PrimaryEmail",
+    "operations": [
+      "GetPrimaryEmail"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPrimaryEmail"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPrimaryEmail": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PrimaryEmailUpdate",
+    "operations": [
+      "AcceptPrimaryEmailUpdate",
+      "StartPrimaryEmailUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptPrimaryEmailUpdate",
+      "StartPrimaryEmailUpdate"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AcceptPrimaryEmailUpdate": "not_implemented",
+      "StartPrimaryEmailUpdate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Region",
+    "operations": [
+      "DisableRegion",
+      "EnableRegion"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableRegion",
+      "EnableRegion"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableRegion": "not_implemented",
+      "EnableRegion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RegionOptStatus",
+    "operations": [
+      "GetRegionOptStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRegionOptStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRegionOptStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Regions",
+    "operations": [
+      "ListRegions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListRegions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListRegions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,326 @@
+{
+  "service": "organizations",
+  "counts": {
+    "working": 50,
+    "needs_params": 0,
+    "not_implemented": 13,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptHandshake",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "AttachPolicy",
+      "status": "working",
+      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+    },
+    {
+      "operation": "CancelHandshake",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "CloseAccount",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "CreateAccount",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "CreateGovCloudAccount",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateOrganization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOrganizationalUnit",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePolicy",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+    },
+    {
+      "operation": "DeclineHandshake",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DeleteOrganization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteOrganizationalUnit",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DeletePolicy",
+      "status": "working",
+      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeregisterDelegatedAdministrator",
+      "status": "working",
+      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
+    },
+    {
+      "operation": "DescribeAccount",
+      "status": "working",
+      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
+    },
+    {
+      "operation": "DescribeCreateAccountStatus",
+      "status": "working",
+      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
+    },
+    {
+      "operation": "DescribeEffectivePolicy",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+    },
+    {
+      "operation": "DescribeHandshake",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DescribeOrganization",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "DescribeOrganizationalUnit",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DescribePolicy",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+    },
+    {
+      "operation": "DescribeResourcePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeResponsibilityTransfer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DetachPolicy",
+      "status": "working",
+      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+    },
+    {
+      "operation": "DisableAWSServiceAccess",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an unrecognized service principal.)"
+    },
+    {
+      "operation": "DisablePolicyType",
+      "status": "working",
+      "message": "likely implemented (RootNotFoundException: You specified a root that doesn't exist.)"
+    },
+    {
+      "operation": "EnableAWSServiceAccess",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an unrecognized service principal.)"
+    },
+    {
+      "operation": "EnableAllFeatures",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "EnablePolicyType",
+      "status": "working",
+      "message": "likely implemented (RootNotFoundException: You specified a root that doesn't exist.)"
+    },
+    {
+      "operation": "InviteAccountToOrganization",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "InviteOrganizationToTransferResponsibility",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "LeaveOrganization",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAWSServiceAccessForOrganization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccountsForParent",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "ListAccountsWithInvalidEffectivePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListChildren",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "ListCreateAccountStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDelegatedAdministrators",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDelegatedServicesForAccount",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "ListEffectivePolicyValidationErrors",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListHandshakesForAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHandshakesForOrganization",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "ListInboundResponsibilityTransfers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListOrganizationalUnitsForParent",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "ListOutboundResponsibilityTransfers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListParents",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "ListPolicies",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+    },
+    {
+      "operation": "ListPoliciesForTarget",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+    },
+    {
+      "operation": "ListRoots",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You provided a value that does not match the required patter)"
+    },
+    {
+      "operation": "ListTargetsForPolicy",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+    },
+    {
+      "operation": "MoveAccount",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RegisterDelegatedAdministrator",
+      "status": "working",
+      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
+    },
+    {
+      "operation": "RemoveAccountFromOrganization",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You provided a value that does not match the required patter)"
+    },
+    {
+      "operation": "TerminateResponsibilityTransfer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You provided a value that does not match the required patter)"
+    },
+    {
+      "operation": "UpdateOrganizationalUnit",
+      "status": "working",
+      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "UpdatePolicy",
+      "status": "working",
+      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+    },
+    {
+      "operation": "UpdateResponsibilityTransfer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

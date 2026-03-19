@@ -1,0 +1,69 @@
+[
+  {
+    "noun": "DeauthorizeConnection",
+    "operations": [
+      "DeauthorizeConnection"
+    ],
+    "tested": [],
+    "untested": [
+      "DeauthorizeConnection"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeauthorizeConnection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Endpoint",
+    "operations": [
+      "CreateEndpoint",
+      "DeleteEndpoint",
+      "DescribeEndpoint",
+      "UpdateEndpoint"
+    ],
+    "tested": [
+      "DescribeEndpoint"
+    ],
+    "untested": [
+      "CreateEndpoint",
+      "DeleteEndpoint",
+      "UpdateEndpoint"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateEndpoint": "needs_params",
+      "DeleteEndpoint": "not_implemented",
+      "DescribeEndpoint": "working",
+      "UpdateEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EventSource",
+    "operations": [
+      "ActivateEventSource",
+      "DeactivateEventSource",
+      "DescribeEventSource"
+    ],
+    "tested": [],
+    "untested": [
+      "ActivateEventSource",
+      "DeactivateEventSource",
+      "DescribeEventSource"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "ActivateEventSource": "not_implemented",
+      "DeactivateEventSource": "not_implemented",
+      "DescribeEventSource": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

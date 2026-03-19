@@ -1,0 +1,386 @@
+{
+  "service": "rekognition",
+  "counts": {
+    "working": 55,
+    "needs_params": 6,
+    "not_implemented": 14,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateFaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CompareFaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CopyProjectVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCollection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateFaceLivenessSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProject",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProjectVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateStreamProcessor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateUser",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCollection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteProject",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteProjectPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteProjectVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteStreamProcessor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeCollection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProjectVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProjects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStreamProcessor",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DetectCustomLabels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetectFaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetectLabels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetectModerationLabels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetectProtectiveEquipment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetectText",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateFaces",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DistributeDatasetEntries",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCelebrityInfo",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCelebrityRecognition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetContentModeration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFaceDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFaceLivenessSessionResults",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetFaceSearch",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLabelDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMediaAnalysisJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetPersonTracking",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSegmentDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTextDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "IndexFaces",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListCollections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDatasetEntries",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListDatasetLabels",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFaces",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListMediaAnalysisJobs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListProjectPolicies",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListStreamProcessors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutProjectPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RecognizeCelebrities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchFaces",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SearchFacesByImage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SearchUsers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SearchUsersByImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartCelebrityRecognition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartContentModeration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartFaceDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartFaceSearch",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartLabelDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMediaAnalysisJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartPersonTracking",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartProjectVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartSegmentDetection",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartStreamProcessor",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartTextDetection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopProjectVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopStreamProcessor",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDatasetEntries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateStreamProcessor",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

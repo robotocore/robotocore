@@ -1,0 +1,201 @@
+{
+  "service": "xray",
+  "counts": {
+    "working": 32,
+    "needs_params": 2,
+    "not_implemented": 4,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchGetTraces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelTraceRetrieval",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSamplingRule",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSamplingRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEncryptionConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIndexingRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInsight",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetInsightEvents",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetInsightImpactGraph",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetInsightSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRetrievedTracesGraph",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSamplingRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSamplingStatisticSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSamplingTargets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetServiceGraph",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTimeSeriesServiceStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTraceGraph",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTraceSegmentDestination",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTraceSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourcePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRetrievedTraces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutEncryptionConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutTelemetryRecords",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutTraceSegments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartTraceRetrieval",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateIndexingRule",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateSamplingRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateTraceSegmentDestination",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

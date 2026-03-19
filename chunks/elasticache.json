@@ -1,0 +1,230 @@
+[
+  {
+    "noun": "AllowedNodeTypeModifications",
+    "operations": [
+      "ListAllowedNodeTypeModifications"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAllowedNodeTypeModifications"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAllowedNodeTypeModifications": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CacheCluster",
+    "operations": [
+      "CreateCacheCluster",
+      "DeleteCacheCluster",
+      "ModifyCacheCluster",
+      "RebootCacheCluster"
+    ],
+    "tested": [
+      "CreateCacheCluster",
+      "DeleteCacheCluster",
+      "ModifyCacheCluster"
+    ],
+    "untested": [
+      "RebootCacheCluster"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCacheCluster": "working",
+      "DeleteCacheCluster": "unknown",
+      "ModifyCacheCluster": "working",
+      "RebootCacheCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CacheSecurityGroupIngress",
+    "operations": [
+      "AuthorizeCacheSecurityGroupIngress",
+      "RevokeCacheSecurityGroupIngress"
+    ],
+    "tested": [
+      "RevokeCacheSecurityGroupIngress"
+    ],
+    "untested": [
+      "AuthorizeCacheSecurityGroupIngress"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "AuthorizeCacheSecurityGroupIngress": "not_implemented",
+      "RevokeCacheSecurityGroupIngress": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DecreaseNodeGroupsInGlobalReplicationGroup",
+    "operations": [
+      "DecreaseNodeGroupsInGlobalReplicationGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "DecreaseNodeGroupsInGlobalReplicationGroup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DecreaseNodeGroupsInGlobalReplicationGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EngineDefaultParameters",
+    "operations": [
+      "DescribeEngineDefaultParameters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeEngineDefaultParameters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeEngineDefaultParameters": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IncreaseNodeGroupsInGlobalReplicationGroup",
+    "operations": [
+      "IncreaseNodeGroupsInGlobalReplicationGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "IncreaseNodeGroupsInGlobalReplicationGroup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "IncreaseNodeGroupsInGlobalReplicationGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Migration",
+    "operations": [
+      "StartMigration"
+    ],
+    "tested": [],
+    "untested": [
+      "StartMigration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartMigration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseReservedCacheNodesOffering",
+    "operations": [
+      "PurchaseReservedCacheNodesOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedCacheNodesOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedCacheNodesOffering": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReplicationGroupShardConfiguration",
+    "operations": [
+      "ModifyReplicationGroupShardConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyReplicationGroupShardConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyReplicationGroupShardConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReservedCacheNodes",
+    "operations": [
+      "DescribeReservedCacheNodes"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeReservedCacheNodes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReservedCacheNodes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReservedCacheNodesOfferings",
+    "operations": [
+      "DescribeReservedCacheNodesOfferings"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeReservedCacheNodesOfferings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReservedCacheNodesOfferings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServerlessCacheSnapshot",
+    "operations": [
+      "CopyServerlessCacheSnapshot",
+      "CreateServerlessCacheSnapshot",
+      "DeleteServerlessCacheSnapshot",
+      "ExportServerlessCacheSnapshot"
+    ],
+    "tested": [
+      "CreateServerlessCacheSnapshot",
+      "DeleteServerlessCacheSnapshot"
+    ],
+    "untested": [
+      "CopyServerlessCacheSnapshot",
+      "ExportServerlessCacheSnapshot"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CopyServerlessCacheSnapshot": "not_implemented",
+      "CreateServerlessCacheSnapshot": "working",
+      "DeleteServerlessCacheSnapshot": "working",
+      "ExportServerlessCacheSnapshot": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

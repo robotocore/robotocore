@@ -1,0 +1,311 @@
+{
+  "service": "cloudtrail",
+  "counts": {
+    "working": 30,
+    "needs_params": 7,
+    "not_implemented": 19,
+    "500_error": 4
+  },
+  "operations": [
+    {
+      "operation": "AddTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelQuery",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateChannel",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDashboard",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateEventDataStore",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrail",
+      "status": "working",
+      "message": "likely implemented (S3BucketDoesNotExistException: S3 bucket probe-test-value does not exist!)"
+    },
+    {
+      "operation": "DeleteChannel",
+      "status": "working",
+      "message": "likely implemented (ChannelNotFoundException: The channel probe-test-value was not found.)"
+    },
+    {
+      "operation": "DeleteDashboard",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteEventDataStore",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTrail",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterOrganizationDelegatedAdmin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeQuery",
+      "status": "working",
+      "message": "likely implemented (QueryIdNotFoundException: The query ID None was not found.)"
+    },
+    {
+      "operation": "DescribeTrails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableFederation",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+    },
+    {
+      "operation": "EnableFederation",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+    },
+    {
+      "operation": "GenerateQuery",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetChannel",
+      "status": "working",
+      "message": "likely implemented (ChannelNotFoundException: The channel probe-test-value was not found.)"
+    },
+    {
+      "operation": "GetDashboard",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetEventConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEventDataStore",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+    },
+    {
+      "operation": "GetEventSelectors",
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
+    },
+    {
+      "operation": "GetImport",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetInsightSelectors",
+      "status": "500_error",
+      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+    },
+    {
+      "operation": "GetQueryResults",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetTrail",
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
+    },
+    {
+      "operation": "GetTrailStatus",
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
+    },
+    {
+      "operation": "ListChannels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDashboards",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListEventDataStores",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListImportFailures",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListImports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInsightsData",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListInsightsMetricData",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListPublicKeys",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListQueries",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "LookupEvents",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutEventConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutEventSelectors",
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
+    },
+    {
+      "operation": "PutInsightSelectors",
+      "status": "500_error",
+      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterOrganizationDelegatedAdmin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RestoreEventDataStore",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+    },
+    {
+      "operation": "SearchSampleQueries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartDashboardRefresh",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartEventDataStoreIngestion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartImport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartLogging",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "StartQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopEventDataStoreIngestion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopImport",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StopLogging",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "UpdateChannel",
+      "status": "working",
+      "message": "likely implemented (ChannelNotFoundException: The channel probe-test-value was not found.)"
+    },
+    {
+      "operation": "UpdateDashboard",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateEventDataStore",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+    },
+    {
+      "operation": "UpdateTrail",
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
+    }
+  ]
+}

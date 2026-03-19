@@ -1,0 +1,234 @@
+[
+  {
+    "noun": "AccessGrantsIdentityCenter",
+    "operations": [
+      "AssociateAccessGrantsIdentityCenter"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateAccessGrantsIdentityCenter"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateAccessGrantsIdentityCenter": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AccessPointConfigurationForObjectLambda",
+    "operations": [
+      "GetAccessPointConfigurationForObjectLambda",
+      "PutAccessPointConfigurationForObjectLambda"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAccessPointConfigurationForObjectLambda",
+      "PutAccessPointConfigurationForObjectLambda"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetAccessPointConfigurationForObjectLambda": "not_implemented",
+      "PutAccessPointConfigurationForObjectLambda": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AccessPointsForDirectoryBuckets",
+    "operations": [
+      "ListAccessPointsForDirectoryBuckets"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAccessPointsForDirectoryBuckets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAccessPointsForDirectoryBuckets": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AccessPointsForObjectLambda",
+    "operations": [
+      "ListAccessPointsForObjectLambda"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAccessPointsForObjectLambda"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAccessPointsForObjectLambda": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Bucket",
+    "operations": [
+      "CreateBucket",
+      "DeleteBucket",
+      "GetBucket"
+    ],
+    "tested": [
+      "CreateBucket",
+      "DeleteBucket"
+    ],
+    "untested": [
+      "GetBucket"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateBucket": "not_implemented",
+      "DeleteBucket": "unknown",
+      "GetBucket": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BucketLifecycleConfiguration",
+    "operations": [
+      "DeleteBucketLifecycleConfiguration",
+      "GetBucketLifecycleConfiguration",
+      "PutBucketLifecycleConfiguration"
+    ],
+    "tested": [
+      "DeleteBucketLifecycleConfiguration",
+      "GetBucketLifecycleConfiguration"
+    ],
+    "untested": [
+      "PutBucketLifecycleConfiguration"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteBucketLifecycleConfiguration": "working",
+      "GetBucketLifecycleConfiguration": "working",
+      "PutBucketLifecycleConfiguration": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BucketVersioning",
+    "operations": [
+      "GetBucketVersioning",
+      "PutBucketVersioning"
+    ],
+    "tested": [
+      "GetBucketVersioning"
+    ],
+    "untested": [
+      "PutBucketVersioning"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetBucketVersioning": "working",
+      "PutBucketVersioning": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CallerAccessGrants",
+    "operations": [
+      "ListCallerAccessGrants"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCallerAccessGrants"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCallerAccessGrants": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DataAccess",
+    "operations": [
+      "GetDataAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDataAccess"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDataAccess": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DissociateAccessGrantsIdentityCenter",
+    "operations": [
+      "DissociateAccessGrantsIdentityCenter"
+    ],
+    "tested": [],
+    "untested": [
+      "DissociateAccessGrantsIdentityCenter"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DissociateAccessGrantsIdentityCenter": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "JobTagging",
+    "operations": [
+      "DeleteJobTagging",
+      "GetJobTagging",
+      "PutJobTagging"
+    ],
+    "tested": [
+      "DeleteJobTagging",
+      "GetJobTagging"
+    ],
+    "untested": [
+      "PutJobTagging"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteJobTagging": "working",
+      "GetJobTagging": "working",
+      "PutJobTagging": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RegionalBuckets",
+    "operations": [
+      "ListRegionalBuckets"
+    ],
+    "tested": [],
+    "untested": [
+      "ListRegionalBuckets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListRegionalBuckets": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

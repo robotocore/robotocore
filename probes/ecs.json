@@ -1,0 +1,326 @@
+{
+  "service": "ecs",
+  "counts": {
+    "working": 50,
+    "needs_params": 0,
+    "not_implemented": 9,
+    "500_error": 4
+  },
+  "operations": [
+    {
+      "operation": "CreateCapacityProvider",
+      "status": "500_error",
+      "message": "server crash (InternalError: argument of type 'NoneType' is not iterable)"
+    },
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateExpressGatewayService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateService",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTaskSet",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteAccountSetting",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCapacityProvider",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'name')"
+    },
+    {
+      "operation": "DeleteExpressGatewayService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteService",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTaskDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTaskSet",
+      "status": "working",
+      "message": "implemented (ServiceNotFoundException)"
+    },
+    {
+      "operation": "DeregisterContainerInstance",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "DeregisterTaskDefinition",
+      "status": "working",
+      "message": "likely implemented (ClientException: Unable to deregister task definition probe-test-value.)"
+    },
+    {
+      "operation": "DescribeCapacityProviders",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "DescribeClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeContainerInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeExpressGatewayService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeServiceDeployments",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeServiceRevisions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeServices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTaskDefinition",
+      "status": "working",
+      "message": "likely implemented (ClientException: Unable to describe task definition probe-test-value.)"
+    },
+    {
+      "operation": "DescribeTaskSets",
+      "status": "working",
+      "message": "implemented (ServiceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DiscoverPollEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ExecuteCommand",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "GetTaskProtection",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "ListAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListContainerInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServiceDeployments",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListServices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServicesByNamespace",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTaskDefinitionFamilies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTaskDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountSetting",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountSettingDefault",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "PutAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutClusterCapacityProviders",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found)"
+    },
+    {
+      "operation": "RegisterContainerInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterTaskDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RunTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartTask",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "StopServiceDeployment",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopTask",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "SubmitAttachmentStateChanges",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SubmitContainerStateChange",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SubmitTaskStateChange",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCapacityProvider",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'update')"
+    },
+    {
+      "operation": "UpdateCluster",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "UpdateClusterSettings",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "UpdateContainerAgent",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "UpdateContainerInstancesState",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateExpressGatewayService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateService",
+      "status": "working",
+      "message": "implemented (ServiceNotFoundException)"
+    },
+    {
+      "operation": "UpdateServicePrimaryTaskSet",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "UpdateTaskProtection",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundException: Cluster not found.)"
+    },
+    {
+      "operation": "UpdateTaskSet",
+      "status": "working",
+      "message": "implemented (ServiceNotFoundException)"
+    }
+  ]
+}

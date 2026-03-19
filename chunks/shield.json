@@ -1,0 +1,87 @@
+[
+  {
+    "noun": "DRTLogBucket",
+    "operations": [
+      "AssociateDRTLogBucket",
+      "DisassociateDRTLogBucket"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateDRTLogBucket",
+      "DisassociateDRTLogBucket"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateDRTLogBucket": "working",
+      "DisassociateDRTLogBucket": "working"
+    },
+    "working_untested": [
+      "AssociateDRTLogBucket",
+      "DisassociateDRTLogBucket"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "DRTRole",
+    "operations": [
+      "AssociateDRTRole",
+      "DisassociateDRTRole"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateDRTRole",
+      "DisassociateDRTRole"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateDRTRole": "working",
+      "DisassociateDRTRole": "working"
+    },
+    "working_untested": [
+      "AssociateDRTRole",
+      "DisassociateDRTRole"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "DRTAccess",
+    "operations": [
+      "DescribeDRTAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDRTAccess"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDRTAccess": "working"
+    },
+    "working_untested": [
+      "DescribeDRTAccess"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "HealthCheck",
+    "operations": [
+      "AssociateHealthCheck",
+      "DisassociateHealthCheck"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateHealthCheck",
+      "DisassociateHealthCheck"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateHealthCheck": "needs_params",
+      "DisassociateHealthCheck": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

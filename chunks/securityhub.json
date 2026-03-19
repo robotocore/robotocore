@@ -1,0 +1,208 @@
+[
+  {
+    "noun": "AutomationRule",
+    "operations": [
+      "CreateAutomationRule"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAutomationRule"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAutomationRule": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AutomationRuleV2",
+    "operations": [
+      "CreateAutomationRuleV2",
+      "DeleteAutomationRuleV2",
+      "GetAutomationRuleV2",
+      "UpdateAutomationRuleV2"
+    ],
+    "tested": [
+      "DeleteAutomationRuleV2",
+      "GetAutomationRuleV2",
+      "UpdateAutomationRuleV2"
+    ],
+    "untested": [
+      "CreateAutomationRuleV2"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAutomationRuleV2": "needs_params",
+      "DeleteAutomationRuleV2": "working",
+      "GetAutomationRuleV2": "working",
+      "UpdateAutomationRuleV2": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationPolicy",
+    "operations": [
+      "CreateConfigurationPolicy",
+      "DeleteConfigurationPolicy",
+      "GetConfigurationPolicy",
+      "UpdateConfigurationPolicy"
+    ],
+    "tested": [
+      "DeleteConfigurationPolicy",
+      "GetConfigurationPolicy",
+      "UpdateConfigurationPolicy"
+    ],
+    "untested": [
+      "CreateConfigurationPolicy"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateConfigurationPolicy": "needs_params",
+      "DeleteConfigurationPolicy": "working",
+      "GetConfigurationPolicy": "working",
+      "UpdateConfigurationPolicy": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationPolicyAssociation",
+    "operations": [
+      "GetConfigurationPolicyAssociation",
+      "StartConfigurationPolicyAssociation"
+    ],
+    "tested": [],
+    "untested": [
+      "GetConfigurationPolicyAssociation",
+      "StartConfigurationPolicyAssociation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetConfigurationPolicyAssociation": "needs_params",
+      "StartConfigurationPolicyAssociation": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectorV2",
+    "operations": [
+      "CreateConnectorV2",
+      "DeleteConnectorV2",
+      "GetConnectorV2",
+      "RegisterConnectorV2",
+      "UpdateConnectorV2"
+    ],
+    "tested": [
+      "DeleteConnectorV2",
+      "GetConnectorV2",
+      "RegisterConnectorV2",
+      "UpdateConnectorV2"
+    ],
+    "untested": [
+      "CreateConnectorV2"
+    ],
+    "size": 5,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateConnectorV2": "needs_params",
+      "DeleteConnectorV2": "working",
+      "GetConnectorV2": "working",
+      "RegisterConnectorV2": "working",
+      "UpdateConnectorV2": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeleteAutomationRules",
+    "operations": [
+      "BatchDeleteAutomationRules"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDeleteAutomationRules"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDeleteAutomationRules": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DisableStandards",
+    "operations": [
+      "BatchDisableStandards"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDisableStandards"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDisableStandards": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EnableStandards",
+    "operations": [
+      "BatchEnableStandards"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchEnableStandards"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchEnableStandards": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetAutomationRules",
+    "operations": [
+      "BatchGetAutomationRules"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetAutomationRules"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetAutomationRules": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpdateAutomationRules",
+    "operations": [
+      "BatchUpdateAutomationRules"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchUpdateAutomationRules"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchUpdateAutomationRules": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

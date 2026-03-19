@@ -1,0 +1,251 @@
+{
+  "service": "fsx",
+  "counts": {
+    "working": 26,
+    "needs_params": 9,
+    "not_implemented": 11,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "AssociateFileSystemAliases",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "CancelDataRepositoryTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CopyBackup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CopySnapshotAndUpdateVolume",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateAndAttachS3AccessPoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateBackup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateDataRepositoryAssociation",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "CreateDataRepositoryTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateFileCache",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateFileSystem",
+      "status": "500_error",
+      "message": "server crash (InternalError: Invalid FileSystemType: probe-test-value)"
+    },
+    {
+      "operation": "CreateFileSystemFromBackup",
+      "status": "working",
+      "message": "likely implemented (BackupNotFound: Backup 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "CreateSnapshot",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateStorageVirtualMachine",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "CreateVolume",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVolumeFromBackup",
+      "status": "working",
+      "message": "likely implemented (BackupNotFound: Backup 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DeleteBackup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDataRepositoryAssociation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFileCache",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteFileSystem",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeleteSnapshot",
+      "status": "working",
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DeleteStorageVirtualMachine",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteVolume",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeBackups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataRepositoryAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataRepositoryTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFileCaches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFileSystemAliases",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DescribeFileSystems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeS3AccessPointAttachments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSharedVpcConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStorageVirtualMachines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVolumes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetachAndDeleteS3AccessPoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateFileSystemAliases",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReleaseFileSystemNfsV3Locks",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreVolumeFromSnapshot",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartMisconfiguredStateRecovery",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDataRepositoryAssociation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFileCache",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateFileSystem",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "UpdateSharedVpcConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateSnapshot",
+      "status": "working",
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "UpdateStorageVirtualMachine",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateVolume",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

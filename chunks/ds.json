@@ -1,0 +1,346 @@
+[
+  {
+    "noun": "CAEnrollmentPolicy",
+    "operations": [
+      "DescribeCAEnrollmentPolicy",
+      "DisableCAEnrollmentPolicy",
+      "EnableCAEnrollmentPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeCAEnrollmentPolicy",
+      "DisableCAEnrollmentPolicy",
+      "EnableCAEnrollmentPolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DescribeCAEnrollmentPolicy": "working",
+      "DisableCAEnrollmentPolicy": "working",
+      "EnableCAEnrollmentPolicy": "working"
+    },
+    "working_untested": [
+      "DescribeCAEnrollmentPolicy",
+      "DisableCAEnrollmentPolicy",
+      "EnableCAEnrollmentPolicy"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "DirectoryDataAccess",
+    "operations": [
+      "DescribeDirectoryDataAccess",
+      "DisableDirectoryDataAccess",
+      "EnableDirectoryDataAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDirectoryDataAccess",
+      "DisableDirectoryDataAccess",
+      "EnableDirectoryDataAccess"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DescribeDirectoryDataAccess": "working",
+      "DisableDirectoryDataAccess": "working",
+      "EnableDirectoryDataAccess": "working"
+    },
+    "working_untested": [
+      "DescribeDirectoryDataAccess",
+      "DisableDirectoryDataAccess",
+      "EnableDirectoryDataAccess"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "ADAssessment",
+    "operations": [
+      "DeleteADAssessment",
+      "DescribeADAssessment",
+      "StartADAssessment"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteADAssessment",
+      "DescribeADAssessment",
+      "StartADAssessment"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteADAssessment": "working",
+      "DescribeADAssessment": "working",
+      "StartADAssessment": "500_error"
+    },
+    "working_untested": [
+      "DeleteADAssessment",
+      "DescribeADAssessment"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "LDAPS",
+    "operations": [
+      "DisableLDAPS",
+      "EnableLDAPS"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableLDAPS",
+      "EnableLDAPS"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableLDAPS": "working",
+      "EnableLDAPS": "working"
+    },
+    "working_untested": [
+      "DisableLDAPS",
+      "EnableLDAPS"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "Region",
+    "operations": [
+      "AddRegion",
+      "RemoveRegion"
+    ],
+    "tested": [],
+    "untested": [
+      "AddRegion",
+      "RemoveRegion"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AddRegion": "working",
+      "RemoveRegion": "working"
+    },
+    "working_untested": [
+      "AddRegion",
+      "RemoveRegion"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "SharedDirectory",
+    "operations": [
+      "AcceptSharedDirectory",
+      "RejectSharedDirectory"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptSharedDirectory",
+      "RejectSharedDirectory"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AcceptSharedDirectory": "working",
+      "RejectSharedDirectory": "working"
+    },
+    "working_untested": [
+      "AcceptSharedDirectory",
+      "RejectSharedDirectory"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "ADAssessments",
+    "operations": [
+      "ListADAssessments"
+    ],
+    "tested": [],
+    "untested": [
+      "ListADAssessments"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListADAssessments": "working"
+    },
+    "working_untested": [
+      "ListADAssessments"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DirectorySetup",
+    "operations": [
+      "UpdateDirectorySetup"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateDirectorySetup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateDirectorySetup": "working"
+    },
+    "working_untested": [
+      "UpdateDirectorySetup"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "LDAPSSettings",
+    "operations": [
+      "DescribeLDAPSSettings"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeLDAPSSettings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeLDAPSSettings": "working"
+    },
+    "working_untested": [
+      "DescribeLDAPSSettings"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "MicrosoftAD",
+    "operations": [
+      "CreateMicrosoftAD"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateMicrosoftAD"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateMicrosoftAD": "working"
+    },
+    "working_untested": [
+      "CreateMicrosoftAD"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ShareDirectory",
+    "operations": [
+      "ShareDirectory"
+    ],
+    "tested": [],
+    "untested": [
+      "ShareDirectory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ShareDirectory": "working"
+    },
+    "working_untested": [
+      "ShareDirectory"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "UnshareDirectory",
+    "operations": [
+      "UnshareDirectory"
+    ],
+    "tested": [],
+    "untested": [
+      "UnshareDirectory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UnshareDirectory": "working"
+    },
+    "working_untested": [
+      "UnshareDirectory"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "HybridAD",
+    "operations": [
+      "CreateHybridAD",
+      "UpdateHybridAD"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateHybridAD",
+      "UpdateHybridAD"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateHybridAD": "not_implemented",
+      "UpdateHybridAD": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HybridADUpdate",
+    "operations": [
+      "DescribeHybridADUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeHybridADUpdate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeHybridADUpdate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NumberOfDomainControllers",
+    "operations": [
+      "UpdateNumberOfDomainControllers"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateNumberOfDomainControllers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateNumberOfDomainControllers": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Trust",
+    "operations": [
+      "CreateTrust",
+      "DeleteTrust",
+      "UpdateTrust",
+      "VerifyTrust"
+    ],
+    "tested": [
+      "CreateTrust",
+      "DeleteTrust"
+    ],
+    "untested": [
+      "UpdateTrust",
+      "VerifyTrust"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateTrust": "working",
+      "DeleteTrust": "working",
+      "UpdateTrust": "not_implemented",
+      "VerifyTrust": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

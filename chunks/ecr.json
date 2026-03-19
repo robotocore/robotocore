@@ -1,0 +1,181 @@
+[
+  {
+    "noun": "CompleteLayerUpload",
+    "operations": [
+      "CompleteLayerUpload"
+    ],
+    "tested": [],
+    "untested": [
+      "CompleteLayerUpload"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CompleteLayerUpload": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DownloadUrlForLayer",
+    "operations": [
+      "GetDownloadUrlForLayer"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDownloadUrlForLayer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDownloadUrlForLayer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageReferrers",
+    "operations": [
+      "ListImageReferrers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListImageReferrers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListImageReferrers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageSigningStatus",
+    "operations": [
+      "DescribeImageSigningStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeImageSigningStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeImageSigningStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageStorageClass",
+    "operations": [
+      "UpdateImageStorageClass"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateImageStorageClass"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateImageStorageClass": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InitiateLayerUpload",
+    "operations": [
+      "InitiateLayerUpload"
+    ],
+    "tested": [],
+    "untested": [
+      "InitiateLayerUpload"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "InitiateLayerUpload": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PullTimeUpdateExclusion",
+    "operations": [
+      "DeregisterPullTimeUpdateExclusion",
+      "RegisterPullTimeUpdateExclusion"
+    ],
+    "tested": [],
+    "untested": [
+      "DeregisterPullTimeUpdateExclusion",
+      "RegisterPullTimeUpdateExclusion"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeregisterPullTimeUpdateExclusion": "not_implemented",
+      "RegisterPullTimeUpdateExclusion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PullTimeUpdateExclusions",
+    "operations": [
+      "ListPullTimeUpdateExclusions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPullTimeUpdateExclusions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPullTimeUpdateExclusions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SigningConfiguration",
+    "operations": [
+      "DeleteSigningConfiguration",
+      "GetSigningConfiguration",
+      "PutSigningConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteSigningConfiguration",
+      "GetSigningConfiguration",
+      "PutSigningConfiguration"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteSigningConfiguration": "not_implemented",
+      "GetSigningConfiguration": "not_implemented",
+      "PutSigningConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UploadLayerPart",
+    "operations": [
+      "UploadLayerPart"
+    ],
+    "tested": [],
+    "untested": [
+      "UploadLayerPart"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UploadLayerPart": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

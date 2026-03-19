@@ -1,0 +1,72 @@
+[
+  {
+    "noun": "LoadBalancerListenerSSLCertificate",
+    "operations": [
+      "SetLoadBalancerListenerSSLCertificate"
+    ],
+    "tested": [],
+    "untested": [
+      "SetLoadBalancerListenerSSLCertificate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetLoadBalancerListenerSSLCertificate": "working"
+    },
+    "working_untested": [
+      "SetLoadBalancerListenerSSLCertificate"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AccountLimits",
+    "operations": [
+      "DescribeAccountLimits"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeAccountLimits"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeAccountLimits": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LBCookieStickinessPolicy",
+    "operations": [
+      "CreateLBCookieStickinessPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLBCookieStickinessPolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLBCookieStickinessPolicy": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LoadBalancerPolicyTypes",
+    "operations": [
+      "DescribeLoadBalancerPolicyTypes"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeLoadBalancerPolicyTypes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeLoadBalancerPolicyTypes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

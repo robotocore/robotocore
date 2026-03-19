@@ -1,0 +1,316 @@
+{
+  "service": "lakeformation",
+  "counts": {
+    "working": 31,
+    "needs_params": 10,
+    "not_implemented": 18,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "AddLFTagsToResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "AssumeDecoratedRoleWithSAML",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "BatchGrantPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchRevokePermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelTransaction",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+    },
+    {
+      "operation": "CommitTransaction",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+    },
+    {
+      "operation": "CreateDataCellsFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLFTag",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLFTagExpression",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLakeFormationIdentityCenterConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLakeFormationOptIn",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteDataCellsFilter",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+    },
+    {
+      "operation": "DeleteLFTag",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLFTagExpression",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLakeFormationIdentityCenterConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLakeFormationOptIn",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteObjectsOnCancel",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeregisterResource",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+    },
+    {
+      "operation": "DescribeLakeFormationIdentityCenterConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeResource",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+    },
+    {
+      "operation": "DescribeTransaction",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+    },
+    {
+      "operation": "ExtendTransaction",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetDataCellsFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDataLakePrincipal",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDataLakeSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEffectivePermissionsForPath",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLFTag",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLFTagExpression",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetQueryState",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetQueryStatistics",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetResourceLFTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTableObjects",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTemporaryDataLocationCredentials",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTemporaryGluePartitionCredentials",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetTemporaryGlueTableCredentials",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetWorkUnitResults",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetWorkUnits",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GrantPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDataCellsFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLFTagExpressions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListLFTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLakeFormationOptIns",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTableStorageOptimizers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTransactions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutDataLakeSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveLFTagsFromResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RevokePermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchDatabasesByLFTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchTablesByLFTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartQueryPlanning",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://query-localho"
+    },
+    {
+      "operation": "StartTransaction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateDataCellsFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateLFTag",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "UpdateLFTagExpression",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLakeFormationIdentityCenterConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateTableObjects",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateTableStorageOptimizer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+[
+  {
+    "noun": "SourceAssociations",
+    "operations": [
+      "ListSourceAssociations"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSourceAssociations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSourceAssociations": "working"
+    },
+    "working_untested": [
+      "ListSourceAssociations"
+    ],
+    "working_untested_count": 1
+  }
+]

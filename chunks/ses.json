@@ -1,0 +1,208 @@
+[
+  {
+    "noun": "Bounce",
+    "operations": [
+      "SendBounce"
+    ],
+    "tested": [],
+    "untested": [
+      "SendBounce"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendBounce": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationSetDeliveryOptions",
+    "operations": [
+      "PutConfigurationSetDeliveryOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "PutConfigurationSetDeliveryOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PutConfigurationSetDeliveryOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationSetEventDestination",
+    "operations": [
+      "CreateConfigurationSetEventDestination",
+      "DeleteConfigurationSetEventDestination",
+      "UpdateConfigurationSetEventDestination"
+    ],
+    "tested": [
+      "CreateConfigurationSetEventDestination"
+    ],
+    "untested": [
+      "DeleteConfigurationSetEventDestination",
+      "UpdateConfigurationSetEventDestination"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateConfigurationSetEventDestination": "working",
+      "DeleteConfigurationSetEventDestination": "not_implemented",
+      "UpdateConfigurationSetEventDestination": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationSetSendingEnabled",
+    "operations": [
+      "UpdateConfigurationSetSendingEnabled"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateConfigurationSetSendingEnabled"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateConfigurationSetSendingEnabled": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationSetTrackingOptions",
+    "operations": [
+      "CreateConfigurationSetTrackingOptions",
+      "DeleteConfigurationSetTrackingOptions",
+      "UpdateConfigurationSetTrackingOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateConfigurationSetTrackingOptions",
+      "DeleteConfigurationSetTrackingOptions",
+      "UpdateConfigurationSetTrackingOptions"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateConfigurationSetTrackingOptions": "not_implemented",
+      "DeleteConfigurationSetTrackingOptions": "not_implemented",
+      "UpdateConfigurationSetTrackingOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IdentityHeadersInNotificationsEnabled",
+    "operations": [
+      "SetIdentityHeadersInNotificationsEnabled"
+    ],
+    "tested": [],
+    "untested": [
+      "SetIdentityHeadersInNotificationsEnabled"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetIdentityHeadersInNotificationsEnabled": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IdentityPolicies",
+    "operations": [
+      "GetIdentityPolicies",
+      "ListIdentityPolicies"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIdentityPolicies",
+      "ListIdentityPolicies"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetIdentityPolicies": "not_implemented",
+      "ListIdentityPolicies": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IdentityPolicy",
+    "operations": [
+      "DeleteIdentityPolicy",
+      "PutIdentityPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteIdentityPolicy",
+      "PutIdentityPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteIdentityPolicy": "not_implemented",
+      "PutIdentityPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReceiptRulePosition",
+    "operations": [
+      "SetReceiptRulePosition"
+    ],
+    "tested": [],
+    "untested": [
+      "SetReceiptRulePosition"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetReceiptRulePosition": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReorderReceiptRuleSet",
+    "operations": [
+      "ReorderReceiptRuleSet"
+    ],
+    "tested": [],
+    "untested": [
+      "ReorderReceiptRuleSet"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ReorderReceiptRuleSet": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedEmailAddress",
+    "operations": [
+      "DeleteVerifiedEmailAddress"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteVerifiedEmailAddress"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteVerifiedEmailAddress": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

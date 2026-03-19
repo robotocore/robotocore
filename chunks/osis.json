@@ -1,0 +1,153 @@
+[
+  {
+    "noun": "ResourcePolicy",
+    "operations": [
+      "DeleteResourcePolicy",
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "tested": [
+      "DeleteResourcePolicy",
+      "GetResourcePolicy"
+    ],
+    "untested": [
+      "PutResourcePolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteResourcePolicy": "working",
+      "GetResourcePolicy": "working",
+      "PutResourcePolicy": "working"
+    },
+    "working_untested": [
+      "PutResourcePolicy"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "PipelineBlueprint",
+    "operations": [
+      "GetPipelineBlueprint"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPipelineBlueprint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPipelineBlueprint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PipelineBlueprints",
+    "operations": [
+      "ListPipelineBlueprints"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPipelineBlueprints"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPipelineBlueprints": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PipelineChangeProgress",
+    "operations": [
+      "GetPipelineChangeProgress"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPipelineChangeProgress"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPipelineChangeProgress": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PipelineEndpoint",
+    "operations": [
+      "CreatePipelineEndpoint",
+      "DeletePipelineEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "CreatePipelineEndpoint",
+      "DeletePipelineEndpoint"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreatePipelineEndpoint": "not_implemented",
+      "DeletePipelineEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PipelineEndpointConnections",
+    "operations": [
+      "ListPipelineEndpointConnections",
+      "RevokePipelineEndpointConnections"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPipelineEndpointConnections",
+      "RevokePipelineEndpointConnections"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "ListPipelineEndpointConnections": "not_implemented",
+      "RevokePipelineEndpointConnections": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PipelineEndpoints",
+    "operations": [
+      "ListPipelineEndpoints"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPipelineEndpoints"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPipelineEndpoints": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ValidatePipeline",
+    "operations": [
+      "ValidatePipeline"
+    ],
+    "tested": [],
+    "untested": [
+      "ValidatePipeline"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ValidatePipeline": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

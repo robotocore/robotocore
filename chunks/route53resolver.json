@@ -1,0 +1,206 @@
+[
+  {
+    "noun": "FirewallConfig",
+    "operations": [
+      "GetFirewallConfig",
+      "UpdateFirewallConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "GetFirewallConfig",
+      "UpdateFirewallConfig"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetFirewallConfig": "not_implemented",
+      "UpdateFirewallConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FirewallDomains",
+    "operations": [
+      "ImportFirewallDomains",
+      "ListFirewallDomains",
+      "UpdateFirewallDomains"
+    ],
+    "tested": [
+      "ListFirewallDomains",
+      "UpdateFirewallDomains"
+    ],
+    "untested": [
+      "ImportFirewallDomains"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "ImportFirewallDomains": "not_implemented",
+      "ListFirewallDomains": "working",
+      "UpdateFirewallDomains": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FirewallRuleGroupAssociation",
+    "operations": [
+      "GetFirewallRuleGroupAssociation",
+      "UpdateFirewallRuleGroupAssociation"
+    ],
+    "tested": [
+      "GetFirewallRuleGroupAssociation"
+    ],
+    "untested": [
+      "UpdateFirewallRuleGroupAssociation"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetFirewallRuleGroupAssociation": "working",
+      "UpdateFirewallRuleGroupAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FirewallRuleGroupPolicy",
+    "operations": [
+      "GetFirewallRuleGroupPolicy",
+      "PutFirewallRuleGroupPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetFirewallRuleGroupPolicy",
+      "PutFirewallRuleGroupPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetFirewallRuleGroupPolicy": "not_implemented",
+      "PutFirewallRuleGroupPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OutpostResolver",
+    "operations": [
+      "CreateOutpostResolver",
+      "DeleteOutpostResolver",
+      "GetOutpostResolver",
+      "UpdateOutpostResolver"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateOutpostResolver",
+      "DeleteOutpostResolver",
+      "GetOutpostResolver",
+      "UpdateOutpostResolver"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateOutpostResolver": "not_implemented",
+      "DeleteOutpostResolver": "not_implemented",
+      "GetOutpostResolver": "not_implemented",
+      "UpdateOutpostResolver": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResolverConfig",
+    "operations": [
+      "GetResolverConfig",
+      "UpdateResolverConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResolverConfig",
+      "UpdateResolverConfig"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetResolverConfig": "not_implemented",
+      "UpdateResolverConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResolverQueryLogConfigPolicy",
+    "operations": [
+      "GetResolverQueryLogConfigPolicy",
+      "PutResolverQueryLogConfigPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResolverQueryLogConfigPolicy",
+      "PutResolverQueryLogConfigPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetResolverQueryLogConfigPolicy": "not_implemented",
+      "PutResolverQueryLogConfigPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResolverRule",
+    "operations": [
+      "AssociateResolverRule",
+      "CreateResolverRule",
+      "DeleteResolverRule",
+      "DisassociateResolverRule",
+      "GetResolverRule",
+      "UpdateResolverRule"
+    ],
+    "tested": [
+      "AssociateResolverRule",
+      "CreateResolverRule",
+      "DeleteResolverRule",
+      "DisassociateResolverRule",
+      "GetResolverRule"
+    ],
+    "untested": [
+      "UpdateResolverRule"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateResolverRule": "working",
+      "CreateResolverRule": "500_error",
+      "DeleteResolverRule": "working",
+      "DisassociateResolverRule": "working",
+      "GetResolverRule": "working",
+      "UpdateResolverRule": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResolverRulePolicy",
+    "operations": [
+      "GetResolverRulePolicy",
+      "PutResolverRulePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResolverRulePolicy",
+      "PutResolverRulePolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetResolverRulePolicy": "not_implemented",
+      "PutResolverRulePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

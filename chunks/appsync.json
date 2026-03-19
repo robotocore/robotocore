@@ -1,0 +1,25 @@
+[
+  {
+    "noun": "SourceApiAssociation",
+    "operations": [
+      "GetSourceApiAssociation",
+      "UpdateSourceApiAssociation"
+    ],
+    "tested": [
+      "GetSourceApiAssociation"
+    ],
+    "untested": [
+      "UpdateSourceApiAssociation"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSourceApiAssociation": "working",
+      "UpdateSourceApiAssociation": "working"
+    },
+    "working_untested": [
+      "UpdateSourceApiAssociation"
+    ],
+    "working_untested_count": 1
+  }
+]

@@ -1,0 +1,86 @@
+{
+  "service": "account",
+  "counts": {
+    "working": 3,
+    "needs_params": 0,
+    "not_implemented": 12,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptPrimaryEmailUpdate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteAlternateContact",
+      "status": "working",
+      "message": "implemented (AccessDeniedException)"
+    },
+    {
+      "operation": "DisableRegion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableRegion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAccountInformation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAlternateContact",
+      "status": "working",
+      "message": "implemented (AccessDeniedException)"
+    },
+    {
+      "operation": "GetContactInformation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetGovCloudAccountInformation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetPrimaryEmail",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRegionOptStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListRegions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutAccountName",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutAlternateContact",
+      "status": "working",
+      "message": "implemented (AccessDeniedException)"
+    },
+    {
+      "operation": "PutContactInformation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartPrimaryEmailUpdate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

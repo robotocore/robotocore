@@ -1,0 +1,214 @@
+[
+  {
+    "noun": "AccessPolicy",
+    "operations": [
+      "CreateAccessPolicy",
+      "DeleteAccessPolicy",
+      "GetAccessPolicy",
+      "UpdateAccessPolicy"
+    ],
+    "tested": [
+      "CreateAccessPolicy",
+      "DeleteAccessPolicy",
+      "GetAccessPolicy"
+    ],
+    "untested": [
+      "UpdateAccessPolicy"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAccessPolicy": "500_error",
+      "DeleteAccessPolicy": "working",
+      "GetAccessPolicy": "working",
+      "UpdateAccessPolicy": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CollectionGroup",
+    "operations": [
+      "CreateCollectionGroup",
+      "DeleteCollectionGroup",
+      "UpdateCollectionGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCollectionGroup",
+      "DeleteCollectionGroup",
+      "UpdateCollectionGroup"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateCollectionGroup": "not_implemented",
+      "DeleteCollectionGroup": "not_implemented",
+      "UpdateCollectionGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CollectionGroups",
+    "operations": [
+      "ListCollectionGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCollectionGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCollectionGroups": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetCollectionGroup",
+    "operations": [
+      "BatchGetCollectionGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetCollectionGroup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetCollectionGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetEffectiveLifecyclePolicy",
+    "operations": [
+      "BatchGetEffectiveLifecyclePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetEffectiveLifecyclePolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetEffectiveLifecyclePolicy": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetLifecyclePolicy",
+    "operations": [
+      "BatchGetLifecyclePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetLifecyclePolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetLifecyclePolicy": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetVpcEndpoint",
+    "operations": [
+      "BatchGetVpcEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetVpcEndpoint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetVpcEndpoint": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Index",
+    "operations": [
+      "CreateIndex",
+      "DeleteIndex",
+      "GetIndex",
+      "UpdateIndex"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIndex",
+      "DeleteIndex",
+      "GetIndex",
+      "UpdateIndex"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateIndex": "not_implemented",
+      "DeleteIndex": "not_implemented",
+      "GetIndex": "not_implemented",
+      "UpdateIndex": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LifecyclePolicy",
+    "operations": [
+      "CreateLifecyclePolicy",
+      "DeleteLifecyclePolicy",
+      "UpdateLifecyclePolicy"
+    ],
+    "tested": [
+      "CreateLifecyclePolicy",
+      "DeleteLifecyclePolicy"
+    ],
+    "untested": [
+      "UpdateLifecyclePolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLifecyclePolicy": "500_error",
+      "DeleteLifecyclePolicy": "working",
+      "UpdateLifecyclePolicy": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SecurityConfig",
+    "operations": [
+      "CreateSecurityConfig",
+      "DeleteSecurityConfig",
+      "GetSecurityConfig",
+      "UpdateSecurityConfig"
+    ],
+    "tested": [
+      "CreateSecurityConfig",
+      "DeleteSecurityConfig",
+      "GetSecurityConfig"
+    ],
+    "untested": [
+      "UpdateSecurityConfig"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateSecurityConfig": "working",
+      "DeleteSecurityConfig": "working",
+      "GetSecurityConfig": "working",
+      "UpdateSecurityConfig": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

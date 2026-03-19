@@ -1,0 +1,296 @@
+{
+  "service": "events",
+  "counts": {
+    "working": 45,
+    "needs_params": 5,
+    "not_implemented": 5,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "ActivateEventSource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelReplay",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateApiDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateArchive",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateEventBus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePartnerEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeactivateEventSource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeauthorizeConnection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteApiDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteArchive",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteEventBus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePartnerEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeApiDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeArchive",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventBus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventSource",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribePartnerEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplay",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "EnableRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListApiDestinations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListArchives",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEventBuses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEventSources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPartnerEventSourceAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPartnerEventSources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReplays",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRuleNamesByTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTargetsByRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutEvents",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutPartnerEvents",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutPermission",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutTargets",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RemovePermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RemoveTargets",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartReplay",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestEventPattern",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApiDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateArchive",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateEventBus",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

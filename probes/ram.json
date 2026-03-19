@@ -1,0 +1,186 @@
+{
+  "service": "ram",
+  "counts": {
+    "working": 35,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptResourceShareInvitation",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShareInvitation arn:aws:ram:us-east-1:123456789012:t)"
+    },
+    {
+      "operation": "AssociateResourceShare",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "AssociateResourceSharePermission",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "CreatePermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePermissionVersion",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "CreateResourceShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePermission",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "DeletePermissionVersion",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "DeleteResourceShare",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "DisassociateResourceShare",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "DisassociateResourceSharePermission",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "EnableSharingWithAwsOrganization",
+      "status": "working",
+      "message": "likely implemented (OperationNotPermittedException: Unable to enable sharing with AWS Organizations. Received Ac)"
+    },
+    {
+      "operation": "GetPermission",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "GetResourcePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourceShareAssociations",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "GetResourceShareInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourceShares",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "ListPendingInvitationResources",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShareInvitation arn:aws:ram:us-east-1:123456789012:t)"
+    },
+    {
+      "operation": "ListPermissionAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPermissionVersions",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "ListPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPrincipals",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "ListReplacePermissionAssociationsWork",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceSharePermissions",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "ListResourceTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResources",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "ListSourceAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PromotePermissionCreatedFromPolicy",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "PromoteResourceShareCreatedFromPolicy",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    },
+    {
+      "operation": "RejectResourceShareInvitation",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShareInvitation arn:aws:ram:us-east-1:123456789012:t)"
+    },
+    {
+      "operation": "ReplacePermissionAssociations",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "SetDefaultPermissionVersion",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: Permission arn:aws:ram:us-east-1:123456789012:thing/probe-te)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "UpdateResourceShare",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceException: ResourceShare arn:aws:ram:us-east-1:123456789012:thing/probe)"
+    }
+  ]
+}

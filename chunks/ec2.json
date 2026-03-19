@@ -1,0 +1,3819 @@
+[
+  {
+    "noun": "ActiveVpnTunnelStatus",
+    "operations": [
+      "GetActiveVpnTunnelStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetActiveVpnTunnelStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetActiveVpnTunnelStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AddressAttribute",
+    "operations": [
+      "ModifyAddressAttribute",
+      "ResetAddressAttribute"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyAddressAttribute",
+      "ResetAddressAttribute"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "ModifyAddressAttribute": "not_implemented",
+      "ResetAddressAttribute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AddressToClassic",
+    "operations": [
+      "RestoreAddressToClassic"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreAddressToClassic"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreAddressToClassic": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AddressToVpc",
+    "operations": [
+      "MoveAddressToVpc"
+    ],
+    "tested": [],
+    "untested": [
+      "MoveAddressToVpc"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "MoveAddressToVpc": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AddressTransfer",
+    "operations": [
+      "AcceptAddressTransfer",
+      "DisableAddressTransfer",
+      "EnableAddressTransfer"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptAddressTransfer",
+      "DisableAddressTransfer",
+      "EnableAddressTransfer"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "AcceptAddressTransfer": "not_implemented",
+      "DisableAddressTransfer": "not_implemented",
+      "EnableAddressTransfer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AllowedImagesSettings",
+    "operations": [
+      "DisableAllowedImagesSettings",
+      "EnableAllowedImagesSettings",
+      "GetAllowedImagesSettings"
+    ],
+    "tested": [
+      "DisableAllowedImagesSettings",
+      "GetAllowedImagesSettings"
+    ],
+    "untested": [
+      "EnableAllowedImagesSettings"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DisableAllowedImagesSettings": "working",
+      "EnableAllowedImagesSettings": "not_implemented",
+      "GetAllowedImagesSettings": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AssociatedEnclaveCertificateIamRoles",
+    "operations": [
+      "GetAssociatedEnclaveCertificateIamRoles"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAssociatedEnclaveCertificateIamRoles"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAssociatedEnclaveCertificateIamRoles": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AssociatedIpv6PoolCidrs",
+    "operations": [
+      "GetAssociatedIpv6PoolCidrs"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAssociatedIpv6PoolCidrs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAssociatedIpv6PoolCidrs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AvailabilityZoneGroup",
+    "operations": [
+      "ModifyAvailabilityZoneGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyAvailabilityZoneGroup"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyAvailabilityZoneGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BundleTask",
+    "operations": [
+      "CancelBundleTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelBundleTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelBundleTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ByoipCidr",
+    "operations": [
+      "AdvertiseByoipCidr",
+      "WithdrawByoipCidr"
+    ],
+    "tested": [],
+    "untested": [
+      "AdvertiseByoipCidr",
+      "WithdrawByoipCidr"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AdvertiseByoipCidr": "not_implemented",
+      "WithdrawByoipCidr": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ByoipCidrToIpam",
+    "operations": [
+      "MoveByoipCidrToIpam"
+    ],
+    "tested": [],
+    "untested": [
+      "MoveByoipCidrToIpam"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "MoveByoipCidrToIpam": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityBlockExtensionOfferings",
+    "operations": [
+      "DescribeCapacityBlockExtensionOfferings"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeCapacityBlockExtensionOfferings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeCapacityBlockExtensionOfferings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityManagerDataExport",
+    "operations": [
+      "CreateCapacityManagerDataExport",
+      "DeleteCapacityManagerDataExport"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCapacityManagerDataExport",
+      "DeleteCapacityManagerDataExport"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateCapacityManagerDataExport": "not_implemented",
+      "DeleteCapacityManagerDataExport": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityManagerMetricData",
+    "operations": [
+      "GetCapacityManagerMetricData"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCapacityManagerMetricData"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetCapacityManagerMetricData": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityManagerMetricDimensions",
+    "operations": [
+      "GetCapacityManagerMetricDimensions"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCapacityManagerMetricDimensions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetCapacityManagerMetricDimensions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityManagerOrganizationsAccess",
+    "operations": [
+      "UpdateCapacityManagerOrganizationsAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateCapacityManagerOrganizationsAccess"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateCapacityManagerOrganizationsAccess": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservationBillingOwner",
+    "operations": [
+      "AssociateCapacityReservationBillingOwner",
+      "DisassociateCapacityReservationBillingOwner"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateCapacityReservationBillingOwner",
+      "DisassociateCapacityReservationBillingOwner"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateCapacityReservationBillingOwner": "not_implemented",
+      "DisassociateCapacityReservationBillingOwner": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservationBillingOwnership",
+    "operations": [
+      "AcceptCapacityReservationBillingOwnership",
+      "RejectCapacityReservationBillingOwnership"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptCapacityReservationBillingOwnership",
+      "RejectCapacityReservationBillingOwnership"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AcceptCapacityReservationBillingOwnership": "not_implemented",
+      "RejectCapacityReservationBillingOwnership": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservationBillingRequests",
+    "operations": [
+      "DescribeCapacityReservationBillingRequests"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeCapacityReservationBillingRequests"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeCapacityReservationBillingRequests": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservationBySplitting",
+    "operations": [
+      "CreateCapacityReservationBySplitting"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCapacityReservationBySplitting"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCapacityReservationBySplitting": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservationInstances",
+    "operations": [
+      "MoveCapacityReservationInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "MoveCapacityReservationInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "MoveCapacityReservationInstances": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityReservationUsage",
+    "operations": [
+      "GetCapacityReservationUsage"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCapacityReservationUsage"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetCapacityReservationUsage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClassicLinkVpc",
+    "operations": [
+      "AttachClassicLinkVpc",
+      "DetachClassicLinkVpc"
+    ],
+    "tested": [],
+    "untested": [
+      "AttachClassicLinkVpc",
+      "DetachClassicLinkVpc"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AttachClassicLinkVpc": "not_implemented",
+      "DetachClassicLinkVpc": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientVpnClientCertificateRevocationList",
+    "operations": [
+      "ExportClientVpnClientCertificateRevocationList",
+      "ImportClientVpnClientCertificateRevocationList"
+    ],
+    "tested": [],
+    "untested": [
+      "ExportClientVpnClientCertificateRevocationList",
+      "ImportClientVpnClientCertificateRevocationList"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "ExportClientVpnClientCertificateRevocationList": "not_implemented",
+      "ImportClientVpnClientCertificateRevocationList": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientVpnClientConfiguration",
+    "operations": [
+      "ExportClientVpnClientConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "ExportClientVpnClientConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ExportClientVpnClientConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientVpnConnections",
+    "operations": [
+      "DescribeClientVpnConnections",
+      "TerminateClientVpnConnections"
+    ],
+    "tested": [
+      "DescribeClientVpnConnections"
+    ],
+    "untested": [
+      "TerminateClientVpnConnections"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeClientVpnConnections": "working",
+      "TerminateClientVpnConnections": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientVpnIngress",
+    "operations": [
+      "AuthorizeClientVpnIngress",
+      "RevokeClientVpnIngress"
+    ],
+    "tested": [],
+    "untested": [
+      "AuthorizeClientVpnIngress",
+      "RevokeClientVpnIngress"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AuthorizeClientVpnIngress": "not_implemented",
+      "RevokeClientVpnIngress": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientVpnRoute",
+    "operations": [
+      "CreateClientVpnRoute",
+      "DeleteClientVpnRoute"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateClientVpnRoute",
+      "DeleteClientVpnRoute"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateClientVpnRoute": "not_implemented",
+      "DeleteClientVpnRoute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientVpnTargetNetwork",
+    "operations": [
+      "AssociateClientVpnTargetNetwork",
+      "DisassociateClientVpnTargetNetwork"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateClientVpnTargetNetwork",
+      "DisassociateClientVpnTargetNetwork"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateClientVpnTargetNetwork": "not_implemented",
+      "DisassociateClientVpnTargetNetwork": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConsoleScreenshot",
+    "operations": [
+      "GetConsoleScreenshot"
+    ],
+    "tested": [],
+    "untested": [
+      "GetConsoleScreenshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetConsoleScreenshot": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConversionTask",
+    "operations": [
+      "CancelConversionTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelConversionTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelConversionTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeclarativePoliciesReport",
+    "operations": [
+      "CancelDeclarativePoliciesReport",
+      "StartDeclarativePoliciesReport"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelDeclarativePoliciesReport",
+      "StartDeclarativePoliciesReport"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelDeclarativePoliciesReport": "not_implemented",
+      "StartDeclarativePoliciesReport": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DefaultCreditSpecification",
+    "operations": [
+      "GetDefaultCreditSpecification",
+      "ModifyDefaultCreditSpecification"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDefaultCreditSpecification",
+      "ModifyDefaultCreditSpecification"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetDefaultCreditSpecification": "not_implemented",
+      "ModifyDefaultCreditSpecification": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DelegateMacVolumeOwnershipTask",
+    "operations": [
+      "CreateDelegateMacVolumeOwnershipTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateDelegateMacVolumeOwnershipTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateDelegateMacVolumeOwnershipTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeprovisionByoipCidr",
+    "operations": [
+      "DeprovisionByoipCidr"
+    ],
+    "tested": [],
+    "untested": [
+      "DeprovisionByoipCidr"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeprovisionByoipCidr": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeprovisionIpamByoasn",
+    "operations": [
+      "DeprovisionIpamByoasn"
+    ],
+    "tested": [],
+    "untested": [
+      "DeprovisionIpamByoasn"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeprovisionIpamByoasn": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DiagnosticInterrupt",
+    "operations": [
+      "SendDiagnosticInterrupt"
+    ],
+    "tested": [],
+    "untested": [
+      "SendDiagnosticInterrupt"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendDiagnosticInterrupt": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EnclaveCertificateIamRole",
+    "operations": [
+      "AssociateEnclaveCertificateIamRole",
+      "DisassociateEnclaveCertificateIamRole"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateEnclaveCertificateIamRole",
+      "DisassociateEnclaveCertificateIamRole"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateEnclaveCertificateIamRole": "not_implemented",
+      "DisassociateEnclaveCertificateIamRole": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ExportTask",
+    "operations": [
+      "CancelExportTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelExportTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelExportTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FastSnapshotRestores",
+    "operations": [
+      "DescribeFastSnapshotRestores",
+      "DisableFastSnapshotRestores",
+      "EnableFastSnapshotRestores"
+    ],
+    "tested": [
+      "DescribeFastSnapshotRestores"
+    ],
+    "untested": [
+      "DisableFastSnapshotRestores",
+      "EnableFastSnapshotRestores"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeFastSnapshotRestores": "working",
+      "DisableFastSnapshotRestores": "not_implemented",
+      "EnableFastSnapshotRestores": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FlowLogsIntegrationTemplate",
+    "operations": [
+      "GetFlowLogsIntegrationTemplate"
+    ],
+    "tested": [],
+    "untested": [
+      "GetFlowLogsIntegrationTemplate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetFlowLogsIntegrationTemplate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FpgaImage",
+    "operations": [
+      "CopyFpgaImage",
+      "CreateFpgaImage",
+      "DeleteFpgaImage"
+    ],
+    "tested": [],
+    "untested": [
+      "CopyFpgaImage",
+      "CreateFpgaImage",
+      "DeleteFpgaImage"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CopyFpgaImage": "not_implemented",
+      "CreateFpgaImage": "not_implemented",
+      "DeleteFpgaImage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FpgaImageAttribute",
+    "operations": [
+      "DescribeFpgaImageAttribute",
+      "ModifyFpgaImageAttribute",
+      "ResetFpgaImageAttribute"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeFpgaImageAttribute",
+      "ModifyFpgaImageAttribute",
+      "ResetFpgaImageAttribute"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DescribeFpgaImageAttribute": "not_implemented",
+      "ModifyFpgaImageAttribute": "not_implemented",
+      "ResetFpgaImageAttribute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupsForCapacityReservation",
+    "operations": [
+      "GetGroupsForCapacityReservation"
+    ],
+    "tested": [],
+    "untested": [
+      "GetGroupsForCapacityReservation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetGroupsForCapacityReservation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IdFormat",
+    "operations": [
+      "DescribeIdFormat",
+      "ModifyIdFormat"
+    ],
+    "tested": [
+      "DescribeIdFormat"
+    ],
+    "untested": [
+      "ModifyIdFormat"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeIdFormat": "working",
+      "ModifyIdFormat": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IdentityIdFormat",
+    "operations": [
+      "DescribeIdentityIdFormat",
+      "ModifyIdentityIdFormat"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeIdentityIdFormat",
+      "ModifyIdentityIdFormat"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeIdentityIdFormat": "not_implemented",
+      "ModifyIdentityIdFormat": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Image",
+    "operations": [
+      "CopyImage",
+      "CreateImage",
+      "DeregisterImage",
+      "DisableImage",
+      "EnableImage",
+      "ExportImage",
+      "ImportImage",
+      "RegisterImage"
+    ],
+    "tested": [
+      "CopyImage",
+      "CreateImage",
+      "DeregisterImage",
+      "ImportImage",
+      "RegisterImage"
+    ],
+    "untested": [
+      "DisableImage",
+      "EnableImage",
+      "ExportImage"
+    ],
+    "size": 8,
+    "untested_count": 3,
+    "probe_status": {
+      "CopyImage": "working",
+      "CreateImage": "working",
+      "DeregisterImage": "working",
+      "DisableImage": "not_implemented",
+      "EnableImage": "not_implemented",
+      "ExportImage": "not_implemented",
+      "ImportImage": "working",
+      "RegisterImage": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageAncestry",
+    "operations": [
+      "GetImageAncestry"
+    ],
+    "tested": [],
+    "untested": [
+      "GetImageAncestry"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetImageAncestry": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageAttribute",
+    "operations": [
+      "DescribeImageAttribute",
+      "ModifyImageAttribute",
+      "ResetImageAttribute"
+    ],
+    "tested": [
+      "DescribeImageAttribute",
+      "ModifyImageAttribute"
+    ],
+    "untested": [
+      "ResetImageAttribute"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeImageAttribute": "working",
+      "ModifyImageAttribute": "working",
+      "ResetImageAttribute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageBlockPublicAccess",
+    "operations": [
+      "DisableImageBlockPublicAccess",
+      "EnableImageBlockPublicAccess"
+    ],
+    "tested": [
+      "DisableImageBlockPublicAccess"
+    ],
+    "untested": [
+      "EnableImageBlockPublicAccess"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DisableImageBlockPublicAccess": "working",
+      "EnableImageBlockPublicAccess": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageDeprecation",
+    "operations": [
+      "DisableImageDeprecation",
+      "EnableImageDeprecation"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableImageDeprecation",
+      "EnableImageDeprecation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableImageDeprecation": "not_implemented",
+      "EnableImageDeprecation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageDeregistrationProtection",
+    "operations": [
+      "DisableImageDeregistrationProtection",
+      "EnableImageDeregistrationProtection"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableImageDeregistrationProtection",
+      "EnableImageDeregistrationProtection"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableImageDeregistrationProtection": "not_implemented",
+      "EnableImageDeregistrationProtection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageFromRecycleBin",
+    "operations": [
+      "RestoreImageFromRecycleBin"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreImageFromRecycleBin"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreImageFromRecycleBin": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageLaunchPermission",
+    "operations": [
+      "CancelImageLaunchPermission"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelImageLaunchPermission"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelImageLaunchPermission": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageReferences",
+    "operations": [
+      "DescribeImageReferences"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeImageReferences"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeImageReferences": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageUsageReport",
+    "operations": [
+      "CreateImageUsageReport",
+      "DeleteImageUsageReport"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateImageUsageReport",
+      "DeleteImageUsageReport"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateImageUsageReport": "not_implemented",
+      "DeleteImageUsageReport": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Instance",
+    "operations": [
+      "BundleInstance",
+      "ImportInstance"
+    ],
+    "tested": [],
+    "untested": [
+      "BundleInstance",
+      "ImportInstance"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "BundleInstance": "not_implemented",
+      "ImportInstance": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceAttribute",
+    "operations": [
+      "DescribeInstanceAttribute",
+      "ModifyInstanceAttribute",
+      "ResetInstanceAttribute"
+    ],
+    "tested": [
+      "DescribeInstanceAttribute",
+      "ModifyInstanceAttribute"
+    ],
+    "untested": [
+      "ResetInstanceAttribute"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeInstanceAttribute": "working",
+      "ModifyInstanceAttribute": "working",
+      "ResetInstanceAttribute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceCapacityReservationAttributes",
+    "operations": [
+      "ModifyInstanceCapacityReservationAttributes"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstanceCapacityReservationAttributes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstanceCapacityReservationAttributes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceConnectEndpoint",
+    "operations": [
+      "CreateInstanceConnectEndpoint",
+      "DeleteInstanceConnectEndpoint",
+      "ModifyInstanceConnectEndpoint"
+    ],
+    "tested": [
+      "CreateInstanceConnectEndpoint",
+      "DeleteInstanceConnectEndpoint"
+    ],
+    "untested": [
+      "ModifyInstanceConnectEndpoint"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateInstanceConnectEndpoint": "working",
+      "DeleteInstanceConnectEndpoint": "working",
+      "ModifyInstanceConnectEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceCpuOptions",
+    "operations": [
+      "ModifyInstanceCpuOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstanceCpuOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstanceCpuOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceCreditSpecification",
+    "operations": [
+      "ModifyInstanceCreditSpecification"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstanceCreditSpecification"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstanceCreditSpecification": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceEventNotificationAttributes",
+    "operations": [
+      "DeregisterInstanceEventNotificationAttributes",
+      "DescribeInstanceEventNotificationAttributes",
+      "RegisterInstanceEventNotificationAttributes"
+    ],
+    "tested": [
+      "DescribeInstanceEventNotificationAttributes"
+    ],
+    "untested": [
+      "DeregisterInstanceEventNotificationAttributes",
+      "RegisterInstanceEventNotificationAttributes"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "DeregisterInstanceEventNotificationAttributes": "not_implemented",
+      "DescribeInstanceEventNotificationAttributes": "working",
+      "RegisterInstanceEventNotificationAttributes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceEventStartTime",
+    "operations": [
+      "ModifyInstanceEventStartTime"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstanceEventStartTime"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstanceEventStartTime": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceExportTask",
+    "operations": [
+      "CreateInstanceExportTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateInstanceExportTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateInstanceExportTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceMaintenanceOptions",
+    "operations": [
+      "ModifyInstanceMaintenanceOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstanceMaintenanceOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstanceMaintenanceOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceNetworkPerformanceOptions",
+    "operations": [
+      "ModifyInstanceNetworkPerformanceOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstanceNetworkPerformanceOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstanceNetworkPerformanceOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstancePlacement",
+    "operations": [
+      "ModifyInstancePlacement"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyInstancePlacement"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyInstancePlacement": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceSqlHaStandbyDetections",
+    "operations": [
+      "DisableInstanceSqlHaStandbyDetections",
+      "EnableInstanceSqlHaStandbyDetections"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableInstanceSqlHaStandbyDetections",
+      "EnableInstanceSqlHaStandbyDetections"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableInstanceSqlHaStandbyDetections": "needs_params",
+      "EnableInstanceSqlHaStandbyDetections": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceTpmEkPub",
+    "operations": [
+      "GetInstanceTpmEkPub"
+    ],
+    "tested": [],
+    "untested": [
+      "GetInstanceTpmEkPub"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetInstanceTpmEkPub": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceTypesFromInstanceRequirements",
+    "operations": [
+      "GetInstanceTypesFromInstanceRequirements"
+    ],
+    "tested": [],
+    "untested": [
+      "GetInstanceTypesFromInstanceRequirements"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetInstanceTypesFromInstanceRequirements": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Instances",
+    "operations": [
+      "DescribeInstances",
+      "MonitorInstances",
+      "RebootInstances",
+      "RunInstances",
+      "StartInstances",
+      "StopInstances",
+      "TerminateInstances",
+      "UnmonitorInstances"
+    ],
+    "tested": [
+      "DescribeInstances",
+      "RebootInstances",
+      "RunInstances",
+      "StartInstances",
+      "StopInstances",
+      "TerminateInstances"
+    ],
+    "untested": [
+      "MonitorInstances",
+      "UnmonitorInstances"
+    ],
+    "size": 8,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeInstances": "working",
+      "MonitorInstances": "not_implemented",
+      "RebootInstances": "working",
+      "RunInstances": "working",
+      "StartInstances": "working",
+      "StopInstances": "working",
+      "TerminateInstances": "unknown",
+      "UnmonitorInstances": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InterruptibleCapacityReservationAllocation",
+    "operations": [
+      "CreateInterruptibleCapacityReservationAllocation",
+      "UpdateInterruptibleCapacityReservationAllocation"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateInterruptibleCapacityReservationAllocation",
+      "UpdateInterruptibleCapacityReservationAllocation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateInterruptibleCapacityReservationAllocation": "not_implemented",
+      "UpdateInterruptibleCapacityReservationAllocation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamAddressHistory",
+    "operations": [
+      "GetIpamAddressHistory"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamAddressHistory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamAddressHistory": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamByoasn",
+    "operations": [
+      "AssociateIpamByoasn",
+      "DescribeIpamByoasn",
+      "DisassociateIpamByoasn"
+    ],
+    "tested": [
+      "DescribeIpamByoasn"
+    ],
+    "untested": [
+      "AssociateIpamByoasn",
+      "DisassociateIpamByoasn"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateIpamByoasn": "not_implemented",
+      "DescribeIpamByoasn": "working",
+      "DisassociateIpamByoasn": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamDiscoveredAccounts",
+    "operations": [
+      "GetIpamDiscoveredAccounts"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamDiscoveredAccounts"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamDiscoveredAccounts": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamDiscoveredPublicAddresses",
+    "operations": [
+      "GetIpamDiscoveredPublicAddresses"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamDiscoveredPublicAddresses"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamDiscoveredPublicAddresses": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamDiscoveredResourceCidrs",
+    "operations": [
+      "GetIpamDiscoveredResourceCidrs"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamDiscoveredResourceCidrs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamDiscoveredResourceCidrs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamExternalResourceVerificationToken",
+    "operations": [
+      "CreateIpamExternalResourceVerificationToken",
+      "DeleteIpamExternalResourceVerificationToken"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIpamExternalResourceVerificationToken",
+      "DeleteIpamExternalResourceVerificationToken"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateIpamExternalResourceVerificationToken": "not_implemented",
+      "DeleteIpamExternalResourceVerificationToken": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamOrganizationAdminAccount",
+    "operations": [
+      "DisableIpamOrganizationAdminAccount",
+      "EnableIpamOrganizationAdminAccount"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableIpamOrganizationAdminAccount",
+      "EnableIpamOrganizationAdminAccount"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableIpamOrganizationAdminAccount": "not_implemented",
+      "EnableIpamOrganizationAdminAccount": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPolicy",
+    "operations": [
+      "CreateIpamPolicy",
+      "DeleteIpamPolicy",
+      "DisableIpamPolicy",
+      "EnableIpamPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIpamPolicy",
+      "DeleteIpamPolicy",
+      "DisableIpamPolicy",
+      "EnableIpamPolicy"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateIpamPolicy": "not_implemented",
+      "DeleteIpamPolicy": "not_implemented",
+      "DisableIpamPolicy": "not_implemented",
+      "EnableIpamPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPolicyAllocationRules",
+    "operations": [
+      "GetIpamPolicyAllocationRules",
+      "ModifyIpamPolicyAllocationRules"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamPolicyAllocationRules",
+      "ModifyIpamPolicyAllocationRules"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetIpamPolicyAllocationRules": "not_implemented",
+      "ModifyIpamPolicyAllocationRules": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPolicyOrganizationTargets",
+    "operations": [
+      "GetIpamPolicyOrganizationTargets"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamPolicyOrganizationTargets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamPolicyOrganizationTargets": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPrefixListResolver",
+    "operations": [
+      "CreateIpamPrefixListResolver",
+      "DeleteIpamPrefixListResolver",
+      "ModifyIpamPrefixListResolver"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIpamPrefixListResolver",
+      "DeleteIpamPrefixListResolver",
+      "ModifyIpamPrefixListResolver"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateIpamPrefixListResolver": "not_implemented",
+      "DeleteIpamPrefixListResolver": "not_implemented",
+      "ModifyIpamPrefixListResolver": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPrefixListResolverRules",
+    "operations": [
+      "GetIpamPrefixListResolverRules"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamPrefixListResolverRules"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamPrefixListResolverRules": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPrefixListResolverTarget",
+    "operations": [
+      "CreateIpamPrefixListResolverTarget",
+      "DeleteIpamPrefixListResolverTarget",
+      "ModifyIpamPrefixListResolverTarget"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIpamPrefixListResolverTarget",
+      "DeleteIpamPrefixListResolverTarget",
+      "ModifyIpamPrefixListResolverTarget"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateIpamPrefixListResolverTarget": "not_implemented",
+      "DeleteIpamPrefixListResolverTarget": "not_implemented",
+      "ModifyIpamPrefixListResolverTarget": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPrefixListResolverVersionEntries",
+    "operations": [
+      "GetIpamPrefixListResolverVersionEntries"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamPrefixListResolverVersionEntries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamPrefixListResolverVersionEntries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamPrefixListResolverVersions",
+    "operations": [
+      "GetIpamPrefixListResolverVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "GetIpamPrefixListResolverVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetIpamPrefixListResolverVersions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamResourceCidr",
+    "operations": [
+      "ModifyIpamResourceCidr"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyIpamResourceCidr"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyIpamResourceCidr": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamResourceDiscovery",
+    "operations": [
+      "AssociateIpamResourceDiscovery",
+      "CreateIpamResourceDiscovery",
+      "DeleteIpamResourceDiscovery",
+      "DisassociateIpamResourceDiscovery",
+      "ModifyIpamResourceDiscovery"
+    ],
+    "tested": [
+      "CreateIpamResourceDiscovery"
+    ],
+    "untested": [
+      "AssociateIpamResourceDiscovery",
+      "DeleteIpamResourceDiscovery",
+      "DisassociateIpamResourceDiscovery",
+      "ModifyIpamResourceDiscovery"
+    ],
+    "size": 5,
+    "untested_count": 4,
+    "probe_status": {
+      "AssociateIpamResourceDiscovery": "not_implemented",
+      "CreateIpamResourceDiscovery": "working",
+      "DeleteIpamResourceDiscovery": "not_implemented",
+      "DisassociateIpamResourceDiscovery": "not_implemented",
+      "ModifyIpamResourceDiscovery": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IpamScope",
+    "operations": [
+      "CreateIpamScope",
+      "DeleteIpamScope",
+      "ModifyIpamScope"
+    ],
+    "tested": [
+      "CreateIpamScope",
+      "DeleteIpamScope"
+    ],
+    "untested": [
+      "ModifyIpamScope"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateIpamScope": "working",
+      "DeleteIpamScope": "working",
+      "ModifyIpamScope": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LaunchTemplateVersions",
+    "operations": [
+      "DeleteLaunchTemplateVersions",
+      "DescribeLaunchTemplateVersions"
+    ],
+    "tested": [
+      "DescribeLaunchTemplateVersions"
+    ],
+    "untested": [
+      "DeleteLaunchTemplateVersions"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteLaunchTemplateVersions": "not_implemented",
+      "DescribeLaunchTemplateVersions": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocalGatewayRoute",
+    "operations": [
+      "CreateLocalGatewayRoute",
+      "DeleteLocalGatewayRoute",
+      "ModifyLocalGatewayRoute"
+    ],
+    "tested": [
+      "CreateLocalGatewayRoute"
+    ],
+    "untested": [
+      "DeleteLocalGatewayRoute",
+      "ModifyLocalGatewayRoute"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateLocalGatewayRoute": "working",
+      "DeleteLocalGatewayRoute": "not_implemented",
+      "ModifyLocalGatewayRoute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocalGatewayRouteTableVirtualInterfaceGroupAssociation",
+    "operations": [
+      "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
+      "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
+      "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation": "not_implemented",
+      "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocalGatewayRouteTableVpcAssociation",
+    "operations": [
+      "CreateLocalGatewayRouteTableVpcAssociation",
+      "DeleteLocalGatewayRouteTableVpcAssociation"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLocalGatewayRouteTableVpcAssociation",
+      "DeleteLocalGatewayRouteTableVpcAssociation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateLocalGatewayRouteTableVpcAssociation": "not_implemented",
+      "DeleteLocalGatewayRouteTableVpcAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocalGatewayVirtualInterface",
+    "operations": [
+      "CreateLocalGatewayVirtualInterface",
+      "DeleteLocalGatewayVirtualInterface"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLocalGatewayVirtualInterface",
+      "DeleteLocalGatewayVirtualInterface"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateLocalGatewayVirtualInterface": "not_implemented",
+      "DeleteLocalGatewayVirtualInterface": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocalGatewayVirtualInterfaceGroup",
+    "operations": [
+      "CreateLocalGatewayVirtualInterfaceGroup",
+      "DeleteLocalGatewayVirtualInterfaceGroup"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLocalGatewayVirtualInterfaceGroup",
+      "DeleteLocalGatewayVirtualInterfaceGroup"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateLocalGatewayVirtualInterfaceGroup": "not_implemented",
+      "DeleteLocalGatewayVirtualInterfaceGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LockSnapshot",
+    "operations": [
+      "LockSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "LockSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "LockSnapshot": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MacSystemIntegrityProtectionModificationTask",
+    "operations": [
+      "CreateMacSystemIntegrityProtectionModificationTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateMacSystemIntegrityProtectionModificationTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateMacSystemIntegrityProtectionModificationTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ManagedPrefixListAssociations",
+    "operations": [
+      "GetManagedPrefixListAssociations"
+    ],
+    "tested": [],
+    "untested": [
+      "GetManagedPrefixListAssociations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetManagedPrefixListAssociations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ManagedPrefixListVersion",
+    "operations": [
+      "RestoreManagedPrefixListVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreManagedPrefixListVersion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreManagedPrefixListVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NatGatewayAddress",
+    "operations": [
+      "AssociateNatGatewayAddress",
+      "DisassociateNatGatewayAddress"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateNatGatewayAddress",
+      "DisassociateNatGatewayAddress"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateNatGatewayAddress": "not_implemented",
+      "DisassociateNatGatewayAddress": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NetworkInsightsAccessScopeAnalysis",
+    "operations": [
+      "DeleteNetworkInsightsAccessScopeAnalysis",
+      "StartNetworkInsightsAccessScopeAnalysis"
+    ],
+    "tested": [
+      "StartNetworkInsightsAccessScopeAnalysis"
+    ],
+    "untested": [
+      "DeleteNetworkInsightsAccessScopeAnalysis"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteNetworkInsightsAccessScopeAnalysis": "not_implemented",
+      "StartNetworkInsightsAccessScopeAnalysis": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NetworkInsightsAnalysis",
+    "operations": [
+      "DeleteNetworkInsightsAnalysis",
+      "StartNetworkInsightsAnalysis"
+    ],
+    "tested": [
+      "StartNetworkInsightsAnalysis"
+    ],
+    "untested": [
+      "DeleteNetworkInsightsAnalysis"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteNetworkInsightsAnalysis": "not_implemented",
+      "StartNetworkInsightsAnalysis": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NetworkInterfaceAttribute",
+    "operations": [
+      "DescribeNetworkInterfaceAttribute",
+      "ModifyNetworkInterfaceAttribute",
+      "ResetNetworkInterfaceAttribute"
+    ],
+    "tested": [
+      "DescribeNetworkInterfaceAttribute",
+      "ModifyNetworkInterfaceAttribute"
+    ],
+    "untested": [
+      "ResetNetworkInterfaceAttribute"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeNetworkInterfaceAttribute": "working",
+      "ModifyNetworkInterfaceAttribute": "working",
+      "ResetNetworkInterfaceAttribute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NetworkInterfacePermission",
+    "operations": [
+      "CreateNetworkInterfacePermission",
+      "DeleteNetworkInterfacePermission"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateNetworkInterfacePermission",
+      "DeleteNetworkInterfacePermission"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateNetworkInterfacePermission": "not_implemented",
+      "DeleteNetworkInterfacePermission": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PrivateDnsNameOptions",
+    "operations": [
+      "ModifyPrivateDnsNameOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyPrivateDnsNameOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyPrivateDnsNameOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PrivateNatGatewayAddress",
+    "operations": [
+      "AssignPrivateNatGatewayAddress",
+      "UnassignPrivateNatGatewayAddress"
+    ],
+    "tested": [],
+    "untested": [
+      "AssignPrivateNatGatewayAddress",
+      "UnassignPrivateNatGatewayAddress"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssignPrivateNatGatewayAddress": "not_implemented",
+      "UnassignPrivateNatGatewayAddress": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProductInstance",
+    "operations": [
+      "ConfirmProductInstance"
+    ],
+    "tested": [],
+    "untested": [
+      "ConfirmProductInstance"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ConfirmProductInstance": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProvisionByoipCidr",
+    "operations": [
+      "ProvisionByoipCidr"
+    ],
+    "tested": [],
+    "untested": [
+      "ProvisionByoipCidr"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ProvisionByoipCidr": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProvisionIpamByoasn",
+    "operations": [
+      "ProvisionIpamByoasn"
+    ],
+    "tested": [],
+    "untested": [
+      "ProvisionIpamByoasn"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ProvisionIpamByoasn": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PublicIpDnsNameOptions",
+    "operations": [
+      "ModifyPublicIpDnsNameOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyPublicIpDnsNameOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyPublicIpDnsNameOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseCapacityBlockExtension",
+    "operations": [
+      "PurchaseCapacityBlockExtension"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseCapacityBlockExtension"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseCapacityBlockExtension": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseReservedInstancesOffering",
+    "operations": [
+      "PurchaseReservedInstancesOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedInstancesOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedInstancesOffering": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseScheduledInstances",
+    "operations": [
+      "PurchaseScheduledInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseScheduledInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseScheduledInstances": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "QueuedReservedInstances",
+    "operations": [
+      "DeleteQueuedReservedInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteQueuedReservedInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteQueuedReservedInstances": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReportInstanceStatus",
+    "operations": [
+      "ReportInstanceStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "ReportInstanceStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ReportInstanceStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReservedInstances",
+    "operations": [
+      "DescribeReservedInstances",
+      "ModifyReservedInstances"
+    ],
+    "tested": [
+      "DescribeReservedInstances"
+    ],
+    "untested": [
+      "ModifyReservedInstances"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReservedInstances": "working",
+      "ModifyReservedInstances": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReservedInstancesExchangeQuote",
+    "operations": [
+      "AcceptReservedInstancesExchangeQuote",
+      "GetReservedInstancesExchangeQuote"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptReservedInstancesExchangeQuote",
+      "GetReservedInstancesExchangeQuote"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AcceptReservedInstancesExchangeQuote": "not_implemented",
+      "GetReservedInstancesExchangeQuote": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReservedInstancesListing",
+    "operations": [
+      "CancelReservedInstancesListing",
+      "CreateReservedInstancesListing"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelReservedInstancesListing",
+      "CreateReservedInstancesListing"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelReservedInstancesListing": "not_implemented",
+      "CreateReservedInstancesListing": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RestoreImageTask",
+    "operations": [
+      "CreateRestoreImageTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateRestoreImageTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateRestoreImageTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServer",
+    "operations": [
+      "AssociateRouteServer",
+      "CreateRouteServer",
+      "DeleteRouteServer",
+      "DisassociateRouteServer",
+      "ModifyRouteServer"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateRouteServer",
+      "CreateRouteServer",
+      "DeleteRouteServer",
+      "DisassociateRouteServer",
+      "ModifyRouteServer"
+    ],
+    "size": 5,
+    "untested_count": 5,
+    "probe_status": {
+      "AssociateRouteServer": "not_implemented",
+      "CreateRouteServer": "not_implemented",
+      "DeleteRouteServer": "not_implemented",
+      "DisassociateRouteServer": "not_implemented",
+      "ModifyRouteServer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServerAssociations",
+    "operations": [
+      "GetRouteServerAssociations"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRouteServerAssociations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRouteServerAssociations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServerEndpoint",
+    "operations": [
+      "CreateRouteServerEndpoint",
+      "DeleteRouteServerEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateRouteServerEndpoint",
+      "DeleteRouteServerEndpoint"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateRouteServerEndpoint": "not_implemented",
+      "DeleteRouteServerEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServerPeer",
+    "operations": [
+      "CreateRouteServerPeer",
+      "DeleteRouteServerPeer"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateRouteServerPeer",
+      "DeleteRouteServerPeer"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateRouteServerPeer": "not_implemented",
+      "DeleteRouteServerPeer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServerPropagation",
+    "operations": [
+      "DisableRouteServerPropagation",
+      "EnableRouteServerPropagation"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableRouteServerPropagation",
+      "EnableRouteServerPropagation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableRouteServerPropagation": "not_implemented",
+      "EnableRouteServerPropagation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServerPropagations",
+    "operations": [
+      "GetRouteServerPropagations"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRouteServerPropagations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRouteServerPropagations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RouteServerRoutingDatabase",
+    "operations": [
+      "GetRouteServerRoutingDatabase"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRouteServerRoutingDatabase"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRouteServerRoutingDatabase": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ScheduledInstanceAvailability",
+    "operations": [
+      "DescribeScheduledInstanceAvailability"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeScheduledInstanceAvailability"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeScheduledInstanceAvailability": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ScheduledInstances",
+    "operations": [
+      "DescribeScheduledInstances",
+      "RunScheduledInstances"
+    ],
+    "tested": [
+      "DescribeScheduledInstances"
+    ],
+    "untested": [
+      "RunScheduledInstances"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeScheduledInstances": "working",
+      "RunScheduledInstances": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchTransitGatewayMulticastGroups",
+    "operations": [
+      "SearchTransitGatewayMulticastGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchTransitGatewayMulticastGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchTransitGatewayMulticastGroups": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SecondaryNetwork",
+    "operations": [
+      "CreateSecondaryNetwork",
+      "DeleteSecondaryNetwork"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateSecondaryNetwork",
+      "DeleteSecondaryNetwork"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateSecondaryNetwork": "not_implemented",
+      "DeleteSecondaryNetwork": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SecondarySubnet",
+    "operations": [
+      "CreateSecondarySubnet",
+      "DeleteSecondarySubnet"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateSecondarySubnet",
+      "DeleteSecondarySubnet"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateSecondarySubnet": "not_implemented",
+      "DeleteSecondarySubnet": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SecurityGroupReferences",
+    "operations": [
+      "DescribeSecurityGroupReferences"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeSecurityGroupReferences"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeSecurityGroupReferences": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SecurityGroupsForVpc",
+    "operations": [
+      "GetSecurityGroupsForVpc"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSecurityGroupsForVpc"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSecurityGroupsForVpc": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SecurityGroupsToClientVpnTargetNetwork",
+    "operations": [
+      "ApplySecurityGroupsToClientVpnTargetNetwork"
+    ],
+    "tested": [],
+    "untested": [
+      "ApplySecurityGroupsToClientVpnTargetNetwork"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ApplySecurityGroupsToClientVpnTargetNetwork": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SnapshotAttribute",
+    "operations": [
+      "DescribeSnapshotAttribute",
+      "ModifySnapshotAttribute",
+      "ResetSnapshotAttribute"
+    ],
+    "tested": [
+      "DescribeSnapshotAttribute",
+      "ModifySnapshotAttribute"
+    ],
+    "untested": [
+      "ResetSnapshotAttribute"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeSnapshotAttribute": "working",
+      "ModifySnapshotAttribute": "working",
+      "ResetSnapshotAttribute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SnapshotFromRecycleBin",
+    "operations": [
+      "RestoreSnapshotFromRecycleBin"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreSnapshotFromRecycleBin"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreSnapshotFromRecycleBin": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SnapshotTier",
+    "operations": [
+      "ModifySnapshotTier",
+      "RestoreSnapshotTier"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifySnapshotTier",
+      "RestoreSnapshotTier"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "ModifySnapshotTier": "not_implemented",
+      "RestoreSnapshotTier": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SpotFleetRequestHistory",
+    "operations": [
+      "DescribeSpotFleetRequestHistory"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeSpotFleetRequestHistory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeSpotFleetRequestHistory": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SpotPlacementScores",
+    "operations": [
+      "GetSpotPlacementScores"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSpotPlacementScores"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSpotPlacementScores": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficMirrorFilterNetworkServices",
+    "operations": [
+      "ModifyTrafficMirrorFilterNetworkServices"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyTrafficMirrorFilterNetworkServices"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyTrafficMirrorFilterNetworkServices": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficMirrorFilterRule",
+    "operations": [
+      "CreateTrafficMirrorFilterRule",
+      "DeleteTrafficMirrorFilterRule",
+      "ModifyTrafficMirrorFilterRule"
+    ],
+    "tested": [
+      "CreateTrafficMirrorFilterRule",
+      "DeleteTrafficMirrorFilterRule"
+    ],
+    "untested": [
+      "ModifyTrafficMirrorFilterRule"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTrafficMirrorFilterRule": "working",
+      "DeleteTrafficMirrorFilterRule": "working",
+      "ModifyTrafficMirrorFilterRule": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficMirrorSession",
+    "operations": [
+      "CreateTrafficMirrorSession",
+      "DeleteTrafficMirrorSession",
+      "ModifyTrafficMirrorSession"
+    ],
+    "tested": [
+      "CreateTrafficMirrorSession",
+      "DeleteTrafficMirrorSession"
+    ],
+    "untested": [
+      "ModifyTrafficMirrorSession"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTrafficMirrorSession": "working",
+      "DeleteTrafficMirrorSession": "working",
+      "ModifyTrafficMirrorSession": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayAttachmentPropagations",
+    "operations": [
+      "GetTransitGatewayAttachmentPropagations"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTransitGatewayAttachmentPropagations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTransitGatewayAttachmentPropagations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMeteringPolicy",
+    "operations": [
+      "CreateTransitGatewayMeteringPolicy",
+      "DeleteTransitGatewayMeteringPolicy",
+      "ModifyTransitGatewayMeteringPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTransitGatewayMeteringPolicy",
+      "DeleteTransitGatewayMeteringPolicy",
+      "ModifyTransitGatewayMeteringPolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateTransitGatewayMeteringPolicy": "not_implemented",
+      "DeleteTransitGatewayMeteringPolicy": "not_implemented",
+      "ModifyTransitGatewayMeteringPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMeteringPolicyEntries",
+    "operations": [
+      "GetTransitGatewayMeteringPolicyEntries"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTransitGatewayMeteringPolicyEntries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTransitGatewayMeteringPolicyEntries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMeteringPolicyEntry",
+    "operations": [
+      "CreateTransitGatewayMeteringPolicyEntry",
+      "DeleteTransitGatewayMeteringPolicyEntry"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTransitGatewayMeteringPolicyEntry",
+      "DeleteTransitGatewayMeteringPolicyEntry"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateTransitGatewayMeteringPolicyEntry": "not_implemented",
+      "DeleteTransitGatewayMeteringPolicyEntry": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMulticastDomain",
+    "operations": [
+      "AssociateTransitGatewayMulticastDomain",
+      "CreateTransitGatewayMulticastDomain",
+      "DeleteTransitGatewayMulticastDomain",
+      "DisassociateTransitGatewayMulticastDomain"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateTransitGatewayMulticastDomain",
+      "CreateTransitGatewayMulticastDomain",
+      "DeleteTransitGatewayMulticastDomain",
+      "DisassociateTransitGatewayMulticastDomain"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "AssociateTransitGatewayMulticastDomain": "not_implemented",
+      "CreateTransitGatewayMulticastDomain": "not_implemented",
+      "DeleteTransitGatewayMulticastDomain": "not_implemented",
+      "DisassociateTransitGatewayMulticastDomain": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMulticastDomainAssociations",
+    "operations": [
+      "AcceptTransitGatewayMulticastDomainAssociations",
+      "GetTransitGatewayMulticastDomainAssociations",
+      "RejectTransitGatewayMulticastDomainAssociations"
+    ],
+    "tested": [
+      "AcceptTransitGatewayMulticastDomainAssociations",
+      "RejectTransitGatewayMulticastDomainAssociations"
+    ],
+    "untested": [
+      "GetTransitGatewayMulticastDomainAssociations"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "AcceptTransitGatewayMulticastDomainAssociations": "working",
+      "GetTransitGatewayMulticastDomainAssociations": "not_implemented",
+      "RejectTransitGatewayMulticastDomainAssociations": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMulticastGroupMembers",
+    "operations": [
+      "DeregisterTransitGatewayMulticastGroupMembers",
+      "RegisterTransitGatewayMulticastGroupMembers"
+    ],
+    "tested": [
+      "DeregisterTransitGatewayMulticastGroupMembers"
+    ],
+    "untested": [
+      "RegisterTransitGatewayMulticastGroupMembers"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeregisterTransitGatewayMulticastGroupMembers": "working",
+      "RegisterTransitGatewayMulticastGroupMembers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayMulticastGroupSources",
+    "operations": [
+      "DeregisterTransitGatewayMulticastGroupSources",
+      "RegisterTransitGatewayMulticastGroupSources"
+    ],
+    "tested": [
+      "DeregisterTransitGatewayMulticastGroupSources"
+    ],
+    "untested": [
+      "RegisterTransitGatewayMulticastGroupSources"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeregisterTransitGatewayMulticastGroupSources": "working",
+      "RegisterTransitGatewayMulticastGroupSources": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayPolicyTable",
+    "operations": [
+      "AssociateTransitGatewayPolicyTable",
+      "CreateTransitGatewayPolicyTable",
+      "DeleteTransitGatewayPolicyTable",
+      "DisassociateTransitGatewayPolicyTable"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateTransitGatewayPolicyTable",
+      "CreateTransitGatewayPolicyTable",
+      "DeleteTransitGatewayPolicyTable",
+      "DisassociateTransitGatewayPolicyTable"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "AssociateTransitGatewayPolicyTable": "not_implemented",
+      "CreateTransitGatewayPolicyTable": "not_implemented",
+      "DeleteTransitGatewayPolicyTable": "not_implemented",
+      "DisassociateTransitGatewayPolicyTable": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayPolicyTableAssociations",
+    "operations": [
+      "GetTransitGatewayPolicyTableAssociations"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTransitGatewayPolicyTableAssociations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTransitGatewayPolicyTableAssociations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayPolicyTableEntries",
+    "operations": [
+      "GetTransitGatewayPolicyTableEntries"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTransitGatewayPolicyTableEntries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTransitGatewayPolicyTableEntries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayPrefixListReference",
+    "operations": [
+      "CreateTransitGatewayPrefixListReference",
+      "DeleteTransitGatewayPrefixListReference",
+      "ModifyTransitGatewayPrefixListReference"
+    ],
+    "tested": [
+      "CreateTransitGatewayPrefixListReference",
+      "DeleteTransitGatewayPrefixListReference"
+    ],
+    "untested": [
+      "ModifyTransitGatewayPrefixListReference"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTransitGatewayPrefixListReference": "working",
+      "DeleteTransitGatewayPrefixListReference": "working",
+      "ModifyTransitGatewayPrefixListReference": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayRoute",
+    "operations": [
+      "CreateTransitGatewayRoute",
+      "DeleteTransitGatewayRoute",
+      "ReplaceTransitGatewayRoute"
+    ],
+    "tested": [
+      "CreateTransitGatewayRoute",
+      "DeleteTransitGatewayRoute"
+    ],
+    "untested": [
+      "ReplaceTransitGatewayRoute"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTransitGatewayRoute": "500_error",
+      "DeleteTransitGatewayRoute": "500_error",
+      "ReplaceTransitGatewayRoute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayRouteTableAnnouncement",
+    "operations": [
+      "CreateTransitGatewayRouteTableAnnouncement",
+      "DeleteTransitGatewayRouteTableAnnouncement"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTransitGatewayRouteTableAnnouncement",
+      "DeleteTransitGatewayRouteTableAnnouncement"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateTransitGatewayRouteTableAnnouncement": "not_implemented",
+      "DeleteTransitGatewayRouteTableAnnouncement": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayRoutes",
+    "operations": [
+      "ExportTransitGatewayRoutes"
+    ],
+    "tested": [],
+    "untested": [
+      "ExportTransitGatewayRoutes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ExportTransitGatewayRoutes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransitGatewayVpcAttachment",
+    "operations": [
+      "AcceptTransitGatewayVpcAttachment",
+      "CreateTransitGatewayVpcAttachment",
+      "DeleteTransitGatewayVpcAttachment",
+      "ModifyTransitGatewayVpcAttachment",
+      "RejectTransitGatewayVpcAttachment"
+    ],
+    "tested": [
+      "CreateTransitGatewayVpcAttachment",
+      "DeleteTransitGatewayVpcAttachment",
+      "ModifyTransitGatewayVpcAttachment"
+    ],
+    "untested": [
+      "AcceptTransitGatewayVpcAttachment",
+      "RejectTransitGatewayVpcAttachment"
+    ],
+    "size": 5,
+    "untested_count": 2,
+    "probe_status": {
+      "AcceptTransitGatewayVpcAttachment": "not_implemented",
+      "CreateTransitGatewayVpcAttachment": "working",
+      "DeleteTransitGatewayVpcAttachment": "working",
+      "ModifyTransitGatewayVpcAttachment": "working",
+      "RejectTransitGatewayVpcAttachment": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrunkInterface",
+    "operations": [
+      "AssociateTrunkInterface",
+      "DisassociateTrunkInterface"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateTrunkInterface",
+      "DisassociateTrunkInterface"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateTrunkInterface": "not_implemented",
+      "DisassociateTrunkInterface": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UnlockSnapshot",
+    "operations": [
+      "UnlockSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "UnlockSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UnlockSnapshot": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessEndpoint",
+    "operations": [
+      "CreateVerifiedAccessEndpoint",
+      "DeleteVerifiedAccessEndpoint",
+      "ModifyVerifiedAccessEndpoint"
+    ],
+    "tested": [
+      "CreateVerifiedAccessEndpoint",
+      "DeleteVerifiedAccessEndpoint"
+    ],
+    "untested": [
+      "ModifyVerifiedAccessEndpoint"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVerifiedAccessEndpoint": "working",
+      "DeleteVerifiedAccessEndpoint": "working",
+      "ModifyVerifiedAccessEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessEndpointPolicy",
+    "operations": [
+      "GetVerifiedAccessEndpointPolicy",
+      "ModifyVerifiedAccessEndpointPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetVerifiedAccessEndpointPolicy",
+      "ModifyVerifiedAccessEndpointPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetVerifiedAccessEndpointPolicy": "not_implemented",
+      "ModifyVerifiedAccessEndpointPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessEndpointTargets",
+    "operations": [
+      "GetVerifiedAccessEndpointTargets"
+    ],
+    "tested": [],
+    "untested": [
+      "GetVerifiedAccessEndpointTargets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetVerifiedAccessEndpointTargets": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessGroup",
+    "operations": [
+      "CreateVerifiedAccessGroup",
+      "DeleteVerifiedAccessGroup",
+      "ModifyVerifiedAccessGroup"
+    ],
+    "tested": [
+      "CreateVerifiedAccessGroup",
+      "DeleteVerifiedAccessGroup"
+    ],
+    "untested": [
+      "ModifyVerifiedAccessGroup"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVerifiedAccessGroup": "working",
+      "DeleteVerifiedAccessGroup": "working",
+      "ModifyVerifiedAccessGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessGroupPolicy",
+    "operations": [
+      "GetVerifiedAccessGroupPolicy",
+      "ModifyVerifiedAccessGroupPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetVerifiedAccessGroupPolicy",
+      "ModifyVerifiedAccessGroupPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetVerifiedAccessGroupPolicy": "not_implemented",
+      "ModifyVerifiedAccessGroupPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessInstance",
+    "operations": [
+      "CreateVerifiedAccessInstance",
+      "DeleteVerifiedAccessInstance",
+      "ModifyVerifiedAccessInstance"
+    ],
+    "tested": [
+      "CreateVerifiedAccessInstance",
+      "DeleteVerifiedAccessInstance"
+    ],
+    "untested": [
+      "ModifyVerifiedAccessInstance"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVerifiedAccessInstance": "working",
+      "DeleteVerifiedAccessInstance": "working",
+      "ModifyVerifiedAccessInstance": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessInstanceClientConfiguration",
+    "operations": [
+      "ExportVerifiedAccessInstanceClientConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "ExportVerifiedAccessInstanceClientConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ExportVerifiedAccessInstanceClientConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessInstanceLoggingConfiguration",
+    "operations": [
+      "ModifyVerifiedAccessInstanceLoggingConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyVerifiedAccessInstanceLoggingConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyVerifiedAccessInstanceLoggingConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerifiedAccessTrustProvider",
+    "operations": [
+      "AttachVerifiedAccessTrustProvider",
+      "CreateVerifiedAccessTrustProvider",
+      "DeleteVerifiedAccessTrustProvider",
+      "DetachVerifiedAccessTrustProvider",
+      "ModifyVerifiedAccessTrustProvider"
+    ],
+    "tested": [
+      "AttachVerifiedAccessTrustProvider",
+      "CreateVerifiedAccessTrustProvider",
+      "DeleteVerifiedAccessTrustProvider",
+      "DetachVerifiedAccessTrustProvider"
+    ],
+    "untested": [
+      "ModifyVerifiedAccessTrustProvider"
+    ],
+    "size": 5,
+    "untested_count": 1,
+    "probe_status": {
+      "AttachVerifiedAccessTrustProvider": "not_implemented",
+      "CreateVerifiedAccessTrustProvider": "working",
+      "DeleteVerifiedAccessTrustProvider": "working",
+      "DetachVerifiedAccessTrustProvider": "not_implemented",
+      "ModifyVerifiedAccessTrustProvider": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VgwRoutePropagation",
+    "operations": [
+      "DisableVgwRoutePropagation",
+      "EnableVgwRoutePropagation"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableVgwRoutePropagation",
+      "EnableVgwRoutePropagation"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableVgwRoutePropagation": "not_implemented",
+      "EnableVgwRoutePropagation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Volume",
+    "operations": [
+      "AttachVolume",
+      "CreateVolume",
+      "DeleteVolume",
+      "DetachVolume",
+      "ImportVolume",
+      "ModifyVolume"
+    ],
+    "tested": [
+      "AttachVolume",
+      "CreateVolume",
+      "DeleteVolume",
+      "DetachVolume",
+      "ModifyVolume"
+    ],
+    "untested": [
+      "ImportVolume"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "AttachVolume": "working",
+      "CreateVolume": "working",
+      "DeleteVolume": "working",
+      "DetachVolume": "500_error",
+      "ImportVolume": "not_implemented",
+      "ModifyVolume": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VolumeFromRecycleBin",
+    "operations": [
+      "RestoreVolumeFromRecycleBin"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreVolumeFromRecycleBin"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreVolumeFromRecycleBin": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VolumeIO",
+    "operations": [
+      "EnableVolumeIO"
+    ],
+    "tested": [],
+    "untested": [
+      "EnableVolumeIO"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "EnableVolumeIO": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Volumes",
+    "operations": [
+      "CopyVolumes",
+      "DescribeVolumes"
+    ],
+    "tested": [
+      "DescribeVolumes"
+    ],
+    "untested": [
+      "CopyVolumes"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "CopyVolumes": "not_implemented",
+      "DescribeVolumes": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcBlockPublicAccessExclusion",
+    "operations": [
+      "CreateVpcBlockPublicAccessExclusion",
+      "DeleteVpcBlockPublicAccessExclusion",
+      "ModifyVpcBlockPublicAccessExclusion"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVpcBlockPublicAccessExclusion",
+      "DeleteVpcBlockPublicAccessExclusion",
+      "ModifyVpcBlockPublicAccessExclusion"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateVpcBlockPublicAccessExclusion": "not_implemented",
+      "DeleteVpcBlockPublicAccessExclusion": "not_implemented",
+      "ModifyVpcBlockPublicAccessExclusion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcBlockPublicAccessOptions",
+    "operations": [
+      "DescribeVpcBlockPublicAccessOptions",
+      "ModifyVpcBlockPublicAccessOptions"
+    ],
+    "tested": [
+      "DescribeVpcBlockPublicAccessOptions"
+    ],
+    "untested": [
+      "ModifyVpcBlockPublicAccessOptions"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeVpcBlockPublicAccessOptions": "working",
+      "ModifyVpcBlockPublicAccessOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEncryptionControl",
+    "operations": [
+      "CreateVpcEncryptionControl",
+      "DeleteVpcEncryptionControl",
+      "ModifyVpcEncryptionControl"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVpcEncryptionControl",
+      "DeleteVpcEncryptionControl",
+      "ModifyVpcEncryptionControl"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateVpcEncryptionControl": "not_implemented",
+      "DeleteVpcEncryptionControl": "not_implemented",
+      "ModifyVpcEncryptionControl": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEndpointConnectionNotification",
+    "operations": [
+      "CreateVpcEndpointConnectionNotification",
+      "ModifyVpcEndpointConnectionNotification"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVpcEndpointConnectionNotification",
+      "ModifyVpcEndpointConnectionNotification"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateVpcEndpointConnectionNotification": "not_implemented",
+      "ModifyVpcEndpointConnectionNotification": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEndpointConnectionNotifications",
+    "operations": [
+      "DeleteVpcEndpointConnectionNotifications",
+      "DescribeVpcEndpointConnectionNotifications"
+    ],
+    "tested": [
+      "DescribeVpcEndpointConnectionNotifications"
+    ],
+    "untested": [
+      "DeleteVpcEndpointConnectionNotifications"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteVpcEndpointConnectionNotifications": "not_implemented",
+      "DescribeVpcEndpointConnectionNotifications": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEndpointServicePayerResponsibility",
+    "operations": [
+      "ModifyVpcEndpointServicePayerResponsibility"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyVpcEndpointServicePayerResponsibility"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyVpcEndpointServicePayerResponsibility": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEndpointServicePrivateDnsVerification",
+    "operations": [
+      "StartVpcEndpointServicePrivateDnsVerification"
+    ],
+    "tested": [],
+    "untested": [
+      "StartVpcEndpointServicePrivateDnsVerification"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartVpcEndpointServicePrivateDnsVerification": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcResourcesBlockingEncryptionEnforcement",
+    "operations": [
+      "GetVpcResourcesBlockingEncryptionEnforcement"
+    ],
+    "tested": [],
+    "untested": [
+      "GetVpcResourcesBlockingEncryptionEnforcement"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetVpcResourcesBlockingEncryptionEnforcement": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnConcentrator",
+    "operations": [
+      "CreateVpnConcentrator",
+      "DeleteVpnConcentrator"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVpnConcentrator",
+      "DeleteVpnConcentrator"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateVpnConcentrator": "not_implemented",
+      "DeleteVpnConcentrator": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnConnection",
+    "operations": [
+      "CreateVpnConnection",
+      "DeleteVpnConnection",
+      "ModifyVpnConnection"
+    ],
+    "tested": [
+      "CreateVpnConnection",
+      "DeleteVpnConnection"
+    ],
+    "untested": [
+      "ModifyVpnConnection"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVpnConnection": "working",
+      "DeleteVpnConnection": "working",
+      "ModifyVpnConnection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnConnectionDeviceSampleConfiguration",
+    "operations": [
+      "GetVpnConnectionDeviceSampleConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "GetVpnConnectionDeviceSampleConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetVpnConnectionDeviceSampleConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnConnectionOptions",
+    "operations": [
+      "ModifyVpnConnectionOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyVpnConnectionOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyVpnConnectionOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnConnectionRoute",
+    "operations": [
+      "CreateVpnConnectionRoute",
+      "DeleteVpnConnectionRoute"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVpnConnectionRoute",
+      "DeleteVpnConnectionRoute"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateVpnConnectionRoute": "not_implemented",
+      "DeleteVpnConnectionRoute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnTunnel",
+    "operations": [
+      "ReplaceVpnTunnel"
+    ],
+    "tested": [],
+    "untested": [
+      "ReplaceVpnTunnel"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ReplaceVpnTunnel": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnTunnelCertificate",
+    "operations": [
+      "ModifyVpnTunnelCertificate"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyVpnTunnelCertificate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyVpnTunnelCertificate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnTunnelOptions",
+    "operations": [
+      "ModifyVpnTunnelOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifyVpnTunnelOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifyVpnTunnelOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpnTunnelReplacementStatus",
+    "operations": [
+      "GetVpnTunnelReplacementStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetVpnTunnelReplacementStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetVpnTunnelReplacementStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

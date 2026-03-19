@@ -1,0 +1,144 @@
+[
+  {
+    "noun": "AlarmContributors",
+    "operations": [
+      "DescribeAlarmContributors"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeAlarmContributors"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeAlarmContributors": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AlarmMuteRule",
+    "operations": [
+      "DeleteAlarmMuteRule",
+      "GetAlarmMuteRule",
+      "PutAlarmMuteRule"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteAlarmMuteRule",
+      "GetAlarmMuteRule",
+      "PutAlarmMuteRule"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteAlarmMuteRule": "not_implemented",
+      "GetAlarmMuteRule": "not_implemented",
+      "PutAlarmMuteRule": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InsightRuleReport",
+    "operations": [
+      "GetInsightRuleReport"
+    ],
+    "tested": [],
+    "untested": [
+      "GetInsightRuleReport"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetInsightRuleReport": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ManagedInsightRules",
+    "operations": [
+      "ListManagedInsightRules",
+      "PutManagedInsightRules"
+    ],
+    "tested": [
+      "ListManagedInsightRules"
+    ],
+    "untested": [
+      "PutManagedInsightRules"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "ListManagedInsightRules": "working",
+      "PutManagedInsightRules": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MetricStream",
+    "operations": [
+      "DeleteMetricStream",
+      "GetMetricStream",
+      "PutMetricStream"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteMetricStream",
+      "GetMetricStream",
+      "PutMetricStream"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteMetricStream": "not_implemented",
+      "GetMetricStream": "not_implemented",
+      "PutMetricStream": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MetricStreams",
+    "operations": [
+      "ListMetricStreams",
+      "StartMetricStreams",
+      "StopMetricStreams"
+    ],
+    "tested": [
+      "ListMetricStreams"
+    ],
+    "untested": [
+      "StartMetricStreams",
+      "StopMetricStreams"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "ListMetricStreams": "working",
+      "StartMetricStreams": "not_implemented",
+      "StopMetricStreams": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MetricWidgetImage",
+    "operations": [
+      "GetMetricWidgetImage"
+    ],
+    "tested": [],
+    "untested": [
+      "GetMetricWidgetImage"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetMetricWidgetImage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

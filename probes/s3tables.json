@@ -1,0 +1,251 @@
+{
+  "service": "s3tables",
+  "counts": {
+    "working": 43,
+    "needs_params": 3,
+    "not_implemented": 0,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "CreateNamespace",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateTable",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateTableBucket",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNamespace",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTableBucket",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTableBucketEncryption",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTableBucketMetricsConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTableBucketPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTableBucketReplication",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTablePolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTableReplication",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetNamespace",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTable",
+      "status": "500_error",
+      "message": "server crash (InternalError: argument of type 'NoneType' is not iterable)"
+    },
+    {
+      "operation": "GetTableBucket",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableBucketEncryption",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableBucketMaintenanceConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableBucketMetricsConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableBucketPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableBucketReplication",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableBucketStorageClass",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableEncryption",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableMaintenanceConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableMaintenanceJobStatus",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableMetadataLocation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTablePolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableRecordExpirationConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableRecordExpirationJobStatus",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableReplication",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableReplicationStatus",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTableStorageClass",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListNamespaces",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListTableBuckets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTables",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutTableBucketEncryption",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTableBucketMaintenanceConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTableBucketMetricsConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTableBucketPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTableBucketReplication",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutTableBucketStorageClass",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTableMaintenanceConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTablePolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutTableRecordExpirationConfiguration",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'tableArn')"
+    },
+    {
+      "operation": "PutTableReplication",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RenameTable",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: Neither a new namespace name nor a new table name is specifi)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTableMetadataLocation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

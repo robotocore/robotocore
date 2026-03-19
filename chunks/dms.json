@@ -1,0 +1,63 @@
+[
+  {
+    "noun": "Replication",
+    "operations": [
+      "StartReplication",
+      "StopReplication"
+    ],
+    "tested": [
+      "StartReplication"
+    ],
+    "untested": [
+      "StopReplication"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "StartReplication": "working",
+      "StopReplication": "working"
+    },
+    "working_untested": [
+      "StopReplication"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "EngineVersions",
+    "operations": [
+      "DescribeEngineVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeEngineVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeEngineVersions": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MetadataModelCreation",
+    "operations": [
+      "CancelMetadataModelCreation",
+      "StartMetadataModelCreation"
+    ],
+    "tested": [
+      "CancelMetadataModelCreation"
+    ],
+    "untested": [
+      "StartMetadataModelCreation"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelMetadataModelCreation": "working",
+      "StartMetadataModelCreation": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

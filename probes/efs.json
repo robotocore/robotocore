@@ -1,0 +1,166 @@
+{
+  "service": "efs",
+  "counts": {
+    "working": 22,
+    "needs_params": 2,
+    "not_implemented": 4,
+    "500_error": 3
+  },
+  "operations": [
+    {
+      "operation": "CreateAccessPoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFileSystem",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMountTarget",
+      "status": "working",
+      "message": "likely implemented (SubnetNotFound: The subnet ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateReplicationConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTags",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteAccessPoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFileSystem",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DeleteFileSystemPolicy",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DeleteMountTarget",
+      "status": "working",
+      "message": "likely implemented (MountTargetNotFound: Mount target 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DeleteReplicationConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeAccessPoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountPreferences",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBackupPolicy",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeFileSystemPolicy",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeFileSystems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLifecycleConfiguration",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DescribeMountTargetSecurityGroups",
+      "status": "working",
+      "message": "likely implemented (MountTargetNotFound: Mount target 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DescribeMountTargets",
+      "status": "working",
+      "message": "likely implemented (BadRequest: Must specify exactly one mutually exclusive parameter.)"
+    },
+    {
+      "operation": "DescribeReplicationConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTags",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyMountTargetSecurityGroups",
+      "status": "working",
+      "message": "likely implemented (MountTargetNotFound: Mount target 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "PutAccountPreferences",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBackupPolicy",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "PutFileSystemPolicy",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "PutLifecycleConfiguration",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateFileSystem",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "UpdateFileSystemProtection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

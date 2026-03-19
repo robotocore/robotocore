@@ -1,0 +1,51 @@
+[
+  {
+    "noun": "ApplicationDPUSizes",
+    "operations": [
+      "ListApplicationDPUSizes"
+    ],
+    "tested": [],
+    "untested": [
+      "ListApplicationDPUSizes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListApplicationDPUSizes": "working"
+    },
+    "working_untested": [
+      "ListApplicationDPUSizes"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "CapacityReservation",
+    "operations": [
+      "CancelCapacityReservation",
+      "CreateCapacityReservation",
+      "DeleteCapacityReservation",
+      "GetCapacityReservation",
+      "UpdateCapacityReservation"
+    ],
+    "tested": [
+      "CancelCapacityReservation",
+      "DeleteCapacityReservation",
+      "GetCapacityReservation"
+    ],
+    "untested": [
+      "CreateCapacityReservation",
+      "UpdateCapacityReservation"
+    ],
+    "size": 5,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelCapacityReservation": "working",
+      "CreateCapacityReservation": "needs_params",
+      "DeleteCapacityReservation": "working",
+      "GetCapacityReservation": "working",
+      "UpdateCapacityReservation": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

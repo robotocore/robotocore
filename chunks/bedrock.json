@@ -1,0 +1,235 @@
+[
+  {
+    "noun": "AutomatedReasoningPolicyAnnotations",
+    "operations": [
+      "GetAutomatedReasoningPolicyAnnotations",
+      "UpdateAutomatedReasoningPolicyAnnotations"
+    ],
+    "tested": [
+      "GetAutomatedReasoningPolicyAnnotations"
+    ],
+    "untested": [
+      "UpdateAutomatedReasoningPolicyAnnotations"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAutomatedReasoningPolicyAnnotations": "working",
+      "UpdateAutomatedReasoningPolicyAnnotations": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AutomatedReasoningPolicyVersion",
+    "operations": [
+      "CreateAutomatedReasoningPolicyVersion",
+      "ExportAutomatedReasoningPolicyVersion"
+    ],
+    "tested": [
+      "ExportAutomatedReasoningPolicyVersion"
+    ],
+    "untested": [
+      "CreateAutomatedReasoningPolicyVersion"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAutomatedReasoningPolicyVersion": "needs_params",
+      "ExportAutomatedReasoningPolicyVersion": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CustomModel",
+    "operations": [
+      "CreateCustomModel",
+      "DeleteCustomModel",
+      "GetCustomModel"
+    ],
+    "tested": [
+      "DeleteCustomModel",
+      "GetCustomModel"
+    ],
+    "untested": [
+      "CreateCustomModel"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCustomModel": "needs_params",
+      "DeleteCustomModel": "working",
+      "GetCustomModel": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeleteEvaluationJob",
+    "operations": [
+      "BatchDeleteEvaluationJob"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDeleteEvaluationJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDeleteEvaluationJob": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EvaluationJob",
+    "operations": [
+      "CreateEvaluationJob",
+      "GetEvaluationJob",
+      "StopEvaluationJob"
+    ],
+    "tested": [
+      "GetEvaluationJob",
+      "StopEvaluationJob"
+    ],
+    "untested": [
+      "CreateEvaluationJob"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateEvaluationJob": "needs_params",
+      "GetEvaluationJob": "working",
+      "StopEvaluationJob": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InferenceProfile",
+    "operations": [
+      "CreateInferenceProfile",
+      "DeleteInferenceProfile",
+      "GetInferenceProfile"
+    ],
+    "tested": [
+      "DeleteInferenceProfile",
+      "GetInferenceProfile"
+    ],
+    "untested": [
+      "CreateInferenceProfile"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateInferenceProfile": "needs_params",
+      "DeleteInferenceProfile": "working",
+      "GetInferenceProfile": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MarketplaceModelEndpoint",
+    "operations": [
+      "CreateMarketplaceModelEndpoint",
+      "DeleteMarketplaceModelEndpoint",
+      "DeregisterMarketplaceModelEndpoint",
+      "GetMarketplaceModelEndpoint",
+      "RegisterMarketplaceModelEndpoint",
+      "UpdateMarketplaceModelEndpoint"
+    ],
+    "tested": [
+      "DeleteMarketplaceModelEndpoint",
+      "DeregisterMarketplaceModelEndpoint",
+      "GetMarketplaceModelEndpoint",
+      "RegisterMarketplaceModelEndpoint"
+    ],
+    "untested": [
+      "CreateMarketplaceModelEndpoint",
+      "UpdateMarketplaceModelEndpoint"
+    ],
+    "size": 6,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateMarketplaceModelEndpoint": "needs_params",
+      "DeleteMarketplaceModelEndpoint": "working",
+      "DeregisterMarketplaceModelEndpoint": "working",
+      "GetMarketplaceModelEndpoint": "working",
+      "RegisterMarketplaceModelEndpoint": "working",
+      "UpdateMarketplaceModelEndpoint": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ModelImportJob",
+    "operations": [
+      "CreateModelImportJob",
+      "GetModelImportJob"
+    ],
+    "tested": [
+      "GetModelImportJob"
+    ],
+    "untested": [
+      "CreateModelImportJob"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateModelImportJob": "needs_params",
+      "GetModelImportJob": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ModelInvocationJob",
+    "operations": [
+      "CreateModelInvocationJob",
+      "GetModelInvocationJob",
+      "StopModelInvocationJob"
+    ],
+    "tested": [
+      "GetModelInvocationJob",
+      "StopModelInvocationJob"
+    ],
+    "untested": [
+      "CreateModelInvocationJob"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateModelInvocationJob": "needs_params",
+      "GetModelInvocationJob": "working",
+      "StopModelInvocationJob": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PromptRouter",
+    "operations": [
+      "CreatePromptRouter",
+      "DeletePromptRouter",
+      "GetPromptRouter"
+    ],
+    "tested": [
+      "DeletePromptRouter",
+      "GetPromptRouter"
+    ],
+    "untested": [
+      "CreatePromptRouter"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreatePromptRouter": "needs_params",
+      "DeletePromptRouter": "working",
+      "GetPromptRouter": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

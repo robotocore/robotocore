@@ -1,0 +1,231 @@
+{
+  "service": "codepipeline",
+  "counts": {
+    "working": 41,
+    "needs_params": 0,
+    "not_implemented": 3,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcknowledgeJob",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "AcknowledgeThirdPartyJob",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "CreateCustomActionType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePipeline",
+      "status": "working",
+      "message": "likely implemented (InvalidStructureException: CodePipeline is not authorized to perform AssumeRole on role)"
+    },
+    {
+      "operation": "DeleteCustomActionType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePipeline",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteWebhook",
+      "status": "working",
+      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeregisterWebhookWithThirdParty",
+      "status": "working",
+      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'None' does not exist)"
+    },
+    {
+      "operation": "DisableStageTransition",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "EnableStageTransition",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "GetActionType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetJobDetails",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "GetPipeline",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "GetPipelineExecution",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "GetPipelineState",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "GetThirdPartyJobDetails",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "ListActionExecutions",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "ListActionTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeployActionExecutionTargets",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListPipelineExecutions",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "ListPipelines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRuleExecutions",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "ListRuleTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListWebhooks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "OverrideStageCondition",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "PollForJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PollForThirdPartyJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutActionRevision",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutApprovalResult",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "PutJobFailureResult",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "PutJobSuccessResult",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "PutThirdPartyJobFailureResult",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "PutThirdPartyJobSuccessResult",
+      "status": "working",
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+    },
+    {
+      "operation": "PutWebhook",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "RegisterWebhookWithThirdParty",
+      "status": "working",
+      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'None' does not exist)"
+    },
+    {
+      "operation": "RetryStageExecution",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "RollbackStage",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "StartPipelineExecution",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "StopPipelineExecution",
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateActionType",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdatePipeline",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

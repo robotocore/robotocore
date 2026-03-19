@@ -1,0 +1,205 @@
+[
+  {
+    "noun": "ApplicationInstanceDependencies",
+    "operations": [
+      "ListApplicationInstanceDependencies"
+    ],
+    "tested": [],
+    "untested": [
+      "ListApplicationInstanceDependencies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListApplicationInstanceDependencies": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ApplicationInstanceNodeInstances",
+    "operations": [
+      "ListApplicationInstanceNodeInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "ListApplicationInstanceNodeInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListApplicationInstanceNodeInstances": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeviceJob",
+    "operations": [
+      "DescribeDeviceJob"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeDeviceJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeDeviceJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeviceMetadata",
+    "operations": [
+      "UpdateDeviceMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateDeviceMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateDeviceMetadata": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DevicesJobs",
+    "operations": [
+      "ListDevicesJobs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDevicesJobs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDevicesJobs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "JobForDevices",
+    "operations": [
+      "CreateJobForDevices"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateJobForDevices"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateJobForDevices": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Package",
+    "operations": [
+      "CreatePackage",
+      "DeletePackage",
+      "DescribePackage"
+    ],
+    "tested": [
+      "CreatePackage",
+      "DeletePackage"
+    ],
+    "untested": [
+      "DescribePackage"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreatePackage": "working",
+      "DeletePackage": "working",
+      "DescribePackage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PackageVersion",
+    "operations": [
+      "DeregisterPackageVersion",
+      "DescribePackageVersion",
+      "RegisterPackageVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "DeregisterPackageVersion",
+      "DescribePackageVersion",
+      "RegisterPackageVersion"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeregisterPackageVersion": "not_implemented",
+      "DescribePackageVersion": "not_implemented",
+      "RegisterPackageVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SignalApplicationInstanceNodeInstances",
+    "operations": [
+      "SignalApplicationInstanceNodeInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "SignalApplicationInstanceNodeInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SignalApplicationInstanceNodeInstances": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

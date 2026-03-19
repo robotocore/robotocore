@@ -1,0 +1,226 @@
+{
+  "service": "transcribe",
+  "counts": {
+    "working": 28,
+    "needs_params": 4,
+    "not_implemented": 11,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateCallAnalyticsCategory",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLanguageModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMedicalVocabulary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVocabulary",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: Either Phrases or VocabularyFileUri field should be provided)"
+    },
+    {
+      "operation": "CreateVocabularyFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: Either Words or VocabularyFilterFileUri field should be prov)"
+    },
+    {
+      "operation": "DeleteCallAnalyticsCategory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCallAnalyticsJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLanguageModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMedicalScribeJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteMedicalTranscriptionJob",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+    },
+    {
+      "operation": "DeleteMedicalVocabulary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTranscriptionJob",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+    },
+    {
+      "operation": "DeleteVocabulary",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary couldn't be found. Check the vocabu)"
+    },
+    {
+      "operation": "DeleteVocabularyFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary filter couldn't be found. Check the)"
+    },
+    {
+      "operation": "DescribeLanguageModel",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested language model couldn't be found. Check the la)"
+    },
+    {
+      "operation": "GetCallAnalyticsCategory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCallAnalyticsJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMedicalScribeJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMedicalTranscriptionJob",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+    },
+    {
+      "operation": "GetMedicalVocabulary",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary couldn't be found. Check the vocabu)"
+    },
+    {
+      "operation": "GetTranscriptionJob",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+    },
+    {
+      "operation": "GetVocabulary",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary couldn't be found. Check the vocabu)"
+    },
+    {
+      "operation": "GetVocabularyFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary filter couldn't be found. Check the)"
+    },
+    {
+      "operation": "ListCallAnalyticsCategories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCallAnalyticsJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLanguageModels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMedicalScribeJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMedicalTranscriptionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMedicalVocabularies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTranscriptionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVocabularies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVocabularyFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartCallAnalyticsJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartMedicalScribeJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartMedicalTranscriptionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartTranscriptionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCallAnalyticsCategory",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateMedicalVocabulary",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateVocabulary",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateVocabularyFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary filter couldn't be found. Check the)"
+    }
+  ]
+}

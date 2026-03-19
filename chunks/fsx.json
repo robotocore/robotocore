@@ -1,0 +1,240 @@
+[
+  {
+    "noun": "AndAttachS3AccessPoint",
+    "operations": [
+      "CreateAndAttachS3AccessPoint"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAndAttachS3AccessPoint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAndAttachS3AccessPoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AndDeleteS3AccessPoint",
+    "operations": [
+      "DetachAndDeleteS3AccessPoint"
+    ],
+    "tested": [],
+    "untested": [
+      "DetachAndDeleteS3AccessPoint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DetachAndDeleteS3AccessPoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Backup",
+    "operations": [
+      "CopyBackup",
+      "CreateBackup",
+      "DeleteBackup"
+    ],
+    "tested": [
+      "CreateBackup",
+      "DeleteBackup"
+    ],
+    "untested": [
+      "CopyBackup"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CopyBackup": "not_implemented",
+      "CreateBackup": "working",
+      "DeleteBackup": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DataRepositoryTask",
+    "operations": [
+      "CancelDataRepositoryTask",
+      "CreateDataRepositoryTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelDataRepositoryTask",
+      "CreateDataRepositoryTask"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelDataRepositoryTask": "not_implemented",
+      "CreateDataRepositoryTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FileCache",
+    "operations": [
+      "CreateFileCache",
+      "DeleteFileCache",
+      "UpdateFileCache"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateFileCache",
+      "DeleteFileCache",
+      "UpdateFileCache"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateFileCache": "not_implemented",
+      "DeleteFileCache": "not_implemented",
+      "UpdateFileCache": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FileSystemNfsV3Locks",
+    "operations": [
+      "ReleaseFileSystemNfsV3Locks"
+    ],
+    "tested": [],
+    "untested": [
+      "ReleaseFileSystemNfsV3Locks"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ReleaseFileSystemNfsV3Locks": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MisconfiguredStateRecovery",
+    "operations": [
+      "StartMisconfiguredStateRecovery"
+    ],
+    "tested": [],
+    "untested": [
+      "StartMisconfiguredStateRecovery"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartMisconfiguredStateRecovery": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SharedVpcConfiguration",
+    "operations": [
+      "DescribeSharedVpcConfiguration",
+      "UpdateSharedVpcConfiguration"
+    ],
+    "tested": [
+      "DescribeSharedVpcConfiguration"
+    ],
+    "untested": [
+      "UpdateSharedVpcConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeSharedVpcConfiguration": "working",
+      "UpdateSharedVpcConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SnapshotAndUpdateVolume",
+    "operations": [
+      "CopySnapshotAndUpdateVolume"
+    ],
+    "tested": [],
+    "untested": [
+      "CopySnapshotAndUpdateVolume"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CopySnapshotAndUpdateVolume": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StorageVirtualMachine",
+    "operations": [
+      "CreateStorageVirtualMachine",
+      "DeleteStorageVirtualMachine",
+      "UpdateStorageVirtualMachine"
+    ],
+    "tested": [
+      "CreateStorageVirtualMachine",
+      "DeleteStorageVirtualMachine"
+    ],
+    "untested": [
+      "UpdateStorageVirtualMachine"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateStorageVirtualMachine": "working",
+      "DeleteStorageVirtualMachine": "needs_params",
+      "UpdateStorageVirtualMachine": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Volume",
+    "operations": [
+      "CreateVolume",
+      "DeleteVolume",
+      "UpdateVolume"
+    ],
+    "tested": [
+      "CreateVolume",
+      "DeleteVolume"
+    ],
+    "untested": [
+      "UpdateVolume"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVolume": "working",
+      "DeleteVolume": "needs_params",
+      "UpdateVolume": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VolumeFromSnapshot",
+    "operations": [
+      "RestoreVolumeFromSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "RestoreVolumeFromSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestoreVolumeFromSnapshot": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

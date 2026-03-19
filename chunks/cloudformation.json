@@ -1,0 +1,103 @@
+[
+  {
+    "noun": "DescribeTypeConfigurations",
+    "operations": [
+      "BatchDescribeTypeConfigurations"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDescribeTypeConfigurations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDescribeTypeConfigurations": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Type",
+    "operations": [
+      "ActivateType",
+      "DeactivateType",
+      "DeregisterType",
+      "DescribeType",
+      "PublishType",
+      "RegisterType"
+    ],
+    "tested": [
+      "ActivateType",
+      "DeactivateType",
+      "DeregisterType",
+      "DescribeType",
+      "PublishType"
+    ],
+    "untested": [
+      "RegisterType"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "ActivateType": "working",
+      "DeactivateType": "working",
+      "DeregisterType": "working",
+      "DescribeType": "working",
+      "PublishType": "working",
+      "RegisterType": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TypeConfiguration",
+    "operations": [
+      "SetTypeConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "SetTypeConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetTypeConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TypeRegistration",
+    "operations": [
+      "DescribeTypeRegistration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeTypeRegistration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeTypeRegistration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpdateStack",
+    "operations": [
+      "CancelUpdateStack"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelUpdateStack"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelUpdateStack": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

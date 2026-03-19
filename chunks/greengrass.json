@@ -1,0 +1,296 @@
+[
+  {
+    "noun": "BulkDeployment",
+    "operations": [
+      "StartBulkDeployment",
+      "StopBulkDeployment"
+    ],
+    "tested": [],
+    "untested": [
+      "StartBulkDeployment",
+      "StopBulkDeployment"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "StartBulkDeployment": "not_implemented",
+      "StopBulkDeployment": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BulkDeploymentDetailedReports",
+    "operations": [
+      "ListBulkDeploymentDetailedReports"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBulkDeploymentDetailedReports"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBulkDeploymentDetailedReports": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BulkDeploymentStatus",
+    "operations": [
+      "GetBulkDeploymentStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetBulkDeploymentStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetBulkDeploymentStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BulkDeployments",
+    "operations": [
+      "ListBulkDeployments"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBulkDeployments"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBulkDeployments": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectivityInfo",
+    "operations": [
+      "GetConnectivityInfo",
+      "UpdateConnectivityInfo"
+    ],
+    "tested": [],
+    "untested": [
+      "GetConnectivityInfo",
+      "UpdateConnectivityInfo"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetConnectivityInfo": "not_implemented",
+      "UpdateConnectivityInfo": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Deployments",
+    "operations": [
+      "ListDeployments",
+      "ResetDeployments"
+    ],
+    "tested": [
+      "ListDeployments"
+    ],
+    "untested": [
+      "ResetDeployments"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDeployments": "working",
+      "ResetDeployments": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupCertificateAuthorities",
+    "operations": [
+      "ListGroupCertificateAuthorities"
+    ],
+    "tested": [],
+    "untested": [
+      "ListGroupCertificateAuthorities"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListGroupCertificateAuthorities": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupCertificateAuthority",
+    "operations": [
+      "CreateGroupCertificateAuthority",
+      "GetGroupCertificateAuthority"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateGroupCertificateAuthority",
+      "GetGroupCertificateAuthority"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateGroupCertificateAuthority": "not_implemented",
+      "GetGroupCertificateAuthority": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GroupCertificateConfiguration",
+    "operations": [
+      "GetGroupCertificateConfiguration",
+      "UpdateGroupCertificateConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "GetGroupCertificateConfiguration",
+      "UpdateGroupCertificateConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetGroupCertificateConfiguration": "not_implemented",
+      "UpdateGroupCertificateConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceRoleForAccount",
+    "operations": [
+      "GetServiceRoleForAccount"
+    ],
+    "tested": [],
+    "untested": [
+      "GetServiceRoleForAccount"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetServiceRoleForAccount": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceRoleFromAccount",
+    "operations": [
+      "DisassociateServiceRoleFromAccount"
+    ],
+    "tested": [],
+    "untested": [
+      "DisassociateServiceRoleFromAccount"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DisassociateServiceRoleFromAccount": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceRoleToAccount",
+    "operations": [
+      "AssociateServiceRoleToAccount"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateServiceRoleToAccount"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateServiceRoleToAccount": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SoftwareUpdateJob",
+    "operations": [
+      "CreateSoftwareUpdateJob"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateSoftwareUpdateJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateSoftwareUpdateJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ThingRuntimeConfiguration",
+    "operations": [
+      "GetThingRuntimeConfiguration",
+      "UpdateThingRuntimeConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "GetThingRuntimeConfiguration",
+      "UpdateThingRuntimeConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetThingRuntimeConfiguration": "not_implemented",
+      "UpdateThingRuntimeConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

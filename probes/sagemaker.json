@@ -1,0 +1,1901 @@
+{
+  "service": "sagemaker",
+  "counts": {
+    "working": 351,
+    "needs_params": 21,
+    "not_implemented": 0,
+    "500_error": 6
+  },
+  "operations": [
+    {
+      "operation": "AddAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AddTags",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "AssociateTrialComponent",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Trial 'arn:aws:sagemaker:us-east-1:123456789012:experiment-t)"
+    },
+    {
+      "operation": "AttachClusterNodeVolume",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchAddClusterNodes",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDeleteClusterNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchDescribeModelPackage",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchRebootClusterNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchReplaceClusterNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAlgorithm",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAppImageConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateArtifact",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAutoMLJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateAutoMLJobV2",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateCluster",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "CreateClusterSchedulerConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCodeRepository",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCompilationJob",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateComputeQuota",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateContext",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDataQualityJobDefinition",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDeviceFleet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEdgeDeploymentPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEdgeDeploymentStage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEdgePackagingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEndpoint",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateEndpointConfig",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateExperiment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFeatureGroup",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateFlowDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHub",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHubContentPresignedUrls",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHubContentReference",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHumanTaskUi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHyperParameterTuningJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateImageVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInferenceComponent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInferenceExperiment",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateInferenceRecommendationsJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLabelingJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateMlflowApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMlflowTrackingServer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateModelBiasJobDefinition",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateModelCard",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateModelCardExportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateModelExplainabilityJobDefinition",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateModelPackage",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateModelPackageGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateModelQualityJobDefinition",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateMonitoringSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNotebookInstance",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateNotebookInstanceLifecycleConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOptimizationJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePartnerApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePartnerAppPresignedUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePipeline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreatePresignedDomainUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePresignedMlflowAppUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePresignedMlflowTrackingServerUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePresignedNotebookInstanceUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProcessingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProject",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSpace",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStudioLifecycleConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrainingJob",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object does not support item assignment)"
+    },
+    {
+      "operation": "CreateTrainingPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransformJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrial",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrialComponent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateUserProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWorkforce",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWorkteam",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAlgorithm",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAppImageConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteArtifact",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteClusterSchedulerConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCodeRepository",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCompilationJob",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find compilation job 'probe-test-value'.)"
+    },
+    {
+      "operation": "DeleteComputeQuota",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteContext",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDataQualityJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+    },
+    {
+      "operation": "DeleteDeviceFleet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDomain",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteEdgeDeploymentPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEdgeDeploymentStage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEndpoint",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteEndpointConfig",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteExperiment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFeatureGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFlowDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHub",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHubContent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHubContentReference",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHumanTaskUi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHyperParameterTuningJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteImageVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteInferenceComponent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteInferenceExperiment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMlflowApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMlflowTrackingServer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteModelBiasJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+    },
+    {
+      "operation": "DeleteModelCard",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteModelExplainabilityJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find model explainability job definition with name)"
+    },
+    {
+      "operation": "DeleteModelPackage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteModelPackageGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteModelPackageGroupPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteModelQualityJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find model quality job definition 'probe-test-valu)"
+    },
+    {
+      "operation": "DeleteMonitoringSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNotebookInstance",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteNotebookInstanceLifecycleConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteOptimizationJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePartnerApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePipeline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteProcessingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteProject",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSpace",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteStudioLifecycleConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteTrainingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTrial",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTrialComponent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUserProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteWorkforce",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteWorkteam",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAction",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeAlgorithm",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeApp",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeAppImageConfig",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeArtifact",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeAutoMLJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAutoMLJobV2",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find AutoML job with name probe-test-value.)"
+    },
+    {
+      "operation": "DescribeCluster",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeClusterEvent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterNode",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeClusterSchedulerConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCodeRepository",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeCompilationJob",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find compilation job 'probe-test-value'.)"
+    },
+    {
+      "operation": "DescribeComputeQuota",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeContext",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeDataQualityJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+    },
+    {
+      "operation": "DescribeDevice",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeviceFleet",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeDomain",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeEdgeDeploymentPlan",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeEdgePackagingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEndpoint",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeEndpointConfig",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeExperiment",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeFeatureGroup",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'arn:aws:sagemaker:us-east-1:123456789012:feature-group/prob)"
+    },
+    {
+      "operation": "DescribeFeatureMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFlowDefinition",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeHub",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeHubContent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHumanTaskUi",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeHyperParameterTuningJob",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find hyper parameter tuning job 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeImage",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeImageVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInferenceComponent",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeInferenceExperiment",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeInferenceRecommendationsJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLabelingJob",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeLineageGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMlflowApp",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeMlflowTrackingServer",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeModel",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeModelBiasJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+    },
+    {
+      "operation": "DescribeModelCard",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Modelcard probe-test-value does not exist)"
+    },
+    {
+      "operation": "DescribeModelCardExportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeModelExplainabilityJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find model explainability job definition with name)"
+    },
+    {
+      "operation": "DescribeModelPackage",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeModelPackageGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeModelQualityJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find model quality job definition 'probe-test-valu)"
+    },
+    {
+      "operation": "DescribeMonitoringSchedule",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeNotebookInstance",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeNotebookInstanceLifecycleConfig",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeOptimizationJob",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribePartnerApp",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribePipeline",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribePipelineDefinitionForExecution",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribePipelineExecution",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeProcessingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeProject",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeReservedCapacity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSpace",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeStudioLifecycleConfig",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeSubscribedWorkteam",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrainingJob",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeTrainingPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransformJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrial",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeTrialComponent",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeUserProfile",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeWorkforce",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeWorkteam",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetachClusterNodeVolume",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableSagemakerServicecatalogPortfolio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateTrialComponent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableSagemakerServicecatalogPortfolio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDeviceFleetReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLineageGroupPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetModelPackageGroupPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSagemakerServicecatalogPortfolioStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetScalingConfigurationRecommendation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSearchSuggestions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ImportHubContent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAlgorithms",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAliases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppImageConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListApps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListArtifacts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAutoMLJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCandidatesForAutoMLJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListClusterEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListClusterNodes",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListClusterSchedulerConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCodeRepositories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCompilationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListComputeQuotas",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListContexts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDataQualityJobDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeviceFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDomains",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEdgeDeploymentPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEdgePackagingJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEndpointConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListExperiments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFeatureGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFlowDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHubContentVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHubContents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHubs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHumanTaskUis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHyperParameterTuningJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListImageVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListImages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInferenceComponents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInferenceExperiments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInferenceRecommendationsJobSteps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInferenceRecommendationsJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLabelingJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLabelingJobsForWorkteam",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLineageGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMlflowApps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMlflowTrackingServers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelBiasJobDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelCardExportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelCardVersions",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Modelcard probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListModelCards",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelExplainabilityJobDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelPackageGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelPackages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelQualityJobDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMonitoringAlertHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMonitoringAlerts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMonitoringExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMonitoringSchedules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNotebookInstanceLifecycleConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNotebookInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOptimizationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPartnerApps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPipelineExecutionSteps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPipelineExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListPipelineParametersForExecution",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListPipelineVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPipelines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProcessingJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProjects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceCatalogs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSpaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStageDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStudioLifecycleConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSubscribedWorkteams",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTags",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "ListTrainingJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrainingJobsForHyperParameterTuningJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrainingPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTransformJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrialComponents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrials",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUltraServersByReservedCapacity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUserProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListWorkforces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListWorkteams",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutModelPackageGroupPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "QueryLineage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RenderUiTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RetryPipelineExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "Search",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "SearchTrainingPlanOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendPipelineExecutionStepFailure",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendPipelineExecutionStepSuccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartEdgeDeploymentStage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartInferenceExperiment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMlflowTrackingServer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMonitoringSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartNotebookInstance",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "StartPipelineExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopAutoMLJob",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find AutoML job with name probe-test-value.)"
+    },
+    {
+      "operation": "StopCompilationJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopEdgeDeploymentStage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopEdgePackagingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopHyperParameterTuningJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopInferenceExperiment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopInferenceRecommendationsJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopLabelingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopMlflowTrackingServer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopMonitoringSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopNotebookInstance",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "StopOptimizationJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopPipelineExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StopProcessingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopTrainingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopTransformJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAction",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateAppImageConfig",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateArtifact",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateClusterSchedulerConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateClusterSoftware",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCodeRepository",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateComputeQuota",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateContext",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateDeviceFleet",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateEndpointWeightsAndCapacities",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateExperiment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFeatureGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFeatureMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateHub",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateHubContent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateHubContentReference",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateImage",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateImageVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateInferenceComponent",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateInferenceComponentRuntimeConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateInferenceExperiment",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateMlflowApp",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateMlflowTrackingServer",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateModelCard",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Modelcard probe-test-value does not exist.)"
+    },
+    {
+      "operation": "UpdateModelPackage",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateMonitoringAlert",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateMonitoringSchedule",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateNotebookInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateNotebookInstanceLifecycleConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePartnerApp",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdatePipeline",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdatePipelineExecution",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePipelineVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateProject",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateSpace",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateTrainingJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTrial",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTrialComponent",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateUserProfile",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateWorkforce",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateWorkteam",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    }
+  ]
+}

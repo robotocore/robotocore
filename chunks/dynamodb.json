@@ -1,0 +1,136 @@
+[
+  {
+    "noun": "GlobalTable",
+    "operations": [
+      "CreateGlobalTable",
+      "DescribeGlobalTable",
+      "UpdateGlobalTable"
+    ],
+    "tested": [
+      "CreateGlobalTable",
+      "DescribeGlobalTable"
+    ],
+    "untested": [
+      "UpdateGlobalTable"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateGlobalTable": "working",
+      "DescribeGlobalTable": "working",
+      "UpdateGlobalTable": "working"
+    },
+    "working_untested": [
+      "UpdateGlobalTable"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ContributorInsights",
+    "operations": [
+      "DescribeContributorInsights",
+      "ListContributorInsights",
+      "UpdateContributorInsights"
+    ],
+    "tested": [
+      "ListContributorInsights"
+    ],
+    "untested": [
+      "DescribeContributorInsights",
+      "UpdateContributorInsights"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeContributorInsights": "not_implemented",
+      "ListContributorInsights": "working",
+      "UpdateContributorInsights": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GlobalTableSettings",
+    "operations": [
+      "DescribeGlobalTableSettings",
+      "UpdateGlobalTableSettings"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeGlobalTableSettings",
+      "UpdateGlobalTableSettings"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeGlobalTableSettings": "not_implemented",
+      "UpdateGlobalTableSettings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Import",
+    "operations": [
+      "DescribeImport"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeImport"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeImport": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "KinesisStreamingDestination",
+    "operations": [
+      "DescribeKinesisStreamingDestination",
+      "DisableKinesisStreamingDestination",
+      "EnableKinesisStreamingDestination",
+      "UpdateKinesisStreamingDestination"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeKinesisStreamingDestination",
+      "DisableKinesisStreamingDestination",
+      "EnableKinesisStreamingDestination",
+      "UpdateKinesisStreamingDestination"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "DescribeKinesisStreamingDestination": "not_implemented",
+      "DisableKinesisStreamingDestination": "not_implemented",
+      "EnableKinesisStreamingDestination": "not_implemented",
+      "UpdateKinesisStreamingDestination": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableReplicaAutoScaling",
+    "operations": [
+      "DescribeTableReplicaAutoScaling",
+      "UpdateTableReplicaAutoScaling"
+    ],
+    "tested": [
+      "DescribeTableReplicaAutoScaling"
+    ],
+    "untested": [
+      "UpdateTableReplicaAutoScaling"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeTableReplicaAutoScaling": "working",
+      "UpdateTableReplicaAutoScaling": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

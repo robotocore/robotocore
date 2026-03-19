@@ -1,0 +1,128 @@
+[
+  {
+    "noun": "AccountSettings",
+    "operations": [
+      "DescribeAccountSettings",
+      "UpdateAccountSettings"
+    ],
+    "tested": [
+      "DescribeAccountSettings"
+    ],
+    "untested": [
+      "UpdateAccountSettings"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeAccountSettings": "working",
+      "UpdateAccountSettings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MaxRecordSize",
+    "operations": [
+      "UpdateMaxRecordSize"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateMaxRecordSize"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateMaxRecordSize": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StreamMode",
+    "operations": [
+      "UpdateStreamMode"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateStreamMode"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateStreamMode": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StreamWarmThroughput",
+    "operations": [
+      "UpdateStreamWarmThroughput"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateStreamWarmThroughput"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateStreamWarmThroughput": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ToShard",
+    "operations": [
+      "SubscribeToShard"
+    ],
+    "tested": [],
+    "untested": [
+      "SubscribeToShard"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SubscribeToShard": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

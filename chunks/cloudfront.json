@@ -1,0 +1,534 @@
+[
+  {
+    "noun": "DistributionTenantWebACL",
+    "operations": [
+      "AssociateDistributionTenantWebACL",
+      "DisassociateDistributionTenantWebACL"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateDistributionTenantWebACL",
+      "DisassociateDistributionTenantWebACL"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateDistributionTenantWebACL": "working",
+      "DisassociateDistributionTenantWebACL": "working"
+    },
+    "working_untested": [
+      "AssociateDistributionTenantWebACL",
+      "DisassociateDistributionTenantWebACL"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "DistributionWebACL",
+    "operations": [
+      "AssociateDistributionWebACL",
+      "DisassociateDistributionWebACL"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateDistributionWebACL",
+      "DisassociateDistributionWebACL"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateDistributionWebACL": "working",
+      "DisassociateDistributionWebACL": "working"
+    },
+    "working_untested": [
+      "AssociateDistributionWebACL",
+      "DisassociateDistributionWebACL"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "DistributionsByWebACLId",
+    "operations": [
+      "ListDistributionsByWebACLId"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDistributionsByWebACLId"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDistributionsByWebACLId": "working"
+    },
+    "working_untested": [
+      "ListDistributionsByWebACLId"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AnycastIpList",
+    "operations": [
+      "CreateAnycastIpList",
+      "DeleteAnycastIpList",
+      "GetAnycastIpList",
+      "UpdateAnycastIpList"
+    ],
+    "tested": [
+      "DeleteAnycastIpList",
+      "GetAnycastIpList",
+      "UpdateAnycastIpList"
+    ],
+    "untested": [
+      "CreateAnycastIpList"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAnycastIpList": "500_error",
+      "DeleteAnycastIpList": "working",
+      "GetAnycastIpList": "working",
+      "UpdateAnycastIpList": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AnycastIpLists",
+    "operations": [
+      "ListAnycastIpLists"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAnycastIpLists"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAnycastIpLists": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectionFunction",
+    "operations": [
+      "CreateConnectionFunction",
+      "DeleteConnectionFunction",
+      "DescribeConnectionFunction",
+      "GetConnectionFunction",
+      "PublishConnectionFunction",
+      "UpdateConnectionFunction"
+    ],
+    "tested": [
+      "DeleteConnectionFunction",
+      "GetConnectionFunction"
+    ],
+    "untested": [
+      "CreateConnectionFunction",
+      "DescribeConnectionFunction",
+      "PublishConnectionFunction",
+      "UpdateConnectionFunction"
+    ],
+    "size": 6,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateConnectionFunction": "500_error",
+      "DeleteConnectionFunction": "working",
+      "DescribeConnectionFunction": "500_error",
+      "GetConnectionFunction": "working",
+      "PublishConnectionFunction": "500_error",
+      "UpdateConnectionFunction": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectionFunctions",
+    "operations": [
+      "ListConnectionFunctions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListConnectionFunctions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListConnectionFunctions": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectionGroup",
+    "operations": [
+      "CreateConnectionGroup",
+      "DeleteConnectionGroup",
+      "GetConnectionGroup",
+      "UpdateConnectionGroup"
+    ],
+    "tested": [
+      "DeleteConnectionGroup"
+    ],
+    "untested": [
+      "CreateConnectionGroup",
+      "GetConnectionGroup",
+      "UpdateConnectionGroup"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateConnectionGroup": "500_error",
+      "DeleteConnectionGroup": "working",
+      "GetConnectionGroup": "500_error",
+      "UpdateConnectionGroup": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectionGroupByRoutingEndpoint",
+    "operations": [
+      "GetConnectionGroupByRoutingEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "GetConnectionGroupByRoutingEndpoint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetConnectionGroupByRoutingEndpoint": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectionGroups",
+    "operations": [
+      "ListConnectionGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "ListConnectionGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListConnectionGroups": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DistributionTenant",
+    "operations": [
+      "CreateDistributionTenant",
+      "DeleteDistributionTenant",
+      "GetDistributionTenant",
+      "UpdateDistributionTenant"
+    ],
+    "tested": [
+      "DeleteDistributionTenant"
+    ],
+    "untested": [
+      "CreateDistributionTenant",
+      "GetDistributionTenant",
+      "UpdateDistributionTenant"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDistributionTenant": "500_error",
+      "DeleteDistributionTenant": "working",
+      "GetDistributionTenant": "500_error",
+      "UpdateDistributionTenant": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DistributionTenantByDomain",
+    "operations": [
+      "GetDistributionTenantByDomain"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDistributionTenantByDomain"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDistributionTenantByDomain": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DistributionTenants",
+    "operations": [
+      "ListDistributionTenants"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDistributionTenants"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDistributionTenants": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DistributionTenantsByCustomization",
+    "operations": [
+      "ListDistributionTenantsByCustomization"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDistributionTenantsByCustomization"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDistributionTenantsByCustomization": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DistributionsByOwnedResource",
+    "operations": [
+      "ListDistributionsByOwnedResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDistributionsByOwnedResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDistributionsByOwnedResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DnsConfiguration",
+    "operations": [
+      "VerifyDnsConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "VerifyDnsConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "VerifyDnsConfiguration": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DomainConflicts",
+    "operations": [
+      "ListDomainConflicts"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDomainConflicts"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDomainConflicts": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InvalidationForDistributionTenant",
+    "operations": [
+      "CreateInvalidationForDistributionTenant",
+      "GetInvalidationForDistributionTenant"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateInvalidationForDistributionTenant",
+      "GetInvalidationForDistributionTenant"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateInvalidationForDistributionTenant": "500_error",
+      "GetInvalidationForDistributionTenant": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InvalidationsForDistributionTenant",
+    "operations": [
+      "ListInvalidationsForDistributionTenant"
+    ],
+    "tested": [],
+    "untested": [
+      "ListInvalidationsForDistributionTenant"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListInvalidationsForDistributionTenant": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ManagedCertificateDetails",
+    "operations": [
+      "GetManagedCertificateDetails"
+    ],
+    "tested": [],
+    "untested": [
+      "GetManagedCertificateDetails"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetManagedCertificateDetails": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourcePolicy",
+    "operations": [
+      "DeleteResourcePolicy",
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "tested": [
+      "DeleteResourcePolicy"
+    ],
+    "untested": [
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteResourcePolicy": "working",
+      "GetResourcePolicy": "500_error",
+      "PutResourcePolicy": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestConnectionFunction",
+    "operations": [
+      "TestConnectionFunction"
+    ],
+    "tested": [],
+    "untested": [
+      "TestConnectionFunction"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestConnectionFunction": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStore",
+    "operations": [
+      "CreateTrustStore",
+      "DeleteTrustStore",
+      "GetTrustStore",
+      "UpdateTrustStore"
+    ],
+    "tested": [
+      "DeleteTrustStore"
+    ],
+    "untested": [
+      "CreateTrustStore",
+      "GetTrustStore",
+      "UpdateTrustStore"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateTrustStore": "needs_params",
+      "DeleteTrustStore": "working",
+      "GetTrustStore": "500_error",
+      "UpdateTrustStore": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrustStores",
+    "operations": [
+      "ListTrustStores"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTrustStores"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTrustStores": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcOrigin",
+    "operations": [
+      "CreateVpcOrigin",
+      "DeleteVpcOrigin",
+      "GetVpcOrigin",
+      "UpdateVpcOrigin"
+    ],
+    "tested": [
+      "DeleteVpcOrigin",
+      "GetVpcOrigin"
+    ],
+    "untested": [
+      "CreateVpcOrigin",
+      "UpdateVpcOrigin"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateVpcOrigin": "500_error",
+      "DeleteVpcOrigin": "working",
+      "GetVpcOrigin": "working",
+      "UpdateVpcOrigin": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcOrigins",
+    "operations": [
+      "ListVpcOrigins"
+    ],
+    "tested": [],
+    "untested": [
+      "ListVpcOrigins"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListVpcOrigins": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

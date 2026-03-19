@@ -1,0 +1,741 @@
+{
+  "service": "ssm",
+  "counts": {
+    "working": 101,
+    "needs_params": 45,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddTagsToResource",
+      "status": "working",
+      "message": "likely implemented (InvalidResourceType: Invalid Resource Type)"
+    },
+    {
+      "operation": "AssociateOpsItemRelatedItem",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "CancelCommand",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CancelMaintenanceWindowExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateActivation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAssociationBatch",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDocument",
+      "status": "working",
+      "message": "likely implemented (InvalidDocumentContent: The content for the document is not valid.)"
+    },
+    {
+      "operation": "CreateMaintenanceWindow",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOpsItem",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOpsMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePatchBaseline",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateResourceDataSync",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteActivation",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeleteAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDocument",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "DeleteInventory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteOpsItem",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteOpsMetadata",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+    },
+    {
+      "operation": "DeleteParameter",
+      "status": "working",
+      "message": "implemented (ParameterNotFound)"
+    },
+    {
+      "operation": "DeleteParameters",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeletePatchBaseline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteResourceDataSync",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+    },
+    {
+      "operation": "DeregisterManagedInstance",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeregisterPatchBaselineForPatchGroup",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeregisterTargetFromMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeregisterTaskFromMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeActivations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAssociation",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window  does not exist)"
+    },
+    {
+      "operation": "DescribeAssociationExecutionTargets",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "DescribeAssociationExecutions",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "DescribeAutomationExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAutomationStepExecutions",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeAvailablePatches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDocument",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "DescribeDocumentPermission",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "DescribeEffectiveInstanceAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEffectivePatchesForPatchBaseline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeInstanceAssociationsStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceInformation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstancePatchStates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstancePatchStatesForPatchGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstancePatches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceProperties",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInventoryDeletions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowExecutionTaskInvocations",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowExecutionTasks",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowExecutions",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowTargets",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowTasks",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeMaintenanceWindows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMaintenanceWindowsForTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOpsItems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePatchBaselines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePatchGroupState",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePatchGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePatchProperties",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSessions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateOpsItemRelatedItem",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetAccessToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAutomationExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCalendarState",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCommandInvocation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetConnectionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDefaultPatchBaseline",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDeployablePatchSnapshotForInstance",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetDocument",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "GetExecutionPreview",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetInventory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInventorySchema",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetMaintenanceWindowExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetMaintenanceWindowExecutionTask",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetMaintenanceWindowExecutionTaskInvocation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetMaintenanceWindowTask",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetOpsItem",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetOpsMetadata",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+    },
+    {
+      "operation": "GetOpsSummary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetParameter",
+      "status": "working",
+      "message": "implemented (ParameterNotFound)"
+    },
+    {
+      "operation": "GetParameterHistory",
+      "status": "working",
+      "message": "implemented (ParameterNotFound)"
+    },
+    {
+      "operation": "GetParameters",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetParametersByPath",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPatchBaseline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetPatchBaselineForPatchGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetServiceSetting",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "LabelParameterVersion",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListAssociationVersions",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCommandInvocations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCommands",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListComplianceItems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListComplianceSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDocumentMetadataHistory",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "ListDocumentVersions",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "ListDocuments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInventoryEntries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNodesSummary",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListOpsItemEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOpsItemRelatedItems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOpsMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceComplianceSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceDataSync",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "likely implemented (InvalidResourceType: Invalid Resource Type)"
+    },
+    {
+      "operation": "ModifyDocumentPermission",
+      "status": "working",
+      "message": "likely implemented (InvalidPermissionType: Value 'probe-test-value' at 'permissionType' failed to satis)"
+    },
+    {
+      "operation": "PutComplianceItems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutInventory",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutParameter",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterDefaultPatchBaseline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RegisterPatchBaselineForPatchGroup",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RegisterTargetWithMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RegisterTaskWithMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RemoveTagsFromResource",
+      "status": "working",
+      "message": "likely implemented (InvalidResourceType: Invalid Resource Type)"
+    },
+    {
+      "operation": "ResetServiceSetting",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResumeSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendAutomationSignal",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SendCommand",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAccessRequest",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAssociationsOnce",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartAutomationExecution",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartChangeRequestExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartExecutionPreview",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopAutomationExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TerminateSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UnlabelParameterVersion",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateAssociation",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateAssociationStatus",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value-probe-test-value does no)"
+    },
+    {
+      "operation": "UpdateDocument",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "UpdateDocumentDefaultVersion",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: The specified document does not exist.)"
+    },
+    {
+      "operation": "UpdateDocumentMetadata",
+      "status": "working",
+      "message": "likely implemented (InvalidDocument: probe-test-value)"
+    },
+    {
+      "operation": "UpdateMaintenanceWindow",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateMaintenanceWindowTarget",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateMaintenanceWindowTask",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateManagedInstanceRole",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateOpsItem",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateOpsMetadata",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window arn:aws:ssm:us-east-1:123456789012:thing/)"
+    },
+    {
+      "operation": "UpdatePatchBaseline",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateResourceDataSync",
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateServiceSetting",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

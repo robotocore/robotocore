@@ -1,0 +1,223 @@
+[
+  {
+    "noun": "AggregateResourceConfig",
+    "operations": [
+      "GetAggregateResourceConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAggregateResourceConfig"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAggregateResourceConfig": "working"
+    },
+    "working_untested": [
+      "GetAggregateResourceConfig"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "OrganizationConfigRuleDetailedStatus",
+    "operations": [
+      "GetOrganizationConfigRuleDetailedStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetOrganizationConfigRuleDetailedStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetOrganizationConfigRuleDetailedStatus": "working"
+    },
+    "working_untested": [
+      "GetOrganizationConfigRuleDetailedStatus"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ConfigurationAggregatorSourcesStatus",
+    "operations": [
+      "DescribeConfigurationAggregatorSourcesStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeConfigurationAggregatorSourcesStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeConfigurationAggregatorSourcesStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConformancePackComplianceSummary",
+    "operations": [
+      "GetConformancePackComplianceSummary"
+    ],
+    "tested": [],
+    "untested": [
+      "GetConformancePackComplianceSummary"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetConformancePackComplianceSummary": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeliverConfigSnapshot",
+    "operations": [
+      "DeliverConfigSnapshot"
+    ],
+    "tested": [],
+    "untested": [
+      "DeliverConfigSnapshot"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeliverConfigSnapshot": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OrganizationCustomRulePolicy",
+    "operations": [
+      "GetOrganizationCustomRulePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetOrganizationCustomRulePolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetOrganizationCustomRulePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PendingAggregationRequest",
+    "operations": [
+      "DeletePendingAggregationRequest"
+    ],
+    "tested": [],
+    "untested": [
+      "DeletePendingAggregationRequest"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeletePendingAggregationRequest": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RemediationExceptions",
+    "operations": [
+      "DeleteRemediationExceptions",
+      "DescribeRemediationExceptions",
+      "PutRemediationExceptions"
+    ],
+    "tested": [
+      "DescribeRemediationExceptions"
+    ],
+    "untested": [
+      "DeleteRemediationExceptions",
+      "PutRemediationExceptions"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteRemediationExceptions": "needs_params",
+      "DescribeRemediationExceptions": "working",
+      "PutRemediationExceptions": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RemediationExecution",
+    "operations": [
+      "StartRemediationExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "StartRemediationExecution"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartRemediationExecution": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourceTypes",
+    "operations": [
+      "AssociateResourceTypes",
+      "DisassociateResourceTypes"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateResourceTypes",
+      "DisassociateResourceTypes"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateResourceTypes": "not_implemented",
+      "DisassociateResourceTypes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SelectAggregateResourceConfig",
+    "operations": [
+      "SelectAggregateResourceConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "SelectAggregateResourceConfig"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SelectAggregateResourceConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceLinkedConfigurationRecorder",
+    "operations": [
+      "DeleteServiceLinkedConfigurationRecorder",
+      "PutServiceLinkedConfigurationRecorder"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteServiceLinkedConfigurationRecorder",
+      "PutServiceLinkedConfigurationRecorder"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteServiceLinkedConfigurationRecorder": "not_implemented",
+      "PutServiceLinkedConfigurationRecorder": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

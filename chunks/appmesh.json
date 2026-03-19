@@ -1,0 +1,152 @@
+[
+  {
+    "noun": "GatewayRoute",
+    "operations": [
+      "CreateGatewayRoute",
+      "DeleteGatewayRoute",
+      "DescribeGatewayRoute",
+      "UpdateGatewayRoute"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateGatewayRoute",
+      "DeleteGatewayRoute",
+      "DescribeGatewayRoute",
+      "UpdateGatewayRoute"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateGatewayRoute": "not_implemented",
+      "DeleteGatewayRoute": "not_implemented",
+      "DescribeGatewayRoute": "not_implemented",
+      "UpdateGatewayRoute": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GatewayRoutes",
+    "operations": [
+      "ListGatewayRoutes"
+    ],
+    "tested": [],
+    "untested": [
+      "ListGatewayRoutes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListGatewayRoutes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [
+      "TagResource"
+    ],
+    "untested": [
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "TagResource": "working",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VirtualGateway",
+    "operations": [
+      "CreateVirtualGateway",
+      "DeleteVirtualGateway",
+      "DescribeVirtualGateway",
+      "UpdateVirtualGateway"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVirtualGateway",
+      "DeleteVirtualGateway",
+      "DescribeVirtualGateway",
+      "UpdateVirtualGateway"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateVirtualGateway": "not_implemented",
+      "DeleteVirtualGateway": "not_implemented",
+      "DescribeVirtualGateway": "not_implemented",
+      "UpdateVirtualGateway": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VirtualGateways",
+    "operations": [
+      "ListVirtualGateways"
+    ],
+    "tested": [],
+    "untested": [
+      "ListVirtualGateways"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListVirtualGateways": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VirtualService",
+    "operations": [
+      "CreateVirtualService",
+      "DeleteVirtualService",
+      "DescribeVirtualService",
+      "UpdateVirtualService"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVirtualService",
+      "DeleteVirtualService",
+      "DescribeVirtualService",
+      "UpdateVirtualService"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateVirtualService": "not_implemented",
+      "DeleteVirtualService": "not_implemented",
+      "DescribeVirtualService": "not_implemented",
+      "UpdateVirtualService": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VirtualServices",
+    "operations": [
+      "ListVirtualServices"
+    ],
+    "tested": [],
+    "untested": [
+      "ListVirtualServices"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListVirtualServices": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

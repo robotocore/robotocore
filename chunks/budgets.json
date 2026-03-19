@@ -1,0 +1,36 @@
+[
+  {
+    "noun": "BudgetActionHistories",
+    "operations": [
+      "DescribeBudgetActionHistories"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeBudgetActionHistories"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeBudgetActionHistories": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SubscribersForNotification",
+    "operations": [
+      "DescribeSubscribersForNotification"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeSubscribersForNotification"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeSubscribersForNotification": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

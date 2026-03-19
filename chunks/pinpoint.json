@@ -1,0 +1,22 @@
+[
+  {
+    "noun": "OTPMessage",
+    "operations": [
+      "SendOTPMessage",
+      "VerifyOTPMessage"
+    ],
+    "tested": [],
+    "untested": [
+      "SendOTPMessage",
+      "VerifyOTPMessage"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "SendOTPMessage": "not_implemented",
+      "VerifyOTPMessage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

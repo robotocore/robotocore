@@ -1,0 +1,136 @@
+{
+  "service": "textract",
+  "counts": {
+    "working": 5,
+    "needs_params": 1,
+    "not_implemented": 19,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AnalyzeDocument",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AnalyzeExpense",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AnalyzeID",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateAdapter",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateAdapterVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteAdapter",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteAdapterVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DetectDocumentText",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAdapter",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAdapterVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetDocumentAnalysis",
+      "status": "working",
+      "message": "likely implemented (InvalidJobIdException: An invalid job identifier was passed.)"
+    },
+    {
+      "operation": "GetDocumentTextDetection",
+      "status": "working",
+      "message": "likely implemented (InvalidJobIdException: An invalid job identifier was passed.)"
+    },
+    {
+      "operation": "GetExpenseAnalysis",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetLendingAnalysis",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetLendingAnalysisSummary",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAdapterVersions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAdapters",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartDocumentAnalysis",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "StartDocumentTextDetection",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "StartExpenseAnalysis",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartLendingAnalysis",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateAdapter",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

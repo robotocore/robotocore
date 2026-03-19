@@ -1,0 +1,121 @@
+{
+  "service": "synthetics",
+  "counts": {
+    "working": 20,
+    "needs_params": 1,
+    "not_implemented": 1,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateCanary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCanary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCanaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCanariesLastRun",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRuntimeVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCanary",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCanaryRuns",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAssociatedGroups",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGroupResources",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartCanary",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartCanaryDryRun",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopCanary",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCanary",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

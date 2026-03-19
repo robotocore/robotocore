@@ -1,0 +1,230 @@
+[
+  {
+    "noun": "Adapter",
+    "operations": [
+      "CreateAdapter",
+      "DeleteAdapter",
+      "GetAdapter",
+      "UpdateAdapter"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAdapter",
+      "DeleteAdapter",
+      "GetAdapter",
+      "UpdateAdapter"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateAdapter": "not_implemented",
+      "DeleteAdapter": "not_implemented",
+      "GetAdapter": "not_implemented",
+      "UpdateAdapter": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AdapterVersion",
+    "operations": [
+      "CreateAdapterVersion",
+      "DeleteAdapterVersion",
+      "GetAdapterVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAdapterVersion",
+      "DeleteAdapterVersion",
+      "GetAdapterVersion"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateAdapterVersion": "not_implemented",
+      "DeleteAdapterVersion": "not_implemented",
+      "GetAdapterVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AdapterVersions",
+    "operations": [
+      "ListAdapterVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAdapterVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAdapterVersions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Adapters",
+    "operations": [
+      "ListAdapters"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAdapters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAdapters": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AnalyzeDocument",
+    "operations": [
+      "AnalyzeDocument"
+    ],
+    "tested": [],
+    "untested": [
+      "AnalyzeDocument"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AnalyzeDocument": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AnalyzeExpense",
+    "operations": [
+      "AnalyzeExpense"
+    ],
+    "tested": [],
+    "untested": [
+      "AnalyzeExpense"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AnalyzeExpense": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AnalyzeID",
+    "operations": [
+      "AnalyzeID"
+    ],
+    "tested": [],
+    "untested": [
+      "AnalyzeID"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AnalyzeID": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ExpenseAnalysis",
+    "operations": [
+      "GetExpenseAnalysis",
+      "StartExpenseAnalysis"
+    ],
+    "tested": [],
+    "untested": [
+      "GetExpenseAnalysis",
+      "StartExpenseAnalysis"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetExpenseAnalysis": "not_implemented",
+      "StartExpenseAnalysis": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LendingAnalysis",
+    "operations": [
+      "GetLendingAnalysis",
+      "StartLendingAnalysis"
+    ],
+    "tested": [],
+    "untested": [
+      "GetLendingAnalysis",
+      "StartLendingAnalysis"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetLendingAnalysis": "not_implemented",
+      "StartLendingAnalysis": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LendingAnalysisSummary",
+    "operations": [
+      "GetLendingAnalysisSummary"
+    ],
+    "tested": [],
+    "untested": [
+      "GetLendingAnalysisSummary"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetLendingAnalysisSummary": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

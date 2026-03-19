@@ -1,0 +1,350 @@
+[
+  {
+    "noun": "DNSSEC",
+    "operations": [
+      "GetDNSSEC"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDNSSEC"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDNSSEC": "working"
+    },
+    "working_untested": [
+      "GetDNSSEC"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "HostedZonesByVPC",
+    "operations": [
+      "ListHostedZonesByVPC"
+    ],
+    "tested": [],
+    "untested": [
+      "ListHostedZonesByVPC"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListHostedZonesByVPC": "working"
+    },
+    "working_untested": [
+      "ListHostedZonesByVPC"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TestDNSAnswer",
+    "operations": [
+      "TestDNSAnswer"
+    ],
+    "tested": [],
+    "untested": [
+      "TestDNSAnswer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestDNSAnswer": "working"
+    },
+    "working_untested": [
+      "TestDNSAnswer"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "VPCAssociationAuthorizations",
+    "operations": [
+      "ListVPCAssociationAuthorizations"
+    ],
+    "tested": [],
+    "untested": [
+      "ListVPCAssociationAuthorizations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListVPCAssociationAuthorizations": "working"
+    },
+    "working_untested": [
+      "ListVPCAssociationAuthorizations"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "VPCFromHostedZone",
+    "operations": [
+      "DisassociateVPCFromHostedZone"
+    ],
+    "tested": [],
+    "untested": [
+      "DisassociateVPCFromHostedZone"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DisassociateVPCFromHostedZone": "working"
+    },
+    "working_untested": [
+      "DisassociateVPCFromHostedZone"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "VPCWithHostedZone",
+    "operations": [
+      "AssociateVPCWithHostedZone"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateVPCWithHostedZone"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateVPCWithHostedZone": "working"
+    },
+    "working_untested": [
+      "AssociateVPCWithHostedZone"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ChangeCidrCollection",
+    "operations": [
+      "ChangeCidrCollection"
+    ],
+    "tested": [],
+    "untested": [
+      "ChangeCidrCollection"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ChangeCidrCollection": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HostedZoneDNSSEC",
+    "operations": [
+      "DisableHostedZoneDNSSEC",
+      "EnableHostedZoneDNSSEC"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableHostedZoneDNSSEC",
+      "EnableHostedZoneDNSSEC"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableHostedZoneDNSSEC": "not_implemented",
+      "EnableHostedZoneDNSSEC": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HostedZoneFeatures",
+    "operations": [
+      "UpdateHostedZoneFeatures"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateHostedZoneFeatures"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateHostedZoneFeatures": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "KeySigningKey",
+    "operations": [
+      "ActivateKeySigningKey",
+      "CreateKeySigningKey",
+      "DeactivateKeySigningKey",
+      "DeleteKeySigningKey"
+    ],
+    "tested": [],
+    "untested": [
+      "ActivateKeySigningKey",
+      "CreateKeySigningKey",
+      "DeactivateKeySigningKey",
+      "DeleteKeySigningKey"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "ActivateKeySigningKey": "not_implemented",
+      "CreateKeySigningKey": "not_implemented",
+      "DeactivateKeySigningKey": "not_implemented",
+      "DeleteKeySigningKey": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicy",
+    "operations": [
+      "CreateTrafficPolicy",
+      "DeleteTrafficPolicy",
+      "GetTrafficPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTrafficPolicy",
+      "DeleteTrafficPolicy",
+      "GetTrafficPolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateTrafficPolicy": "not_implemented",
+      "DeleteTrafficPolicy": "not_implemented",
+      "GetTrafficPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicyComment",
+    "operations": [
+      "UpdateTrafficPolicyComment"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateTrafficPolicyComment"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateTrafficPolicyComment": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicyInstance",
+    "operations": [
+      "CreateTrafficPolicyInstance",
+      "DeleteTrafficPolicyInstance",
+      "GetTrafficPolicyInstance",
+      "UpdateTrafficPolicyInstance"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTrafficPolicyInstance",
+      "DeleteTrafficPolicyInstance",
+      "GetTrafficPolicyInstance",
+      "UpdateTrafficPolicyInstance"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateTrafficPolicyInstance": "not_implemented",
+      "DeleteTrafficPolicyInstance": "not_implemented",
+      "GetTrafficPolicyInstance": "not_implemented",
+      "UpdateTrafficPolicyInstance": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicyInstancesByHostedZone",
+    "operations": [
+      "ListTrafficPolicyInstancesByHostedZone"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTrafficPolicyInstancesByHostedZone"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTrafficPolicyInstancesByHostedZone": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicyInstancesByPolicy",
+    "operations": [
+      "ListTrafficPolicyInstancesByPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTrafficPolicyInstancesByPolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTrafficPolicyInstancesByPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicyVersion",
+    "operations": [
+      "CreateTrafficPolicyVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTrafficPolicyVersion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTrafficPolicyVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficPolicyVersions",
+    "operations": [
+      "ListTrafficPolicyVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTrafficPolicyVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTrafficPolicyVersions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VPCAssociationAuthorization",
+    "operations": [
+      "CreateVPCAssociationAuthorization",
+      "DeleteVPCAssociationAuthorization"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVPCAssociationAuthorization",
+      "DeleteVPCAssociationAuthorization"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateVPCAssociationAuthorization": "500_error",
+      "DeleteVPCAssociationAuthorization": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

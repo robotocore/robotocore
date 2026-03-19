@@ -1,0 +1,1156 @@
+{
+  "service": "quicksight",
+  "counts": {
+    "working": 210,
+    "needs_params": 15,
+    "not_implemented": 4,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchCreateTopicReviewedAnswer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "BatchDeleteTopicReviewedAnswer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CancelIngestion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateAccountCustomization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAccountSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateActionConnector",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBrand",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCustomPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDashboard",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDataSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDataSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFolder",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFolderMembership",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGroupMembership",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIAMPolicyAssignment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIngestion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNamespace",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRefreshSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRoleMembership",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTemplateAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTheme",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateThemeAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTopic",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTopicRefreshSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVPCConnection",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteAccountCustomPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccountCustomization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccountSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteActionConnector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBrand",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBrandAssignment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCustomPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDashboard",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDataSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDataSetRefreshProperties",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDataSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDefaultQBusinessApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFolder",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFolderMembership",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGroupMembership",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteIAMPolicyAssignment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIdentityPropagationConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNamespace",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteRefreshSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRoleCustomPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRoleMembership",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTemplateAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTheme",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteThemeAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTopicRefreshSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUserByPrincipalId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUserCustomPermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteVPCConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAccountCustomPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountCustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeActionConnector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeActionConnectorPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAnalysis",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAnalysisDefinition",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAnalysisPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAssetBundleExportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAssetBundleImportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBrand",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBrandAssignment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBrandPublishedVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCustomPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDashboard",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDashboardDefinition",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDashboardPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDashboardSnapshotJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDashboardSnapshotJobResult",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeDashboardsQAConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataSet",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDataSetPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDataSetRefreshProperties",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDataSourcePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDefaultQBusinessApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFolder",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeFolderPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeFolderResolvedPermissions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeGroupMembership",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeIAMPolicyAssignment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeIngestion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpRestriction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeKeyRegistration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNamespace",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeQPersonalizationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeQuickSightQSearchConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRefreshSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRoleCustomPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSelfUpgradeConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTemplateAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTemplateDefinition",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTemplatePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTheme",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeThemeAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeThemePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTopic",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTopicPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTopicRefresh",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTopicRefreshSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeVPCConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GenerateEmbedUrlForAnonymousUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GenerateEmbedUrlForRegisteredUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GenerateEmbedUrlForRegisteredUserWithIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDashboardEmbedUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFlowMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFlowPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIdentityContext",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetSessionEmbedUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListActionConnectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAnalyses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAssetBundleExportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAssetBundleImportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBrands",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCustomPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDashboardVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListDashboards",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDataSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDataSources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFlows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFolderMembers",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFolders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFoldersForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGroupMemberships",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIAMPolicyAssignments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIAMPolicyAssignmentsForUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIdentityPropagationConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIngestions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNamespaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRefreshSchedules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRoleMemberships",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSelfUpgrades",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTemplateAliases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTemplateVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListThemeAliases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThemeVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThemes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTopicRefreshSchedules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTopicReviewedAnswers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTopics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUserGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVPCConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PredictQAResults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutDataSetRefreshProperties",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RestoreAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchActionConnectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchAnalyses",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SearchDashboards",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SearchDataSets",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SearchDataSources",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SearchFlows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchFolders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchGroups",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SearchTopics",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartAssetBundleExportJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartAssetBundleImportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartDashboardSnapshotJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartDashboardSnapshotJobSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateAccountCustomPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAccountCustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateActionConnector",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateActionConnectorPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAnalysisPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApplicationWithTokenExchangeGrant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateBrand",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateBrandAssignment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateBrandPublishedVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCustomPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateDashboard",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDashboardLinks",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDashboardPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDashboardPublishedVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDashboardsQAConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateDataSet",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDataSetPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDataSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDataSourcePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDefaultQBusinessApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFlowPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFolder",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFolderPermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateIAMPolicyAssignment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateIdentityPropagationConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateIpRestriction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateKeyRegistration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePublicSharingSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateQPersonalizationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateQuickSightQSearchConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateRefreshSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRoleCustomPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateSPICECapacityConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateSelfUpgrade",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateSelfUpgradeConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTemplateAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTemplatePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTheme",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateThemeAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateThemePermissions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTopic",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTopicPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTopicRefreshSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateUserCustomPermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateVPCConnection",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

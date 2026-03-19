@@ -1,0 +1,194 @@
+[
+  {
+    "noun": "AccessEntry",
+    "operations": [
+      "CreateAccessEntry",
+      "DeleteAccessEntry",
+      "DescribeAccessEntry",
+      "UpdateAccessEntry"
+    ],
+    "tested": [
+      "CreateAccessEntry"
+    ],
+    "untested": [
+      "DeleteAccessEntry",
+      "DescribeAccessEntry",
+      "UpdateAccessEntry"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateAccessEntry": "working",
+      "DeleteAccessEntry": "not_implemented",
+      "DescribeAccessEntry": "not_implemented",
+      "UpdateAccessEntry": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AccessPolicy",
+    "operations": [
+      "AssociateAccessPolicy",
+      "DisassociateAccessPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateAccessPolicy",
+      "DisassociateAccessPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateAccessPolicy": "not_implemented",
+      "DisassociateAccessPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AssociatedAccessPolicies",
+    "operations": [
+      "ListAssociatedAccessPolicies"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAssociatedAccessPolicies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAssociatedAccessPolicies": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Cluster",
+    "operations": [
+      "CreateCluster",
+      "DeleteCluster",
+      "DeregisterCluster",
+      "DescribeCluster",
+      "RegisterCluster"
+    ],
+    "tested": [
+      "CreateCluster",
+      "DeleteCluster",
+      "DeregisterCluster",
+      "DescribeCluster"
+    ],
+    "untested": [
+      "RegisterCluster"
+    ],
+    "size": 5,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCluster": "500_error",
+      "DeleteCluster": "unknown",
+      "DeregisterCluster": "working",
+      "DescribeCluster": "working",
+      "RegisterCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InsightsRefresh",
+    "operations": [
+      "DescribeInsightsRefresh",
+      "StartInsightsRefresh"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeInsightsRefresh",
+      "StartInsightsRefresh"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeInsightsRefresh": "not_implemented",
+      "StartInsightsRefresh": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NodegroupVersion",
+    "operations": [
+      "UpdateNodegroupVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateNodegroupVersion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateNodegroupVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PodIdentityAssociation",
+    "operations": [
+      "CreatePodIdentityAssociation",
+      "DeletePodIdentityAssociation",
+      "DescribePodIdentityAssociation",
+      "UpdatePodIdentityAssociation"
+    ],
+    "tested": [
+      "CreatePodIdentityAssociation",
+      "DeletePodIdentityAssociation",
+      "DescribePodIdentityAssociation"
+    ],
+    "untested": [
+      "UpdatePodIdentityAssociation"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreatePodIdentityAssociation": "working",
+      "DeletePodIdentityAssociation": "working",
+      "DescribePodIdentityAssociation": "working",
+      "UpdatePodIdentityAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Update",
+    "operations": [
+      "DescribeUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeUpdate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeUpdate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Updates",
+    "operations": [
+      "ListUpdates"
+    ],
+    "tested": [],
+    "untested": [
+      "ListUpdates"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListUpdates": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "noun": "Attachment",
+    "operations": [
+      "DescribeAttachment"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeAttachment"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeAttachment": "working"
+    },
+    "working_untested": [
+      "DescribeAttachment"
+    ],
+    "working_untested_count": 1
+  }
+]

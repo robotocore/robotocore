@@ -1,0 +1,371 @@
+{
+  "service": "appsync",
+  "counts": {
+    "working": 69,
+    "needs_params": 3,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "AssociateMergedGraphqlApi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateSourceGraphqlApi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateApi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateApiCache",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateApiKey",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateChannelNamespace",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateDataSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateDomainName",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFunction",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateGraphqlApi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateResolver",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateType",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteApiCache",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteApiKey",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteChannelNamespace",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteDataSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteDomainName",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGraphqlApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteResolver",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteType",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DisassociateApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DisassociateMergedGraphqlApi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateSourceGraphqlApi",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EvaluateCode",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EvaluateMappingTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "FlushApiCache",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetApiAssociation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetApiCache",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetChannelNamespace",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetDataSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetDataSourceIntrospection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDomainName",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetFunction",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetGraphqlApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetGraphqlApiEnvironmentVariables",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetIntrospectionSchema",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetResolver",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetSchemaCreationStatus",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetSourceApiAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetType",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListApiKeys",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListApis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListChannelNamespaces",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListDataSources",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListDomainNames",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFunctions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListGraphqlApis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolvers",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListResolversByFunction",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListSourceApiAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListTypes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListTypesByAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutGraphqlApiEnvironmentVariables",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartDataSourceIntrospection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartSchemaCreation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartSchemaMerge",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateApiCache",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateApiKey",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateChannelNamespace",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateDataSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateDomainName",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateFunction",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateGraphqlApi",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateResolver",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateSourceApiAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateType",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

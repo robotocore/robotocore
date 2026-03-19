@@ -1,0 +1,63 @@
+[
+  {
+    "noun": "FileSystemProtection",
+    "operations": [
+      "UpdateFileSystemProtection"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateFileSystemProtection"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateFileSystemProtection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReplicationConfiguration",
+    "operations": [
+      "CreateReplicationConfiguration",
+      "DeleteReplicationConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateReplicationConfiguration",
+      "DeleteReplicationConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateReplicationConfiguration": "not_implemented",
+      "DeleteReplicationConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Tags",
+    "operations": [
+      "CreateTags",
+      "DeleteTags",
+      "DescribeTags"
+    ],
+    "tested": [
+      "DescribeTags"
+    ],
+    "untested": [
+      "CreateTags",
+      "DeleteTags"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateTags": "not_implemented",
+      "DeleteTags": "needs_params",
+      "DescribeTags": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

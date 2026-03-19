@@ -1,0 +1,241 @@
+{
+  "service": "elasticbeanstalk",
+  "counts": {
+    "working": 34,
+    "needs_params": 0,
+    "not_implemented": 11,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AbortEnvironmentUpdate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ApplyEnvironmentManagedAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateEnvironmentOperationsRole",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CheckDNSAvailability",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ComposeEnvironments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateApplicationVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConfigurationTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEnvironment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePlatformVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStorageLocation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteApplicationVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteConfigurationTemplate",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "DeleteEnvironmentConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeletePlatformVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeApplicationVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeApplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigurationOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigurationSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEnvironmentHealth",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEnvironmentManagedActionHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEnvironmentManagedActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEnvironmentResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEnvironments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstancesHealth",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePlatformVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateEnvironmentOperationsRole",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAvailableSolutionStacks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPlatformBranches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPlatformVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RebuildEnvironment",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "RequestEnvironmentInfo",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RestartAppServer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RetrieveEnvironmentInfo",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SwapEnvironmentCNAMEs",
+      "status": "500_error",
+      "message": "exception: 'ElasticBeanstalk' object has no attribute 'swap_environment"
+    },
+    {
+      "operation": "UpdateApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateApplicationResourceLifecycle",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateApplicationVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateConfigurationTemplate",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "UpdateEnvironment",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "UpdateTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ValidateConfigurationSettings",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

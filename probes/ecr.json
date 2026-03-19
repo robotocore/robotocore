@@ -1,0 +1,301 @@
+{
+  "service": "ecr",
+  "counts": {
+    "working": 38,
+    "needs_params": 6,
+    "not_implemented": 12,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "BatchCheckLayerAvailability",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDeleteImage",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetImage",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetRepositoryScanningConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CompleteLayerUpload",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreatePullThroughCacheRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRepository",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRepositoryCreationTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLifecyclePolicy",
+      "status": "working",
+      "message": "likely implemented (LifecyclePolicyNotFoundException: Lifecycle policy does not exist for the repository with name)"
+    },
+    {
+      "operation": "DeletePullThroughCacheRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRegistryPolicy",
+      "status": "working",
+      "message": "likely implemented (RegistryPolicyNotFoundException: Registry policy does not exist in the registry with id '1234)"
+    },
+    {
+      "operation": "DeleteRepository",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRepositoryCreationTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRepositoryPolicy",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "DeleteSigningConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeregisterPullTimeUpdateExclusion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeImageReplicationStatus",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "DescribeImageScanFindings",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "DescribeImageSigningStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeImages",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "DescribePullThroughCacheRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRegistry",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRepositories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRepositoryCreationTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccountSetting",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAuthorizationToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDownloadUrlForLayer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetLifecyclePolicy",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "GetLifecyclePolicyPreview",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "GetRegistryPolicy",
+      "status": "working",
+      "message": "likely implemented (RegistryPolicyNotFoundException: Registry policy does not exist in the registry with id '1234)"
+    },
+    {
+      "operation": "GetRegistryScanningConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRepositoryPolicy",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "GetSigningConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "InitiateLayerUpload",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListImageReferrers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListImages",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "ListPullTimeUpdateExclusions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "PutAccountSetting",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutImage",
+      "status": "500_error",
+      "message": "server crash (InternalError: probe-test-value is not a repository)"
+    },
+    {
+      "operation": "PutImageScanningConfiguration",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "PutImageTagMutability",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "PutLifecyclePolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutRegistryPolicy",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "PutRegistryScanningConfiguration",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "PutReplicationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutSigningConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RegisterPullTimeUpdateExclusion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetRepositoryPolicy",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "StartImageScan",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "StartLifecyclePolicyPreview",
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "UpdateImageStorageClass",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdatePullThroughCacheRule",
+      "status": "working",
+      "message": "likely implemented (PullThroughCacheRuleNotFoundException: The pull through cache rule with Amazon ECR repository prefi)"
+    },
+    {
+      "operation": "UpdateRepositoryCreationTemplate",
+      "status": "working",
+      "message": "likely implemented (TemplateNotFoundException: The repository creation template with the prefix 'probe-test)"
+    },
+    {
+      "operation": "UploadLayerPart",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ValidatePullThroughCacheRule",
+      "status": "working",
+      "message": "likely implemented (PullThroughCacheRuleNotFoundException: The pull through cache rule with Amazon ECR repository prefi)"
+    }
+  ]
+}

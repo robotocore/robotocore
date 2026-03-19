@@ -1,0 +1,216 @@
+[
+  {
+    "noun": "DeleteRecipeVersion",
+    "operations": [
+      "BatchDeleteRecipeVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDeleteRecipeVersion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDeleteRecipeVersion": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "JobRun",
+    "operations": [
+      "DescribeJobRun",
+      "StartJobRun",
+      "StopJobRun"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeJobRun",
+      "StartJobRun",
+      "StopJobRun"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DescribeJobRun": "not_implemented",
+      "StartJobRun": "not_implemented",
+      "StopJobRun": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "JobRuns",
+    "operations": [
+      "ListJobRuns"
+    ],
+    "tested": [],
+    "untested": [
+      "ListJobRuns"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListJobRuns": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Project",
+    "operations": [
+      "CreateProject",
+      "DeleteProject",
+      "DescribeProject",
+      "UpdateProject"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateProject",
+      "DeleteProject",
+      "DescribeProject",
+      "UpdateProject"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateProject": "not_implemented",
+      "DeleteProject": "not_implemented",
+      "DescribeProject": "not_implemented",
+      "UpdateProject": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProjectSession",
+    "operations": [
+      "StartProjectSession"
+    ],
+    "tested": [],
+    "untested": [
+      "StartProjectSession"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartProjectSession": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProjectSessionAction",
+    "operations": [
+      "SendProjectSessionAction"
+    ],
+    "tested": [],
+    "untested": [
+      "SendProjectSessionAction"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendProjectSessionAction": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Projects",
+    "operations": [
+      "ListProjects"
+    ],
+    "tested": [],
+    "untested": [
+      "ListProjects"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListProjects": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Schedule",
+    "operations": [
+      "CreateSchedule",
+      "DeleteSchedule",
+      "DescribeSchedule",
+      "UpdateSchedule"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateSchedule",
+      "DeleteSchedule",
+      "DescribeSchedule",
+      "UpdateSchedule"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateSchedule": "not_implemented",
+      "DeleteSchedule": "not_implemented",
+      "DescribeSchedule": "not_implemented",
+      "UpdateSchedule": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Schedules",
+    "operations": [
+      "ListSchedules"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSchedules"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSchedules": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

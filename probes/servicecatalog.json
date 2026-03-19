@@ -1,0 +1,461 @@
+{
+  "service": "servicecatalog",
+  "counts": {
+    "working": 84,
+    "needs_params": 2,
+    "not_implemented": 3,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AcceptPortfolioShare",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateBudgetWithResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociatePrincipalWithPortfolio",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateProductWithPortfolio",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateServiceActionWithProvisioningArtifact",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateTagOptionWithResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "BatchAssociateServiceActionWithProvisioningArtifact",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDisassociateServiceActionFromProvisioningArtifact",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CopyProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConstraint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreatePortfolio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePortfolioShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProvisionedProductPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProvisioningArtifact",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateServiceAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTagOption",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConstraint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeletePortfolio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePortfolioShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteProvisionedProductPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteProvisioningArtifact",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteServiceAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTagOption",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeConstraint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCopyProductStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePortfolio",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribePortfolioShareStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePortfolioShares",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeProduct",
+      "status": "working",
+      "message": "likely implemented (InvalidParametersException: Either Id or Name must be specified.)"
+    },
+    {
+      "operation": "DescribeProductAsAdmin",
+      "status": "working",
+      "message": "likely implemented (InvalidParametersException: Either Id or Name must be specified.)"
+    },
+    {
+      "operation": "DescribeProductView",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProvisionedProduct",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProvisionedProductPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProvisioningArtifact",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProvisioningParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRecord",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeServiceAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeServiceActionExecutionParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTagOption",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableAWSOrganizationsAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateBudgetFromResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociatePrincipalFromPortfolio",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateProductFromPortfolio",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateServiceActionFromProvisioningArtifact",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateTagOptionFromResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableAWSOrganizationsAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExecuteProvisionedProductPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ExecuteProvisionedProductServiceAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAWSOrganizationsAccessStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetProvisionedProductOutputs",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportAsProvisionedProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAcceptedPortfolioShares",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBudgetsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConstraintsForPortfolio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLaunchPaths",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOrganizationPortfolioAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPortfolioAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPortfolios",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPortfoliosForProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPrincipalsForPortfolio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProvisionedProductPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProvisioningArtifacts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProvisioningArtifactsForServiceAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRecordHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourcesForTagOption",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServiceActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServiceActionsForProvisioningArtifact",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStackInstancesForProvisionedProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "NotifyProvisionProductEngineWorkflowResult",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "NotifyTerminateProvisionedProductEngineWorkflowResult",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "NotifyUpdateProvisionedProductEngineWorkflowResult",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ProvisionProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RejectPortfolioShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ScanProvisionedProducts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchProducts",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'list' object has no attribute 'items')"
+    },
+    {
+      "operation": "SearchProductsAsAdmin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchProvisionedProducts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TerminateProvisionedProduct",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateConstraint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdatePortfolio",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdatePortfolioShare",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProduct",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProvisionedProduct",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProvisionedProductProperties",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProvisioningArtifact",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateServiceAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTagOption",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

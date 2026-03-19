@@ -1,0 +1,241 @@
+{
+  "service": "opensearchserverless",
+  "counts": {
+    "working": 27,
+    "needs_params": 8,
+    "not_implemented": 9,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "BatchGetCollection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetCollectionGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "BatchGetEffectiveLifecyclePolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetLifecyclePolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetVpcEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateAccessPolicy",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateCollection",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateCollectionGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateIndex",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLifecyclePolicy",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateSecurityConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSecurityPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateVpcEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteAccessPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCollection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCollectionGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIndex",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLifecyclePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteSecurityConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteSecurityPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteVpcEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAccessPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIndex",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetPoliciesStats",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSecurityConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetSecurityPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAccessPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCollectionGroups",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListCollections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLifecyclePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVpcEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAccessPolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCollection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateCollectionGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateIndex",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLifecyclePolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateSecurityConfig",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateSecurityPolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateVpcEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

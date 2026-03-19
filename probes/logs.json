@@ -1,0 +1,551 @@
+{
+  "service": "logs",
+  "counts": {
+    "working": 91,
+    "needs_params": 10,
+    "not_implemented": 5,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "AssociateKmsKey",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "AssociateSourceToS3TableIntegration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelExportTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CancelImportTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateDelivery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateExportTask",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "CreateImportTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLogAnomalyDetector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLogGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLogStream",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateScheduledQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccountPolicy",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "DeleteDataProtectionPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDelivery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDeliveryDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDeliveryDestinationPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDeliverySource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteIndexPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteIntegration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteLogAnomalyDetector",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteLogGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLogStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteMetricFilter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteQueryDefinition",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteRetentionPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteScheduledQuery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteSubscriptionFilter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTransformer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAccountPolicies",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "DescribeConfigurationTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeliveries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeliveryDestinations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeliverySources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDestinations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeExportTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFieldIndexes",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeImportTaskBatches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeImportTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIndexPolicies",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeLogGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLogStreams",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeMetricFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeQueries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeQueryDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeResourcePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSubscriptionFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateKmsKey",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "DisassociateSourceFromS3TableIntegration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "FilterLogEvents",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDataProtectionPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDelivery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDeliveryDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDeliveryDestinationPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDeliverySource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetIntegration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLogAnomalyDetector",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLogEvents",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLogFields",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLogGroupFields",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLogObject",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://streaming-loc"
+    },
+    {
+      "operation": "GetLogRecord",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetQueryResults",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetScheduledQuery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetScheduledQueryHistory",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetTransformer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAggregateLogGroupSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAnomalies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIntegrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLogAnomalyDetectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLogGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLogGroupsForQuery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListScheduledQueries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSourcesForS3TableIntegration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsLogGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutAccountPolicy",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "PutBearerTokenAuthentication",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutDataProtectionPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutDeliveryDestination",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+    },
+    {
+      "operation": "PutDeliveryDestinationPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutDeliverySource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutDestinationPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutIndexPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutIntegration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutLogEvents",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutLogGroupDeletionProtection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutMetricFilter",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutQueryDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutRetentionPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutSubscriptionFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutTransformer",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartLiveTail",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagLogGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestMetricFilter",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TestTransformer",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagLogGroup",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAnomaly",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDeliveryConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateLogAnomalyDetector",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateScheduledQuery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

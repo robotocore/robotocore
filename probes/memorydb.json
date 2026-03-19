@@ -1,0 +1,231 @@
+{
+  "service": "memorydb",
+  "counts": {
+    "working": 28,
+    "needs_params": 0,
+    "not_implemented": 15,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "BatchUpdateCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CopySnapshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMultiRegionCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSnapshot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetError: Subnet [] not found.)"
+    },
+    {
+      "operation": "CreateUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMultiRegionCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSnapshot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (SubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeACLs",
+      "status": "500_error",
+      "message": "exception: 'MemoryDB' object has no attribute 'describe_ac_ls'"
+    },
+    {
+      "operation": "DescribeClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEngineVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMultiRegionClusters",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeMultiRegionParameterGroups",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeMultiRegionParameters",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeParameters",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeReservedNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedNodesOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeServiceUpdates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSubnetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeUsers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "FailoverShard",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAllowedMultiRegionClusterUpdates",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAllowedNodeTypeUpdates",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundFault: probe-test is not present)"
+    },
+    {
+      "operation": "PurchaseReservedNodesOffering",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetParameterGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundFault: probe-test is not present)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFoundFault: probe-test is not present)"
+    },
+    {
+      "operation": "UpdateACL",
+      "status": "working",
+      "message": "likely implemented (ACLNotFoundFault: ACL probe-test-value not found.)"
+    },
+    {
+      "operation": "UpdateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateMultiRegionCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateParameterGroup",
+      "status": "working",
+      "message": "likely implemented (ParameterGroupNotFoundFault: Parameter group probe-test-value not found.)"
+    },
+    {
+      "operation": "UpdateSubnetGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateUser",
+      "status": "working",
+      "message": "likely implemented (UserNotFoundFault: User probe-test-value not found.)"
+    }
+  ]
+}

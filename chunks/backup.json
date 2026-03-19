@@ -1,0 +1,422 @@
+[
+  {
+    "noun": "BackupPlan",
+    "operations": [
+      "CreateBackupPlan",
+      "DeleteBackupPlan",
+      "GetBackupPlan",
+      "UpdateBackupPlan"
+    ],
+    "tested": [
+      "CreateBackupPlan",
+      "DeleteBackupPlan",
+      "UpdateBackupPlan"
+    ],
+    "untested": [
+      "GetBackupPlan"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateBackupPlan": "working",
+      "DeleteBackupPlan": "working",
+      "GetBackupPlan": "not_implemented",
+      "UpdateBackupPlan": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BackupPlanFromJSON",
+    "operations": [
+      "GetBackupPlanFromJSON"
+    ],
+    "tested": [],
+    "untested": [
+      "GetBackupPlanFromJSON"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetBackupPlanFromJSON": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BackupPlanTemplate",
+    "operations": [
+      "ExportBackupPlanTemplate"
+    ],
+    "tested": [],
+    "untested": [
+      "ExportBackupPlanTemplate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ExportBackupPlanTemplate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BackupPlanVersions",
+    "operations": [
+      "ListBackupPlanVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBackupPlanVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBackupPlanVersions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BackupSelection",
+    "operations": [
+      "CreateBackupSelection",
+      "DeleteBackupSelection",
+      "GetBackupSelection"
+    ],
+    "tested": [
+      "DeleteBackupSelection",
+      "GetBackupSelection"
+    ],
+    "untested": [
+      "CreateBackupSelection"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateBackupSelection": "not_implemented",
+      "DeleteBackupSelection": "working",
+      "GetBackupSelection": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BackupSelections",
+    "operations": [
+      "ListBackupSelections"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBackupSelections"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBackupSelections": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BackupVaultMpaApprovalTeam",
+    "operations": [
+      "AssociateBackupVaultMpaApprovalTeam",
+      "DisassociateBackupVaultMpaApprovalTeam"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateBackupVaultMpaApprovalTeam",
+      "DisassociateBackupVaultMpaApprovalTeam"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateBackupVaultMpaApprovalTeam": "not_implemented",
+      "DisassociateBackupVaultMpaApprovalTeam": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IndexedRecoveryPoints",
+    "operations": [
+      "ListIndexedRecoveryPoints"
+    ],
+    "tested": [],
+    "untested": [
+      "ListIndexedRecoveryPoints"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListIndexedRecoveryPoints": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LegalHold",
+    "operations": [
+      "CancelLegalHold",
+      "CreateLegalHold",
+      "GetLegalHold"
+    ],
+    "tested": [
+      "CancelLegalHold",
+      "CreateLegalHold"
+    ],
+    "untested": [
+      "GetLegalHold"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelLegalHold": "working",
+      "CreateLegalHold": "working",
+      "GetLegalHold": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProtectedResourcesByBackupVault",
+    "operations": [
+      "ListProtectedResourcesByBackupVault"
+    ],
+    "tested": [],
+    "untested": [
+      "ListProtectedResourcesByBackupVault"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListProtectedResourcesByBackupVault": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RecoveryPointIndexDetails",
+    "operations": [
+      "GetRecoveryPointIndexDetails"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRecoveryPointIndexDetails"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRecoveryPointIndexDetails": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RecoveryPointIndexSettings",
+    "operations": [
+      "UpdateRecoveryPointIndexSettings"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateRecoveryPointIndexSettings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateRecoveryPointIndexSettings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RecoveryPointsByBackupVault",
+    "operations": [
+      "ListRecoveryPointsByBackupVault"
+    ],
+    "tested": [],
+    "untested": [
+      "ListRecoveryPointsByBackupVault"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListRecoveryPointsByBackupVault": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ReportJob",
+    "operations": [
+      "DescribeReportJob",
+      "StartReportJob"
+    ],
+    "tested": [
+      "DescribeReportJob"
+    ],
+    "untested": [
+      "StartReportJob"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReportJob": "working",
+      "StartReportJob": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RestoreAccessBackupVault",
+    "operations": [
+      "CreateRestoreAccessBackupVault",
+      "RevokeRestoreAccessBackupVault"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateRestoreAccessBackupVault",
+      "RevokeRestoreAccessBackupVault"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateRestoreAccessBackupVault": "not_implemented",
+      "RevokeRestoreAccessBackupVault": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RestoreAccessBackupVaults",
+    "operations": [
+      "ListRestoreAccessBackupVaults"
+    ],
+    "tested": [],
+    "untested": [
+      "ListRestoreAccessBackupVaults"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListRestoreAccessBackupVaults": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RestoreTestingInferredMetadata",
+    "operations": [
+      "GetRestoreTestingInferredMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRestoreTestingInferredMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRestoreTestingInferredMetadata": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ScanJob",
+    "operations": [
+      "DescribeScanJob",
+      "StartScanJob"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeScanJob",
+      "StartScanJob"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeScanJob": "not_implemented",
+      "StartScanJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ScanJobSummaries",
+    "operations": [
+      "ListScanJobSummaries"
+    ],
+    "tested": [],
+    "untested": [
+      "ListScanJobSummaries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListScanJobSummaries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ScanJobs",
+    "operations": [
+      "ListScanJobs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListScanJobs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListScanJobs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TieringConfiguration",
+    "operations": [
+      "CreateTieringConfiguration",
+      "DeleteTieringConfiguration",
+      "GetTieringConfiguration",
+      "UpdateTieringConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateTieringConfiguration",
+      "DeleteTieringConfiguration",
+      "GetTieringConfiguration",
+      "UpdateTieringConfiguration"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateTieringConfiguration": "not_implemented",
+      "DeleteTieringConfiguration": "not_implemented",
+      "GetTieringConfiguration": "not_implemented",
+      "UpdateTieringConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TieringConfigurations",
+    "operations": [
+      "ListTieringConfigurations"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTieringConfigurations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTieringConfigurations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,106 @@
+[
+  {
+    "noun": "SMSAttributes",
+    "operations": [
+      "GetSMSAttributes",
+      "SetSMSAttributes"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSMSAttributes",
+      "SetSMSAttributes"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetSMSAttributes": "working",
+      "SetSMSAttributes": "working"
+    },
+    "working_untested": [
+      "GetSMSAttributes",
+      "SetSMSAttributes"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "SMSSandboxAccountStatus",
+    "operations": [
+      "GetSMSSandboxAccountStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSMSSandboxAccountStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSMSSandboxAccountStatus": "working"
+    },
+    "working_untested": [
+      "GetSMSSandboxAccountStatus"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SMSSandboxPhoneNumbers",
+    "operations": [
+      "ListSMSSandboxPhoneNumbers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSMSSandboxPhoneNumbers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSMSSandboxPhoneNumbers": "working"
+    },
+    "working_untested": [
+      "ListSMSSandboxPhoneNumbers"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DataProtectionPolicy",
+    "operations": [
+      "GetDataProtectionPolicy",
+      "PutDataProtectionPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDataProtectionPolicy",
+      "PutDataProtectionPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetDataProtectionPolicy": "not_implemented",
+      "PutDataProtectionPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SMSSandboxPhoneNumber",
+    "operations": [
+      "CreateSMSSandboxPhoneNumber",
+      "DeleteSMSSandboxPhoneNumber",
+      "VerifySMSSandboxPhoneNumber"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateSMSSandboxPhoneNumber",
+      "DeleteSMSSandboxPhoneNumber",
+      "VerifySMSSandboxPhoneNumber"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateSMSSandboxPhoneNumber": "not_implemented",
+      "DeleteSMSSandboxPhoneNumber": "not_implemented",
+      "VerifySMSSandboxPhoneNumber": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

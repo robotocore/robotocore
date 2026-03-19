@@ -1,0 +1,36 @@
+[
+  {
+    "noun": "GetMetricData",
+    "operations": [
+      "BatchGetMetricData"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetMetricData"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetMetricData": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MessageInsights",
+    "operations": [
+      "GetMessageInsights"
+    ],
+    "tested": [],
+    "untested": [
+      "GetMessageInsights"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetMessageInsights": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

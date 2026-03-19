@@ -1,0 +1,106 @@
+{
+  "service": "datapipeline",
+  "counts": {
+    "working": 8,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 11
+  },
+  "operations": [
+    {
+      "operation": "ActivatePipeline",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "AddTags",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "CreatePipeline",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeactivatePipeline",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeletePipeline",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeObjects",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribePipelines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EvaluateExpression",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "GetPipelineDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ListPipelines",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PollForTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutPipelineDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "QueryObjects",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "RemoveTags",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ReportTaskProgress",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReportTaskRunnerHeartbeat",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetStatus",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "SetTaskStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ValidatePipelineDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    }
+  ]
+}

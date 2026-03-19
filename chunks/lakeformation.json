@@ -1,0 +1,482 @@
+[
+  {
+    "noun": "LFTag",
+    "operations": [
+      "CreateLFTag",
+      "DeleteLFTag",
+      "GetLFTag",
+      "UpdateLFTag"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLFTag",
+      "DeleteLFTag",
+      "GetLFTag",
+      "UpdateLFTag"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateLFTag": "needs_params",
+      "DeleteLFTag": "working",
+      "GetLFTag": "working",
+      "UpdateLFTag": "500_error"
+    },
+    "working_untested": [
+      "DeleteLFTag",
+      "GetLFTag"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "LFTags",
+    "operations": [
+      "ListLFTags"
+    ],
+    "tested": [],
+    "untested": [
+      "ListLFTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListLFTags": "working"
+    },
+    "working_untested": [
+      "ListLFTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ResourceLFTags",
+    "operations": [
+      "GetResourceLFTags"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResourceLFTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetResourceLFTags": "working"
+    },
+    "working_untested": [
+      "GetResourceLFTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SearchDatabasesByLFTags",
+    "operations": [
+      "SearchDatabasesByLFTags"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchDatabasesByLFTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchDatabasesByLFTags": "working"
+    },
+    "working_untested": [
+      "SearchDatabasesByLFTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SearchTablesByLFTags",
+    "operations": [
+      "SearchTablesByLFTags"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchTablesByLFTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchTablesByLFTags": "working"
+    },
+    "working_untested": [
+      "SearchTablesByLFTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AssumeDecoratedRoleWithSAML",
+    "operations": [
+      "AssumeDecoratedRoleWithSAML"
+    ],
+    "tested": [],
+    "untested": [
+      "AssumeDecoratedRoleWithSAML"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssumeDecoratedRoleWithSAML": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ExtendTransaction",
+    "operations": [
+      "ExtendTransaction"
+    ],
+    "tested": [],
+    "untested": [
+      "ExtendTransaction"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ExtendTransaction": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LFTagExpression",
+    "operations": [
+      "CreateLFTagExpression",
+      "DeleteLFTagExpression",
+      "GetLFTagExpression",
+      "UpdateLFTagExpression"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLFTagExpression",
+      "DeleteLFTagExpression",
+      "GetLFTagExpression",
+      "UpdateLFTagExpression"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateLFTagExpression": "not_implemented",
+      "DeleteLFTagExpression": "not_implemented",
+      "GetLFTagExpression": "not_implemented",
+      "UpdateLFTagExpression": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LFTagExpressions",
+    "operations": [
+      "ListLFTagExpressions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListLFTagExpressions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListLFTagExpressions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LFTagsFromResource",
+    "operations": [
+      "RemoveLFTagsFromResource"
+    ],
+    "tested": [],
+    "untested": [
+      "RemoveLFTagsFromResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RemoveLFTagsFromResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LFTagsToResource",
+    "operations": [
+      "AddLFTagsToResource"
+    ],
+    "tested": [],
+    "untested": [
+      "AddLFTagsToResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AddLFTagsToResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LakeFormationIdentityCenterConfiguration",
+    "operations": [
+      "CreateLakeFormationIdentityCenterConfiguration",
+      "DeleteLakeFormationIdentityCenterConfiguration",
+      "DescribeLakeFormationIdentityCenterConfiguration",
+      "UpdateLakeFormationIdentityCenterConfiguration"
+    ],
+    "tested": [
+      "DescribeLakeFormationIdentityCenterConfiguration"
+    ],
+    "untested": [
+      "CreateLakeFormationIdentityCenterConfiguration",
+      "DeleteLakeFormationIdentityCenterConfiguration",
+      "UpdateLakeFormationIdentityCenterConfiguration"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateLakeFormationIdentityCenterConfiguration": "not_implemented",
+      "DeleteLakeFormationIdentityCenterConfiguration": "not_implemented",
+      "DescribeLakeFormationIdentityCenterConfiguration": "working",
+      "UpdateLakeFormationIdentityCenterConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LakeFormationOptIn",
+    "operations": [
+      "CreateLakeFormationOptIn",
+      "DeleteLakeFormationOptIn"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateLakeFormationOptIn",
+      "DeleteLakeFormationOptIn"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateLakeFormationOptIn": "not_implemented",
+      "DeleteLakeFormationOptIn": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LakeFormationOptIns",
+    "operations": [
+      "ListLakeFormationOptIns"
+    ],
+    "tested": [],
+    "untested": [
+      "ListLakeFormationOptIns"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListLakeFormationOptIns": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ObjectsOnCancel",
+    "operations": [
+      "DeleteObjectsOnCancel"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteObjectsOnCancel"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteObjectsOnCancel": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "QueryPlanning",
+    "operations": [
+      "StartQueryPlanning"
+    ],
+    "tested": [],
+    "untested": [
+      "StartQueryPlanning"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartQueryPlanning": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "QueryState",
+    "operations": [
+      "GetQueryState"
+    ],
+    "tested": [],
+    "untested": [
+      "GetQueryState"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetQueryState": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "QueryStatistics",
+    "operations": [
+      "GetQueryStatistics"
+    ],
+    "tested": [],
+    "untested": [
+      "GetQueryStatistics"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetQueryStatistics": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "DeregisterResource",
+      "DescribeResource",
+      "RegisterResource",
+      "UpdateResource"
+    ],
+    "tested": [
+      "DeregisterResource",
+      "DescribeResource",
+      "RegisterResource"
+    ],
+    "untested": [
+      "UpdateResource"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "DeregisterResource": "working",
+      "DescribeResource": "working",
+      "RegisterResource": "working",
+      "UpdateResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableObjects",
+    "operations": [
+      "GetTableObjects",
+      "UpdateTableObjects"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTableObjects",
+      "UpdateTableObjects"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetTableObjects": "not_implemented",
+      "UpdateTableObjects": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableStorageOptimizer",
+    "operations": [
+      "UpdateTableStorageOptimizer"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateTableStorageOptimizer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateTableStorageOptimizer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableStorageOptimizers",
+    "operations": [
+      "ListTableStorageOptimizers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTableStorageOptimizers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTableStorageOptimizers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TemporaryDataLocationCredentials",
+    "operations": [
+      "GetTemporaryDataLocationCredentials"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTemporaryDataLocationCredentials"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTemporaryDataLocationCredentials": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkUnitResults",
+    "operations": [
+      "GetWorkUnitResults"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWorkUnitResults"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWorkUnitResults": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkUnits",
+    "operations": [
+      "GetWorkUnits"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWorkUnits"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWorkUnits": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

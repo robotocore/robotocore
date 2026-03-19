@@ -1,0 +1,137 @@
+[
+  {
+    "noun": "AccessLogging",
+    "operations": [
+      "StartAccessLogging",
+      "StopAccessLogging"
+    ],
+    "tested": [],
+    "untested": [
+      "StartAccessLogging",
+      "StopAccessLogging"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "StartAccessLogging": "not_implemented",
+      "StopAccessLogging": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ContainerPolicy",
+    "operations": [
+      "DeleteContainerPolicy",
+      "GetContainerPolicy",
+      "PutContainerPolicy"
+    ],
+    "tested": [
+      "GetContainerPolicy",
+      "PutContainerPolicy"
+    ],
+    "untested": [
+      "DeleteContainerPolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteContainerPolicy": "not_implemented",
+      "GetContainerPolicy": "working",
+      "PutContainerPolicy": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CorsPolicy",
+    "operations": [
+      "DeleteCorsPolicy",
+      "GetCorsPolicy",
+      "PutCorsPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteCorsPolicy",
+      "GetCorsPolicy",
+      "PutCorsPolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteCorsPolicy": "not_implemented",
+      "GetCorsPolicy": "not_implemented",
+      "PutCorsPolicy": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LifecyclePolicy",
+    "operations": [
+      "DeleteLifecyclePolicy",
+      "GetLifecyclePolicy",
+      "PutLifecyclePolicy"
+    ],
+    "tested": [
+      "GetLifecyclePolicy",
+      "PutLifecyclePolicy"
+    ],
+    "untested": [
+      "DeleteLifecyclePolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteLifecyclePolicy": "not_implemented",
+      "GetLifecyclePolicy": "working",
+      "PutLifecyclePolicy": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MetricPolicy",
+    "operations": [
+      "DeleteMetricPolicy",
+      "GetMetricPolicy",
+      "PutMetricPolicy"
+    ],
+    "tested": [
+      "GetMetricPolicy",
+      "PutMetricPolicy"
+    ],
+    "untested": [
+      "DeleteMetricPolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteMetricPolicy": "not_implemented",
+      "GetMetricPolicy": "working",
+      "PutMetricPolicy": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "needs_params",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

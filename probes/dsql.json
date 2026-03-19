@@ -1,0 +1,66 @@
+{
+  "service": "dsql",
+  "counts": {
+    "working": 4,
+    "needs_params": 0,
+    "not_implemented": 7,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteClusterPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCluster",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetClusterPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetVpcEndpointServiceName",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListClusters",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutClusterPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

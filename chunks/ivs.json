@@ -1,0 +1,233 @@
+[
+  {
+    "noun": "PlaybackKeyPair",
+    "operations": [
+      "DeletePlaybackKeyPair",
+      "GetPlaybackKeyPair",
+      "ImportPlaybackKeyPair"
+    ],
+    "tested": [
+      "DeletePlaybackKeyPair",
+      "GetPlaybackKeyPair"
+    ],
+    "untested": [
+      "ImportPlaybackKeyPair"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeletePlaybackKeyPair": "working",
+      "GetPlaybackKeyPair": "working",
+      "ImportPlaybackKeyPair": "working"
+    },
+    "working_untested": [
+      "ImportPlaybackKeyPair"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [
+      "TagResource"
+    ],
+    "untested": [
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "TagResource": "working",
+      "UntagResource": "working"
+    },
+    "working_untested": [
+      "UntagResource"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "GetStreamKey",
+    "operations": [
+      "BatchGetStreamKey"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetStreamKey"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetStreamKey": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Metadata",
+    "operations": [
+      "PutMetadata"
+    ],
+    "tested": [],
+    "untested": [
+      "PutMetadata"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PutMetadata": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PlaybackRestrictionPolicies",
+    "operations": [
+      "ListPlaybackRestrictionPolicies"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPlaybackRestrictionPolicies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPlaybackRestrictionPolicies": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PlaybackRestrictionPolicy",
+    "operations": [
+      "CreatePlaybackRestrictionPolicy",
+      "DeletePlaybackRestrictionPolicy",
+      "GetPlaybackRestrictionPolicy",
+      "UpdatePlaybackRestrictionPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreatePlaybackRestrictionPolicy",
+      "DeletePlaybackRestrictionPolicy",
+      "GetPlaybackRestrictionPolicy",
+      "UpdatePlaybackRestrictionPolicy"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreatePlaybackRestrictionPolicy": "not_implemented",
+      "DeletePlaybackRestrictionPolicy": "not_implemented",
+      "GetPlaybackRestrictionPolicy": "not_implemented",
+      "UpdatePlaybackRestrictionPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StartViewerSessionRevocation",
+    "operations": [
+      "BatchStartViewerSessionRevocation"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchStartViewerSessionRevocation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchStartViewerSessionRevocation": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Stream",
+    "operations": [
+      "GetStream",
+      "StopStream"
+    ],
+    "tested": [],
+    "untested": [
+      "GetStream",
+      "StopStream"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetStream": "not_implemented",
+      "StopStream": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StreamSession",
+    "operations": [
+      "GetStreamSession"
+    ],
+    "tested": [],
+    "untested": [
+      "GetStreamSession"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetStreamSession": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StreamSessions",
+    "operations": [
+      "ListStreamSessions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListStreamSessions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListStreamSessions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Streams",
+    "operations": [
+      "ListStreams"
+    ],
+    "tested": [],
+    "untested": [
+      "ListStreams"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListStreams": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ViewerSessionRevocation",
+    "operations": [
+      "StartViewerSessionRevocation"
+    ],
+    "tested": [],
+    "untested": [
+      "StartViewerSessionRevocation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartViewerSessionRevocation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

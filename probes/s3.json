@@ -1,0 +1,561 @@
+{
+  "service": "s3",
+  "counts": {
+    "working": 97,
+    "needs_params": 1,
+    "not_implemented": 1,
+    "500_error": 11
+  },
+  "operations": [
+    {
+      "operation": "AbortMultipartUpload",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "CompleteMultipartUpload",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "CopyObject",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "CreateBucket",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBucketMetadataConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBucketMetadataTableConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMultipartUpload",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketAnalyticsConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketCors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketEncryption",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketIntelligentTieringConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketInventoryConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketLifecycle",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketMetadataConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketMetadataTableConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketMetricsConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketOwnershipControls",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketReplication",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketTagging",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteBucketWebsite",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteObject",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteObjectTagging",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "DeleteObjects",
+      "status": "working",
+      "message": "likely implemented (MalformedXML: The XML you provided was not well-formed or did not validate)"
+    },
+    {
+      "operation": "DeletePublicAccessBlock",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketAbac",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketAccelerateConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketAcl",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketAnalyticsConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketCors",
+      "status": "working",
+      "message": "likely implemented (NoSuchCORSConfiguration: The CORS configuration does not exist)"
+    },
+    {
+      "operation": "GetBucketEncryption",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketIntelligentTieringConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketInventoryConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketLifecycle",
+      "status": "working",
+      "message": "likely implemented (NoSuchLifecycleConfiguration: The lifecycle configuration does not exist)"
+    },
+    {
+      "operation": "GetBucketLifecycleConfiguration",
+      "status": "working",
+      "message": "likely implemented (NoSuchLifecycleConfiguration: The lifecycle configuration does not exist)"
+    },
+    {
+      "operation": "GetBucketLocation",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketLogging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketMetadataConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketMetadataTableConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketMetricsConfiguration",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketNotification",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketNotificationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketOwnershipControls",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketPolicy",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketPolicyStatus",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketReplication",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketRequestPayment",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketTagging",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketVersioning",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetBucketWebsite",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetObject",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetObjectAcl",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetObjectAttributes",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetObjectLegalHold",
+      "status": "working",
+      "message": "likely implemented (NoSuchKey: Legal hold not set)"
+    },
+    {
+      "operation": "GetObjectLockConfiguration",
+      "status": "working",
+      "message": "likely implemented (ObjectLockConfigurationNotFoundError: Object Lock configuration does not exist for this bucket)"
+    },
+    {
+      "operation": "GetObjectRetention",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetObjectTagging",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetObjectTorrent",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "GetPublicAccessBlock",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "HeadBucket",
+      "status": "working",
+      "message": "likely implemented (404: Not Found)"
+    },
+    {
+      "operation": "HeadObject",
+      "status": "working",
+      "message": "likely implemented (404: Not Found)"
+    },
+    {
+      "operation": "ListBucketAnalyticsConfigurations",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListBucketIntelligentTieringConfigurations",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListBucketInventoryConfigurations",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListBucketMetricsConfigurations",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListBuckets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDirectoryBuckets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMultipartUploads",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListObjectVersions",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListObjects",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListObjectsV2",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "ListParts",
+      "status": "working",
+      "message": "implemented (NoSuchBucket)"
+    },
+    {
+      "operation": "PutBucketAbac",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketAccelerateConfiguration",
+      "status": "working",
+      "message": "likely implemented (MalformedXML: The XML you provided was not well-formed or did not validate)"
+    },
+    {
+      "operation": "PutBucketAcl",
+      "status": "500_error",
+      "message": "server crash (InternalError: no element found: line 1, column 0)"
+    },
+    {
+      "operation": "PutBucketAnalyticsConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketCors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketEncryption",
+      "status": "working",
+      "message": "likely implemented (MalformedXML: The XML you provided was not well-formed or did not validate)"
+    },
+    {
+      "operation": "PutBucketIntelligentTieringConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketInventoryConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketLifecycle",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketLifecycleConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketLogging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketMetricsConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketNotification",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketNotificationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketOwnershipControls",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'Rule')"
+    },
+    {
+      "operation": "PutBucketPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketReplication",
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the bucket to apply a replic)"
+    },
+    {
+      "operation": "PutBucketRequestPayment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketTagging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketVersioning",
+      "status": "working",
+      "message": "likely implemented (404: Not Found)"
+    },
+    {
+      "operation": "PutBucketWebsite",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutObject",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "PutObjectAcl",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "PutObjectLegalHold",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutObjectLockConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutObjectRetention",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "PutObjectTagging",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "PutPublicAccessBlock",
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Must specify at least one configuration.)"
+    },
+    {
+      "operation": "RenameObject",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "RestoreObject",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "SelectObjectContent",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "UpdateBucketMetadataInventoryTableConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateBucketMetadataJournalTableConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateObjectEncryption",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UploadPart",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "UploadPartCopy",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "WriteGetObjectResponse",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

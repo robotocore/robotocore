@@ -1,0 +1,275 @@
+[
+  {
+    "noun": "DatasetEntries",
+    "operations": [
+      "ListDatasetEntries",
+      "UpdateDatasetEntries"
+    ],
+    "tested": [
+      "ListDatasetEntries"
+    ],
+    "untested": [
+      "UpdateDatasetEntries"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDatasetEntries": "working",
+      "UpdateDatasetEntries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DistributeDatasetEntries",
+    "operations": [
+      "DistributeDatasetEntries"
+    ],
+    "tested": [],
+    "untested": [
+      "DistributeDatasetEntries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DistributeDatasetEntries": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Faces",
+    "operations": [
+      "AssociateFaces",
+      "DeleteFaces",
+      "DisassociateFaces",
+      "ListFaces"
+    ],
+    "tested": [
+      "DeleteFaces",
+      "ListFaces"
+    ],
+    "untested": [
+      "AssociateFaces",
+      "DisassociateFaces"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateFaces": "needs_params",
+      "DeleteFaces": "needs_params",
+      "DisassociateFaces": "needs_params",
+      "ListFaces": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MediaAnalysisJob",
+    "operations": [
+      "GetMediaAnalysisJob",
+      "StartMediaAnalysisJob"
+    ],
+    "tested": [],
+    "untested": [
+      "GetMediaAnalysisJob",
+      "StartMediaAnalysisJob"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetMediaAnalysisJob": "not_implemented",
+      "StartMediaAnalysisJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MediaAnalysisJobs",
+    "operations": [
+      "ListMediaAnalysisJobs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMediaAnalysisJobs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListMediaAnalysisJobs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProjectPolicies",
+    "operations": [
+      "ListProjectPolicies"
+    ],
+    "tested": [],
+    "untested": [
+      "ListProjectPolicies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListProjectPolicies": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProjectPolicy",
+    "operations": [
+      "DeleteProjectPolicy",
+      "PutProjectPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteProjectPolicy",
+      "PutProjectPolicy"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteProjectPolicy": "not_implemented",
+      "PutProjectPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProjectVersion",
+    "operations": [
+      "CopyProjectVersion",
+      "CreateProjectVersion",
+      "DeleteProjectVersion",
+      "StartProjectVersion",
+      "StopProjectVersion"
+    ],
+    "tested": [
+      "CreateProjectVersion",
+      "DeleteProjectVersion",
+      "StartProjectVersion",
+      "StopProjectVersion"
+    ],
+    "untested": [
+      "CopyProjectVersion"
+    ],
+    "size": 5,
+    "untested_count": 1,
+    "probe_status": {
+      "CopyProjectVersion": "not_implemented",
+      "CreateProjectVersion": "working",
+      "DeleteProjectVersion": "working",
+      "StartProjectVersion": "working",
+      "StopProjectVersion": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchUsers",
+    "operations": [
+      "SearchUsers"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchUsers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchUsers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchUsersByImage",
+    "operations": [
+      "SearchUsersByImage"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchUsersByImage"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchUsersByImage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StreamProcessor",
+    "operations": [
+      "CreateStreamProcessor",
+      "DeleteStreamProcessor",
+      "DescribeStreamProcessor",
+      "StartStreamProcessor",
+      "StopStreamProcessor",
+      "UpdateStreamProcessor"
+    ],
+    "tested": [
+      "CreateStreamProcessor",
+      "DeleteStreamProcessor",
+      "DescribeStreamProcessor",
+      "StartStreamProcessor",
+      "StopStreamProcessor"
+    ],
+    "untested": [
+      "UpdateStreamProcessor"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateStreamProcessor": "working",
+      "DeleteStreamProcessor": "working",
+      "DescribeStreamProcessor": "working",
+      "StartStreamProcessor": "working",
+      "StopStreamProcessor": "working",
+      "UpdateStreamProcessor": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "User",
+    "operations": [
+      "CreateUser",
+      "DeleteUser"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateUser",
+      "DeleteUser"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateUser": "not_implemented",
+      "DeleteUser": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Users",
+    "operations": [
+      "ListUsers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListUsers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListUsers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

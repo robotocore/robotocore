@@ -1,0 +1,25 @@
+[
+  {
+    "noun": "ServiceAttributes",
+    "operations": [
+      "DeleteServiceAttributes",
+      "GetServiceAttributes",
+      "UpdateServiceAttributes"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteServiceAttributes",
+      "GetServiceAttributes",
+      "UpdateServiceAttributes"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteServiceAttributes": "needs_params",
+      "GetServiceAttributes": "not_implemented",
+      "UpdateServiceAttributes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

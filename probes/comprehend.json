@@ -1,0 +1,436 @@
+{
+  "service": "comprehend",
+  "counts": {
+    "working": 77,
+    "needs_params": 8,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchDetectDominantLanguage",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDetectEntities",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDetectKeyPhrases",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDetectSentiment",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDetectSyntax",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDetectTargetedSentiment",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ClassifyDocument",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ContainsPiiEntities",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateDocumentClassifier",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEntityRecognizer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFlywheel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDocumentClassifier",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEntityRecognizer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFlywheel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDocumentClassificationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDocumentClassifier",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDominantLanguageDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEntitiesDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEntityRecognizer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEventsDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeFlywheel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeFlywheelIteration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeKeyPhrasesDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribePiiEntitiesDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeSentimentDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTargetedSentimentDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTopicsDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DetectDominantLanguage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetectEntities",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetectKeyPhrases",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetectPiiEntities",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetectSentiment",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetectSyntax",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetectTargetedSentiment",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DetectToxicContent",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ImportModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDatasets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDocumentClassificationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDocumentClassifierSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDocumentClassifiers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDominantLanguageDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEntitiesDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEntityRecognizerSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEntityRecognizers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEventsDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFlywheelIterationHistory",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFlywheels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListKeyPhrasesDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPiiEntitiesDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSentimentDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTargetedSentimentDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTopicsDetectionJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartDocumentClassificationJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartDominantLanguageDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartEntitiesDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartEventsDetectionJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartFlywheelIteration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartKeyPhrasesDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartPiiEntitiesDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartSentimentDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartTargetedSentimentDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartTopicsDetectionJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopDominantLanguageDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopEntitiesDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopEventsDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopKeyPhrasesDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopPiiEntitiesDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopSentimentDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopTargetedSentimentDetectionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopTrainingDocumentClassifier",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopTrainingEntityRecognizer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFlywheel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

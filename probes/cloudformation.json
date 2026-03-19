@@ -1,0 +1,456 @@
+{
+  "service": "cloudformation",
+  "counts": {
+    "working": 82,
+    "needs_params": 1,
+    "not_implemented": 5,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "ActivateOrganizationsAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ActivateType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchDescribeTypeConfigurations",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CancelUpdateStack",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ContinueUpdateRollback",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CreateChangeSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGeneratedTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStack",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CreateStackInstances",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "CreateStackRefactor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStackSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeactivateOrganizationsAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeactivateType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteChangeSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGeneratedTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteStackInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteStackSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountLimits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeChangeSet",
+      "status": "working",
+      "message": "likely implemented (ChangeSetNotFoundException: ChangeSet [probe-test-value] does not exist)"
+    },
+    {
+      "operation": "DescribeChangeSetHooks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeGeneratedTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrganizationsAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePublisher",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeResourceScan",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeStackDriftDetectionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStackEvents",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeStackInstance",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "DescribeStackRefactor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStackResource",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeStackResourceDrifts",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeStackResources",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeStackSet",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "DescribeStackSetOperation",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "DescribeStacks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTypeRegistration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DetectStackDrift",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DetectStackResourceDrift",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DetectStackSetDrift",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EstimateTemplateCost",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ExecuteChangeSet",
+      "status": "working",
+      "message": "likely implemented (ChangeSetNotFoundException: ChangeSet [probe-test-value] does not exist)"
+    },
+    {
+      "operation": "ExecuteStackRefactor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetGeneratedTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetHookResult",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetStackPolicy",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "GetTemplate",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "GetTemplateSummary",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'read')"
+    },
+    {
+      "operation": "ImportStacksToStackSet",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "ListChangeSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListExports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGeneratedTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHookResults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListImports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceScanRelatedResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceScanResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceScans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStackInstanceResourceDrifts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStackInstances",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "ListStackRefactorActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStackRefactors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStackResources",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "ListStackSetAutoDeploymentTargets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStackSetOperationResults",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "ListStackSetOperations",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "ListStackSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStacks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTypeRegistrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTypeVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PublishType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RecordHandlerProgress",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterPublisher",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterType",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RollbackStack",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "SetStackPolicy",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "SetTypeConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetTypeDefaultVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SignalResource",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "StartResourceScan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopStackSetOperation",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "TestType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateGeneratedTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateStack",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "UpdateStackInstances",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "UpdateStackSet",
+      "status": "working",
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+    },
+    {
+      "operation": "UpdateTerminationProtection",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "ValidateTemplate",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    }
+  ]
+}

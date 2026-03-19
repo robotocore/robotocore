@@ -1,0 +1,272 @@
+[
+  {
+    "noun": "ScheduledQuery",
+    "operations": [
+      "CreateScheduledQuery",
+      "DeleteScheduledQuery",
+      "GetScheduledQuery",
+      "UpdateScheduledQuery"
+    ],
+    "tested": [
+      "DeleteScheduledQuery",
+      "GetScheduledQuery"
+    ],
+    "untested": [
+      "CreateScheduledQuery",
+      "UpdateScheduledQuery"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateScheduledQuery": "working",
+      "DeleteScheduledQuery": "working",
+      "GetScheduledQuery": "working",
+      "UpdateScheduledQuery": "working"
+    },
+    "working_untested": [
+      "CreateScheduledQuery",
+      "UpdateScheduledQuery"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "ScheduledQueryHistory",
+    "operations": [
+      "GetScheduledQueryHistory"
+    ],
+    "tested": [],
+    "untested": [
+      "GetScheduledQueryHistory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetScheduledQueryHistory": "working"
+    },
+    "working_untested": [
+      "GetScheduledQueryHistory"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "FieldIndexes",
+    "operations": [
+      "DescribeFieldIndexes"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeFieldIndexes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeFieldIndexes": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImportTask",
+    "operations": [
+      "CancelImportTask",
+      "CreateImportTask"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelImportTask",
+      "CreateImportTask"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelImportTask": "not_implemented",
+      "CreateImportTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IndexPolicies",
+    "operations": [
+      "DescribeIndexPolicies"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeIndexPolicies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeIndexPolicies": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Integration",
+    "operations": [
+      "DeleteIntegration",
+      "GetIntegration",
+      "PutIntegration"
+    ],
+    "tested": [
+      "DeleteIntegration",
+      "GetIntegration"
+    ],
+    "untested": [
+      "PutIntegration"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteIntegration": "working",
+      "GetIntegration": "working",
+      "PutIntegration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LiveTail",
+    "operations": [
+      "StartLiveTail"
+    ],
+    "tested": [],
+    "untested": [
+      "StartLiveTail"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartLiveTail": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LogObject",
+    "operations": [
+      "GetLogObject"
+    ],
+    "tested": [],
+    "untested": [
+      "GetLogObject"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetLogObject": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SourceFromS3TableIntegration",
+    "operations": [
+      "DisassociateSourceFromS3TableIntegration"
+    ],
+    "tested": [],
+    "untested": [
+      "DisassociateSourceFromS3TableIntegration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DisassociateSourceFromS3TableIntegration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SourceToS3TableIntegration",
+    "operations": [
+      "AssociateSourceToS3TableIntegration"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateSourceToS3TableIntegration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateSourceToS3TableIntegration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SourcesForS3TableIntegration",
+    "operations": [
+      "ListSourcesForS3TableIntegration"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSourcesForS3TableIntegration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSourcesForS3TableIntegration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestMetricFilter",
+    "operations": [
+      "TestMetricFilter"
+    ],
+    "tested": [],
+    "untested": [
+      "TestMetricFilter"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestMetricFilter": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestTransformer",
+    "operations": [
+      "TestTransformer"
+    ],
+    "tested": [],
+    "untested": [
+      "TestTransformer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestTransformer": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Transformer",
+    "operations": [
+      "DeleteTransformer",
+      "GetTransformer",
+      "PutTransformer"
+    ],
+    "tested": [
+      "DeleteTransformer",
+      "GetTransformer"
+    ],
+    "untested": [
+      "PutTransformer"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteTransformer": "working",
+      "GetTransformer": "working",
+      "PutTransformer": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

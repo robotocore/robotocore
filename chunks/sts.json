@@ -1,0 +1,38 @@
+[
+  {
+    "noun": "AssumeRoleWithSAML",
+    "operations": [
+      "AssumeRoleWithSAML"
+    ],
+    "tested": [],
+    "untested": [
+      "AssumeRoleWithSAML"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssumeRoleWithSAML": "working"
+    },
+    "working_untested": [
+      "AssumeRoleWithSAML"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "WebIdentityToken",
+    "operations": [
+      "GetWebIdentityToken"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWebIdentityToken"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWebIdentityToken": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

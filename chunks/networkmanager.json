@@ -1,0 +1,44 @@
+[
+  {
+    "noun": "CoreNetworkPolicyVersion",
+    "operations": [
+      "DeleteCoreNetworkPolicyVersion",
+      "RestoreCoreNetworkPolicyVersion"
+    ],
+    "tested": [
+      "DeleteCoreNetworkPolicyVersion"
+    ],
+    "untested": [
+      "RestoreCoreNetworkPolicyVersion"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteCoreNetworkPolicyVersion": "working",
+      "RestoreCoreNetworkPolicyVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CoreNetworkPrefixListAssociation",
+    "operations": [
+      "CreateCoreNetworkPrefixListAssociation",
+      "DeleteCoreNetworkPrefixListAssociation"
+    ],
+    "tested": [
+      "CreateCoreNetworkPrefixListAssociation"
+    ],
+    "untested": [
+      "DeleteCoreNetworkPrefixListAssociation"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCoreNetworkPrefixListAssociation": "working",
+      "DeleteCoreNetworkPrefixListAssociation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,496 @@
+{
+  "service": "config",
+  "counts": {
+    "working": 77,
+    "needs_params": 9,
+    "not_implemented": 10,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AssociateResourceTypes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "BatchGetAggregateResourceConfig",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetResourceConfig",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteAggregationAuthorization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConfigRule",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigRuleException: The ConfigRule provided in the request is invalid. Please ch)"
+    },
+    {
+      "operation": "DeleteConfigurationAggregator",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "DeleteConfigurationRecorder",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationRecorderException: Cannot find configuration recorder with the specified name ')"
+    },
+    {
+      "operation": "DeleteConformancePack",
+      "status": "working",
+      "message": "likely implemented (NoSuchConformancePackException: One or more conformance packs with specified names are not p)"
+    },
+    {
+      "operation": "DeleteDeliveryChannel",
+      "status": "working",
+      "message": "likely implemented (NoSuchDeliveryChannelException: Cannot find delivery channel with specified name 'probe-test)"
+    },
+    {
+      "operation": "DeleteEvaluationResults",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigRuleException: The ConfigRule 'probe-test-value' provided in the request is)"
+    },
+    {
+      "operation": "DeleteOrganizationConfigRule",
+      "status": "working",
+      "message": "likely implemented (NoSuchOrganizationConfigRuleException: Could not find an OrganizationConfigRule for given request w)"
+    },
+    {
+      "operation": "DeleteOrganizationConformancePack",
+      "status": "working",
+      "message": "likely implemented (NoSuchOrganizationConformancePackException: Could not find an OrganizationConformancePack for given requ)"
+    },
+    {
+      "operation": "DeletePendingAggregationRequest",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteRemediationConfiguration",
+      "status": "working",
+      "message": "likely implemented (NoSuchRemediationConfigurationException: No remediation configuration found for the config rule: 'pro)"
+    },
+    {
+      "operation": "DeleteRemediationExceptions",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteResourceConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRetentionConfiguration",
+      "status": "working",
+      "message": "likely implemented (NoSuchRetentionConfigurationException: Cannot find retention configuration with the specified name )"
+    },
+    {
+      "operation": "DeleteServiceLinkedConfigurationRecorder",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteStoredQuery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeliverConfigSnapshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeAggregateComplianceByConfigRules",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "DescribeAggregateComplianceByConformancePacks",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "DescribeAggregationAuthorizations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeComplianceByConfigRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeComplianceByResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigRuleEvaluationStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigurationAggregatorSourcesStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeConfigurationAggregators",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigurationRecorderStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigurationRecorders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConformancePackCompliance",
+      "status": "working",
+      "message": "likely implemented (NoSuchConformancePackException: One or more conformance packs with specified names are not p)"
+    },
+    {
+      "operation": "DescribeConformancePackStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConformancePacks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeliveryChannelStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeliveryChannels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrganizationConfigRuleStatuses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrganizationConfigRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrganizationConformancePackStatuses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrganizationConformancePacks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePendingAggregationRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRemediationConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRemediationExceptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRemediationExecutionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRetentionConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateResourceTypes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAggregateComplianceDetailsByConfigRule",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "GetAggregateConfigRuleComplianceSummary",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "GetAggregateConformancePackComplianceSummary",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "GetAggregateDiscoveredResourceCounts",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "GetAggregateResourceConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "GetComplianceDetailsByConfigRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetComplianceDetailsByResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetComplianceSummaryByConfigRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetComplianceSummaryByResourceType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetConformancePackComplianceDetails",
+      "status": "working",
+      "message": "likely implemented (NoSuchConformancePackException: One or more conformance packs with specified names are not p)"
+    },
+    {
+      "operation": "GetConformancePackComplianceSummary",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCustomRulePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDiscoveredResourceCounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetOrganizationConfigRuleDetailedStatus",
+      "status": "working",
+      "message": "likely implemented (NoSuchOrganizationConfigRuleException: One or more organization config rules with specified names a)"
+    },
+    {
+      "operation": "GetOrganizationConformancePackDetailedStatus",
+      "status": "working",
+      "message": "likely implemented (NoSuchOrganizationConformancePackException: One or more organization conformance packs with specified na)"
+    },
+    {
+      "operation": "GetOrganizationCustomRulePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetResourceConfigHistory",
+      "status": "not_implemented",
+      "message": "not implemented (ResourceNotDiscoveredException)"
+    },
+    {
+      "operation": "GetResourceEvaluationSummary",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetStoredQuery",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAggregateDiscoveredResources",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+    },
+    {
+      "operation": "ListConfigurationRecorders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConformancePackComplianceScores",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDiscoveredResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceEvaluations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStoredQueries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutAggregationAuthorization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutConfigRule",
+      "status": "500_error",
+      "message": "server crash (InternalError: 400 Bad Request: {\"__type\": \"InvalidParameterValueException\")"
+    },
+    {
+      "operation": "PutConfigurationAggregator",
+      "status": "working",
+      "message": "implemented (InvalidParameterValueException)"
+    },
+    {
+      "operation": "PutConfigurationRecorder",
+      "status": "working",
+      "message": "likely implemented (InvalidConfigurationRecorderNameException: The configuration recorder name 'None' is not valid, blank s)"
+    },
+    {
+      "operation": "PutConformancePack",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutDeliveryChannel",
+      "status": "working",
+      "message": "likely implemented (NoAvailableConfigurationRecorderException: Configuration recorder is not available to put delivery chan)"
+    },
+    {
+      "operation": "PutEvaluations",
+      "status": "working",
+      "message": "implemented (InvalidParameterValueException)"
+    },
+    {
+      "operation": "PutExternalEvaluation",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigRuleException: The ConfigRule 'probe-test-value' provided in the request is)"
+    },
+    {
+      "operation": "PutOrganizationConfigRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutOrganizationConformancePack",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutRemediationConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutRemediationExceptions",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutResourceConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutRetentionConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "PutServiceLinkedConfigurationRecorder",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutStoredQuery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SelectAggregateResourceConfig",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SelectResourceConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartConfigRulesEvaluation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartConfigurationRecorder",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationRecorderException: Cannot find configuration recorder with the specified name ')"
+    },
+    {
+      "operation": "StartRemediationExecution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartResourceEvaluation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopConfigurationRecorder",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationRecorderException: Cannot find configuration recorder with the specified name ')"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "service": "pipes",
+  "counts": {
+    "working": 10,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreatePipe",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePipe",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePipe",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListPipes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartPipe",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StopPipe",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePipe",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

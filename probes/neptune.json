@@ -1,0 +1,351 @@
+{
+  "service": "neptune",
+  "counts": {
+    "working": 64,
+    "needs_params": 0,
+    "not_implemented": 3,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AddRoleToDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "AddSourceIdentifierToSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "AddTagsToResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "ApplyPendingMaintenanceAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CopyDBClusterParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyDBClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyDBParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateDBCluster",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateDBClusterEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateDBClusterParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDBClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateDBInstance",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateDBParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDBSubnetGroup",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGlobalCluster",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "DeleteDBClusterEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBClusterEndpointNotFoundFault: The specified custom endpoint probe-test-value was not found)"
+    },
+    {
+      "operation": "DeleteDBClusterParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteDBParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (DBSubnetGroupNotFoundFault: Subnet Group probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBClusterEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusterParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusterParameters",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "DescribeDBClusterSnapshotAttributes",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBClusterSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBEngineVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBParameters",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBSubnetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEngineDefaultClusterParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEngineDefaultParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventCategories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeGlobalClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrderableDBInstanceOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePendingMaintenanceActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeValidDBInstanceModifications",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "FailoverDBCluster",
+      "status": "500_error",
+      "message": "server crash (InternalError: RDSBackend.failover_db_cluster() missing 1 required position)"
+    },
+    {
+      "operation": "FailoverGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "ModifyDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBClusterEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBClusterEndpointNotFoundFault: The specified custom endpoint probe-test-value was not found)"
+    },
+    {
+      "operation": "ModifyDBClusterParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "ModifyDBClusterSnapshotAttribute",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (DBSubnetGroupNotFoundFault: Subnet Group probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyEventSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "PromoteReadReplicaDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "RebootDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "RemoveFromGlobalCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveRoleFromDBCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RemoveSourceIdentifierFromSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "RemoveTagsFromResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "ResetDBClusterParameterGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetDBParameterGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreDBClusterFromSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "RestoreDBClusterToPointInTime",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "StartDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "StopDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "SwitchoverGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    }
+  ]
+}

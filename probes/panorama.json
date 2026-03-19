@@ -1,0 +1,181 @@
+{
+  "service": "panorama",
+  "counts": {
+    "working": 18,
+    "needs_params": 4,
+    "not_implemented": 10,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "CreateApplicationInstance",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateJobForDevices",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateNodeFromTemplateJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePackage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePackageImportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDevice",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeletePackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeregisterPackageVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeApplicationInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeApplicationInstanceDetails",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDevice",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeDeviceJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeNode",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeNodeFromTemplateJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribePackage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribePackageImportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribePackageVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListApplicationInstanceDependencies",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListApplicationInstanceNodeInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListApplicationInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDevicesJobs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListNodeFromTemplateJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPackageImportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPackages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ProvisionDevice",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterPackageVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RemoveApplicationInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SignalApplicationInstanceNodeInstances",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDeviceMetadata",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    }
+  ]
+}

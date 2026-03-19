@@ -1,0 +1,551 @@
+{
+  "service": "backup",
+  "counts": {
+    "working": 80,
+    "needs_params": 0,
+    "not_implemented": 26,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "AssociateBackupVaultMpaApprovalTeam",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelLegalHold",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateBackupPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBackupSelection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateBackupVault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFramework",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLegalHold",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLogicallyAirGappedBackupVault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReportPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRestoreAccessBackupVault",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRestoreTestingPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRestoreTestingSelection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTieringConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteBackupPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteBackupSelection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBackupVault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBackupVaultAccessPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteBackupVaultLockConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteBackupVaultNotifications",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFramework",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRecoveryPoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteReportPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRestoreTestingPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRestoreTestingSelection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTieringConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeBackupJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeBackupVault",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCopyJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeFramework",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeGlobalSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeProtectedResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRecoveryPoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRegionSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeReportPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRestoreJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeScanJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateBackupVaultMpaApprovalTeam",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateRecoveryPoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateRecoveryPointFromParent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ExportBackupPlanTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetBackupPlan",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetBackupPlanFromJSON",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "GetBackupPlanFromTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetBackupSelection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetBackupVaultAccessPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetBackupVaultNotifications",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLegalHold",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRecoveryPointIndexDetails",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRecoveryPointRestoreMetadata",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRestoreJobMetadata",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRestoreTestingInferredMetadata",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRestoreTestingPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRestoreTestingSelection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetSupportedResourceTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTieringConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListBackupJobSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBackupJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBackupPlanTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBackupPlanVersions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListBackupPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBackupSelections",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListBackupVaults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCopyJobSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCopyJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFrameworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIndexedRecoveryPoints",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListLegalHolds",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProtectedResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProtectedResourcesByBackupVault",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListRecoveryPointsByBackupVault",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListRecoveryPointsByLegalHold",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListRecoveryPointsByResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReportPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRestoreAccessBackupVaults",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListRestoreJobSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRestoreJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRestoreJobsByProtectedResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRestoreTestingPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRestoreTestingSelections",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListScanJobSummaries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListScanJobs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTieringConfigurations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutBackupVaultAccessPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutBackupVaultLockConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutBackupVaultNotifications",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutRestoreValidationResult",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RevokeRestoreAccessBackupVault",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartBackupJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartCopyJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartReportJob",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "StartRestoreJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartScanJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopBackupJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateBackupPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFramework",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateGlobalSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateRecoveryPointIndexSettings",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateRecoveryPointLifecycle",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRegionSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateReportPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRestoreTestingPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRestoreTestingSelection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTieringConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

@@ -1,0 +1,341 @@
+{
+  "service": "autoscaling",
+  "counts": {
+    "working": 35,
+    "needs_params": 0,
+    "not_implemented": 9,
+    "500_error": 22
+  },
+  "operations": [
+    {
+      "operation": "AttachInstances",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "AttachLoadBalancerTargetGroups",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "AttachLoadBalancers",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "AttachTrafficSources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "BatchDeleteScheduledAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchPutScheduledUpdateGroupAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelInstanceRefresh",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CompleteLifecycleAction",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateAutoScalingGroup",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CreateLaunchConfiguration",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CreateOrUpdateTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAutoScalingGroup",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeleteLaunchConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLifecycleHook",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNotificationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteScheduledAction",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteWarmPool",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "DescribeAccountLimits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAdjustmentTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAutoScalingGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAutoScalingInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAutoScalingNotificationTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceRefreshes",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeLaunchConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLifecycleHookTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLifecycleHooks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLoadBalancerTargetGroups",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeLoadBalancers",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeMetricCollectionTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNotificationConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeScalingActivities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeScalingProcessTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeScheduledActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTerminationPolicyTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrafficSources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeWarmPool",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "DetachInstances",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DetachLoadBalancerTargetGroups",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DetachLoadBalancers",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DetachTrafficSources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableMetricsCollection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableMetricsCollection",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "EnterStandby",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ExecutePolicy",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ExitStandby",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "GetPredictiveScalingForecast",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "LaunchInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutLifecycleHook",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutNotificationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutScalingPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutScheduledUpdateGroupAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutWarmPool",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "RecordLifecycleActionHeartbeat",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResumeProcesses",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "RollbackInstanceRefresh",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetDesiredCapacity",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "SetInstanceHealth",
+      "status": "500_error",
+      "message": "server crash (InternalError: Valid instance health states are: [Healthy, Unhealthy])"
+    },
+    {
+      "operation": "SetInstanceProtection",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "StartInstanceRefresh",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "SuspendProcesses",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "TerminateInstanceInAutoScalingGroup",
+      "status": "500_error",
+      "message": "exception: Connection was closed before we received a valid response fr"
+    },
+    {
+      "operation": "UpdateAutoScalingGroup",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    }
+  ]
+}

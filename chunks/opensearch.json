@@ -1,0 +1,344 @@
+[
+  {
+    "noun": "DataSource",
+    "operations": [
+      "AddDataSource",
+      "DeleteDataSource",
+      "GetDataSource",
+      "UpdateDataSource"
+    ],
+    "tested": [],
+    "untested": [
+      "AddDataSource",
+      "DeleteDataSource",
+      "GetDataSource",
+      "UpdateDataSource"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "AddDataSource": "needs_params",
+      "DeleteDataSource": "not_implemented",
+      "GetDataSource": "not_implemented",
+      "UpdateDataSource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DataSources",
+    "operations": [
+      "ListDataSources"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDataSources"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDataSources": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DefaultApplicationSetting",
+    "operations": [
+      "GetDefaultApplicationSetting",
+      "PutDefaultApplicationSetting"
+    ],
+    "tested": [
+      "GetDefaultApplicationSetting"
+    ],
+    "untested": [
+      "PutDefaultApplicationSetting"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDefaultApplicationSetting": "working",
+      "PutDefaultApplicationSetting": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DirectQueryDataSource",
+    "operations": [
+      "AddDirectQueryDataSource",
+      "DeleteDirectQueryDataSource",
+      "GetDirectQueryDataSource",
+      "UpdateDirectQueryDataSource"
+    ],
+    "tested": [
+      "DeleteDirectQueryDataSource",
+      "GetDirectQueryDataSource"
+    ],
+    "untested": [
+      "AddDirectQueryDataSource",
+      "UpdateDirectQueryDataSource"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "AddDirectQueryDataSource": "needs_params",
+      "DeleteDirectQueryDataSource": "working",
+      "GetDirectQueryDataSource": "working",
+      "UpdateDirectQueryDataSource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DirectQueryDataSources",
+    "operations": [
+      "ListDirectQueryDataSources"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDirectQueryDataSources"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDirectQueryDataSources": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DissociatePackages",
+    "operations": [
+      "DissociatePackages"
+    ],
+    "tested": [],
+    "untested": [
+      "DissociatePackages"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DissociatePackages": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DomainConfigChange",
+    "operations": [
+      "CancelDomainConfigChange"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelDomainConfigChange"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelDomainConfigChange": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InboundConnection",
+    "operations": [
+      "AcceptInboundConnection",
+      "DeleteInboundConnection",
+      "RejectInboundConnection"
+    ],
+    "tested": [
+      "AcceptInboundConnection",
+      "DeleteInboundConnection"
+    ],
+    "untested": [
+      "RejectInboundConnection"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "AcceptInboundConnection": "working",
+      "DeleteInboundConnection": "working",
+      "RejectInboundConnection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Index",
+    "operations": [
+      "CreateIndex",
+      "DeleteIndex",
+      "GetIndex",
+      "UpdateIndex"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIndex",
+      "DeleteIndex",
+      "GetIndex",
+      "UpdateIndex"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateIndex": "not_implemented",
+      "DeleteIndex": "not_implemented",
+      "GetIndex": "not_implemented",
+      "UpdateIndex": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PackageScope",
+    "operations": [
+      "UpdatePackageScope"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdatePackageScope"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdatePackageScope": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Packages",
+    "operations": [
+      "AssociatePackages",
+      "DescribePackages"
+    ],
+    "tested": [
+      "DescribePackages"
+    ],
+    "untested": [
+      "AssociatePackages"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociatePackages": "not_implemented",
+      "DescribePackages": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseReservedInstanceOffering",
+    "operations": [
+      "PurchaseReservedInstanceOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedInstanceOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedInstanceOffering": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceSoftwareUpdate",
+    "operations": [
+      "CancelServiceSoftwareUpdate",
+      "StartServiceSoftwareUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelServiceSoftwareUpdate",
+      "StartServiceSoftwareUpdate"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelServiceSoftwareUpdate": "not_implemented",
+      "StartServiceSoftwareUpdate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpgradeDomain",
+    "operations": [
+      "UpgradeDomain"
+    ],
+    "tested": [],
+    "untested": [
+      "UpgradeDomain"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpgradeDomain": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpgradeHistory",
+    "operations": [
+      "GetUpgradeHistory"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUpgradeHistory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUpgradeHistory": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpgradeStatus",
+    "operations": [
+      "GetUpgradeStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUpgradeStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUpgradeStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEndpointAccess",
+    "operations": [
+      "AuthorizeVpcEndpointAccess",
+      "ListVpcEndpointAccess",
+      "RevokeVpcEndpointAccess"
+    ],
+    "tested": [
+      "AuthorizeVpcEndpointAccess",
+      "RevokeVpcEndpointAccess"
+    ],
+    "untested": [
+      "ListVpcEndpointAccess"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "AuthorizeVpcEndpointAccess": "working",
+      "ListVpcEndpointAccess": "not_implemented",
+      "RevokeVpcEndpointAccess": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

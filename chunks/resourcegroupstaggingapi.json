@@ -1,0 +1,23 @@
+[
+  {
+    "noun": "ReportCreation",
+    "operations": [
+      "DescribeReportCreation",
+      "StartReportCreation"
+    ],
+    "tested": [
+      "DescribeReportCreation"
+    ],
+    "untested": [
+      "StartReportCreation"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeReportCreation": "working",
+      "StartReportCreation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

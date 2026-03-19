@@ -1,0 +1,223 @@
+[
+  {
+    "noun": "WebACL",
+    "operations": [
+      "AssociateWebACL",
+      "CreateWebACL",
+      "DeleteWebACL",
+      "DisassociateWebACL",
+      "GetWebACL",
+      "UpdateWebACL"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateWebACL",
+      "CreateWebACL",
+      "DeleteWebACL",
+      "DisassociateWebACL",
+      "GetWebACL",
+      "UpdateWebACL"
+    ],
+    "size": 6,
+    "untested_count": 6,
+    "probe_status": {
+      "AssociateWebACL": "working",
+      "CreateWebACL": "working",
+      "DeleteWebACL": "working",
+      "DisassociateWebACL": "working",
+      "GetWebACL": "working",
+      "UpdateWebACL": "working"
+    },
+    "working_untested": [
+      "AssociateWebACL",
+      "CreateWebACL",
+      "DeleteWebACL",
+      "DisassociateWebACL",
+      "GetWebACL",
+      "UpdateWebACL"
+    ],
+    "working_untested_count": 6
+  },
+  {
+    "noun": "IPSet",
+    "operations": [
+      "CreateIPSet",
+      "DeleteIPSet",
+      "GetIPSet",
+      "UpdateIPSet"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateIPSet",
+      "DeleteIPSet",
+      "GetIPSet",
+      "UpdateIPSet"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateIPSet": "working",
+      "DeleteIPSet": "working",
+      "GetIPSet": "working",
+      "UpdateIPSet": "working"
+    },
+    "working_untested": [
+      "CreateIPSet",
+      "DeleteIPSet",
+      "GetIPSet",
+      "UpdateIPSet"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "APIKey",
+    "operations": [
+      "CreateAPIKey",
+      "DeleteAPIKey"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAPIKey",
+      "DeleteAPIKey"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateAPIKey": "needs_params",
+      "DeleteAPIKey": "working"
+    },
+    "working_untested": [
+      "DeleteAPIKey"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "APIKeys",
+    "operations": [
+      "ListAPIKeys"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAPIKeys"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAPIKeys": "working"
+    },
+    "working_untested": [
+      "ListAPIKeys"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DecryptedAPIKey",
+    "operations": [
+      "GetDecryptedAPIKey"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDecryptedAPIKey"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDecryptedAPIKey": "working"
+    },
+    "working_untested": [
+      "GetDecryptedAPIKey"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "IPSets",
+    "operations": [
+      "ListIPSets"
+    ],
+    "tested": [],
+    "untested": [
+      "ListIPSets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListIPSets": "working"
+    },
+    "working_untested": [
+      "ListIPSets"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ResourcesForWebACL",
+    "operations": [
+      "ListResourcesForWebACL"
+    ],
+    "tested": [],
+    "untested": [
+      "ListResourcesForWebACL"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListResourcesForWebACL": "working"
+    },
+    "working_untested": [
+      "ListResourcesForWebACL"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "WebACLForResource",
+    "operations": [
+      "GetWebACLForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWebACLForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWebACLForResource": "working"
+    },
+    "working_untested": [
+      "GetWebACLForResource"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TopPathStatisticsByTraffic",
+    "operations": [
+      "GetTopPathStatisticsByTraffic"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTopPathStatisticsByTraffic"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTopPathStatisticsByTraffic": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WebACLs",
+    "operations": [
+      "ListWebACLs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListWebACLs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListWebACLs": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,213 @@
+[
+  {
+    "noun": "Application",
+    "operations": [
+      "CreateApplication",
+      "DeleteApplication",
+      "UpdateApplication"
+    ],
+    "tested": [
+      "CreateApplication",
+      "DeleteApplication"
+    ],
+    "untested": [
+      "UpdateApplication"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateApplication": "working",
+      "DeleteApplication": "working",
+      "UpdateApplication": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ApplicationResourceLifecycle",
+    "operations": [
+      "UpdateApplicationResourceLifecycle"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateApplicationResourceLifecycle"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateApplicationResourceLifecycle": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ApplicationVersion",
+    "operations": [
+      "CreateApplicationVersion",
+      "DeleteApplicationVersion",
+      "UpdateApplicationVersion"
+    ],
+    "tested": [
+      "CreateApplicationVersion"
+    ],
+    "untested": [
+      "DeleteApplicationVersion",
+      "UpdateApplicationVersion"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateApplicationVersion": "working",
+      "DeleteApplicationVersion": "not_implemented",
+      "UpdateApplicationVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CheckDNSAvailability",
+    "operations": [
+      "CheckDNSAvailability"
+    ],
+    "tested": [],
+    "untested": [
+      "CheckDNSAvailability"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CheckDNSAvailability": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Environment",
+    "operations": [
+      "CreateEnvironment",
+      "TerminateEnvironment",
+      "UpdateEnvironment"
+    ],
+    "tested": [
+      "CreateEnvironment",
+      "UpdateEnvironment"
+    ],
+    "untested": [
+      "TerminateEnvironment"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateEnvironment": "working",
+      "TerminateEnvironment": "unknown",
+      "UpdateEnvironment": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EnvironmentConfiguration",
+    "operations": [
+      "DeleteEnvironmentConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteEnvironmentConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteEnvironmentConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EnvironmentOperationsRole",
+    "operations": [
+      "AssociateEnvironmentOperationsRole",
+      "DisassociateEnvironmentOperationsRole"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateEnvironmentOperationsRole",
+      "DisassociateEnvironmentOperationsRole"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "AssociateEnvironmentOperationsRole": "not_implemented",
+      "DisassociateEnvironmentOperationsRole": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RestartAppServer",
+    "operations": [
+      "RestartAppServer"
+    ],
+    "tested": [],
+    "untested": [
+      "RestartAppServer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RestartAppServer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StorageLocation",
+    "operations": [
+      "CreateStorageLocation"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateStorageLocation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateStorageLocation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SwapEnvironmentCNAMEs",
+    "operations": [
+      "SwapEnvironmentCNAMEs"
+    ],
+    "tested": [],
+    "untested": [
+      "SwapEnvironmentCNAMEs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SwapEnvironmentCNAMEs": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ValidateConfigurationSettings",
+    "operations": [
+      "ValidateConfigurationSettings"
+    ],
+    "tested": [],
+    "untested": [
+      "ValidateConfigurationSettings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ValidateConfigurationSettings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

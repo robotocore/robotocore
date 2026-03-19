@@ -1,0 +1,106 @@
+{
+  "service": "identitystore",
+  "counts": {
+    "working": 10,
+    "needs_params": 8,
+    "not_implemented": 1,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGroupMembership",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateUser",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGroupMembership",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeGroupMembership",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetGroupId",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetGroupMembershipId",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetUserId",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "IsMemberInGroups",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListGroupMemberships",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGroupMembershipsForMember",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateUser",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

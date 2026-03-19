@@ -1,0 +1,91 @@
+{
+  "service": "acm",
+  "counts": {
+    "working": 12,
+    "needs_params": 2,
+    "not_implemented": 2,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddTagsToCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ExportCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAccountConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportCertificate",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutAccountConfiguration",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "RemoveTagsFromCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RenewCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RequestCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResendValidationEmail",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RevokeCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateCertificateOptions",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

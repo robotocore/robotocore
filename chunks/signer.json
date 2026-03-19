@@ -1,0 +1,19 @@
+[
+  {
+    "noun": "RevocationStatus",
+    "operations": [
+      "GetRevocationStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetRevocationStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetRevocationStatus": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

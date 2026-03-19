@@ -1,0 +1,3771 @@
+{
+  "service": "ec2",
+  "counts": {
+    "working": 449,
+    "needs_params": 6,
+    "not_implemented": 278,
+    "500_error": 19
+  },
+  "operations": [
+    {
+      "operation": "AcceptAddressTransfer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AcceptCapacityReservationBillingOwnership",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AcceptReservedInstancesExchangeQuote",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AcceptTransitGatewayMulticastDomainAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AcceptTransitGatewayPeeringAttachment",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "AcceptTransitGatewayVpcAttachment",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AcceptVpcEndpointConnections",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AcceptVpcPeeringConnection",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "AdvertiseByoipCidr",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AllocateAddress",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AllocateHosts",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object cannot be interpreted as an integer)"
+    },
+    {
+      "operation": "AllocateIpamPoolCidr",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "ApplySecurityGroupsToClientVpnTargetNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssignIpv6Addresses",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AssignPrivateIpAddresses",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AssignPrivateNatGatewayAddress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateAddress",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "AssociateCapacityReservationBillingOwner",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateClientVpnTargetNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateDhcpOptions",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "AssociateEnclaveCertificateIamRole",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateIamInstanceProfile",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AssociateInstanceEventWindow",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "AssociateIpamByoasn",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateIpamResourceDiscovery",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateNatGatewayAddress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateRouteServer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AssociateSecurityGroupVpc",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateSubnetCidrBlock",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AssociateTransitGatewayMulticastDomain",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateTransitGatewayPolicyTable",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateTransitGatewayRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "AssociateTrunkInterface",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateVpcCidrBlock",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "AttachClassicLinkVpc",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AttachInternetGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidInternetGatewayID.NotFound: InternetGatewayID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "AttachNetworkInterface",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AttachVerifiedAccessTrustProvider",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AttachVolume",
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "AttachVpnGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidVpnGatewayID.NotFound: The virtual private gateway ID 'probe-test-value' does not e)"
+    },
+    {
+      "operation": "AuthorizeClientVpnIngress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AuthorizeSecurityGroupEgress",
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "AuthorizeSecurityGroupIngress",
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+    },
+    {
+      "operation": "BundleInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelBundleTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelCapacityReservation",
+      "status": "working",
+      "message": "likely implemented (InvalidCapacityReservationId.NotFound: The capacity reservation ID 'probe-test-value' does not exis)"
+    },
+    {
+      "operation": "CancelCapacityReservationFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelConversionTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelDeclarativePoliciesReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelExportTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelImageLaunchPermission",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelImportTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelReservedInstancesListing",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelSpotFleetRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelSpotInstanceRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ConfirmProductInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CopyFpgaImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CopyImage",
+      "status": "working",
+      "message": "likely implemented (InvalidAMIID.Malformed: Invalid id: \"probe-test-value\" (expecting \"ami-...\"))"
+    },
+    {
+      "operation": "CopySnapshot",
+      "status": "working",
+      "message": "likely implemented (InvalidSnapshot.NotFound: )"
+    },
+    {
+      "operation": "CopyVolumes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCapacityManagerDataExport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCapacityReservation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCapacityReservationBySplitting",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCapacityReservationFleet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCarrierGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateClientVpnEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateClientVpnRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCoipCidr",
+      "status": "working",
+      "message": "likely implemented (InvalidCoipPoolId.NotFound: The coip pool ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateCoipPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCustomerGateway",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDefaultSubnet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDefaultVpc",
+      "status": "working",
+      "message": "likely implemented (DefaultVpcAlreadyExists: A Default VPC already exists for this account in this region)"
+    },
+    {
+      "operation": "CreateDelegateMacVolumeOwnershipTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateDhcpOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEgressOnlyInternetGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateFleet",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "CreateFlowLogs",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "CreateFpgaImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateImage",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateImageUsageReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateInstanceConnectEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateInstanceEventWindow",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInstanceExportTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateInternetGateway",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInterruptibleCapacityReservationAllocation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateIpam",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIpamExternalResourceVerificationToken",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateIpamPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateIpamPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIpamPrefixListResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateIpamPrefixListResolverTarget",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateIpamResourceDiscovery",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIpamScope",
+      "status": "working",
+      "message": "likely implemented (InvalidIpamId.NotFound: The IPAM ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateKeyPair",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLaunchTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLaunchTemplateVersion",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot access local variable 'template' where it is not asso)"
+    },
+    {
+      "operation": "CreateLocalGatewayRoute",
+      "status": "working",
+      "message": "likely implemented (InvalidLocalGatewayRouteTableId.NotFound: The local gateway route table ID 'probe-test-value' does not)"
+    },
+    {
+      "operation": "CreateLocalGatewayRouteTable",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLocalGatewayRouteTableVpcAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLocalGatewayVirtualInterface",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLocalGatewayVirtualInterfaceGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateMacSystemIntegrityProtectionModificationTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateManagedPrefixList",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNatGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'None' does not exist)"
+    },
+    {
+      "operation": "CreateNetworkAcl",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateNetworkAclEntry",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateNetworkInsightsAccessScope",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNetworkInsightsPath",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNetworkInterface",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateNetworkInterfacePermission",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreatePlacementGroup",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "CreatePublicIpv4Pool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReplaceRootVolumeTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReservedInstancesListing",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRestoreImageTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRoute",
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateRouteServer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRouteServerEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRouteServerPeer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateSecondaryNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSecondarySubnet",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSecurityGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSnapshot",
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "CreateSnapshots",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateSpotDatafeedSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStoreImageTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSubnet",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateSubnetCidrReservation",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateTags",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "CreateTrafficMirrorFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrafficMirrorFilterRule",
+      "status": "working",
+      "message": "likely implemented (InvalidTrafficMirrorFilterId.NotFound: The traffic mirror filter ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "CreateTrafficMirrorSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrafficMirrorTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransitGateway",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransitGatewayConnect",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransitGatewayConnectPeer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransitGatewayMeteringPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTransitGatewayMeteringPolicyEntry",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTransitGatewayMulticastDomain",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTransitGatewayPeeringAttachment",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "CreateTransitGatewayPolicyTable",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTransitGatewayPrefixListReference",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransitGatewayRoute",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "CreateTransitGatewayRouteTable",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTransitGatewayRouteTableAnnouncement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTransitGatewayVpcAttachment",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayID.NotFound: Transit Gateway probe-test-value was deleted or does not exi)"
+    },
+    {
+      "operation": "CreateVerifiedAccessEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVerifiedAccessGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVerifiedAccessInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVerifiedAccessTrustProvider",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVolume",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "CreateVpc",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateVpcBlockPublicAccessExclusion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVpcEncryptionControl",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVpcEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateVpcEndpointConnectionNotification",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVpcEndpointServiceConfiguration",
+      "status": "working",
+      "message": "implemented (InvalidParameter)"
+    },
+    {
+      "operation": "CreateVpcPeeringConnection",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "CreateVpnConcentrator",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVpnConnection",
+      "status": "working",
+      "message": "likely implemented (InvalidCustomerGatewayID.NotFound: The customerGateway ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "CreateVpnConnectionRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVpnGateway",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCapacityManagerDataExport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCarrierGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidCarrierGatewayID.NotFound: The CarrierGateway ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteClientVpnEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidClientVpnEndpointId.NotFound: The Client VPN endpoint ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteClientVpnRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCoipCidr",
+      "status": "working",
+      "message": "likely implemented (InvalidCoipPoolId.NotFound: The coip pool ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteCoipPool",
+      "status": "working",
+      "message": "likely implemented (InvalidCoipPoolId.NotFound: The coip pool ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteCustomerGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidCustomerGatewayID.NotFound: The customerGateway ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteDhcpOptions",
+      "status": "working",
+      "message": "likely implemented (InvalidDhcpOptionsId.Malformed: Invalid id: \"probe-test-value\" (expecting \"dopt-...\"))"
+    },
+    {
+      "operation": "DeleteEgressOnlyInternetGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidGatewayID.NotFound: The eigw ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFlowLogs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFpgaImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteImageUsageReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteInstanceConnectEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceConnectEndpointId.NotFound: The instance connect endpoint ID 'probe-test-value' does not)"
+    },
+    {
+      "operation": "DeleteInstanceEventWindow",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "DeleteInternetGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidInternetGatewayID.NotFound: InternetGatewayID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DeleteIpam",
+      "status": "working",
+      "message": "likely implemented (InvalidIpamId.NotFound: The IPAM ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteIpamExternalResourceVerificationToken",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIpamPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIpamPool",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "DeleteIpamPrefixListResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIpamPrefixListResolverTarget",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIpamResourceDiscovery",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIpamScope",
+      "status": "working",
+      "message": "likely implemented (InvalidIpamScopeId.NotFound: The IPAM scope ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteKeyPair",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLaunchTemplate",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "DeleteLaunchTemplateVersions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLocalGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLocalGatewayRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidLocalGatewayRouteTableId.NotFound: The local gateway route table ID 'probe-test-value' does not)"
+    },
+    {
+      "operation": "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLocalGatewayRouteTableVpcAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLocalGatewayVirtualInterface",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLocalGatewayVirtualInterfaceGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteManagedPrefixList",
+      "status": "working",
+      "message": "likely implemented (InvalidPrefixListID.NotFound: The prefix list ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteNatGateway",
+      "status": "working",
+      "message": "likely implemented (NatGatewayNotFound: The natGateway ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteNetworkAcl",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteNetworkAclEntry",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteNetworkInsightsAccessScope",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInsightsAccessScopeId.NotFound: The network insights access scope ID 'probe-test-value' does)"
+    },
+    {
+      "operation": "DeleteNetworkInsightsAccessScopeAnalysis",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteNetworkInsightsAnalysis",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteNetworkInsightsPath",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInsightsPathId.NotFound: The network insights path ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "DeleteNetworkInterface",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteNetworkInterfacePermission",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeletePlacementGroup",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidPlacementGroup.Unknown)"
+    },
+    {
+      "operation": "DeletePublicIpv4Pool",
+      "status": "working",
+      "message": "likely implemented (InvalidPublicIpv4PoolID.NotFound: The public IPv4 pool ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteQueuedReservedInstances",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteRoute",
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteRouteServer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteRouteServerEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteRouteServerPeer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteSecondaryNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteSecondarySubnet",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteSnapshot",
+      "status": "working",
+      "message": "likely implemented (InvalidSnapshot.NotFound: )"
+    },
+    {
+      "operation": "DeleteSpotDatafeedSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSubnetCidrReservation",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetCidrReservationID.NotFound: The subnet-cidr-reservation ID 'probe-test-value' does not e)"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "DeleteTrafficMirrorFilter",
+      "status": "working",
+      "message": "likely implemented (InvalidTrafficMirrorFilterId.NotFound: The traffic mirror filter ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "DeleteTrafficMirrorFilterRule",
+      "status": "working",
+      "message": "likely implemented (InvalidTrafficMirrorFilterRuleId.NotFound: The traffic mirror filter rule ID 'probe-test-value' does no)"
+    },
+    {
+      "operation": "DeleteTrafficMirrorSession",
+      "status": "working",
+      "message": "likely implemented (InvalidTrafficMirrorSessionId.NotFound: The traffic mirror session ID 'probe-test-value' does not ex)"
+    },
+    {
+      "operation": "DeleteTrafficMirrorTarget",
+      "status": "working",
+      "message": "likely implemented (InvalidTrafficMirrorTargetId.NotFound: The traffic mirror target ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "DeleteTransitGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayID.NotFound: The transitGateway ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteTransitGatewayConnect",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "DeleteTransitGatewayConnectPeer",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayConnectPeerId.NotFound: The transitGatewayConnectPeer ID 'probe-test-value' does not)"
+    },
+    {
+      "operation": "DeleteTransitGatewayMeteringPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTransitGatewayMeteringPolicyEntry",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTransitGatewayMulticastDomain",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTransitGatewayPeeringAttachment",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "DeleteTransitGatewayPolicyTable",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTransitGatewayPrefixListReference",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTransitGatewayRoute",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeleteTransitGatewayRouteTable",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeleteTransitGatewayRouteTableAnnouncement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTransitGatewayVpcAttachment",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "DeleteVerifiedAccessEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidVerifiedAccessEndpointId.NotFound: The verified access endpoint ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "DeleteVerifiedAccessGroup",
+      "status": "working",
+      "message": "likely implemented (InvalidVerifiedAccessGroupId.NotFound: The verified access group ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "DeleteVerifiedAccessInstance",
+      "status": "working",
+      "message": "likely implemented (InvalidVerifiedAccessInstanceId.NotFound: The verified access instance ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "DeleteVerifiedAccessTrustProvider",
+      "status": "working",
+      "message": "likely implemented (InvalidVerifiedAccessTrustProviderId.NotFound: The verified access trust provider ID 'probe-test-value' doe)"
+    },
+    {
+      "operation": "DeleteVolume",
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DeleteVpcBlockPublicAccessExclusion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVpcEncryptionControl",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVpcEndpointConnectionNotifications",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVpcEndpointServiceConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteVpcEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteVpcPeeringConnection",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DeleteVpnConcentrator",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVpnConnection",
+      "status": "working",
+      "message": "likely implemented (InvalidVpnConnectionID.NotFound: The vpnConnection ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeleteVpnConnectionRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVpnGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidVpnGatewayID.NotFound: The virtual private gateway ID 'probe-test-value' does not e)"
+    },
+    {
+      "operation": "DeprovisionByoipCidr",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeprovisionIpamByoasn",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeprovisionIpamPoolCidr",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "DeprovisionPublicIpv4PoolCidr",
+      "status": "working",
+      "message": "likely implemented (InvalidPublicIpv4PoolID.NotFound: The public IPv4 pool ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DeregisterImage",
+      "status": "working",
+      "message": "likely implemented (InvalidAMIID.NotFound: The image id '[probe-test-value]' does not exist)"
+    },
+    {
+      "operation": "DeregisterInstanceEventNotificationAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeregisterTransitGatewayMulticastGroupMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterTransitGatewayMulticastGroupSources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAddressTransfers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAddresses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAddressesAttribute",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAggregateIdFormat",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAvailabilityZones",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAwsNetworkPerformanceMetricSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBundleTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeByoipCidrs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityBlockExtensionHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityBlockExtensionOfferings",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeCapacityBlockOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityBlockStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityBlocks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityManagerDataExports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityReservationBillingRequests",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeCapacityReservationFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityReservationTopology",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityReservations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCarrierGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClassicLinkInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClientVpnAuthorizationRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClientVpnConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClientVpnEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClientVpnRoutes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClientVpnTargetNetworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCoipPools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConversionTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCustomerGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeclarativePoliciesReports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDhcpOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEgressOnlyInternetGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeElasticGpus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeExportImageTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeExportTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFastLaunchImages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFastSnapshotRestores",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFlowLogs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFpgaImageAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeFpgaImages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHostReservationOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHostReservations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHosts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIamInstanceProfileAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIdFormat",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIdentityIdFormat",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeImageAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: The request received was invalid)"
+    },
+    {
+      "operation": "DescribeImageReferences",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeImageUsageReportEntries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeImageUsageReports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeImages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeImportImageTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeImportSnapshotTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceAttribute",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "DescribeInstanceConnectEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceCreditSpecifications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceEventNotificationAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceEventWindows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceImageMetadata",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceSqlHaHistoryStates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceSqlHaStates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceTopology",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceTypeOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInternetGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamByoasn",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamExternalResourceVerificationTokens",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamPools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamPrefixListResolverTargets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamPrefixListResolvers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamResourceDiscoveries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamResourceDiscoveryAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpamScopes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpams",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIpv6Pools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeKeyPairs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLaunchTemplateVersions",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "DescribeLaunchTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLocalGatewayRouteTableVpcAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLocalGatewayRouteTables",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLocalGatewayVirtualInterfaceGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLocalGatewayVirtualInterfaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLocalGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLockedSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMacHosts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMacModificationTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeManagedPrefixLists",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMovingAddresses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNatGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkAcls",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkInsightsAccessScopeAnalyses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkInsightsAccessScopes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkInsightsAnalyses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkInsightsPaths",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkInterfaceAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DescribeNetworkInterfacePermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNetworkInterfaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOutpostLags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePlacementGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePrefixLists",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePrincipalIdFormat",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePublicIpv4Pools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRegions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplaceRootVolumeTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedInstancesListings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedInstancesModifications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedInstancesOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRouteServerEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRouteServerPeers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRouteServers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRouteTables",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeScheduledInstanceAvailability",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeScheduledInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecondaryInterfaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecondaryNetworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecondarySubnets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecurityGroupReferences",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeSecurityGroupRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecurityGroupVpcAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecurityGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeServiceLinkVirtualInterfaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSnapshotAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidSnapshot.NotFound: )"
+    },
+    {
+      "operation": "DescribeSnapshotTierStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSpotDatafeedSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSpotFleetInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSpotFleetRequestHistory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeSpotFleetRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSpotInstanceRequests",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSpotPriceHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStaleSecurityGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStoreImageTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSubnets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrafficMirrorFilterRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrafficMirrorFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrafficMirrorSessions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrafficMirrorTargets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayAttachments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayConnectPeers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayConnects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayMeteringPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayMulticastDomains",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayPeeringAttachments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayPolicyTables",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayRouteTableAnnouncements",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayRouteTables",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGatewayVpcAttachments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTransitGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrunkInterfaceAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVerifiedAccessEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVerifiedAccessGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVerifiedAccessInstanceLoggingConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVerifiedAccessInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVerifiedAccessTrustProviders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVolumeAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "DescribeVolumeStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVolumes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVolumesModifications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DescribeVpcBlockPublicAccessExclusions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcBlockPublicAccessOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcClassicLink",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcClassicLinkDnsSupport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEncryptionControls",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpointAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpointConnectionNotifications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpointConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpointServiceConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpointServicePermissions",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "DescribeVpcEndpointServices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcPeeringConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpcs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpnConcentrators",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpnConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeVpnGateways",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DetachClassicLinkVpc",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DetachInternetGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidInternetGatewayID.NotFound: InternetGatewayID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DetachNetworkInterface",
+      "status": "working",
+      "message": "likely implemented (InvalidAttachmentID.NotFound: The network interface attachment ID 'probe-test-value' does )"
+    },
+    {
+      "operation": "DetachVerifiedAccessTrustProvider",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DetachVolume",
+      "status": "500_error",
+      "message": "server crash (InternalError: InvalidVolume.NotFound: The volume 'probe-test-value' does n)"
+    },
+    {
+      "operation": "DetachVpnGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidVpnGatewayID.NotFound: The virtual private gateway ID 'probe-test-value' does not e)"
+    },
+    {
+      "operation": "DisableAddressTransfer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableAllowedImagesSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableAwsNetworkPerformanceMetricSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableCapacityManager",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableEbsEncryptionByDefault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableFastLaunch",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableFastSnapshotRestores",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableImageBlockPublicAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableImageDeprecation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableImageDeregistrationProtection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableInstanceSqlHaStandbyDetections",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DisableIpamOrganizationAdminAccount",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableIpamPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableRouteServerPropagation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableSerialConsoleAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableSnapshotBlockPublicAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableTransitGatewayRouteTablePropagation",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'None' does not exist)"
+    },
+    {
+      "operation": "DisableVgwRoutePropagation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisableVpcClassicLink",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DisableVpcClassicLinkDnsSupport",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID None does not exist.)"
+    },
+    {
+      "operation": "DisassociateAddress",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "DisassociateCapacityReservationBillingOwner",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateClientVpnTargetNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateEnclaveCertificateIamRole",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateIamInstanceProfile",
+      "status": "working",
+      "message": "likely implemented (InvalidAssociationID.NotFound: An invalid association-id of 'probe-test-value' was given)"
+    },
+    {
+      "operation": "DisassociateInstanceEventWindow",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "DisassociateIpamByoasn",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateIpamResourceDiscovery",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateNatGatewayAddress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateRouteServer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidAssociationID.NotFound: Association ID 'probe-test-value' not found.)"
+    },
+    {
+      "operation": "DisassociateSecurityGroupVpc",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateSubnetCidrBlock",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetCidrBlockAssociationID.NotFound: The subnet CIDR block with association ID 'probe-test-value')"
+    },
+    {
+      "operation": "DisassociateTransitGatewayMulticastDomain",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateTransitGatewayPolicyTable",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateTransitGatewayRouteTable",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "DisassociateTrunkInterface",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateVpcCidrBlock",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcCidrBlockAssociationIdError.NotFound: The vpc CIDR block association ID 'probe-test-value' does no)"
+    },
+    {
+      "operation": "EnableAddressTransfer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableAllowedImagesSettings",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableAwsNetworkPerformanceMetricSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableCapacityManager",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableEbsEncryptionByDefault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableFastLaunch",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableFastSnapshotRestores",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableImageBlockPublicAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableImageDeprecation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableImageDeregistrationProtection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableInstanceSqlHaStandbyDetections",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "EnableIpamOrganizationAdminAccount",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableIpamPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableReachabilityAnalyzerOrganizationSharing",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableRouteServerPropagation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableSerialConsoleAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableSnapshotBlockPublicAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableTransitGatewayRouteTablePropagation",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'None' does not exist)"
+    },
+    {
+      "operation": "EnableVgwRoutePropagation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableVolumeIO",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableVpcClassicLink",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "EnableVpcClassicLinkDnsSupport",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID None does not exist.)"
+    },
+    {
+      "operation": "ExportClientVpnClientCertificateRevocationList",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExportClientVpnClientConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExportImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExportTransitGatewayRoutes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExportVerifiedAccessInstanceClientConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetActiveVpnTunnelStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAllowedImagesSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAssociatedEnclaveCertificateIamRoles",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAssociatedIpv6PoolCidrs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAwsNetworkPerformanceData",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCapacityManagerAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCapacityManagerMetricData",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCapacityManagerMetricDimensions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCapacityReservationUsage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCoipPoolUsage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetConsoleOutput",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "GetConsoleScreenshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetDeclarativePoliciesReportSummary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDefaultCreditSpecification",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetEbsDefaultKmsKeyId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEbsEncryptionByDefault",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEnabledIpamPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFlowLogsIntegrationTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetGroupsForCapacityReservation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetHostReservationPurchasePreview",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetImageAncestry",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetImageBlockPublicAccessState",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInstanceMetadataDefaults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInstanceTpmEkPub",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetInstanceTypesFromInstanceRequirements",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetInstanceUefiData",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "GetIpamAddressHistory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamDiscoveredAccounts",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamDiscoveredPublicAddresses",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamDiscoveredResourceCidrs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamPolicyAllocationRules",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamPolicyOrganizationTargets",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamPoolAllocations",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "GetIpamPoolCidrs",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "GetIpamPrefixListResolverRules",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamPrefixListResolverVersionEntries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamPrefixListResolverVersions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIpamResourceCidrs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLaunchTemplateData",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "GetManagedPrefixListAssociations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetManagedPrefixListEntries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetNetworkInsightsAccessScopeAnalysisFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetNetworkInsightsAccessScopeContent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPasswordData",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "GetReservedInstancesExchangeQuote",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRouteServerAssociations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRouteServerPropagations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRouteServerRoutingDatabase",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetSecurityGroupsForVpc",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetSerialConsoleAccessStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSnapshotBlockPublicAccessState",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSpotPlacementScores",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetSubnetCidrReservations",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "GetTransitGatewayAttachmentPropagations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTransitGatewayMeteringPolicyEntries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTransitGatewayMulticastDomainAssociations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTransitGatewayPolicyTableAssociations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTransitGatewayPolicyTableEntries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTransitGatewayPrefixListReferences",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTransitGatewayRouteTableAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTransitGatewayRouteTablePropagations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetVerifiedAccessEndpointPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetVerifiedAccessEndpointTargets",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetVerifiedAccessGroupPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetVpcResourcesBlockingEncryptionEnforcement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetVpnConnectionDeviceSampleConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetVpnConnectionDeviceTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetVpnTunnelReplacementStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ImportClientVpnClientCertificateRevocationList",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ImportImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ImportInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ImportKeyPair",
+      "status": "working",
+      "message": "likely implemented (InvalidKeyPair.Duplicate: The keypair 'probe-test-value' already exists.)"
+    },
+    {
+      "operation": "ImportSnapshot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ImportVolume",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListImagesInRecycleBin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSnapshotsInRecycleBin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVolumesInRecycleBin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "LockSnapshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyAddressAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyAvailabilityZoneGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyCapacityReservation",
+      "status": "working",
+      "message": "likely implemented (InvalidCapacityReservationId.NotFound: The capacity reservation ID 'probe-test-value' does not exis)"
+    },
+    {
+      "operation": "ModifyCapacityReservationFleet",
+      "status": "working",
+      "message": "likely implemented (InvalidCapacityReservationFleetId.NotFound: The capacity reservation fleet ID 'probe-test-value' does no)"
+    },
+    {
+      "operation": "ModifyClientVpnEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidClientVpnEndpointId.NotFound: The Client VPN endpoint ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyDefaultCreditSpecification",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyEbsDefaultKmsKeyId",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ModifyFleet",
+      "status": "working",
+      "message": "likely implemented (InvalidFleetId.NotFound: The fleet ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyFpgaImageAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyHosts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyIdFormat",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIdentityIdFormat",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyImageAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidAMIID.Malformed: Invalid id: \"probe-test-value\" (expecting \"ami-...\"))"
+    },
+    {
+      "operation": "ModifyInstanceAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyInstanceCapacityReservationAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstanceConnectEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstanceCpuOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstanceCreditSpecification",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstanceEventStartTime",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstanceEventWindow",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+    },
+    {
+      "operation": "ModifyInstanceMaintenanceOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstanceMetadataDefaults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyInstanceMetadataOptions",
+      "status": "working",
+      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyInstanceNetworkPerformanceOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyInstancePlacement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpam",
+      "status": "working",
+      "message": "likely implemented (InvalidIpamId.NotFound: The IPAM ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyIpamPolicyAllocationRules",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpamPool",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "ModifyIpamPrefixListResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpamPrefixListResolverTarget",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpamResourceCidr",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpamResourceDiscovery",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpamScope",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyLaunchTemplate",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "ModifyLocalGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyManagedPrefixList",
+      "status": "working",
+      "message": "likely implemented (InvalidPrefixListID.NotFound: The prefix list ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyNetworkInterfaceAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyPrivateDnsNameOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyPublicIpDnsNameOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyReservedInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyRouteServer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifySecurityGroupRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifySnapshotAttribute",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifySnapshotTier",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifySpotFleetRequest",
+      "status": "500_error",
+      "message": "server crash (InternalError: '<' not supported between instances of 'NoneType' and 'int')"
+    },
+    {
+      "operation": "ModifySubnetAttribute",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyTrafficMirrorFilterNetworkServices",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyTrafficMirrorFilterRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyTrafficMirrorSession",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyTransitGateway",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayID.NotFound: The transitGateway ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyTransitGatewayMeteringPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyTransitGatewayPrefixListReference",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyTransitGatewayVpcAttachment",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "ModifyVerifiedAccessEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVerifiedAccessEndpointPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVerifiedAccessGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVerifiedAccessGroupPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVerifiedAccessInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVerifiedAccessInstanceLoggingConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVerifiedAccessTrustProvider",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVolume",
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "ModifyVolumeAttribute",
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "ModifyVpcAttribute",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyVpcBlockPublicAccessExclusion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpcBlockPublicAccessOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpcEncryptionControl",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpcEndpoint",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcEndpointId.NotFound: The VpcEndPoint ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyVpcEndpointConnectionNotification",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpcEndpointServiceConfiguration",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyVpcEndpointServicePayerResponsibility",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpcEndpointServicePermissions",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ModifyVpcPeeringConnectionOptions",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "ModifyVpcTenancy",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "ModifyVpnConnection",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpnConnectionOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpnTunnelCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyVpnTunnelOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "MonitorInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "MoveAddressToVpc",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "MoveByoipCidrToIpam",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "MoveCapacityReservationInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ProvisionByoipCidr",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ProvisionIpamByoasn",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ProvisionIpamPoolCidr",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "ProvisionPublicIpv4PoolCidr",
+      "status": "working",
+      "message": "likely implemented (InvalidPublicIpv4PoolID.NotFound: The public IPv4 pool ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "PurchaseCapacityBlock",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PurchaseCapacityBlockExtension",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PurchaseHostReservation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PurchaseReservedInstancesOffering",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PurchaseScheduledInstances",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RebootInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterInstanceEventNotificationAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RegisterTransitGatewayMulticastGroupMembers",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RegisterTransitGatewayMulticastGroupSources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RejectCapacityReservationBillingOwnership",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RejectTransitGatewayMulticastDomainAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RejectTransitGatewayPeeringAttachment",
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+    },
+    {
+      "operation": "RejectTransitGatewayVpcAttachment",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RejectVpcEndpointConnections",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "RejectVpcPeeringConnection",
+      "status": "working",
+      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "ReleaseAddress",
+      "status": "working",
+      "message": "implemented (MissingParameter)"
+    },
+    {
+      "operation": "ReleaseHosts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReleaseIpamPoolAllocation",
+      "status": "500_error",
+      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+    },
+    {
+      "operation": "ReplaceIamInstanceProfileAssociation",
+      "status": "working",
+      "message": "likely implemented (InvalidAssociationID.NotFound: An invalid association-id of 'probe-test-value' was given)"
+    },
+    {
+      "operation": "ReplaceImageCriteriaInAllowedImagesSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReplaceNetworkAclAssociation",
+      "status": "working",
+      "message": "likely implemented (InvalidAssociationID.NotFound: Association ID 'probe-test-value' not found.)"
+    },
+    {
+      "operation": "ReplaceNetworkAclEntry",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ReplaceRoute",
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ReplaceRouteTableAssociation",
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "ReplaceTransitGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ReplaceVpnTunnel",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ReportInstanceStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RequestSpotFleet",
+      "status": "500_error",
+      "message": "server crash (InternalError: list index out of range)"
+    },
+    {
+      "operation": "RequestSpotInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResetAddressAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetEbsDefaultKmsKeyId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResetFpgaImageAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetImageAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetInstanceAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetNetworkInterfaceAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetSnapshotAttribute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreAddressToClassic",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreImageFromRecycleBin",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreManagedPrefixListVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreSnapshotFromRecycleBin",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreSnapshotTier",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreVolumeFromRecycleBin",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RevokeClientVpnIngress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RevokeSecurityGroupEgress",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RevokeSecurityGroupIngress",
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+    },
+    {
+      "operation": "RunInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RunScheduledInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SearchLocalGatewayRoutes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchTransitGatewayMulticastGroups",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SearchTransitGatewayRoutes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendDiagnosticInterrupt",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartDeclarativePoliciesReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartNetworkInsightsAccessScopeAnalysis",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInsightsAccessScopeId.NotFound: The network insights access scope ID 'probe-test-value' does)"
+    },
+    {
+      "operation": "StartNetworkInsightsAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartVpcEndpointServicePrivateDnsVerification",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TerminateClientVpnConnections",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UnassignIpv6Addresses",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "UnassignPrivateIpAddresses",
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+    },
+    {
+      "operation": "UnassignPrivateNatGatewayAddress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UnlockSnapshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UnmonitorInstances",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateCapacityManagerOrganizationsAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateInterruptibleCapacityReservationAllocation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateSecurityGroupRuleDescriptionsEgress",
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+    },
+    {
+      "operation": "UpdateSecurityGroupRuleDescriptionsIngress",
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+    },
+    {
+      "operation": "WithdrawByoipCidr",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

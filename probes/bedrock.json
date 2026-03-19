@@ -1,0 +1,501 @@
+{
+  "service": "bedrock",
+  "counts": {
+    "working": 87,
+    "needs_params": 11,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchDeleteEvaluationJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CancelAutomatedReasoningPolicyBuildWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateAutomatedReasoningPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAutomatedReasoningPolicyTestCase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateAutomatedReasoningPolicyVersion",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateCustomModel",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateCustomModelDeployment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEvaluationJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateFoundationModelAgreement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGuardrail",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGuardrailVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateInferenceProfile",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateMarketplaceModelEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateModelCopyJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateModelCustomizationJob",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateModelImportJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateModelInvocationJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreatePromptRouter",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateProvisionedModelThroughput",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAutomatedReasoningPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAutomatedReasoningPolicyBuildWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAutomatedReasoningPolicyTestCase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCustomModel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCustomModelDeployment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteEnforcedGuardrailConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFoundationModelAgreement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGuardrail",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteImportedModel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteInferenceProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteMarketplaceModelEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteModelInvocationLoggingConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePromptRouter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteProvisionedModelThroughput",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterMarketplaceModelEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ExportAutomatedReasoningPolicyVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicyAnnotations",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicyBuildWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicyBuildWorkflowResultAssets",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicyNextScenario",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicyTestCase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedReasoningPolicyTestResult",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCustomModel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCustomModelDeployment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetEvaluationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFoundationModel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFoundationModelAvailability",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetGuardrail",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetImportedModel",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetInferenceProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetMarketplaceModelEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetModelCopyJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetModelCustomizationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetModelImportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetModelInvocationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetModelInvocationLoggingConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPromptRouter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetProvisionedModelThroughput",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetUseCaseForModelAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAutomatedReasoningPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAutomatedReasoningPolicyBuildWorkflows",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAutomatedReasoningPolicyTestCases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAutomatedReasoningPolicyTestResults",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListCustomModelDeployments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCustomModels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEnforcedGuardrailsConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEvaluationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFoundationModelAgreementOffers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFoundationModels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGuardrails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListImportedModels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInferenceProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMarketplaceModelEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelCopyJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelCustomizationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelImportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListModelInvocationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPromptRouters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProvisionedModelThroughputs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutEnforcedGuardrailConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutModelInvocationLoggingConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutUseCaseForModelAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterMarketplaceModelEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartAutomatedReasoningPolicyBuildWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartAutomatedReasoningPolicyTestWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopEvaluationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopModelCustomizationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopModelInvocationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAutomatedReasoningPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAutomatedReasoningPolicyAnnotations",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateAutomatedReasoningPolicyTestCase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateCustomModelDeployment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateGuardrail",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateMarketplaceModelEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateProvisionedModelThroughput",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

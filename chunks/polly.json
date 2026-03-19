@@ -1,0 +1,39 @@
+[
+  {
+    "noun": "SpeechSynthesisTask",
+    "operations": [
+      "GetSpeechSynthesisTask",
+      "StartSpeechSynthesisTask"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSpeechSynthesisTask",
+      "StartSpeechSynthesisTask"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetSpeechSynthesisTask": "not_implemented",
+      "StartSpeechSynthesisTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SpeechSynthesisTasks",
+    "operations": [
+      "ListSpeechSynthesisTasks"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSpeechSynthesisTasks"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSpeechSynthesisTasks": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

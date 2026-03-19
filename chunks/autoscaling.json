@@ -1,0 +1,131 @@
+[
+  {
+    "noun": "CompleteLifecycleAction",
+    "operations": [
+      "CompleteLifecycleAction"
+    ],
+    "tested": [],
+    "untested": [
+      "CompleteLifecycleAction"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CompleteLifecycleAction": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LaunchInstances",
+    "operations": [
+      "LaunchInstances"
+    ],
+    "tested": [],
+    "untested": [
+      "LaunchInstances"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "LaunchInstances": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MetricsCollection",
+    "operations": [
+      "DisableMetricsCollection",
+      "EnableMetricsCollection"
+    ],
+    "tested": [
+      "EnableMetricsCollection"
+    ],
+    "untested": [
+      "DisableMetricsCollection"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DisableMetricsCollection": "not_implemented",
+      "EnableMetricsCollection": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PredictiveScalingForecast",
+    "operations": [
+      "GetPredictiveScalingForecast"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPredictiveScalingForecast"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPredictiveScalingForecast": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RecordLifecycleActionHeartbeat",
+    "operations": [
+      "RecordLifecycleActionHeartbeat"
+    ],
+    "tested": [],
+    "untested": [
+      "RecordLifecycleActionHeartbeat"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RecordLifecycleActionHeartbeat": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RollbackInstanceRefresh",
+    "operations": [
+      "RollbackInstanceRefresh"
+    ],
+    "tested": [],
+    "untested": [
+      "RollbackInstanceRefresh"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RollbackInstanceRefresh": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TrafficSources",
+    "operations": [
+      "AttachTrafficSources",
+      "DescribeTrafficSources",
+      "DetachTrafficSources"
+    ],
+    "tested": [],
+    "untested": [
+      "AttachTrafficSources",
+      "DescribeTrafficSources",
+      "DetachTrafficSources"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "AttachTrafficSources": "not_implemented",
+      "DescribeTrafficSources": "not_implemented",
+      "DetachTrafficSources": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

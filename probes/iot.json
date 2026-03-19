@@ -1,0 +1,1371 @@
+{
+  "service": "iot",
+  "counts": {
+    "working": 216,
+    "needs_params": 21,
+    "not_implemented": 34,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AcceptCertificateTransfer",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "AddThingToBillingGroup",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "AddThingToThingGroup",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "AssociateSbomWithPackageVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateTargetsWithJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "AttachPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AttachPrincipalPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AttachSecurityProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AttachThingPrincipal",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CancelAuditMitigationActionsTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelAuditTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelCertificateTransfer",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CancelDetectMitigationActionsTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CancelJobExecution",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ClearDefaultAuthorizer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ConfirmTopicRuleDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAuditSuppression",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAuthorizer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBillingGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCertificateFromCsr",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreateCertificateProvider",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateCommand",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCustomMetric",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDimension",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDomainConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDynamicThingGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFleetMetric",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateJob",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateJobTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateKeysAndCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMitigationAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOTAUpdate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreatePackage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePackageVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePolicyVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProvisioningClaim",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateProvisioningTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProvisioningTemplateVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRoleAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateScheduledAudit",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSecurityProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStream",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateThing",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateThingGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateThingType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTopicRule",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreateTopicRuleDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccountAuditConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAuditSuppression",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAuthorizer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBillingGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCACertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteCertificateProvider",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCommand",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCommandExecution",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCustomMetric",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDimension",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDomainConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDynamicThingGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFleetMetric",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteJobExecution",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteJobTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMitigationAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteOTAUpdate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeletePackage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePackageVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePolicy",
+      "status": "working",
+      "message": "likely implemented (DeleteConflictException: Cannot delete the policy because it has one or more policy v)"
+    },
+    {
+      "operation": "DeletePolicyVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteProvisioningTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteProvisioningTemplateVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteRegistrationCode",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteRoleAlias",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteScheduledAudit",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSecurityProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteThing",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteThingGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteThingType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTopicRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTopicRuleDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteV2LoggingLevel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeprecateThingType",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAccountAuditConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAuditFinding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAuditMitigationActionsTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAuditSuppression",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAuditTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAuthorizer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeBillingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCACertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeCertificateProvider",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeCustomMetric",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDefaultAuthorizer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDetectMitigationActionsTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDimension",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDomainConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEncryptionConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetMetric",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeIndex",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeJobExecution",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeJobTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeManagedJobTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeMitigationAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProvisioningTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeProvisioningTemplateVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRoleAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeScheduledAudit",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeSecurityProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeThing",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeThingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeThingRegistrationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeThingType",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DetachPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DetachPrincipalPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DetachSecurityProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DetachThingPrincipal",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableTopicRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateSbomFromPackageVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableTopicRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetBehaviorModelTrainingSummaries",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetBucketsAggregation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCardinality",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCommand",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCommandExecution",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetEffectivePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIndexingConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetJobDocument",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLoggingOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetOTAUpdate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetPackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetPackageConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPackageVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetPercentiles",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPolicyVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRegistrationCode",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetThingConnectivityData",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTopicRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetTopicRuleDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetV2LoggingOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListActiveViolations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAttachedPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAuditFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAuditMitigationActionsExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAuditMitigationActionsTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAuditSuppressions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAuditTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAuthorizers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBillingGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCACertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCertificateProviders",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCertificatesByCA",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListCommandExecutions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListCommands",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListCustomMetrics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDetectMitigationActionsExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDetectMitigationActionsTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDimensions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDomainConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFleetMetrics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIndices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobExecutionsForJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobExecutionsForThing",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListManagedJobTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMetricValues",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMitigationActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOTAUpdates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOutgoingCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPackageVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListPackages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPolicyPrincipals",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPolicyVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPrincipalPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPrincipalThings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPrincipalThingsV2",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListProvisioningTemplateVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListProvisioningTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRelatedResourcesForAuditFinding",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRoleAliases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSbomValidationResults",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListScheduledAudits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityProfilesForTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStreams",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListTargetsForPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTargetsForSecurityProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThingGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListThingGroupsForThing",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThingPrincipals",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThingPrincipalsV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThingRegistrationTaskReports",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListThingRegistrationTasks",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListThingTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListThings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListThingsInBillingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListThingsInThingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTopicRuleDestinations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTopicRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListV2LoggingLevels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListViolationEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutVerificationStateOnViolation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RegisterCACertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterCertificateWithoutCA",
+      "status": "working",
+      "message": "likely implemented (ResourceAlreadyExistsException: The certificate is already provisioned or registered)"
+    },
+    {
+      "operation": "RegisterThing",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RejectCertificateTransfer",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RemoveThingFromBillingGroup",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "RemoveThingFromThingGroup",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ReplaceTopicRule",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "SearchIndex",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetDefaultAuthorizer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SetDefaultPolicyVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetLoggingOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetV2LoggingLevel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetV2LoggingOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAuditMitigationActionsTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartDetectMitigationActionsTask",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartOnDemandAuditTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartThingRegistrationTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopThingRegistrationTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "TestAuthorization",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TestInvokeAuthorizer",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TransferCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAccountAuditConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAuditSuppression",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAuthorizer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateBillingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateCACertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCertificate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCertificateProvider",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateCommand",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateCustomMetric",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDimension",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDomainConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDynamicThingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateEncryptionConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateEventConfigurations",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "UpdateFleetMetric",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateIndexingConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateMitigationAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdatePackage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdatePackageConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePackageVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProvisioningTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRoleAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateScheduledAudit",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateSecurityProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateThing",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateThingGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateThingGroupsForThing",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateThingType",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTopicRuleDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ValidateSecurityProfileBehaviors",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

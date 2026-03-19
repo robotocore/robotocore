@@ -1,0 +1,202 @@
+[
+  {
+    "noun": "AssociateCodeSecurityScanConfiguration",
+    "operations": [
+      "BatchAssociateCodeSecurityScanConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchAssociateCodeSecurityScanConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchAssociateCodeSecurityScanConfiguration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CisSessionTelemetry",
+    "operations": [
+      "SendCisSessionTelemetry"
+    ],
+    "tested": [],
+    "untested": [
+      "SendCisSessionTelemetry"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendCisSessionTelemetry": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeSecurityIntegration",
+    "operations": [
+      "CreateCodeSecurityIntegration",
+      "DeleteCodeSecurityIntegration",
+      "GetCodeSecurityIntegration",
+      "UpdateCodeSecurityIntegration"
+    ],
+    "tested": [
+      "CreateCodeSecurityIntegration",
+      "DeleteCodeSecurityIntegration",
+      "GetCodeSecurityIntegration"
+    ],
+    "untested": [
+      "UpdateCodeSecurityIntegration"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCodeSecurityIntegration": "working",
+      "DeleteCodeSecurityIntegration": "working",
+      "GetCodeSecurityIntegration": "working",
+      "UpdateCodeSecurityIntegration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeSecurityScan",
+    "operations": [
+      "GetCodeSecurityScan",
+      "StartCodeSecurityScan"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCodeSecurityScan",
+      "StartCodeSecurityScan"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetCodeSecurityScan": "needs_params",
+      "StartCodeSecurityScan": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeSecurityScanConfiguration",
+    "operations": [
+      "CreateCodeSecurityScanConfiguration",
+      "DeleteCodeSecurityScanConfiguration",
+      "GetCodeSecurityScanConfiguration",
+      "UpdateCodeSecurityScanConfiguration"
+    ],
+    "tested": [
+      "DeleteCodeSecurityScanConfiguration",
+      "GetCodeSecurityScanConfiguration"
+    ],
+    "untested": [
+      "CreateCodeSecurityScanConfiguration",
+      "UpdateCodeSecurityScanConfiguration"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateCodeSecurityScanConfiguration": "needs_params",
+      "DeleteCodeSecurityScanConfiguration": "working",
+      "GetCodeSecurityScanConfiguration": "working",
+      "UpdateCodeSecurityScanConfiguration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DisassociateCodeSecurityScanConfiguration",
+    "operations": [
+      "BatchDisassociateCodeSecurityScanConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDisassociateCodeSecurityScanConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDisassociateCodeSecurityScanConfiguration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Filter",
+    "operations": [
+      "CreateFilter",
+      "DeleteFilter",
+      "UpdateFilter"
+    ],
+    "tested": [
+      "CreateFilter",
+      "DeleteFilter"
+    ],
+    "untested": [
+      "UpdateFilter"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateFilter": "working",
+      "DeleteFilter": "working",
+      "UpdateFilter": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetCodeSnippet",
+    "operations": [
+      "BatchGetCodeSnippet"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetCodeSnippet"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetCodeSnippet": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GetFindingDetails",
+    "operations": [
+      "BatchGetFindingDetails"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchGetFindingDetails"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchGetFindingDetails": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchVulnerabilities",
+    "operations": [
+      "SearchVulnerabilities"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchVulnerabilities"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchVulnerabilities": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

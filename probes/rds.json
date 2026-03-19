@@ -1,0 +1,816 @@
+{
+  "service": "rds",
+  "counts": {
+    "working": 129,
+    "needs_params": 1,
+    "not_implemented": 25,
+    "500_error": 6
+  },
+  "operations": [
+    {
+      "operation": "AddRoleToDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "AddRoleToDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "AddSourceIdentifierToSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "AddTagsToResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "ApplyPendingMaintenanceAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AuthorizeDBSecurityGroupIngress",
+      "status": "working",
+      "message": "likely implemented (DBSecurityGroupNotFound: Security Group probe-test-value not found.)"
+    },
+    {
+      "operation": "BacktrackDBCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelExportTask",
+      "status": "working",
+      "message": "likely implemented (ExportTaskNotFound: Cannot cancel export task because a task with the identifier)"
+    },
+    {
+      "operation": "CopyDBClusterParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyDBClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyDBParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyDBSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyOptionGroup",
+      "status": "working",
+      "message": "likely implemented (OptionGroupNotFoundFault: Specified OptionGroupName: probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateBlueGreenDeployment",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateCustomDBEngineVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDBCluster",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateDBClusterEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateDBClusterParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDBClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateDBInstance",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateDBInstanceReadReplica",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'source_db_instance_identifier')"
+    },
+    {
+      "operation": "CreateDBParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDBProxy",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'auth')"
+    },
+    {
+      "operation": "CreateDBProxyEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
+    },
+    {
+      "operation": "CreateDBSecurityGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDBShardGroup",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDBSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateDBSubnetGroup",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGlobalCluster",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateIntegration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOptionGroup",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "CreateTenantDatabase",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteBlueGreenDeployment",
+      "status": "working",
+      "message": "likely implemented (BlueGreenDeploymentNotFoundFault: BlueGreenDeploymentIdentifier probe-test-value doesn't refer)"
+    },
+    {
+      "operation": "DeleteCustomDBEngineVersion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBClusterAutomatedBackup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteDBClusterEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBClusterEndpointNotFoundFault: The specified custom endpoint probe-test-value was not found)"
+    },
+    {
+      "operation": "DeleteDBClusterParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteDBInstanceAutomatedBackup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBProxy",
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
+    },
+    {
+      "operation": "DeleteDBProxyEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBProxyEndpointNotFoundFault: The specified DB proxy endpoint probe-test-value was not fou)"
+    },
+    {
+      "operation": "DeleteDBSecurityGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDBShardGroup",
+      "status": "working",
+      "message": "likely implemented (DBShardGroupNotFound: DBShardGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteDBSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteDBSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (DBSubnetGroupNotFoundFault: Subnet Group probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteIntegration",
+      "status": "working",
+      "message": "likely implemented (IntegrationNotFoundFault: Integration probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteOptionGroup",
+      "status": "working",
+      "message": "likely implemented (OptionGroupNotFoundFault: Specified OptionGroupName: probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteTenantDatabase",
+      "status": "working",
+      "message": "likely implemented (TenantDatabaseNotFound: Tenant database probe-test-value not found.)"
+    },
+    {
+      "operation": "DeregisterDBProxyTargets",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeAccountAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBlueGreenDeployments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusterAutomatedBackups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusterBacktracks",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeDBClusterEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusterParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusterParameters",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "DescribeDBClusterSnapshotAttributes",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBClusterSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBEngineVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBInstanceAutomatedBackups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBLogFiles",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBMajorEngineVersions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeDBParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBParameters",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBProxies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBProxyEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBProxyTargetGroups",
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
+    },
+    {
+      "operation": "DescribeDBProxyTargets",
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
+    },
+    {
+      "operation": "DescribeDBRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBSecurityGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBShardGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBSnapshotAttributes",
+      "status": "working",
+      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeDBSnapshotTenantDatabases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDBSubnetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEngineDefaultClusterParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEngineDefaultParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventCategories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeExportTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeGlobalClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIntegrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOptionGroupOptions",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "DescribeOptionGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrderableDBInstanceOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePendingMaintenanceActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedDBInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedDBInstancesOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSourceRegions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeTenantDatabases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeValidDBInstanceModifications",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "DisableHttpEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DownloadDBLogFilePortion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "EnableHttpEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "FailoverDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: The source cluster could not be found or cannot be accessed:)"
+    },
+    {
+      "operation": "FailoverGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "ModifyActivityStream",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyCertificates",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyCurrentDBClusterCapacity",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyCustomDBEngineVersion",
+      "status": "working",
+      "message": "likely implemented (CustomDBEngineVersionNotFoundFault: Custom engine version probe-test-value probe-test-value not )"
+    },
+    {
+      "operation": "ModifyDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBClusterEndpoint",
+      "status": "working",
+      "message": "likely implemented (DBClusterEndpointNotFoundFault: The specified custom endpoint probe-test-value was not found)"
+    },
+    {
+      "operation": "ModifyDBClusterParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "ModifyDBClusterSnapshotAttribute",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBParameterGroup",
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBProxy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyDBProxyEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyDBProxyTargetGroup",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "ModifyDBRecommendation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyDBShardGroup",
+      "status": "working",
+      "message": "likely implemented (DBShardGroupNotFound: DBShardGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBSnapshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyDBSnapshotAttribute",
+      "status": "working",
+      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyDBSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (DBSubnetGroupNotFoundFault: Subnet Group probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyEventSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyIntegration",
+      "status": "working",
+      "message": "likely implemented (IntegrationNotFoundFault: Integration probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyOptionGroup",
+      "status": "working",
+      "message": "likely implemented (OptionGroupNotFoundFault: Specified OptionGroupName: probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyTenantDatabase",
+      "status": "working",
+      "message": "likely implemented (TenantDatabaseNotFound: Tenant database probe-test-value not found.)"
+    },
+    {
+      "operation": "PromoteReadReplica",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "PromoteReadReplicaDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "PurchaseReservedDBInstancesOffering",
+      "status": "working",
+      "message": "likely implemented (ReservedDBInstancesOfferingNotFound: Offering probe-test-value not found.)"
+    },
+    {
+      "operation": "RebootDBCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RebootDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "RebootDBShardGroup",
+      "status": "working",
+      "message": "likely implemented (DBShardGroupNotFound: DBShardGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "RegisterDBProxyTargets",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "RemoveFromGlobalCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveRoleFromDBCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RemoveRoleFromDBInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RemoveSourceIdentifierFromSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "RemoveTagsFromResource",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "ResetDBClusterParameterGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetDBParameterGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreDBClusterFromS3",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreDBClusterFromSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBClusterSnapshotNotFoundFault: DBClusterSnapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "RestoreDBClusterToPointInTime",
+      "status": "500_error",
+      "message": "server crash (InternalError: RDSBackend.restore_db_cluster_to_point_in_time() missing 1 r)"
+    },
+    {
+      "operation": "RestoreDBInstanceFromDBSnapshot",
+      "status": "working",
+      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot  not found.)"
+    },
+    {
+      "operation": "RestoreDBInstanceFromS3",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreDBInstanceToPointInTime",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance  not found.)"
+    },
+    {
+      "operation": "RevokeDBSecurityGroupIngress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartActivityStream",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster arn:aws:rds:us-east-1:123456789012:thing/probe-tes)"
+    },
+    {
+      "operation": "StartDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "StartDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "StartDBInstanceAutomatedBackupsReplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartExportTask",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "StopActivityStream",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster arn:aws:rds:us-east-1:123456789012:thing/probe-tes)"
+    },
+    {
+      "operation": "StopDBCluster",
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
+    },
+    {
+      "operation": "StopDBInstance",
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
+    },
+    {
+      "operation": "StopDBInstanceAutomatedBackupsReplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SwitchoverBlueGreenDeployment",
+      "status": "working",
+      "message": "likely implemented (BlueGreenDeploymentNotFoundFault: BlueGreenDeploymentIdentifier probe-test-value doesn't refer)"
+    },
+    {
+      "operation": "SwitchoverGlobalCluster",
+      "status": "working",
+      "message": "likely implemented (GlobalClusterNotFoundFault: Global Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "SwitchoverReadReplica",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

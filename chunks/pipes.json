@@ -1,0 +1,39 @@
+[
+  {
+    "noun": "Pipe",
+    "operations": [
+      "CreatePipe",
+      "DeletePipe",
+      "DescribePipe",
+      "StartPipe",
+      "StopPipe",
+      "UpdatePipe"
+    ],
+    "tested": [
+      "CreatePipe",
+      "DeletePipe",
+      "DescribePipe"
+    ],
+    "untested": [
+      "StartPipe",
+      "StopPipe",
+      "UpdatePipe"
+    ],
+    "size": 6,
+    "untested_count": 3,
+    "probe_status": {
+      "CreatePipe": "working",
+      "DeletePipe": "working",
+      "DescribePipe": "working",
+      "StartPipe": "working",
+      "StopPipe": "working",
+      "UpdatePipe": "working"
+    },
+    "working_untested": [
+      "StartPipe",
+      "StopPipe",
+      "UpdatePipe"
+    ],
+    "working_untested_count": 3
+  }
+]

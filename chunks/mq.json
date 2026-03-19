@@ -1,0 +1,144 @@
+[
+  {
+    "noun": "Broker",
+    "operations": [
+      "CreateBroker",
+      "DeleteBroker",
+      "DescribeBroker",
+      "RebootBroker",
+      "UpdateBroker"
+    ],
+    "tested": [
+      "CreateBroker",
+      "DeleteBroker",
+      "DescribeBroker",
+      "UpdateBroker"
+    ],
+    "untested": [
+      "RebootBroker"
+    ],
+    "size": 5,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateBroker": "working",
+      "DeleteBroker": "500_error",
+      "DescribeBroker": "working",
+      "RebootBroker": "500_error",
+      "UpdateBroker": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrokerEngineTypes",
+    "operations": [
+      "DescribeBrokerEngineTypes"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeBrokerEngineTypes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeBrokerEngineTypes": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrokerInstanceOptions",
+    "operations": [
+      "DescribeBrokerInstanceOptions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeBrokerInstanceOptions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeBrokerInstanceOptions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Configuration",
+    "operations": [
+      "CreateConfiguration",
+      "DeleteConfiguration",
+      "DescribeConfiguration",
+      "UpdateConfiguration"
+    ],
+    "tested": [
+      "CreateConfiguration",
+      "DescribeConfiguration"
+    ],
+    "untested": [
+      "DeleteConfiguration",
+      "UpdateConfiguration"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateConfiguration": "working",
+      "DeleteConfiguration": "not_implemented",
+      "DescribeConfiguration": "working",
+      "UpdateConfiguration": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationRevision",
+    "operations": [
+      "DescribeConfigurationRevision"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeConfigurationRevision"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeConfigurationRevision": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigurationRevisions",
+    "operations": [
+      "ListConfigurationRevisions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListConfigurationRevisions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListConfigurationRevisions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Promote",
+    "operations": [
+      "Promote"
+    ],
+    "tested": [],
+    "untested": [
+      "Promote"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "Promote": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

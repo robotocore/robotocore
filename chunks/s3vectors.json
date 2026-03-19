@@ -1,0 +1,83 @@
+[
+  {
+    "noun": "QueryVectors",
+    "operations": [
+      "QueryVectors"
+    ],
+    "tested": [],
+    "untested": [
+      "QueryVectors"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "QueryVectors": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Vectors",
+    "operations": [
+      "DeleteVectors",
+      "GetVectors",
+      "ListVectors",
+      "PutVectors"
+    ],
+    "tested": [
+      "ListVectors"
+    ],
+    "untested": [
+      "DeleteVectors",
+      "GetVectors",
+      "PutVectors"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteVectors": "needs_params",
+      "GetVectors": "needs_params",
+      "ListVectors": "working",
+      "PutVectors": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

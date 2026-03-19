@@ -1,0 +1,56 @@
+[
+  {
+    "noun": "AWSOrganizationsAccess",
+    "operations": [
+      "DisableAWSOrganizationsAccess",
+      "EnableAWSOrganizationsAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableAWSOrganizationsAccess",
+      "EnableAWSOrganizationsAccess"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableAWSOrganizationsAccess": "not_implemented",
+      "EnableAWSOrganizationsAccess": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AWSOrganizationsAccessStatus",
+    "operations": [
+      "GetAWSOrganizationsAccessStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAWSOrganizationsAccessStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAWSOrganizationsAccessStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchProducts",
+    "operations": [
+      "SearchProducts"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchProducts"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchProducts": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,191 @@
+{
+  "service": "shield",
+  "counts": {
+    "working": 32,
+    "needs_params": 3,
+    "not_implemented": 0,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AssociateDRTLogBucket",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateDRTRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateHealthCheck",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "AssociateProactiveEngagementDetails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProtection",
+      "status": "working",
+      "message": "likely implemented (InvalidResourceException: Unrecognized resource 'thing' of service 'shield'.)"
+    },
+    {
+      "operation": "CreateProtectionGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteProtection",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteProtectionGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAttack",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAttackStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDRTAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEmergencyContactSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeProtection",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'to_dict')"
+    },
+    {
+      "operation": "DescribeProtectionGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableApplicationLayerAutomaticResponse",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableProactiveEngagement",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateDRTLogBucket",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateDRTRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateHealthCheck",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "EnableApplicationLayerAutomaticResponse",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "EnableProactiveEngagement",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetSubscriptionState",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAttacks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProtectionGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProtections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourcesInProtectionGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApplicationLayerAutomaticResponse",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateEmergencyContactSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateProtectionGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

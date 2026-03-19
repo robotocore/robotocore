@@ -1,0 +1,19 @@
+[
+  {
+    "noun": "AssociatedGroups",
+    "operations": [
+      "ListAssociatedGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAssociatedGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAssociatedGroups": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,57 @@
+[
+  {
+    "noun": "ActionRevision",
+    "operations": [
+      "PutActionRevision"
+    ],
+    "tested": [],
+    "untested": [
+      "PutActionRevision"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PutActionRevision": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ActionType",
+    "operations": [
+      "GetActionType",
+      "UpdateActionType"
+    ],
+    "tested": [
+      "GetActionType"
+    ],
+    "untested": [
+      "UpdateActionType"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetActionType": "working",
+      "UpdateActionType": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeployActionExecutionTargets",
+    "operations": [
+      "ListDeployActionExecutionTargets"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDeployActionExecutionTargets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDeployActionExecutionTargets": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

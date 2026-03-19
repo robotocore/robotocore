@@ -1,0 +1,231 @@
+{
+  "service": "databrew",
+  "counts": {
+    "working": 22,
+    "needs_params": 4,
+    "not_implemented": 18,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchDeleteRecipeVersion",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDataset",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProfileJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProject",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRecipe",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRecipeJob",
+      "status": "working",
+      "message": "implemented (ConflictException)"
+    },
+    {
+      "operation": "CreateRuleset",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateSchedule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteDataset",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteProject",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteRecipeVersion",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteRuleset",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteSchedule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeJobRun",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeProject",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeRecipe",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRuleset",
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeSchedule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDatasets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobRuns",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProjects",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListRecipeVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRecipes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRulesets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSchedules",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PublishRecipe",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendProjectSessionAction",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartJobRun",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartProjectSession",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopJobRun",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDataset",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProfileJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProject",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateRecipe",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateRecipeJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateRuleset",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateSchedule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

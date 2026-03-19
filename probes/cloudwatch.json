@@ -1,0 +1,226 @@
+{
+  "service": "cloudwatch",
+  "counts": {
+    "working": 31,
+    "needs_params": 0,
+    "not_implemented": 12,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "DeleteAlarmMuteRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteAlarms",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAnomalyDetector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDashboards",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteInsightRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMetricStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeAlarmContributors",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeAlarmHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAlarms",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAlarmsForMetric",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAnomalyDetectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInsightRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableAlarmActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableInsightRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableAlarmActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableInsightRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAlarmMuteRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetDashboard",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Dashboard probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetInsightRuleReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMetricData",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMetricStatistics",
+      "status": "working",
+      "message": "likely implemented (InvalidParameterCombination: Must specify either Statistics or ExtendedStatistics)"
+    },
+    {
+      "operation": "GetMetricStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMetricWidgetImage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAlarmMuteRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDashboards",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListManagedInsightRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMetricStreams",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMetrics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAlarmMuteRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutAnomalyDetector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutCompositeAlarm",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "PutDashboard",
+      "status": "working",
+      "message": "likely implemented (InvalidParameterInput: Invalid JSON in DashboardBody: Expecting value: line 1 colum)"
+    },
+    {
+      "operation": "PutInsightRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutManagedInsightRules",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutMetricAlarm",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutMetricData",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutMetricStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetAlarmState",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "StartMetricStreams",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopMetricStreams",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

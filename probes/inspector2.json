@@ -1,0 +1,386 @@
+{
+  "service": "inspector2",
+  "counts": {
+    "working": 58,
+    "needs_params": 14,
+    "not_implemented": 0,
+    "500_error": 3
+  },
+  "operations": [
+    {
+      "operation": "AssociateMember",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchAssociateCodeSecurityScanConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDisassociateCodeSecurityScanConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetAccountStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetCodeSnippet",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetFindingDetails",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetFreeTrialInfo",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetMemberEc2DeepInspectionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchUpdateMemberEc2DeepInspectionStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelFindingsReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelSbomExport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCisScanConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateCodeSecurityIntegration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCodeSecurityScanConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFindingsReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSbomExport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCisScanConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCodeSecurityIntegration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCodeSecurityScanConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrganizationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "Disable",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "DisableDelegatedAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateMember",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "Enable",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "EnableDelegatedAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCisScanReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCisScanResultDetails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetClustersForImage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCodeSecurityIntegration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCodeSecurityScan",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCodeSecurityScanConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDelegatedAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEc2DeepInspectionConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEncryptionKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindingsReportStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMember",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSbomExport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccountPermissions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCisScanConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCisScanResultsAggregatedByChecks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCisScanResultsAggregatedByTargetResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCisScans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCodeSecurityIntegrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCodeSecurityScanConfigurationAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCodeSecurityScanConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCoverage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCoverageStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDelegatedAdminAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFindingAggregations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUsageTotals",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResetEncryptionKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchVulnerabilities",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "SendCisSessionHealth",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendCisSessionTelemetry",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartCisSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartCodeSecurityScan",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StopCisSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "UpdateCisScanConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCodeSecurityIntegration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCodeSecurityScanConfiguration",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateEc2DeepInspectionConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateEncryptionKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFilter",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'arn:aws:inspector2:us-east-1:123456789012:thing/probe-test')"
+    },
+    {
+      "operation": "UpdateOrgEc2DeepInspectionConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateOrganizationConfiguration",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

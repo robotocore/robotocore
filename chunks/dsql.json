@@ -1,0 +1,89 @@
+[
+  {
+    "noun": "Cluster",
+    "operations": [
+      "CreateCluster",
+      "DeleteCluster",
+      "GetCluster",
+      "UpdateCluster"
+    ],
+    "tested": [
+      "CreateCluster",
+      "DeleteCluster",
+      "GetCluster"
+    ],
+    "untested": [
+      "UpdateCluster"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateCluster": "working",
+      "DeleteCluster": "unknown",
+      "GetCluster": "working",
+      "UpdateCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClusterPolicy",
+    "operations": [
+      "DeleteClusterPolicy",
+      "GetClusterPolicy",
+      "PutClusterPolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteClusterPolicy",
+      "GetClusterPolicy",
+      "PutClusterPolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteClusterPolicy": "not_implemented",
+      "GetClusterPolicy": "not_implemented",
+      "PutClusterPolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Clusters",
+    "operations": [
+      "ListClusters"
+    ],
+    "tested": [],
+    "untested": [
+      "ListClusters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListClusters": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

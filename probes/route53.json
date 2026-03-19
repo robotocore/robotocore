@@ -1,0 +1,366 @@
+{
+  "service": "route53",
+  "counts": {
+    "working": 43,
+    "needs_params": 3,
+    "not_implemented": 21,
+    "500_error": 4
+  },
+  "operations": [
+    {
+      "operation": "ActivateKeySigningKey",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateVPCWithHostedZone",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "ChangeCidrCollection",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ChangeResourceRecordSets",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ChangeTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCidrCollection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHealthCheck",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHostedZone",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateKeySigningKey",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateQueryLoggingConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReusableDelegationSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrafficPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTrafficPolicyInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateTrafficPolicyVersion",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVPCAssociationAuthorization",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+    },
+    {
+      "operation": "DeactivateKeySigningKey",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCidrCollection",
+      "status": "working",
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DeleteHealthCheck",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHostedZone",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "DeleteKeySigningKey",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteQueryLoggingConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchQueryLoggingConfig: The query logging configuration does not exist)"
+    },
+    {
+      "operation": "DeleteReusableDelegationSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTrafficPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTrafficPolicyInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVPCAssociationAuthorization",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+    },
+    {
+      "operation": "DisableHostedZoneDNSSEC",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateVPCFromHostedZone",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "EnableHostedZoneDNSSEC",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAccountLimit",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetChange",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCheckerIpRanges",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDNSSEC",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "GetGeoLocation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetHealthCheck",
+      "status": "working",
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+    },
+    {
+      "operation": "GetHealthCheckCount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetHealthCheckLastFailureReason",
+      "status": "working",
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+    },
+    {
+      "operation": "GetHealthCheckStatus",
+      "status": "working",
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+    },
+    {
+      "operation": "GetHostedZone",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "GetHostedZoneCount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetHostedZoneLimit",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "GetQueryLoggingConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchQueryLoggingConfig: The query logging configuration does not exist)"
+    },
+    {
+      "operation": "GetReusableDelegationSet",
+      "status": "working",
+      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+    },
+    {
+      "operation": "GetReusableDelegationSetLimit",
+      "status": "working",
+      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+    },
+    {
+      "operation": "GetTrafficPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTrafficPolicyInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTrafficPolicyInstanceCount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCidrBlocks",
+      "status": "working",
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "ListCidrCollections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCidrLocations",
+      "status": "working",
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+    },
+    {
+      "operation": "ListGeoLocations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHealthChecks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHostedZones",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHostedZonesByName",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListHostedZonesByVPC",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListQueryLoggingConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceRecordSets",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "ListReusableDelegationSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResources",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListTrafficPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrafficPolicyInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrafficPolicyInstancesByHostedZone",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTrafficPolicyInstancesByPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTrafficPolicyVersions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListVPCAssociationAuthorizations",
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
+    },
+    {
+      "operation": "TestDNSAnswer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateHealthCheck",
+      "status": "500_error",
+      "message": "server crash (InternalError: no element found: line 1, column 0)"
+    },
+    {
+      "operation": "UpdateHostedZoneComment",
+      "status": "500_error",
+      "message": "server crash (InternalError: no element found: line 1, column 0)"
+    },
+    {
+      "operation": "UpdateHostedZoneFeatures",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateTrafficPolicyComment",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateTrafficPolicyInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

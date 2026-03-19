@@ -1,0 +1,106 @@
+[
+  {
+    "noun": "Accessor",
+    "operations": [
+      "CreateAccessor",
+      "DeleteAccessor",
+      "GetAccessor"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAccessor",
+      "DeleteAccessor",
+      "GetAccessor"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateAccessor": "not_implemented",
+      "DeleteAccessor": "not_implemented",
+      "GetAccessor": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Accessors",
+    "operations": [
+      "ListAccessors"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAccessors"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAccessors": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Node",
+    "operations": [
+      "CreateNode",
+      "DeleteNode",
+      "GetNode",
+      "UpdateNode"
+    ],
+    "tested": [
+      "CreateNode",
+      "DeleteNode",
+      "GetNode"
+    ],
+    "untested": [
+      "UpdateNode"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateNode": "500_error",
+      "DeleteNode": "working",
+      "GetNode": "working",
+      "UpdateNode": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

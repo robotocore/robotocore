@@ -1,0 +1,351 @@
+{
+  "service": "route53resolver",
+  "counts": {
+    "working": 49,
+    "needs_params": 1,
+    "not_implemented": 17,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "AssociateFirewallRuleGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateResolverEndpointIpAddress",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateResolverQueryLogConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateResolverRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateFirewallDomainList",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFirewallRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateFirewallRuleGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOutpostResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateResolverEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateResolverQueryLogConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateResolverRule",
+      "status": "500_error",
+      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+    },
+    {
+      "operation": "DeleteFirewallDomainList",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFirewallRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFirewallRuleGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteOutpostResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteResolverEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResolverQueryLogConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResolverRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateFirewallRuleGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateResolverEndpointIpAddress",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateResolverQueryLogConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateResolverRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFirewallConfig",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetFirewallDomainList",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFirewallRuleGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFirewallRuleGroupAssociation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFirewallRuleGroupPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetOutpostResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetResolverConfig",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetResolverDnssecConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResolverEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResolverQueryLogConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResolverQueryLogConfigAssociation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResolverQueryLogConfigPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetResolverRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResolverRuleAssociation",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResolverRulePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ImportFirewallDomains",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListFirewallConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFirewallDomainLists",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFirewallDomains",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFirewallRuleGroupAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFirewallRuleGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFirewallRules",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListOutpostResolvers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverDnssecConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverEndpointIpAddresses",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListResolverEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverQueryLogConfigAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverQueryLogConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverRuleAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResolverRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutFirewallRuleGroupPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutResolverQueryLogConfigPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutResolverRulePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFirewallConfig",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateFirewallDomains",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFirewallRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFirewallRuleGroupAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateOutpostResolver",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateResolverConfig",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateResolverDnssecConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateResolverEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateResolverRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

@@ -1,0 +1,266 @@
+{
+  "service": "elbv2",
+  "counts": {
+    "working": 36,
+    "needs_params": 1,
+    "not_implemented": 14,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddListenerCertificates",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "AddTags",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "AddTrustStoreRevocations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateListener",
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+    },
+    {
+      "operation": "CreateLoadBalancer",
+      "status": "working",
+      "message": "likely implemented (SubnetNotFound: The specified subnet does not exist.)"
+    },
+    {
+      "operation": "CreateRule",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "CreateTargetGroup",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CreateTrustStore",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteListener",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "DeleteLoadBalancer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSharedTrustStoreAssociation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTargetGroup",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "DeleteTrustStore",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeregisterTargets",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "DescribeAccountLimits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCapacityReservation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeListenerAttributes",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "DescribeListenerCertificates",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "DescribeListeners",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeLoadBalancerAttributes",
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+    },
+    {
+      "operation": "DescribeLoadBalancers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRules",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "DescribeSSLPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTargetGroupAttributes",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "DescribeTargetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTargetHealth",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "DescribeTrustStoreAssociations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeTrustStoreRevocations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeTrustStores",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTrustStoreCaCertificatesBundle",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTrustStoreRevocationContent",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyCapacityReservation",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyIpPools",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyListener",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "ModifyListenerAttributes",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "ModifyLoadBalancerAttributes",
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+    },
+    {
+      "operation": "ModifyRule",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "ModifyTargetGroup",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "ModifyTargetGroupAttributes",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "ModifyTrustStore",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RegisterTargets",
+      "status": "working",
+      "message": "likely implemented (TargetGroupNotFound: One or more target groups not found)"
+    },
+    {
+      "operation": "RemoveListenerCertificates",
+      "status": "working",
+      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+    },
+    {
+      "operation": "RemoveTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveTrustStoreRevocations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetIpAddressType",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "SetRulePriorities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetSecurityGroups",
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+    },
+    {
+      "operation": "SetSubnets",
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+    }
+  ]
+}

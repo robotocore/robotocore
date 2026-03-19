@@ -1,0 +1,169 @@
+[
+  {
+    "noun": "AssociationBatch",
+    "operations": [
+      "CreateAssociationBatch"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAssociationBatch"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAssociationBatch": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DefaultPatchBaseline",
+    "operations": [
+      "GetDefaultPatchBaseline",
+      "RegisterDefaultPatchBaseline"
+    ],
+    "tested": [
+      "GetDefaultPatchBaseline"
+    ],
+    "untested": [
+      "RegisterDefaultPatchBaseline"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDefaultPatchBaseline": "working",
+      "RegisterDefaultPatchBaseline": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EffectivePatchesForPatchBaseline",
+    "operations": [
+      "DescribeEffectivePatchesForPatchBaseline"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeEffectivePatchesForPatchBaseline"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeEffectivePatchesForPatchBaseline": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Inventory",
+    "operations": [
+      "DeleteInventory",
+      "GetInventory",
+      "PutInventory"
+    ],
+    "tested": [
+      "DeleteInventory",
+      "GetInventory"
+    ],
+    "untested": [
+      "PutInventory"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteInventory": "working",
+      "GetInventory": "working",
+      "PutInventory": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MaintenanceWindow",
+    "operations": [
+      "CreateMaintenanceWindow",
+      "DeleteMaintenanceWindow",
+      "GetMaintenanceWindow",
+      "UpdateMaintenanceWindow"
+    ],
+    "tested": [
+      "CreateMaintenanceWindow",
+      "DeleteMaintenanceWindow",
+      "GetMaintenanceWindow"
+    ],
+    "untested": [
+      "UpdateMaintenanceWindow"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateMaintenanceWindow": "working",
+      "DeleteMaintenanceWindow": "needs_params",
+      "GetMaintenanceWindow": "needs_params",
+      "UpdateMaintenanceWindow": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MaintenanceWindowExecutions",
+    "operations": [
+      "DescribeMaintenanceWindowExecutions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeMaintenanceWindowExecutions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeMaintenanceWindowExecutions": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NodesSummary",
+    "operations": [
+      "ListNodesSummary"
+    ],
+    "tested": [],
+    "untested": [
+      "ListNodesSummary"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListNodesSummary": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PatchBaseline",
+    "operations": [
+      "CreatePatchBaseline",
+      "DeletePatchBaseline",
+      "GetPatchBaseline",
+      "UpdatePatchBaseline"
+    ],
+    "tested": [
+      "CreatePatchBaseline",
+      "DeletePatchBaseline",
+      "GetPatchBaseline"
+    ],
+    "untested": [
+      "UpdatePatchBaseline"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreatePatchBaseline": "working",
+      "DeletePatchBaseline": "needs_params",
+      "GetPatchBaseline": "needs_params",
+      "UpdatePatchBaseline": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

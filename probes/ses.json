@@ -1,0 +1,366 @@
+{
+  "service": "ses",
+  "counts": {
+    "working": 53,
+    "needs_params": 0,
+    "not_implemented": 16,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "CloneReceiptRuleSet",
+      "status": "working",
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
+    },
+    {
+      "operation": "CreateConfigurationSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConfigurationSetEventDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConfigurationSetTrackingOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReceiptFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReceiptRule",
+      "status": "working",
+      "message": "likely implemented (RuleSetDoesNotExist: RuleSetDoesNotExist: Rule set does not exist: probe-test-val)"
+    },
+    {
+      "operation": "CreateReceiptRuleSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTemplate",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "DeleteConfigurationSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConfigurationSetEventDestination",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteConfigurationSetTrackingOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIdentityPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteReceiptFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteReceiptRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteReceiptRuleSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTemplate",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeleteVerifiedEmailAddress",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeActiveReceiptRuleSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConfigurationSet",
+      "status": "working",
+      "message": "likely implemented (ConfigurationSetDoesNotExist: Configuration set <probe-test-value> does not exist.)"
+    },
+    {
+      "operation": "DescribeReceiptRule",
+      "status": "working",
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
+    },
+    {
+      "operation": "DescribeReceiptRuleSet",
+      "status": "working",
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
+    },
+    {
+      "operation": "GetAccountSendingEnabled",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExist: Custom verification email template does not exist: probe-tes)"
+    },
+    {
+      "operation": "GetIdentityDkimAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIdentityMailFromDomainAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIdentityNotificationAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIdentityPolicies",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetIdentityVerificationAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSendQuota",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSendStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTemplate",
+      "status": "working",
+      "message": "likely implemented (TemplateDoesNotExist: Invalid Template Name.)"
+    },
+    {
+      "operation": "ListConfigurationSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCustomVerificationEmailTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIdentities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIdentityPolicies",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListReceiptFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReceiptRuleSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVerifiedEmailAddresses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutConfigurationSetDeliveryOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutIdentityPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ReorderReceiptRuleSet",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SendBounce",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SendBulkTemplatedEmail",
+      "status": "working",
+      "message": "likely implemented (MessageRejected: Email address not verified probe-test-value)"
+    },
+    {
+      "operation": "SendCustomVerificationEmail",
+      "status": "working",
+      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExist: Custom verification email template does not exist: probe-tes)"
+    },
+    {
+      "operation": "SendEmail",
+      "status": "working",
+      "message": "likely implemented (MessageRejected: Email address not verified probe-test-value)"
+    },
+    {
+      "operation": "SendRawEmail",
+      "status": "working",
+      "message": "likely implemented (MessageRejected: Source not specified)"
+    },
+    {
+      "operation": "SendTemplatedEmail",
+      "status": "working",
+      "message": "likely implemented (MessageRejected: Email address not verified probe-test-value)"
+    },
+    {
+      "operation": "SetActiveReceiptRuleSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetIdentityDkimEnabled",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetIdentityFeedbackForwardingEnabled",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetIdentityHeadersInNotificationsEnabled",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetIdentityMailFromDomain",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "SetIdentityNotificationTopic",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'SESBackend' object has no attribute 'domains')"
+    },
+    {
+      "operation": "SetReceiptRulePosition",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TestRenderTemplate",
+      "status": "working",
+      "message": "likely implemented (TemplateDoesNotExist: Invalid Template Name.)"
+    },
+    {
+      "operation": "UpdateAccountSendingEnabled",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateConfigurationSetEventDestination",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateConfigurationSetReputationMetricsEnabled",
+      "status": "working",
+      "message": "likely implemented (ConfigurationSetDoesNotExist: Configuration set <probe-test-value> does not exist)"
+    },
+    {
+      "operation": "UpdateConfigurationSetSendingEnabled",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateConfigurationSetTrackingOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExist: Custom verification email template does not exist: probe-tes)"
+    },
+    {
+      "operation": "UpdateReceiptRule",
+      "status": "working",
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
+    },
+    {
+      "operation": "UpdateTemplate",
+      "status": "working",
+      "message": "likely implemented (TemplateDoesNotExist: Invalid Template Name.)"
+    },
+    {
+      "operation": "VerifyDomainDkim",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "VerifyDomainIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "VerifyEmailAddress",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "VerifyEmailIdentity",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

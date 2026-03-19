@@ -1,0 +1,471 @@
+{
+  "service": "greengrass",
+  "counts": {
+    "working": 61,
+    "needs_params": 0,
+    "not_implemented": 22,
+    "500_error": 9
+  },
+  "operations": [
+    {
+      "operation": "AssociateRoleToGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateServiceRoleToAccount",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateConnectorDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "CreateConnectorDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+    },
+    {
+      "operation": "CreateCoreDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+    },
+    {
+      "operation": "CreateCoreDefinitionVersion",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "CreateDeployment",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: That deployment type is not valid.  Please specify one of th)"
+    },
+    {
+      "operation": "CreateDeviceDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "CreateDeviceDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+    },
+    {
+      "operation": "CreateFunctionDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "CreateFunctionDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That lambdas does not exist.)"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateGroupCertificateAuthority",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateGroupVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
+    },
+    {
+      "operation": "CreateLoggerDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "CreateLoggerDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+    },
+    {
+      "operation": "CreateResourceDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "CreateResourceDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That resource definition does not exist.)"
+    },
+    {
+      "operation": "CreateSoftwareUpdateJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSubscriptionDefinition",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+    },
+    {
+      "operation": "CreateSubscriptionDefinitionVersion",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "DeleteConnectorDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+    },
+    {
+      "operation": "DeleteCoreDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+    },
+    {
+      "operation": "DeleteDeviceDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+    },
+    {
+      "operation": "DeleteFunctionDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+    },
+    {
+      "operation": "DeleteLoggerDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+    },
+    {
+      "operation": "DeleteResourceDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+    },
+    {
+      "operation": "DeleteSubscriptionDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+    },
+    {
+      "operation": "DisassociateRoleFromGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateServiceRoleFromAccount",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAssociatedRole",
+      "status": "working",
+      "message": "likely implemented (404: You need to attach an IAM role to this deployment group.)"
+    },
+    {
+      "operation": "GetBulkDeploymentStatus",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetConnectivityInfo",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetConnectorDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Connector List Definition does not exist.)"
+    },
+    {
+      "operation": "GetConnectorDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+    },
+    {
+      "operation": "GetCoreDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Core List Definition does not exist)"
+    },
+    {
+      "operation": "GetCoreDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+    },
+    {
+      "operation": "GetDeploymentStatus",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: Deployment 'probe-test-value' does not exist.)"
+    },
+    {
+      "operation": "GetDeviceDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Device List Definition does not exist.)"
+    },
+    {
+      "operation": "GetDeviceDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+    },
+    {
+      "operation": "GetFunctionDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Lambda List Definition does not exist.)"
+    },
+    {
+      "operation": "GetFunctionDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Group Definition does not exist.)"
+    },
+    {
+      "operation": "GetGroupCertificateAuthority",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetGroupCertificateConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetGroupVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+    },
+    {
+      "operation": "GetLoggerDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Logger List Definition does not exist.)"
+    },
+    {
+      "operation": "GetLoggerDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+    },
+    {
+      "operation": "GetResourceDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Resource List Definition does not exist.)"
+    },
+    {
+      "operation": "GetResourceDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+    },
+    {
+      "operation": "GetServiceRoleForAccount",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetSubscriptionDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That Subscription List Definition does not exist.)"
+    },
+    {
+      "operation": "GetSubscriptionDefinitionVersion",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+    },
+    {
+      "operation": "GetThingRuntimeConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListBulkDeploymentDetailedReports",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListBulkDeployments",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListConnectorDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+    },
+    {
+      "operation": "ListConnectorDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCoreDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+    },
+    {
+      "operation": "ListCoreDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeployments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeviceDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+    },
+    {
+      "operation": "ListDeviceDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFunctionDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+    },
+    {
+      "operation": "ListFunctionDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGroupCertificateAuthorities",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGroupVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLoggerDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+    },
+    {
+      "operation": "ListLoggerDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+    },
+    {
+      "operation": "ListResourceDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSubscriptionDefinitionVersions",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+    },
+    {
+      "operation": "ListSubscriptionDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResetDeployments",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartBulkDeployment",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopBulkDeployment",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateConnectivityInfo",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateConnectorDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+    },
+    {
+      "operation": "UpdateCoreDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+    },
+    {
+      "operation": "UpdateDeviceDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+    },
+    {
+      "operation": "UpdateFunctionDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+    },
+    {
+      "operation": "UpdateGroupCertificateConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLoggerDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+    },
+    {
+      "operation": "UpdateResourceDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+    },
+    {
+      "operation": "UpdateSubscriptionDefinition",
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+    },
+    {
+      "operation": "UpdateThingRuntimeConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

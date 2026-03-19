@@ -1,0 +1,199 @@
+[
+  {
+    "noun": "PurchaseReservedElasticsearchInstanceOffering",
+    "operations": [
+      "PurchaseReservedElasticsearchInstanceOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedElasticsearchInstanceOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedElasticsearchInstanceOffering": "working"
+    },
+    "working_untested": [
+      "PurchaseReservedElasticsearchInstanceOffering"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "VpcEndpoint",
+    "operations": [
+      "CreateVpcEndpoint",
+      "DeleteVpcEndpoint",
+      "UpdateVpcEndpoint"
+    ],
+    "tested": [
+      "CreateVpcEndpoint",
+      "DeleteVpcEndpoint"
+    ],
+    "untested": [
+      "UpdateVpcEndpoint"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVpcEndpoint": "working",
+      "DeleteVpcEndpoint": "working",
+      "UpdateVpcEndpoint": "working"
+    },
+    "working_untested": [
+      "UpdateVpcEndpoint"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DomainConfigChange",
+    "operations": [
+      "CancelDomainConfigChange"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelDomainConfigChange"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelDomainConfigChange": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ElasticsearchServiceSoftwareUpdate",
+    "operations": [
+      "CancelElasticsearchServiceSoftwareUpdate",
+      "StartElasticsearchServiceSoftwareUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "CancelElasticsearchServiceSoftwareUpdate",
+      "StartElasticsearchServiceSoftwareUpdate"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelElasticsearchServiceSoftwareUpdate": "not_implemented",
+      "StartElasticsearchServiceSoftwareUpdate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InboundCrossClusterSearchConnection",
+    "operations": [
+      "AcceptInboundCrossClusterSearchConnection",
+      "DeleteInboundCrossClusterSearchConnection",
+      "RejectInboundCrossClusterSearchConnection"
+    ],
+    "tested": [
+      "AcceptInboundCrossClusterSearchConnection",
+      "DeleteInboundCrossClusterSearchConnection"
+    ],
+    "untested": [
+      "RejectInboundCrossClusterSearchConnection"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "AcceptInboundCrossClusterSearchConnection": "working",
+      "DeleteInboundCrossClusterSearchConnection": "working",
+      "RejectInboundCrossClusterSearchConnection": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PackagesForDomain",
+    "operations": [
+      "ListPackagesForDomain"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPackagesForDomain"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPackagesForDomain": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpgradeElasticsearchDomain",
+    "operations": [
+      "UpgradeElasticsearchDomain"
+    ],
+    "tested": [],
+    "untested": [
+      "UpgradeElasticsearchDomain"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpgradeElasticsearchDomain": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpgradeHistory",
+    "operations": [
+      "GetUpgradeHistory"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUpgradeHistory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUpgradeHistory": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpgradeStatus",
+    "operations": [
+      "GetUpgradeStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetUpgradeStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetUpgradeStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VpcEndpointAccess",
+    "operations": [
+      "AuthorizeVpcEndpointAccess",
+      "ListVpcEndpointAccess",
+      "RevokeVpcEndpointAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "AuthorizeVpcEndpointAccess",
+      "ListVpcEndpointAccess",
+      "RevokeVpcEndpointAccess"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "AuthorizeVpcEndpointAccess": "not_implemented",
+      "ListVpcEndpointAccess": "not_implemented",
+      "RevokeVpcEndpointAccess": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

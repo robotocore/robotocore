@@ -1,0 +1,66 @@
+{
+  "service": "sts",
+  "counts": {
+    "working": 10,
+    "needs_params": 1,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AssumeRole",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssumeRoleWithSAML",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssumeRoleWithWebIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssumeRoot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DecodeAuthorizationMessage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccessKeyInfo",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCallerIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDelegatedAccessToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFederationToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSessionToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetWebIdentityToken",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

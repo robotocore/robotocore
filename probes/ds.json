@@ -1,0 +1,411 @@
+{
+  "service": "ds",
+  "counts": {
+    "working": 72,
+    "needs_params": 1,
+    "not_implemented": 5,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "AcceptSharedDirectory",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Shared directory probe-test-value does not exist)"
+    },
+    {
+      "operation": "AddIpRoutes",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "AddRegion",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "AddTagsToResource",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CancelSchemaExtension",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ConnectDirectory",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'CustomerDnsIps')"
+    },
+    {
+      "operation": "CreateAlias",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateComputer",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateConditionalForwarder",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateDirectory",
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
+    },
+    {
+      "operation": "CreateHybridAD",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateLogSubscription",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateMicrosoftAD",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateSnapshot",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateTrust",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteADAssessment",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Assessment probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeleteConditionalForwarder",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteDirectory",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteLogSubscription",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteSnapshot",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Snapshot probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeleteTrust",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Trust probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeregisterCertificate",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeregisterEventTopic",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeADAssessment",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Assessment probe-test-value does not exist)"
+    },
+    {
+      "operation": "DescribeCAEnrollmentPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeCertificate",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeClientAuthenticationSettings",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeConditionalForwarders",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeDirectories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDirectoryDataAccess",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeDomainControllers",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeEventTopics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHybridADUpdate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeLDAPSSettings",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeRegions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeSettings",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeSharedDirectories",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrusts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeUpdateDirectory",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DisableCAEnrollmentPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DisableClientAuthentication",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DisableDirectoryDataAccess",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DisableLDAPS",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DisableRadius",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DisableSso",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "EnableCAEnrollmentPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "EnableClientAuthentication",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "EnableDirectoryDataAccess",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "EnableLDAPS",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "EnableRadius",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "EnableSso",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetDirectoryLimits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSnapshotLimits",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListADAssessments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCertificates",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListIpRoutes",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListLogSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSchemaExtensions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RegisterCertificate",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RegisterEventTopic",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RejectSharedDirectory",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Shared directory probe-test-value does not exist)"
+    },
+    {
+      "operation": "RemoveIpRoutes",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RemoveRegion",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RemoveTagsFromResource",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ResetUserPassword",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RestoreFromSnapshot",
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Snapshot probe-test-value does not exist)"
+    },
+    {
+      "operation": "ShareDirectory",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "StartADAssessment",
+      "status": "500_error",
+      "message": "server crash (InternalError: expected string or bytes-like object, got 'NoneType')"
+    },
+    {
+      "operation": "StartSchemaExtension",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UnshareDirectory",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateConditionalForwarder",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateDirectorySetup",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateHybridAD",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateNumberOfDomainControllers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateRadius",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateSettings",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateTrust",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "VerifyTrust",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

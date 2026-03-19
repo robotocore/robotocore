@@ -1,0 +1,19 @@
+[
+  {
+    "noun": "WriteGetObjectResponse",
+    "operations": [
+      "WriteGetObjectResponse"
+    ],
+    "tested": [],
+    "untested": [
+      "WriteGetObjectResponse"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "WriteGetObjectResponse": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

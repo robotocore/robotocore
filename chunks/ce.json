@@ -1,0 +1,74 @@
+[
+  {
+    "noun": "CommitmentPurchaseAnalysis",
+    "operations": [
+      "GetCommitmentPurchaseAnalysis",
+      "StartCommitmentPurchaseAnalysis"
+    ],
+    "tested": [
+      "StartCommitmentPurchaseAnalysis"
+    ],
+    "untested": [
+      "GetCommitmentPurchaseAnalysis"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetCommitmentPurchaseAnalysis": "needs_params",
+      "StartCommitmentPurchaseAnalysis": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CostAllocationTagBackfill",
+    "operations": [
+      "StartCostAllocationTagBackfill"
+    ],
+    "tested": [],
+    "untested": [
+      "StartCostAllocationTagBackfill"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartCostAllocationTagBackfill": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CostAllocationTagsStatus",
+    "operations": [
+      "UpdateCostAllocationTagsStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateCostAllocationTagsStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateCostAllocationTagsStatus": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SavingsPlanPurchaseRecommendationDetails",
+    "operations": [
+      "GetSavingsPlanPurchaseRecommendationDetails"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSavingsPlanPurchaseRecommendationDetails"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSavingsPlanPurchaseRecommendationDetails": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,82 @@
+[
+  {
+    "noun": "AnomalyDetector",
+    "operations": [
+      "CreateAnomalyDetector",
+      "DeleteAnomalyDetector",
+      "DescribeAnomalyDetector",
+      "PutAnomalyDetector"
+    ],
+    "tested": [
+      "DeleteAnomalyDetector"
+    ],
+    "untested": [
+      "CreateAnomalyDetector",
+      "DescribeAnomalyDetector",
+      "PutAnomalyDetector"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateAnomalyDetector": "needs_params",
+      "DeleteAnomalyDetector": "working",
+      "DescribeAnomalyDetector": "working",
+      "PutAnomalyDetector": "needs_params"
+    },
+    "working_untested": [
+      "DescribeAnomalyDetector"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "QueryLoggingConfiguration",
+    "operations": [
+      "CreateQueryLoggingConfiguration",
+      "DeleteQueryLoggingConfiguration",
+      "DescribeQueryLoggingConfiguration",
+      "UpdateQueryLoggingConfiguration"
+    ],
+    "tested": [
+      "DeleteQueryLoggingConfiguration",
+      "DescribeQueryLoggingConfiguration"
+    ],
+    "untested": [
+      "CreateQueryLoggingConfiguration",
+      "UpdateQueryLoggingConfiguration"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateQueryLoggingConfiguration": "needs_params",
+      "DeleteQueryLoggingConfiguration": "working",
+      "DescribeQueryLoggingConfiguration": "working",
+      "UpdateQueryLoggingConfiguration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ScraperLoggingConfiguration",
+    "operations": [
+      "DeleteScraperLoggingConfiguration",
+      "DescribeScraperLoggingConfiguration",
+      "UpdateScraperLoggingConfiguration"
+    ],
+    "tested": [
+      "DeleteScraperLoggingConfiguration",
+      "DescribeScraperLoggingConfiguration"
+    ],
+    "untested": [
+      "UpdateScraperLoggingConfiguration"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteScraperLoggingConfiguration": "working",
+      "DescribeScraperLoggingConfiguration": "working",
+      "UpdateScraperLoggingConfiguration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

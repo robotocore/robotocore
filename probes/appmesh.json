@@ -1,0 +1,201 @@
+{
+  "service": "appmesh",
+  "counts": {
+    "working": 22,
+    "needs_params": 0,
+    "not_implemented": 16,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateMesh",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRoute",
+      "status": "working",
+      "message": "likely implemented (VirtualRouterNotFound: The mesh probe-test-value does not have a virtual router nam)"
+    },
+    {
+      "operation": "CreateVirtualGateway",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVirtualNode",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVirtualRouter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateVirtualService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteMesh",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRoute",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DeleteVirtualGateway",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVirtualNode",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DeleteVirtualRouter",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DeleteVirtualService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeMesh",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DescribeRoute",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DescribeVirtualGateway",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeVirtualNode",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DescribeVirtualRouter",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "DescribeVirtualService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGatewayRoutes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListMeshes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRoutes",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: There are no mesh resources with the arn arn:aws:appmesh:us-)"
+    },
+    {
+      "operation": "ListVirtualGateways",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListVirtualNodes",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "ListVirtualRouters",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "ListVirtualServices",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateGatewayRoute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateMesh",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "UpdateRoute",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "UpdateVirtualGateway",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateVirtualNode",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "UpdateVirtualRouter",
+      "status": "working",
+      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+    },
+    {
+      "operation": "UpdateVirtualService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

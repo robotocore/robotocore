@@ -1,0 +1,113 @@
+[
+  {
+    "noun": "ActivityTask",
+    "operations": [
+      "GetActivityTask"
+    ],
+    "tested": [],
+    "untested": [
+      "GetActivityTask"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetActivityTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RedriveExecution",
+    "operations": [
+      "RedriveExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "RedriveExecution"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RedriveExecution": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StateMachineAlias",
+    "operations": [
+      "CreateStateMachineAlias",
+      "DeleteStateMachineAlias",
+      "DescribeStateMachineAlias",
+      "UpdateStateMachineAlias"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateStateMachineAlias",
+      "DeleteStateMachineAlias",
+      "DescribeStateMachineAlias",
+      "UpdateStateMachineAlias"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateStateMachineAlias": "needs_params",
+      "DeleteStateMachineAlias": "not_implemented",
+      "DescribeStateMachineAlias": "not_implemented",
+      "UpdateStateMachineAlias": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StateMachineAliases",
+    "operations": [
+      "ListStateMachineAliases"
+    ],
+    "tested": [],
+    "untested": [
+      "ListStateMachineAliases"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListStateMachineAliases": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SyncExecution",
+    "operations": [
+      "StartSyncExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "StartSyncExecution"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartSyncExecution": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestState",
+    "operations": [
+      "TestState"
+    ],
+    "tested": [],
+    "untested": [
+      "TestState"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestState": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,198 @@
+[
+  {
+    "noun": "JobFlows",
+    "operations": [
+      "DescribeJobFlows",
+      "TerminateJobFlows"
+    ],
+    "tested": [
+      "TerminateJobFlows"
+    ],
+    "untested": [
+      "DescribeJobFlows"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeJobFlows": "working",
+      "TerminateJobFlows": "working"
+    },
+    "working_untested": [
+      "DescribeJobFlows"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ClusterSessionCredentials",
+    "operations": [
+      "GetClusterSessionCredentials"
+    ],
+    "tested": [],
+    "untested": [
+      "GetClusterSessionCredentials"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetClusterSessionCredentials": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "KeepJobFlowAliveWhenNoSteps",
+    "operations": [
+      "SetKeepJobFlowAliveWhenNoSteps"
+    ],
+    "tested": [],
+    "untested": [
+      "SetKeepJobFlowAliveWhenNoSteps"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetKeepJobFlowAliveWhenNoSteps": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NotebookExecution",
+    "operations": [
+      "DescribeNotebookExecution",
+      "StartNotebookExecution",
+      "StopNotebookExecution"
+    ],
+    "tested": [
+      "DescribeNotebookExecution",
+      "StopNotebookExecution"
+    ],
+    "untested": [
+      "StartNotebookExecution"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeNotebookExecution": "working",
+      "StartNotebookExecution": "not_implemented",
+      "StopNotebookExecution": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OnClusterAppUIPresignedURL",
+    "operations": [
+      "GetOnClusterAppUIPresignedURL"
+    ],
+    "tested": [],
+    "untested": [
+      "GetOnClusterAppUIPresignedURL"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetOnClusterAppUIPresignedURL": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PersistentAppUI",
+    "operations": [
+      "CreatePersistentAppUI",
+      "DescribePersistentAppUI"
+    ],
+    "tested": [],
+    "untested": [
+      "CreatePersistentAppUI",
+      "DescribePersistentAppUI"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreatePersistentAppUI": "not_implemented",
+      "DescribePersistentAppUI": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PersistentAppUIPresignedURL",
+    "operations": [
+      "GetPersistentAppUIPresignedURL"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPersistentAppUIPresignedURL"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPersistentAppUIPresignedURL": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Studio",
+    "operations": [
+      "CreateStudio",
+      "DeleteStudio",
+      "DescribeStudio",
+      "UpdateStudio"
+    ],
+    "tested": [
+      "CreateStudio",
+      "DeleteStudio",
+      "DescribeStudio"
+    ],
+    "untested": [
+      "UpdateStudio"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateStudio": "working",
+      "DeleteStudio": "working",
+      "DescribeStudio": "working",
+      "UpdateStudio": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StudioSessionMappings",
+    "operations": [
+      "ListStudioSessionMappings"
+    ],
+    "tested": [],
+    "untested": [
+      "ListStudioSessionMappings"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListStudioSessionMappings": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UnhealthyNodeReplacement",
+    "operations": [
+      "SetUnhealthyNodeReplacement"
+    ],
+    "tested": [],
+    "untested": [
+      "SetUnhealthyNodeReplacement"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetUnhealthyNodeReplacement": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

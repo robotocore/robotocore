@@ -1,0 +1,165 @@
+[
+  {
+    "noun": "CallAnalyticsCategory",
+    "operations": [
+      "CreateCallAnalyticsCategory",
+      "DeleteCallAnalyticsCategory",
+      "GetCallAnalyticsCategory",
+      "UpdateCallAnalyticsCategory"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCallAnalyticsCategory",
+      "DeleteCallAnalyticsCategory",
+      "GetCallAnalyticsCategory",
+      "UpdateCallAnalyticsCategory"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateCallAnalyticsCategory": "needs_params",
+      "DeleteCallAnalyticsCategory": "not_implemented",
+      "GetCallAnalyticsCategory": "not_implemented",
+      "UpdateCallAnalyticsCategory": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CallAnalyticsJob",
+    "operations": [
+      "DeleteCallAnalyticsJob",
+      "GetCallAnalyticsJob",
+      "StartCallAnalyticsJob"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteCallAnalyticsJob",
+      "GetCallAnalyticsJob",
+      "StartCallAnalyticsJob"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteCallAnalyticsJob": "not_implemented",
+      "GetCallAnalyticsJob": "not_implemented",
+      "StartCallAnalyticsJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MedicalScribeJob",
+    "operations": [
+      "DeleteMedicalScribeJob",
+      "GetMedicalScribeJob",
+      "StartMedicalScribeJob"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteMedicalScribeJob",
+      "GetMedicalScribeJob",
+      "StartMedicalScribeJob"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteMedicalScribeJob": "not_implemented",
+      "GetMedicalScribeJob": "not_implemented",
+      "StartMedicalScribeJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MedicalVocabulary",
+    "operations": [
+      "CreateMedicalVocabulary",
+      "DeleteMedicalVocabulary",
+      "GetMedicalVocabulary",
+      "UpdateMedicalVocabulary"
+    ],
+    "tested": [
+      "CreateMedicalVocabulary",
+      "DeleteMedicalVocabulary",
+      "GetMedicalVocabulary"
+    ],
+    "untested": [
+      "UpdateMedicalVocabulary"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateMedicalVocabulary": "working",
+      "DeleteMedicalVocabulary": "working",
+      "GetMedicalVocabulary": "working",
+      "UpdateMedicalVocabulary": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "needs_params",
+      "UntagResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Vocabulary",
+    "operations": [
+      "CreateVocabulary",
+      "DeleteVocabulary",
+      "GetVocabulary",
+      "UpdateVocabulary"
+    ],
+    "tested": [
+      "CreateVocabulary",
+      "DeleteVocabulary",
+      "GetVocabulary"
+    ],
+    "untested": [
+      "UpdateVocabulary"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateVocabulary": "working",
+      "DeleteVocabulary": "working",
+      "GetVocabulary": "working",
+      "UpdateVocabulary": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,311 @@
+{
+  "service": "emr",
+  "counts": {
+    "working": 50,
+    "needs_params": 0,
+    "not_implemented": 10,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddInstanceFleet",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "AddInstanceGroups",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "AddJobFlowSteps",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "AddTags",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CancelSteps",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreatePersistentAppUI",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSecurityConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStudio",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStudioSessionMapping",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DeleteSecurityConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteStudio",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DeleteStudioSessionMapping",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeCluster",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeJobFlows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNotebookExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribePersistentAppUI",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeReleaseLabel",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeSecurityConfiguration",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeStep",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeStudio",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetAutoTerminationPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetBlockPublicAccessConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetClusterSessionCredentials",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetManagedScalingPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "GetOnClusterAppUIPresignedURL",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetPersistentAppUIPresignedURL",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetStudioSessionMapping",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListBootstrapActions",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInstanceFleets",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListInstanceGroups",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListInstances",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListNotebookExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReleaseLabels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSteps",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListStudioSessionMappings",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListStudios",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSupportedInstanceTypes",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ModifyCluster",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ModifyInstanceFleet",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ModifyInstanceGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAutoScalingPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "PutAutoTerminationPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "PutBlockPublicAccessConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutManagedScalingPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "RemoveAutoScalingPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveAutoTerminationPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "RemoveManagedScalingPolicy",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "RemoveTags",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "RunJobFlow",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetKeepJobFlowAliveWhenNoSteps",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetTerminationProtection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SetUnhealthyNodeReplacement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetVisibleToAllUsers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartNotebookExecution",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopNotebookExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "TerminateJobFlows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateStudio",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateStudioSessionMapping",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    }
+  ]
+}

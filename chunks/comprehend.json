@@ -1,0 +1,169 @@
+[
+  {
+    "noun": "DetectDominantLanguage",
+    "operations": [
+      "BatchDetectDominantLanguage",
+      "DetectDominantLanguage"
+    ],
+    "tested": [
+      "DetectDominantLanguage"
+    ],
+    "untested": [
+      "BatchDetectDominantLanguage"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDetectDominantLanguage": "needs_params",
+      "DetectDominantLanguage": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectEntities",
+    "operations": [
+      "BatchDetectEntities",
+      "DetectEntities"
+    ],
+    "tested": [
+      "DetectEntities"
+    ],
+    "untested": [
+      "BatchDetectEntities"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDetectEntities": "needs_params",
+      "DetectEntities": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectKeyPhrases",
+    "operations": [
+      "BatchDetectKeyPhrases",
+      "DetectKeyPhrases"
+    ],
+    "tested": [
+      "DetectKeyPhrases"
+    ],
+    "untested": [
+      "BatchDetectKeyPhrases"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDetectKeyPhrases": "needs_params",
+      "DetectKeyPhrases": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectSentiment",
+    "operations": [
+      "BatchDetectSentiment",
+      "DetectSentiment"
+    ],
+    "tested": [
+      "DetectSentiment"
+    ],
+    "untested": [
+      "BatchDetectSentiment"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDetectSentiment": "needs_params",
+      "DetectSentiment": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectSyntax",
+    "operations": [
+      "BatchDetectSyntax",
+      "DetectSyntax"
+    ],
+    "tested": [
+      "DetectSyntax"
+    ],
+    "untested": [
+      "BatchDetectSyntax"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDetectSyntax": "needs_params",
+      "DetectSyntax": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectTargetedSentiment",
+    "operations": [
+      "BatchDetectTargetedSentiment",
+      "DetectTargetedSentiment"
+    ],
+    "tested": [
+      "DetectTargetedSentiment"
+    ],
+    "untested": [
+      "BatchDetectTargetedSentiment"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDetectTargetedSentiment": "needs_params",
+      "DetectTargetedSentiment": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectToxicContent",
+    "operations": [
+      "DetectToxicContent"
+    ],
+    "tested": [],
+    "untested": [
+      "DetectToxicContent"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DetectToxicContent": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EventsDetectionJob",
+    "operations": [
+      "DescribeEventsDetectionJob",
+      "StartEventsDetectionJob",
+      "StopEventsDetectionJob"
+    ],
+    "tested": [
+      "DescribeEventsDetectionJob",
+      "StopEventsDetectionJob"
+    ],
+    "untested": [
+      "StartEventsDetectionJob"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeEventsDetectionJob": "working",
+      "StartEventsDetectionJob": "needs_params",
+      "StopEventsDetectionJob": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

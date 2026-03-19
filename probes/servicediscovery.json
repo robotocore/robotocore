@@ -1,0 +1,161 @@
+{
+  "service": "servicediscovery",
+  "counts": {
+    "working": 25,
+    "needs_params": 1,
+    "not_implemented": 2,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "CreateHttpNamespace",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePrivateDnsNamespace",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePublicDnsNamespace",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateService",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteNamespace",
+      "status": "working",
+      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "DeleteService",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteServiceAttributes",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeregisterInstance",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "DiscoverInstances",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://data-localhos"
+    },
+    {
+      "operation": "DiscoverInstancesRevision",
+      "status": "500_error",
+      "message": "exception: Could not connect to the endpoint URL: \"http://data-localhos"
+    },
+    {
+      "operation": "GetInstance",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "GetInstancesHealthStatus",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "GetNamespace",
+      "status": "working",
+      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "GetOperation",
+      "status": "working",
+      "message": "likely implemented (OperationNotFound: )"
+    },
+    {
+      "operation": "GetService",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "GetServiceAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListInstances",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "ListNamespaces",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOperations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterInstance",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateHttpNamespace",
+      "status": "working",
+      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "UpdateInstanceCustomHealthStatus",
+      "status": "working",
+      "message": "likely implemented (CustomHealthNotFound: probe-test-value)"
+    },
+    {
+      "operation": "UpdatePrivateDnsNamespace",
+      "status": "working",
+      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "UpdatePublicDnsNamespace",
+      "status": "working",
+      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "UpdateService",
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+    },
+    {
+      "operation": "UpdateServiceAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

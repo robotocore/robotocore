@@ -1,0 +1,547 @@
+[
+  {
+    "noun": "MFADevice",
+    "operations": [
+      "DeactivateMFADevice",
+      "EnableMFADevice",
+      "GetMFADevice",
+      "TagMFADevice",
+      "UntagMFADevice"
+    ],
+    "tested": [],
+    "untested": [
+      "DeactivateMFADevice",
+      "EnableMFADevice",
+      "GetMFADevice",
+      "TagMFADevice",
+      "UntagMFADevice"
+    ],
+    "size": 5,
+    "untested_count": 5,
+    "probe_status": {
+      "DeactivateMFADevice": "working",
+      "EnableMFADevice": "working",
+      "GetMFADevice": "working",
+      "TagMFADevice": "working",
+      "UntagMFADevice": "working"
+    },
+    "working_untested": [
+      "DeactivateMFADevice",
+      "EnableMFADevice",
+      "GetMFADevice",
+      "TagMFADevice",
+      "UntagMFADevice"
+    ],
+    "working_untested_count": 5
+  },
+  {
+    "noun": "OpenIDConnectProvider",
+    "operations": [
+      "CreateOpenIDConnectProvider",
+      "DeleteOpenIDConnectProvider",
+      "GetOpenIDConnectProvider",
+      "TagOpenIDConnectProvider",
+      "UntagOpenIDConnectProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateOpenIDConnectProvider",
+      "DeleteOpenIDConnectProvider",
+      "GetOpenIDConnectProvider",
+      "TagOpenIDConnectProvider",
+      "UntagOpenIDConnectProvider"
+    ],
+    "size": 5,
+    "untested_count": 5,
+    "probe_status": {
+      "CreateOpenIDConnectProvider": "working",
+      "DeleteOpenIDConnectProvider": "working",
+      "GetOpenIDConnectProvider": "working",
+      "TagOpenIDConnectProvider": "working",
+      "UntagOpenIDConnectProvider": "working"
+    },
+    "working_untested": [
+      "CreateOpenIDConnectProvider",
+      "DeleteOpenIDConnectProvider",
+      "GetOpenIDConnectProvider",
+      "TagOpenIDConnectProvider",
+      "UntagOpenIDConnectProvider"
+    ],
+    "working_untested_count": 5
+  },
+  {
+    "noun": "SAMLProvider",
+    "operations": [
+      "CreateSAMLProvider",
+      "DeleteSAMLProvider",
+      "GetSAMLProvider",
+      "TagSAMLProvider",
+      "UntagSAMLProvider",
+      "UpdateSAMLProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateSAMLProvider",
+      "DeleteSAMLProvider",
+      "GetSAMLProvider",
+      "TagSAMLProvider",
+      "UntagSAMLProvider",
+      "UpdateSAMLProvider"
+    ],
+    "size": 6,
+    "untested_count": 6,
+    "probe_status": {
+      "CreateSAMLProvider": "needs_params",
+      "DeleteSAMLProvider": "working",
+      "GetSAMLProvider": "working",
+      "TagSAMLProvider": "working",
+      "UntagSAMLProvider": "working",
+      "UpdateSAMLProvider": "working"
+    },
+    "working_untested": [
+      "DeleteSAMLProvider",
+      "GetSAMLProvider",
+      "TagSAMLProvider",
+      "UntagSAMLProvider",
+      "UpdateSAMLProvider"
+    ],
+    "working_untested_count": 5
+  },
+  {
+    "noun": "VirtualMFADevice",
+    "operations": [
+      "CreateVirtualMFADevice",
+      "DeleteVirtualMFADevice"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateVirtualMFADevice",
+      "DeleteVirtualMFADevice"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateVirtualMFADevice": "working",
+      "DeleteVirtualMFADevice": "working"
+    },
+    "working_untested": [
+      "CreateVirtualMFADevice",
+      "DeleteVirtualMFADevice"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "ClientIDFromOpenIDConnectProvider",
+    "operations": [
+      "RemoveClientIDFromOpenIDConnectProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "RemoveClientIDFromOpenIDConnectProvider"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RemoveClientIDFromOpenIDConnectProvider": "working"
+    },
+    "working_untested": [
+      "RemoveClientIDFromOpenIDConnectProvider"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ClientIDToOpenIDConnectProvider",
+    "operations": [
+      "AddClientIDToOpenIDConnectProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "AddClientIDToOpenIDConnectProvider"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AddClientIDToOpenIDConnectProvider": "working"
+    },
+    "working_untested": [
+      "AddClientIDToOpenIDConnectProvider"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "MFADeviceTags",
+    "operations": [
+      "ListMFADeviceTags"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMFADeviceTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListMFADeviceTags": "working"
+    },
+    "working_untested": [
+      "ListMFADeviceTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "MFADevices",
+    "operations": [
+      "ListMFADevices"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMFADevices"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListMFADevices": "working"
+    },
+    "working_untested": [
+      "ListMFADevices"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "OpenIDConnectProviderTags",
+    "operations": [
+      "ListOpenIDConnectProviderTags"
+    ],
+    "tested": [],
+    "untested": [
+      "ListOpenIDConnectProviderTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListOpenIDConnectProviderTags": "working"
+    },
+    "working_untested": [
+      "ListOpenIDConnectProviderTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "OpenIDConnectProviderThumbprint",
+    "operations": [
+      "UpdateOpenIDConnectProviderThumbprint"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateOpenIDConnectProviderThumbprint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateOpenIDConnectProviderThumbprint": "working"
+    },
+    "working_untested": [
+      "UpdateOpenIDConnectProviderThumbprint"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "OpenIDConnectProviders",
+    "operations": [
+      "ListOpenIDConnectProviders"
+    ],
+    "tested": [],
+    "untested": [
+      "ListOpenIDConnectProviders"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListOpenIDConnectProviders": "working"
+    },
+    "working_untested": [
+      "ListOpenIDConnectProviders"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ResyncMFADevice",
+    "operations": [
+      "ResyncMFADevice"
+    ],
+    "tested": [],
+    "untested": [
+      "ResyncMFADevice"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ResyncMFADevice": "working"
+    },
+    "working_untested": [
+      "ResyncMFADevice"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SAMLProviderTags",
+    "operations": [
+      "ListSAMLProviderTags"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSAMLProviderTags"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSAMLProviderTags": "working"
+    },
+    "working_untested": [
+      "ListSAMLProviderTags"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SAMLProviders",
+    "operations": [
+      "ListSAMLProviders"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSAMLProviders"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSAMLProviders": "working"
+    },
+    "working_untested": [
+      "ListSAMLProviders"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "SSHPublicKeys",
+    "operations": [
+      "ListSSHPublicKeys"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSSHPublicKeys"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSSHPublicKeys": "working"
+    },
+    "working_untested": [
+      "ListSSHPublicKeys"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "UploadSSHPublicKey",
+    "operations": [
+      "UploadSSHPublicKey"
+    ],
+    "tested": [],
+    "untested": [
+      "UploadSSHPublicKey"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UploadSSHPublicKey": "working"
+    },
+    "working_untested": [
+      "UploadSSHPublicKey"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "VirtualMFADevices",
+    "operations": [
+      "ListVirtualMFADevices"
+    ],
+    "tested": [],
+    "untested": [
+      "ListVirtualMFADevices"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListVirtualMFADevices": "working"
+    },
+    "working_untested": [
+      "ListVirtualMFADevices"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DelegationRequest",
+    "operations": [
+      "AcceptDelegationRequest",
+      "AssociateDelegationRequest",
+      "CreateDelegationRequest",
+      "GetDelegationRequest",
+      "RejectDelegationRequest",
+      "UpdateDelegationRequest"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptDelegationRequest",
+      "AssociateDelegationRequest",
+      "CreateDelegationRequest",
+      "GetDelegationRequest",
+      "RejectDelegationRequest",
+      "UpdateDelegationRequest"
+    ],
+    "size": 6,
+    "untested_count": 6,
+    "probe_status": {
+      "AcceptDelegationRequest": "not_implemented",
+      "AssociateDelegationRequest": "not_implemented",
+      "CreateDelegationRequest": "needs_params",
+      "GetDelegationRequest": "not_implemented",
+      "RejectDelegationRequest": "not_implemented",
+      "UpdateDelegationRequest": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DelegationToken",
+    "operations": [
+      "SendDelegationToken"
+    ],
+    "tested": [],
+    "untested": [
+      "SendDelegationToken"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendDelegationToken": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GenerateOrganizationsAccessReport",
+    "operations": [
+      "GenerateOrganizationsAccessReport"
+    ],
+    "tested": [],
+    "untested": [
+      "GenerateOrganizationsAccessReport"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GenerateOrganizationsAccessReport": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HumanReadableSummary",
+    "operations": [
+      "GetHumanReadableSummary"
+    ],
+    "tested": [],
+    "untested": [
+      "GetHumanReadableSummary"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetHumanReadableSummary": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OrganizationsAccessReport",
+    "operations": [
+      "GetOrganizationsAccessReport"
+    ],
+    "tested": [],
+    "untested": [
+      "GetOrganizationsAccessReport"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetOrganizationsAccessReport": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PoliciesGrantingServiceAccess",
+    "operations": [
+      "ListPoliciesGrantingServiceAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPoliciesGrantingServiceAccess"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPoliciesGrantingServiceAccess": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SSHPublicKey",
+    "operations": [
+      "DeleteSSHPublicKey",
+      "GetSSHPublicKey",
+      "UpdateSSHPublicKey"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteSSHPublicKey",
+      "GetSSHPublicKey",
+      "UpdateSSHPublicKey"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteSSHPublicKey": "needs_params",
+      "GetSSHPublicKey": "needs_params",
+      "UpdateSSHPublicKey": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceSpecificCredential",
+    "operations": [
+      "CreateServiceSpecificCredential",
+      "DeleteServiceSpecificCredential",
+      "ResetServiceSpecificCredential",
+      "UpdateServiceSpecificCredential"
+    ],
+    "tested": [
+      "CreateServiceSpecificCredential"
+    ],
+    "untested": [
+      "DeleteServiceSpecificCredential",
+      "ResetServiceSpecificCredential",
+      "UpdateServiceSpecificCredential"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateServiceSpecificCredential": "working",
+      "DeleteServiceSpecificCredential": "needs_params",
+      "ResetServiceSpecificCredential": "needs_params",
+      "UpdateServiceSpecificCredential": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

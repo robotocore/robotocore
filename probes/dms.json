@@ -1,0 +1,606 @@
+{
+  "service": "dms",
+  "counts": {
+    "working": 114,
+    "needs_params": 2,
+    "not_implemented": 0,
+    "500_error": 3
+  },
+  "operations": [
+    {
+      "operation": "AddTagsToResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ApplyPendingMaintenanceAction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "BatchStartRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelMetadataModelConversion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelMetadataModelCreation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelReplicationTaskAssessmentRun",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDataMigration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDataProvider",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateEndpoint",
+      "status": "working",
+      "message": "implemented (ValidationError)"
+    },
+    {
+      "operation": "CreateEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFleetAdvisorCollector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInstanceProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMigrationProject",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReplicationConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReplicationInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReplicationSubnetGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateReplicationTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteDataMigration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteDataProvider",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFleetAdvisorCollector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFleetAdvisorDatabases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteInstanceProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteMigrationProject",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteReplicationConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteReplicationInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteReplicationSubnetGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteReplicationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteReplicationTaskAssessmentRun",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeApplicableIndividualAssessments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConnections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConversionConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataMigrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataProviders",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEndpointSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEndpointTypes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEngineVersions",
+      "status": "500_error",
+      "message": "exception: Invalid timestamp \"\": String does not contain a date: "
+    },
+    {
+      "operation": "DescribeEventCategories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeExtensionPackAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetAdvisorCollectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetAdvisorDatabases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetAdvisorLsaAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetAdvisorSchemaObjectSummary",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeFleetAdvisorSchemas",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInstanceProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelAssessments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelChildren",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelConversions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelCreations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelExportsAsScript",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelExportsToTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMetadataModelImports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMigrationProjects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrderableReplicationInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePendingMaintenanceActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRecommendationLimitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRefreshSchemasStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationInstanceTaskLogs",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DescribeReplicationInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationSubnetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationTableStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationTaskAssessmentResults",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationTaskAssessmentRuns",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationTaskIndividualAssessments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReplicationTasks",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+    },
+    {
+      "operation": "DescribeReplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSchemas",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTableStatistics",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ExportMetadataModelAssessment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetTargetSelectionRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ImportCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "500_error",
+      "message": "server crash (InternalError: Either ResourceArn or ResourceArnList should be specified.)"
+    },
+    {
+      "operation": "ModifyConversionConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyDataMigration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyDataProvider",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyEndpoint",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyEventSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyInstanceProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyMigrationProject",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyReplicationConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyReplicationInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyReplicationSubnetGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyReplicationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "MoveReplicationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "RebootReplicationInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "RefreshSchemas",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReloadReplicationTables",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReloadTables",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "RemoveTagsFromResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RunFleetAdvisorLsaAnalysis",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartDataMigration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StartExtensionPackAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMetadataModelAssessment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMetadataModelConversion",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMetadataModelCreation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartMetadataModelExportAsScript",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMetadataModelExportToTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMetadataModelImport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartReplication",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StartReplicationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StartReplicationTaskAssessment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StartReplicationTaskAssessmentRun",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StopDataMigration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StopReplication",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "StopReplicationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "TestConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "UpdateSubscriptionsToEventBridge",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

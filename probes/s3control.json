@@ -1,0 +1,491 @@
+{
+  "service": "s3control",
+  "counts": {
+    "working": 77,
+    "needs_params": 0,
+    "not_implemented": 14,
+    "500_error": 5
+  },
+  "operations": [
+    {
+      "operation": "AssociateAccessGrantsIdentityCenter",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateAccessGrant",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'None' has no attribute 'get')"
+    },
+    {
+      "operation": "CreateAccessGrantsInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAccessGrantsLocation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAccessPoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAccessPointForObjectLambda",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBucket",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMultiRegionAccessPoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStorageLensGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccessGrant",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrant: The specified access grant does not exist: probe-test-value)"
+    },
+    {
+      "operation": "DeleteAccessGrantsInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccessGrantsInstanceResourcePolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsInstance: The Access Grants instance does not exist)"
+    },
+    {
+      "operation": "DeleteAccessGrantsLocation",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-t)"
+    },
+    {
+      "operation": "DeleteAccessPoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccessPointForObjectLambda",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccessPointPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "DeleteAccessPointPolicyForObjectLambda",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccessPointScope",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketLifecycleConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketReplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBucketTagging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteJobTagging",
+      "status": "working",
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+    },
+    {
+      "operation": "DeleteMultiRegionAccessPoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePublicAccessBlock",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "DeleteStorageLensConfiguration",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "DeleteStorageLensConfigurationTagging",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "DeleteStorageLensGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeJob",
+      "status": "working",
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+    },
+    {
+      "operation": "DescribeMultiRegionAccessPointOperation",
+      "status": "working",
+      "message": "likely implemented (NoSuchAsyncRequest: The specified async request does not exist)"
+    },
+    {
+      "operation": "DissociateAccessGrantsIdentityCenter",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAccessGrant",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrant: The specified access grant does not exist: probe-test-value)"
+    },
+    {
+      "operation": "GetAccessGrantsInstance",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsInstance: The Access Grants instance does not exist)"
+    },
+    {
+      "operation": "GetAccessGrantsInstanceForPrefix",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsInstance: The Access Grants instance does not exist)"
+    },
+    {
+      "operation": "GetAccessGrantsInstanceResourcePolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsInstance: The Access Grants instance does not exist)"
+    },
+    {
+      "operation": "GetAccessGrantsLocation",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-t)"
+    },
+    {
+      "operation": "GetAccessPoint",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "GetAccessPointConfigurationForObjectLambda",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAccessPointForObjectLambda",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "GetAccessPointPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "GetAccessPointPolicyForObjectLambda",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccessPointPolicyStatus",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "GetAccessPointPolicyStatusForObjectLambda",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccessPointScope",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucket",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetBucketLifecycleConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketReplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketTagging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketVersioning",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDataAccess",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetJobTagging",
+      "status": "working",
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+    },
+    {
+      "operation": "GetMultiRegionAccessPoint",
+      "status": "working",
+      "message": "likely implemented (NoSuchMultiRegionAccessPoint: The specified multi-region access point does not exist)"
+    },
+    {
+      "operation": "GetMultiRegionAccessPointPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchMultiRegionAccessPoint: The specified multi-region access point does not exist)"
+    },
+    {
+      "operation": "GetMultiRegionAccessPointPolicyStatus",
+      "status": "working",
+      "message": "likely implemented (NoSuchMultiRegionAccessPoint: The specified multi-region access point does not exist)"
+    },
+    {
+      "operation": "GetMultiRegionAccessPointRoutes",
+      "status": "working",
+      "message": "likely implemented (NoSuchMultiRegionAccessPoint: The specified multi-region access point does not exist)"
+    },
+    {
+      "operation": "GetPublicAccessBlock",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "GetStorageLensConfiguration",
+      "status": "working",
+      "message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist: probe-test-value)"
+    },
+    {
+      "operation": "GetStorageLensConfigurationTagging",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "GetStorageLensGroup",
+      "status": "working",
+      "message": "likely implemented (NoSuchStorageLensGroup: The specified Storage Lens group does not exist: probe-test-)"
+    },
+    {
+      "operation": "ListAccessGrants",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccessGrantsInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccessGrantsLocations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccessPoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAccessPointsForDirectoryBuckets",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAccessPointsForObjectLambda",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListCallerAccessGrants",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMultiRegionAccessPoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRegionalBuckets",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListStorageLensConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStorageLensGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutAccessGrantsInstanceResourcePolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsInstance: The Access Grants instance does not exist)"
+    },
+    {
+      "operation": "PutAccessPointConfigurationForObjectLambda",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutAccessPointPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "PutAccessPointPolicyForObjectLambda",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
+    },
+    {
+      "operation": "PutAccessPointScope",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketLifecycleConfiguration",
+      "status": "500_error",
+      "message": "server crash (InternalError: no element found: line 1, column 0)"
+    },
+    {
+      "operation": "PutBucketPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketReplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketTagging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutBucketVersioning",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'PutBucketVersioningRequest')"
+    },
+    {
+      "operation": "PutJobTagging",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "PutMultiRegionAccessPointPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchMultiRegionAccessPoint: The specified multi-region access point does not exist)"
+    },
+    {
+      "operation": "PutPublicAccessBlock",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "PutStorageLensConfiguration",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "PutStorageLensConfigurationTagging",
+      "status": "working",
+      "message": "likely implemented (AccessDenied: Access Denied)"
+    },
+    {
+      "operation": "SubmitMultiRegionAccessPointRoutes",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateAccessGrantsLocation",
+      "status": "working",
+      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-t)"
+    },
+    {
+      "operation": "UpdateJobPriority",
+      "status": "working",
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+    },
+    {
+      "operation": "UpdateJobStatus",
+      "status": "working",
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+    },
+    {
+      "operation": "UpdateStorageLensGroup",
+      "status": "working",
+      "message": "likely implemented (NoSuchStorageLensGroup: The specified Storage Lens group does not exist: probe-test-)"
+    }
+  ]
+}

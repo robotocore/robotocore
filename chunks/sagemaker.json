@@ -1,0 +1,303 @@
+[
+  {
+    "noun": "AutoMLJob",
+    "operations": [
+      "CreateAutoMLJob",
+      "DescribeAutoMLJob",
+      "StopAutoMLJob"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAutoMLJob",
+      "DescribeAutoMLJob",
+      "StopAutoMLJob"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateAutoMLJob": "needs_params",
+      "DescribeAutoMLJob": "working",
+      "StopAutoMLJob": "working"
+    },
+    "working_untested": [
+      "DescribeAutoMLJob",
+      "StopAutoMLJob"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "AutoMLJobV2",
+    "operations": [
+      "CreateAutoMLJobV2",
+      "DescribeAutoMLJobV2"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAutoMLJobV2",
+      "DescribeAutoMLJobV2"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateAutoMLJobV2": "needs_params",
+      "DescribeAutoMLJobV2": "working"
+    },
+    "working_untested": [
+      "DescribeAutoMLJobV2"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AutoMLJobs",
+    "operations": [
+      "ListAutoMLJobs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAutoMLJobs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAutoMLJobs": "working"
+    },
+    "working_untested": [
+      "ListAutoMLJobs"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "CandidatesForAutoMLJob",
+    "operations": [
+      "ListCandidatesForAutoMLJob"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCandidatesForAutoMLJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCandidatesForAutoMLJob": "working"
+    },
+    "working_untested": [
+      "ListCandidatesForAutoMLJob"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Endpoint",
+    "operations": [
+      "CreateEndpoint",
+      "DeleteEndpoint",
+      "DescribeEndpoint",
+      "UpdateEndpoint"
+    ],
+    "tested": [
+      "CreateEndpoint",
+      "DeleteEndpoint",
+      "DescribeEndpoint"
+    ],
+    "untested": [
+      "UpdateEndpoint"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateEndpoint": "working",
+      "DeleteEndpoint": "working",
+      "DescribeEndpoint": "working",
+      "UpdateEndpoint": "working"
+    },
+    "working_untested": [
+      "UpdateEndpoint"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AddClusterNodes",
+    "operations": [
+      "BatchAddClusterNodes"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchAddClusterNodes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchAddClusterNodes": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Algorithm",
+    "operations": [
+      "CreateAlgorithm",
+      "DeleteAlgorithm",
+      "DescribeAlgorithm"
+    ],
+    "tested": [
+      "DeleteAlgorithm",
+      "DescribeAlgorithm"
+    ],
+    "untested": [
+      "CreateAlgorithm"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateAlgorithm": "needs_params",
+      "DeleteAlgorithm": "working",
+      "DescribeAlgorithm": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DescribeModelPackage",
+    "operations": [
+      "BatchDescribeModelPackage"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDescribeModelPackage"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDescribeModelPackage": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InferenceExperiment",
+    "operations": [
+      "CreateInferenceExperiment",
+      "DeleteInferenceExperiment",
+      "DescribeInferenceExperiment",
+      "StartInferenceExperiment",
+      "StopInferenceExperiment",
+      "UpdateInferenceExperiment"
+    ],
+    "tested": [
+      "DeleteInferenceExperiment",
+      "DescribeInferenceExperiment",
+      "StartInferenceExperiment",
+      "StopInferenceExperiment",
+      "UpdateInferenceExperiment"
+    ],
+    "untested": [
+      "CreateInferenceExperiment"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateInferenceExperiment": "needs_params",
+      "DeleteInferenceExperiment": "working",
+      "DescribeInferenceExperiment": "working",
+      "StartInferenceExperiment": "working",
+      "StopInferenceExperiment": "working",
+      "UpdateInferenceExperiment": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LabelingJob",
+    "operations": [
+      "CreateLabelingJob",
+      "DescribeLabelingJob",
+      "StopLabelingJob"
+    ],
+    "tested": [
+      "DescribeLabelingJob",
+      "StopLabelingJob"
+    ],
+    "untested": [
+      "CreateLabelingJob"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLabelingJob": "needs_params",
+      "DescribeLabelingJob": "working",
+      "StopLabelingJob": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PipelineExecution",
+    "operations": [
+      "DescribePipelineExecution",
+      "StartPipelineExecution",
+      "StopPipelineExecution",
+      "UpdatePipelineExecution"
+    ],
+    "tested": [
+      "DescribePipelineExecution",
+      "StartPipelineExecution",
+      "UpdatePipelineExecution"
+    ],
+    "untested": [
+      "StopPipelineExecution"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribePipelineExecution": "working",
+      "StartPipelineExecution": "needs_params",
+      "StopPipelineExecution": "needs_params",
+      "UpdatePipelineExecution": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RetryPipelineExecution",
+    "operations": [
+      "RetryPipelineExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "RetryPipelineExecution"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RetryPipelineExecution": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Workteam",
+    "operations": [
+      "CreateWorkteam",
+      "DeleteWorkteam",
+      "DescribeWorkteam",
+      "UpdateWorkteam"
+    ],
+    "tested": [
+      "DeleteWorkteam",
+      "DescribeWorkteam",
+      "UpdateWorkteam"
+    ],
+    "untested": [
+      "CreateWorkteam"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateWorkteam": "needs_params",
+      "DeleteWorkteam": "working",
+      "DescribeWorkteam": "working",
+      "UpdateWorkteam": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

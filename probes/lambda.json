@@ -1,0 +1,431 @@
+{
+  "service": "lambda",
+  "counts": {
+    "working": 64,
+    "needs_params": 2,
+    "not_implemented": 18,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddLayerVersionPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AddPermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CheckpointDurableExecution",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "CreateAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateCapacityProvider",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateCodeSigningConfig",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateEventSourceMapping",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFunction",
+      "status": "working",
+      "message": "likely implemented (InvalidRoleFormat: 400 Bad Request: {\"__type\": \"ValidationException\", \"message\")"
+    },
+    {
+      "operation": "CreateFunctionUrlConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCapacityProvider",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "DeleteCodeSigningConfig",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "DeleteEventSourceMapping",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFunctionCodeSigningConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFunctionConcurrency",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFunctionEventInvokeConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFunctionUrlConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteLayerVersion",
+      "status": "working",
+      "message": "likely implemented (UnknownLayerException: 404 Not Found: {\"__type\": \"ResourceNotFoundException\", \"mess)"
+    },
+    {
+      "operation": "DeleteProvisionedConcurrencyConfig",
+      "status": "working",
+      "message": "likely implemented (ProvisionedConcurrencyConfigNotFoundException: No provisioned concurrency config for probe-test-value:probe)"
+    },
+    {
+      "operation": "GetAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCapacityProvider",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "GetCodeSigningConfig",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "GetDurableExecution",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "GetDurableExecutionHistory",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "GetDurableExecutionState",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "GetEventSourceMapping",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunction",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionCodeSigningConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionConcurrency",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionEventInvokeConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionRecursionConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionScalingConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFunctionUrlConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLayerVersion",
+      "status": "working",
+      "message": "likely implemented (UnknownLayerException: 404 Not Found: {\"__type\": \"ResourceNotFoundException\", \"mess)"
+    },
+    {
+      "operation": "GetLayerVersionByArn",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLayerVersionPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetProvisionedConcurrencyConfig",
+      "status": "working",
+      "message": "likely implemented (ProvisionedConcurrencyConfigNotFoundException: No provisioned concurrency config for probe-test-value:probe)"
+    },
+    {
+      "operation": "GetRuntimeManagementConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "Invoke",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "InvokeAsync",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "InvokeWithResponseStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAliases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListCapacityProviders",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "ListCodeSigningConfigs",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "ListDurableExecutionsByFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEventSourceMappings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFunctionEventInvokeConfigs",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFunctionUrlConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFunctionVersionsByCapacityProvider",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "ListFunctions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFunctionsByCodeSigningConfig",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "ListLayerVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLayers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProvisionedConcurrencyConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListVersionsByFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PublishLayerVersion",
+      "status": "working",
+      "message": "implemented (InvalidParameterValueException)"
+    },
+    {
+      "operation": "PublishVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutFunctionCodeSigningConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutFunctionConcurrency",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutFunctionEventInvokeConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutFunctionRecursionConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutFunctionScalingConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutProvisionedConcurrencyConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutRuntimeManagementConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RemoveLayerVersionPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemovePermission",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SendDurableExecutionCallbackFailure",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "SendDurableExecutionCallbackHeartbeat",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "SendDurableExecutionCallbackSuccess",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "StopDurableExecution",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateCapacityProvider",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "UpdateCodeSigningConfig",
+      "status": "not_implemented",
+      "message": "not implemented (InvalidRequest)"
+    },
+    {
+      "operation": "UpdateEventSourceMapping",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFunctionCode",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFunctionConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFunctionEventInvokeConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFunctionUrlConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

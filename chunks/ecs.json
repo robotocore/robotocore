@@ -1,0 +1,99 @@
+[
+  {
+    "noun": "ExpressGatewayService",
+    "operations": [
+      "CreateExpressGatewayService",
+      "DeleteExpressGatewayService",
+      "DescribeExpressGatewayService",
+      "UpdateExpressGatewayService"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateExpressGatewayService",
+      "DeleteExpressGatewayService",
+      "DescribeExpressGatewayService",
+      "UpdateExpressGatewayService"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateExpressGatewayService": "not_implemented",
+      "DeleteExpressGatewayService": "not_implemented",
+      "DescribeExpressGatewayService": "not_implemented",
+      "UpdateExpressGatewayService": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceDeployment",
+    "operations": [
+      "StopServiceDeployment"
+    ],
+    "tested": [],
+    "untested": [
+      "StopServiceDeployment"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StopServiceDeployment": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceDeployments",
+    "operations": [
+      "DescribeServiceDeployments",
+      "ListServiceDeployments"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeServiceDeployments",
+      "ListServiceDeployments"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeServiceDeployments": "not_implemented",
+      "ListServiceDeployments": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ServiceRevisions",
+    "operations": [
+      "DescribeServiceRevisions"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeServiceRevisions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeServiceRevisions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SubmitAttachmentStateChanges",
+    "operations": [
+      "SubmitAttachmentStateChanges"
+    ],
+    "tested": [],
+    "untested": [
+      "SubmitAttachmentStateChanges"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SubmitAttachmentStateChanges": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

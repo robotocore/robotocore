@@ -1,0 +1,55 @@
+[
+  {
+    "noun": "Certificate",
+    "operations": [
+      "DeleteCertificate",
+      "DescribeCertificate",
+      "ExportCertificate",
+      "GetCertificate",
+      "ImportCertificate",
+      "RequestCertificate",
+      "RevokeCertificate"
+    ],
+    "tested": [
+      "DeleteCertificate",
+      "DescribeCertificate",
+      "ExportCertificate",
+      "GetCertificate",
+      "ImportCertificate",
+      "RequestCertificate"
+    ],
+    "untested": [
+      "RevokeCertificate"
+    ],
+    "size": 7,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteCertificate": "working",
+      "DescribeCertificate": "working",
+      "ExportCertificate": "working",
+      "GetCertificate": "working",
+      "ImportCertificate": "working",
+      "RequestCertificate": "working",
+      "RevokeCertificate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RenewCertificate",
+    "operations": [
+      "RenewCertificate"
+    ],
+    "tested": [],
+    "untested": [
+      "RenewCertificate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RenewCertificate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,247 @@
+[
+  {
+    "noun": "Dashboard",
+    "operations": [
+      "CreateDashboard",
+      "DeleteDashboard",
+      "GetDashboard",
+      "UpdateDashboard"
+    ],
+    "tested": [
+      "GetDashboard"
+    ],
+    "untested": [
+      "CreateDashboard",
+      "DeleteDashboard",
+      "UpdateDashboard"
+    ],
+    "size": 4,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateDashboard": "not_implemented",
+      "DeleteDashboard": "not_implemented",
+      "GetDashboard": "working",
+      "UpdateDashboard": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DashboardRefresh",
+    "operations": [
+      "StartDashboardRefresh"
+    ],
+    "tested": [],
+    "untested": [
+      "StartDashboardRefresh"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartDashboardRefresh": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Dashboards",
+    "operations": [
+      "ListDashboards"
+    ],
+    "tested": [],
+    "untested": [
+      "ListDashboards"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListDashboards": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EventConfiguration",
+    "operations": [
+      "GetEventConfiguration",
+      "PutEventConfiguration"
+    ],
+    "tested": [
+      "GetEventConfiguration"
+    ],
+    "untested": [
+      "PutEventConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetEventConfiguration": "working",
+      "PutEventConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EventDataStoreIngestion",
+    "operations": [
+      "StartEventDataStoreIngestion",
+      "StopEventDataStoreIngestion"
+    ],
+    "tested": [],
+    "untested": [
+      "StartEventDataStoreIngestion",
+      "StopEventDataStoreIngestion"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "StartEventDataStoreIngestion": "not_implemented",
+      "StopEventDataStoreIngestion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GenerateQuery",
+    "operations": [
+      "GenerateQuery"
+    ],
+    "tested": [],
+    "untested": [
+      "GenerateQuery"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GenerateQuery": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImportFailures",
+    "operations": [
+      "ListImportFailures"
+    ],
+    "tested": [],
+    "untested": [
+      "ListImportFailures"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListImportFailures": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InsightsData",
+    "operations": [
+      "ListInsightsData"
+    ],
+    "tested": [],
+    "untested": [
+      "ListInsightsData"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListInsightsData": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InsightsMetricData",
+    "operations": [
+      "ListInsightsMetricData"
+    ],
+    "tested": [],
+    "untested": [
+      "ListInsightsMetricData"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListInsightsMetricData": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LookupEvents",
+    "operations": [
+      "LookupEvents"
+    ],
+    "tested": [],
+    "untested": [
+      "LookupEvents"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "LookupEvents": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PublicKeys",
+    "operations": [
+      "ListPublicKeys"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPublicKeys"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPublicKeys": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourcePolicy",
+    "operations": [
+      "DeleteResourcePolicy",
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "tested": [
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "untested": [
+      "DeleteResourcePolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteResourcePolicy": "not_implemented",
+      "GetResourcePolicy": "working",
+      "PutResourcePolicy": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SearchSampleQueries",
+    "operations": [
+      "SearchSampleQueries"
+    ],
+    "tested": [],
+    "untested": [
+      "SearchSampleQueries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SearchSampleQueries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

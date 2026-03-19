@@ -1,0 +1,154 @@
+[
+  {
+    "noun": "Channel",
+    "operations": [
+      "CreateChannel",
+      "DeleteChannel",
+      "DescribeChannel",
+      "UpdateChannel"
+    ],
+    "tested": [
+      "CreateChannel",
+      "DeleteChannel",
+      "DescribeChannel"
+    ],
+    "untested": [
+      "UpdateChannel"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateChannel": "working",
+      "DeleteChannel": "working",
+      "DescribeChannel": "working",
+      "UpdateChannel": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ChannelCredentials",
+    "operations": [
+      "RotateChannelCredentials"
+    ],
+    "tested": [],
+    "untested": [
+      "RotateChannelCredentials"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RotateChannelCredentials": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConfigureLogs",
+    "operations": [
+      "ConfigureLogs"
+    ],
+    "tested": [],
+    "untested": [
+      "ConfigureLogs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ConfigureLogs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HarvestJob",
+    "operations": [
+      "CreateHarvestJob",
+      "DescribeHarvestJob"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateHarvestJob",
+      "DescribeHarvestJob"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateHarvestJob": "not_implemented",
+      "DescribeHarvestJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "HarvestJobs",
+    "operations": [
+      "ListHarvestJobs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListHarvestJobs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListHarvestJobs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "IngestEndpointCredentials",
+    "operations": [
+      "RotateIngestEndpointCredentials"
+    ],
+    "tested": [],
+    "untested": [
+      "RotateIngestEndpointCredentials"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RotateIngestEndpointCredentials": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

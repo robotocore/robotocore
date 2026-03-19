@@ -1,0 +1,146 @@
+[
+  {
+    "noun": "CampaignDialerConfig",
+    "operations": [
+      "UpdateCampaignDialerConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateCampaignDialerConfig"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateCampaignDialerConfig": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CampaignName",
+    "operations": [
+      "UpdateCampaignName"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateCampaignName"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateCampaignName": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CampaignOutboundCallConfig",
+    "operations": [
+      "UpdateCampaignOutboundCallConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateCampaignOutboundCallConfig"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateCampaignOutboundCallConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CampaignStateBatch",
+    "operations": [
+      "GetCampaignStateBatch"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCampaignStateBatch"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetCampaignStateBatch": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectInstanceConfig",
+    "operations": [
+      "DeleteConnectInstanceConfig",
+      "GetConnectInstanceConfig"
+    ],
+    "tested": [
+      "GetConnectInstanceConfig"
+    ],
+    "untested": [
+      "DeleteConnectInstanceConfig"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteConnectInstanceConfig": "not_implemented",
+      "GetConnectInstanceConfig": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DialRequestBatch",
+    "operations": [
+      "PutDialRequestBatch"
+    ],
+    "tested": [],
+    "untested": [
+      "PutDialRequestBatch"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PutDialRequestBatch": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceOnboardingJob",
+    "operations": [
+      "DeleteInstanceOnboardingJob",
+      "StartInstanceOnboardingJob"
+    ],
+    "tested": [
+      "StartInstanceOnboardingJob"
+    ],
+    "untested": [
+      "DeleteInstanceOnboardingJob"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteInstanceOnboardingJob": "not_implemented",
+      "StartInstanceOnboardingJob": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InstanceOnboardingJobStatus",
+    "operations": [
+      "GetInstanceOnboardingJobStatus"
+    ],
+    "tested": [],
+    "untested": [
+      "GetInstanceOnboardingJobStatus"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetInstanceOnboardingJobStatus": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

@@ -1,0 +1,546 @@
+{
+  "service": "securityhub",
+  "counts": {
+    "working": 93,
+    "needs_params": 14,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptAdministratorInvitation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AcceptInvitation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchDeleteAutomationRules",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchDisableStandards",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchEnableStandards",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetAutomationRules",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchGetConfigurationPolicyAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetSecurityControls",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetStandardsControlAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchImportFindings",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchUpdateAutomationRules",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "BatchUpdateFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchUpdateFindingsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchUpdateStandardsControlAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateActionTarget",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAggregatorV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAutomationRule",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateAutomationRuleV2",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateConfigurationPolicy",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateConnectorV2",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateFindingAggregator",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInsight",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateTicketV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeclineInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteActionTarget",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAggregatorV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAutomationRuleV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteConfigurationPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteConnectorV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFindingAggregator",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteInsight",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeActionTargets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHub",
+      "status": "working",
+      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DescribeOrganizationConfiguration",
+      "status": "working",
+      "message": "implemented (AccessDeniedException)"
+    },
+    {
+      "operation": "DescribeProducts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeProductsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSecurityHubV2",
+      "status": "working",
+      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DescribeStandards",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStandardsControls",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableImportFindingsForProduct",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableOrganizationAdminAccount",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "DisableSecurityHub",
+      "status": "working",
+      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+    },
+    {
+      "operation": "DisableSecurityHubV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateFromAdministratorAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateFromMasterAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableImportFindingsForProduct",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableOrganizationAdminAccount",
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+    },
+    {
+      "operation": "EnableSecurityHub",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableSecurityHubV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAdministratorAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAggregatorV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomationRuleV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetConfigurationPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetConfigurationPolicyAssociation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetConnectorV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetEnabledStandards",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindingAggregator",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFindingHistory",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindingStatisticsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindingsTrendsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindingsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInsightResults",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetInsights",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInvitationsCount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMasterAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcesStatisticsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcesTrendsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcesV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSecurityControlDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "InviteMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAggregatorsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAutomationRules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAutomationRulesV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListConfigurationPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConfigurationPolicyAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConnectorsV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEnabledProductsForImport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFindingAggregators",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOrganizationAdminAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityControlDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStandardsControlAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterConnectorV2",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartConfigurationPolicyAssociation",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartConfigurationPolicyDisassociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateActionTarget",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAggregatorV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAutomationRuleV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateConfigurationPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateConnectorV2",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFindingAggregator",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateInsight",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateOrganizationConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateSecurityControl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateSecurityHubConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateStandardsControl",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

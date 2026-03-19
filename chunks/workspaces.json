@@ -1,0 +1,189 @@
+[
+  {
+    "noun": "ClientBranding",
+    "operations": [
+      "DeleteClientBranding",
+      "DescribeClientBranding",
+      "ImportClientBranding"
+    ],
+    "tested": [
+      "DescribeClientBranding",
+      "ImportClientBranding"
+    ],
+    "untested": [
+      "DeleteClientBranding"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteClientBranding": "needs_params",
+      "DescribeClientBranding": "working",
+      "ImportClientBranding": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClientProperties",
+    "operations": [
+      "DescribeClientProperties",
+      "ModifyClientProperties"
+    ],
+    "tested": [
+      "DescribeClientProperties"
+    ],
+    "untested": [
+      "ModifyClientProperties"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeClientProperties": "needs_params",
+      "ModifyClientProperties": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ConnectClientAddIn",
+    "operations": [
+      "CreateConnectClientAddIn",
+      "DeleteConnectClientAddIn",
+      "UpdateConnectClientAddIn"
+    ],
+    "tested": [
+      "CreateConnectClientAddIn"
+    ],
+    "untested": [
+      "DeleteConnectClientAddIn",
+      "UpdateConnectClientAddIn"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateConnectClientAddIn": "working",
+      "DeleteConnectClientAddIn": "needs_params",
+      "UpdateConnectClientAddIn": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CustomWorkspaceImage",
+    "operations": [
+      "ImportCustomWorkspaceImage"
+    ],
+    "tested": [],
+    "untested": [
+      "ImportCustomWorkspaceImage"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ImportCustomWorkspaceImage": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RebuildWorkspaces",
+    "operations": [
+      "RebuildWorkspaces"
+    ],
+    "tested": [],
+    "untested": [
+      "RebuildWorkspaces"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RebuildWorkspaces": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SelfservicePermissions",
+    "operations": [
+      "ModifySelfservicePermissions"
+    ],
+    "tested": [],
+    "untested": [
+      "ModifySelfservicePermissions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ModifySelfservicePermissions": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkspaceImagePermission",
+    "operations": [
+      "UpdateWorkspaceImagePermission"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateWorkspaceImagePermission"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateWorkspaceImagePermission": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Workspaces",
+    "operations": [
+      "CreateWorkspaces",
+      "DescribeWorkspaces",
+      "RebootWorkspaces",
+      "StartWorkspaces",
+      "StopWorkspaces",
+      "TerminateWorkspaces"
+    ],
+    "tested": [
+      "CreateWorkspaces",
+      "DescribeWorkspaces",
+      "TerminateWorkspaces"
+    ],
+    "untested": [
+      "RebootWorkspaces",
+      "StartWorkspaces",
+      "StopWorkspaces"
+    ],
+    "size": 6,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateWorkspaces": "needs_params",
+      "DescribeWorkspaces": "working",
+      "RebootWorkspaces": "needs_params",
+      "StartWorkspaces": "needs_params",
+      "StopWorkspaces": "needs_params",
+      "TerminateWorkspaces": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkspacesPoolSession",
+    "operations": [
+      "TerminateWorkspacesPoolSession"
+    ],
+    "tested": [],
+    "untested": [
+      "TerminateWorkspacesPoolSession"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TerminateWorkspacesPoolSession": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

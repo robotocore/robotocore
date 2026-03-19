@@ -1,0 +1,374 @@
+[
+  {
+    "noun": "Agent",
+    "operations": [
+      "CreateAgent",
+      "DeleteAgent",
+      "DescribeAgent",
+      "UpdateAgent"
+    ],
+    "tested": [
+      "CreateAgent",
+      "DescribeAgent"
+    ],
+    "untested": [
+      "DeleteAgent",
+      "UpdateAgent"
+    ],
+    "size": 4,
+    "untested_count": 2,
+    "probe_status": {
+      "CreateAgent": "working",
+      "DeleteAgent": "not_implemented",
+      "DescribeAgent": "working",
+      "UpdateAgent": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationAzureBlob",
+    "operations": [
+      "CreateLocationAzureBlob",
+      "DescribeLocationAzureBlob",
+      "UpdateLocationAzureBlob"
+    ],
+    "tested": [
+      "CreateLocationAzureBlob",
+      "DescribeLocationAzureBlob"
+    ],
+    "untested": [
+      "UpdateLocationAzureBlob"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationAzureBlob": "working",
+      "DescribeLocationAzureBlob": "working",
+      "UpdateLocationAzureBlob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationEfs",
+    "operations": [
+      "CreateLocationEfs",
+      "DescribeLocationEfs",
+      "UpdateLocationEfs"
+    ],
+    "tested": [
+      "CreateLocationEfs",
+      "DescribeLocationEfs"
+    ],
+    "untested": [
+      "UpdateLocationEfs"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationEfs": "needs_params",
+      "DescribeLocationEfs": "working",
+      "UpdateLocationEfs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationFsxLustre",
+    "operations": [
+      "CreateLocationFsxLustre",
+      "DescribeLocationFsxLustre",
+      "UpdateLocationFsxLustre"
+    ],
+    "tested": [
+      "CreateLocationFsxLustre",
+      "DescribeLocationFsxLustre"
+    ],
+    "untested": [
+      "UpdateLocationFsxLustre"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationFsxLustre": "needs_params",
+      "DescribeLocationFsxLustre": "working",
+      "UpdateLocationFsxLustre": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationFsxOntap",
+    "operations": [
+      "CreateLocationFsxOntap",
+      "DescribeLocationFsxOntap",
+      "UpdateLocationFsxOntap"
+    ],
+    "tested": [
+      "CreateLocationFsxOntap",
+      "DescribeLocationFsxOntap"
+    ],
+    "untested": [
+      "UpdateLocationFsxOntap"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationFsxOntap": "needs_params",
+      "DescribeLocationFsxOntap": "working",
+      "UpdateLocationFsxOntap": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationFsxOpenZfs",
+    "operations": [
+      "CreateLocationFsxOpenZfs",
+      "DescribeLocationFsxOpenZfs",
+      "UpdateLocationFsxOpenZfs"
+    ],
+    "tested": [
+      "CreateLocationFsxOpenZfs",
+      "DescribeLocationFsxOpenZfs"
+    ],
+    "untested": [
+      "UpdateLocationFsxOpenZfs"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationFsxOpenZfs": "needs_params",
+      "DescribeLocationFsxOpenZfs": "working",
+      "UpdateLocationFsxOpenZfs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationFsxWindows",
+    "operations": [
+      "CreateLocationFsxWindows",
+      "DescribeLocationFsxWindows",
+      "UpdateLocationFsxWindows"
+    ],
+    "tested": [
+      "CreateLocationFsxWindows",
+      "DescribeLocationFsxWindows"
+    ],
+    "untested": [
+      "UpdateLocationFsxWindows"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationFsxWindows": "needs_params",
+      "DescribeLocationFsxWindows": "working",
+      "UpdateLocationFsxWindows": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationHdfs",
+    "operations": [
+      "CreateLocationHdfs",
+      "DescribeLocationHdfs",
+      "UpdateLocationHdfs"
+    ],
+    "tested": [
+      "CreateLocationHdfs",
+      "DescribeLocationHdfs"
+    ],
+    "untested": [
+      "UpdateLocationHdfs"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationHdfs": "needs_params",
+      "DescribeLocationHdfs": "working",
+      "UpdateLocationHdfs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationNfs",
+    "operations": [
+      "CreateLocationNfs",
+      "DescribeLocationNfs",
+      "UpdateLocationNfs"
+    ],
+    "tested": [
+      "CreateLocationNfs",
+      "DescribeLocationNfs"
+    ],
+    "untested": [
+      "UpdateLocationNfs"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationNfs": "needs_params",
+      "DescribeLocationNfs": "working",
+      "UpdateLocationNfs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationObjectStorage",
+    "operations": [
+      "CreateLocationObjectStorage",
+      "DescribeLocationObjectStorage",
+      "UpdateLocationObjectStorage"
+    ],
+    "tested": [
+      "CreateLocationObjectStorage",
+      "DescribeLocationObjectStorage"
+    ],
+    "untested": [
+      "UpdateLocationObjectStorage"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationObjectStorage": "working",
+      "DescribeLocationObjectStorage": "working",
+      "UpdateLocationObjectStorage": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationS3",
+    "operations": [
+      "CreateLocationS3",
+      "DescribeLocationS3",
+      "UpdateLocationS3"
+    ],
+    "tested": [
+      "CreateLocationS3",
+      "DescribeLocationS3"
+    ],
+    "untested": [
+      "UpdateLocationS3"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationS3": "working",
+      "DescribeLocationS3": "working",
+      "UpdateLocationS3": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LocationSmb",
+    "operations": [
+      "CreateLocationSmb",
+      "DescribeLocationSmb",
+      "UpdateLocationSmb"
+    ],
+    "tested": [
+      "CreateLocationSmb",
+      "DescribeLocationSmb"
+    ],
+    "untested": [
+      "UpdateLocationSmb"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateLocationSmb": "needs_params",
+      "DescribeLocationSmb": "working",
+      "UpdateLocationSmb": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "not_implemented",
+      "UntagResource": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TaskExecution",
+    "operations": [
+      "CancelTaskExecution",
+      "DescribeTaskExecution",
+      "StartTaskExecution",
+      "UpdateTaskExecution"
+    ],
+    "tested": [
+      "CancelTaskExecution",
+      "DescribeTaskExecution",
+      "StartTaskExecution"
+    ],
+    "untested": [
+      "UpdateTaskExecution"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CancelTaskExecution": "working",
+      "DescribeTaskExecution": "working",
+      "StartTaskExecution": "working",
+      "UpdateTaskExecution": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TaskExecutions",
+    "operations": [
+      "ListTaskExecutions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTaskExecutions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTaskExecutions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

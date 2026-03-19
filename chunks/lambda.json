@@ -1,0 +1,244 @@
+[
+  {
+    "noun": "CapacityProvider",
+    "operations": [
+      "CreateCapacityProvider",
+      "DeleteCapacityProvider",
+      "GetCapacityProvider",
+      "UpdateCapacityProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCapacityProvider",
+      "DeleteCapacityProvider",
+      "GetCapacityProvider",
+      "UpdateCapacityProvider"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateCapacityProvider": "needs_params",
+      "DeleteCapacityProvider": "not_implemented",
+      "GetCapacityProvider": "not_implemented",
+      "UpdateCapacityProvider": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CapacityProviders",
+    "operations": [
+      "ListCapacityProviders"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCapacityProviders"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCapacityProviders": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CheckpointDurableExecution",
+    "operations": [
+      "CheckpointDurableExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "CheckpointDurableExecution"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CheckpointDurableExecution": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeSigningConfig",
+    "operations": [
+      "CreateCodeSigningConfig",
+      "DeleteCodeSigningConfig",
+      "GetCodeSigningConfig",
+      "UpdateCodeSigningConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCodeSigningConfig",
+      "DeleteCodeSigningConfig",
+      "GetCodeSigningConfig",
+      "UpdateCodeSigningConfig"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateCodeSigningConfig": "needs_params",
+      "DeleteCodeSigningConfig": "not_implemented",
+      "GetCodeSigningConfig": "not_implemented",
+      "UpdateCodeSigningConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeSigningConfigs",
+    "operations": [
+      "ListCodeSigningConfigs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCodeSigningConfigs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCodeSigningConfigs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DurableExecution",
+    "operations": [
+      "GetDurableExecution",
+      "StopDurableExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDurableExecution",
+      "StopDurableExecution"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetDurableExecution": "not_implemented",
+      "StopDurableExecution": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DurableExecutionCallbackFailure",
+    "operations": [
+      "SendDurableExecutionCallbackFailure"
+    ],
+    "tested": [],
+    "untested": [
+      "SendDurableExecutionCallbackFailure"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendDurableExecutionCallbackFailure": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DurableExecutionCallbackHeartbeat",
+    "operations": [
+      "SendDurableExecutionCallbackHeartbeat"
+    ],
+    "tested": [],
+    "untested": [
+      "SendDurableExecutionCallbackHeartbeat"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendDurableExecutionCallbackHeartbeat": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DurableExecutionCallbackSuccess",
+    "operations": [
+      "SendDurableExecutionCallbackSuccess"
+    ],
+    "tested": [],
+    "untested": [
+      "SendDurableExecutionCallbackSuccess"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SendDurableExecutionCallbackSuccess": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DurableExecutionHistory",
+    "operations": [
+      "GetDurableExecutionHistory"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDurableExecutionHistory"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDurableExecutionHistory": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DurableExecutionState",
+    "operations": [
+      "GetDurableExecutionState"
+    ],
+    "tested": [],
+    "untested": [
+      "GetDurableExecutionState"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetDurableExecutionState": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FunctionVersionsByCapacityProvider",
+    "operations": [
+      "ListFunctionVersionsByCapacityProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "ListFunctionVersionsByCapacityProvider"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListFunctionVersionsByCapacityProvider": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FunctionsByCodeSigningConfig",
+    "operations": [
+      "ListFunctionsByCodeSigningConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "ListFunctionsByCodeSigningConfig"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListFunctionsByCodeSigningConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

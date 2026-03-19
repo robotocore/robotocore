@@ -1,0 +1,237 @@
+[
+  {
+    "noun": "DataRetention",
+    "operations": [
+      "UpdateDataRetention"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateDataRetention"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateDataRetention": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EdgeAgentConfigurations",
+    "operations": [
+      "ListEdgeAgentConfigurations"
+    ],
+    "tested": [],
+    "untested": [
+      "ListEdgeAgentConfigurations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListEdgeAgentConfigurations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EdgeConfiguration",
+    "operations": [
+      "DeleteEdgeConfiguration",
+      "DescribeEdgeConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteEdgeConfiguration",
+      "DescribeEdgeConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteEdgeConfiguration": "not_implemented",
+      "DescribeEdgeConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EdgeConfigurationUpdate",
+    "operations": [
+      "StartEdgeConfigurationUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "StartEdgeConfigurationUpdate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartEdgeConfigurationUpdate": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ImageGenerationConfiguration",
+    "operations": [
+      "DescribeImageGenerationConfiguration",
+      "UpdateImageGenerationConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeImageGenerationConfiguration",
+      "UpdateImageGenerationConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeImageGenerationConfiguration": "not_implemented",
+      "UpdateImageGenerationConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MappedResourceConfiguration",
+    "operations": [
+      "DescribeMappedResourceConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeMappedResourceConfiguration"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeMappedResourceConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MediaStorageConfiguration",
+    "operations": [
+      "DescribeMediaStorageConfiguration",
+      "UpdateMediaStorageConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeMediaStorageConfiguration",
+      "UpdateMediaStorageConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeMediaStorageConfiguration": "not_implemented",
+      "UpdateMediaStorageConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "NotificationConfiguration",
+    "operations": [
+      "DescribeNotificationConfiguration",
+      "UpdateNotificationConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeNotificationConfiguration",
+      "UpdateNotificationConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeNotificationConfiguration": "not_implemented",
+      "UpdateNotificationConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SignalingChannelEndpoint",
+    "operations": [
+      "GetSignalingChannelEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "GetSignalingChannelEndpoint"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetSignalingChannelEndpoint": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Stream",
+    "operations": [
+      "CreateStream",
+      "DeleteStream",
+      "DescribeStream",
+      "TagStream",
+      "UntagStream",
+      "UpdateStream"
+    ],
+    "tested": [
+      "CreateStream",
+      "DeleteStream",
+      "DescribeStream",
+      "TagStream",
+      "UpdateStream"
+    ],
+    "untested": [
+      "UntagStream"
+    ],
+    "size": 6,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateStream": "working",
+      "DeleteStream": "working",
+      "DescribeStream": "working",
+      "TagStream": "working",
+      "UntagStream": "needs_params",
+      "UpdateStream": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "StreamStorageConfiguration",
+    "operations": [
+      "DescribeStreamStorageConfiguration",
+      "UpdateStreamStorageConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeStreamStorageConfiguration",
+      "UpdateStreamStorageConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeStreamStorageConfiguration": "not_implemented",
+      "UpdateStreamStorageConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForStream",
+    "operations": [
+      "ListTagsForStream"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForStream"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForStream": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

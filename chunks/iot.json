@@ -1,0 +1,764 @@
+[
+  {
+    "noun": "OTAUpdate",
+    "operations": [
+      "CreateOTAUpdate",
+      "DeleteOTAUpdate",
+      "GetOTAUpdate"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateOTAUpdate",
+      "DeleteOTAUpdate",
+      "GetOTAUpdate"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateOTAUpdate": "needs_params",
+      "DeleteOTAUpdate": "working",
+      "GetOTAUpdate": "working"
+    },
+    "working_untested": [
+      "DeleteOTAUpdate",
+      "GetOTAUpdate"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "working",
+      "UntagResource": "working"
+    },
+    "working_untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "CACertificate",
+    "operations": [
+      "DeleteCACertificate",
+      "DescribeCACertificate",
+      "RegisterCACertificate",
+      "UpdateCACertificate"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteCACertificate",
+      "DescribeCACertificate",
+      "RegisterCACertificate",
+      "UpdateCACertificate"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "DeleteCACertificate": "needs_params",
+      "DescribeCACertificate": "needs_params",
+      "RegisterCACertificate": "working",
+      "UpdateCACertificate": "needs_params"
+    },
+    "working_untested": [
+      "RegisterCACertificate"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "CACertificates",
+    "operations": [
+      "ListCACertificates"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCACertificates"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCACertificates": "working"
+    },
+    "working_untested": [
+      "ListCACertificates"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "CertificateWithoutCA",
+    "operations": [
+      "RegisterCertificateWithoutCA"
+    ],
+    "tested": [],
+    "untested": [
+      "RegisterCertificateWithoutCA"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "RegisterCertificateWithoutCA": "working"
+    },
+    "working_untested": [
+      "RegisterCertificateWithoutCA"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "OTAUpdates",
+    "operations": [
+      "ListOTAUpdates"
+    ],
+    "tested": [],
+    "untested": [
+      "ListOTAUpdates"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListOTAUpdates": "working"
+    },
+    "working_untested": [
+      "ListOTAUpdates"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "working"
+    },
+    "working_untested": [
+      "ListTagsForResource"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "BehaviorModelTrainingSummaries",
+    "operations": [
+      "GetBehaviorModelTrainingSummaries"
+    ],
+    "tested": [],
+    "untested": [
+      "GetBehaviorModelTrainingSummaries"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetBehaviorModelTrainingSummaries": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BucketsAggregation",
+    "operations": [
+      "GetBucketsAggregation"
+    ],
+    "tested": [],
+    "untested": [
+      "GetBucketsAggregation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetBucketsAggregation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Cardinality",
+    "operations": [
+      "GetCardinality"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCardinality"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetCardinality": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CertificateProvider",
+    "operations": [
+      "CreateCertificateProvider",
+      "DeleteCertificateProvider",
+      "DescribeCertificateProvider",
+      "UpdateCertificateProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCertificateProvider",
+      "DeleteCertificateProvider",
+      "DescribeCertificateProvider",
+      "UpdateCertificateProvider"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateCertificateProvider": "needs_params",
+      "DeleteCertificateProvider": "not_implemented",
+      "DescribeCertificateProvider": "not_implemented",
+      "UpdateCertificateProvider": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CertificateProviders",
+    "operations": [
+      "ListCertificateProviders"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCertificateProviders"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCertificateProviders": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CertificateTransfer",
+    "operations": [
+      "AcceptCertificateTransfer",
+      "CancelCertificateTransfer",
+      "RejectCertificateTransfer"
+    ],
+    "tested": [],
+    "untested": [
+      "AcceptCertificateTransfer",
+      "CancelCertificateTransfer",
+      "RejectCertificateTransfer"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "AcceptCertificateTransfer": "needs_params",
+      "CancelCertificateTransfer": "needs_params",
+      "RejectCertificateTransfer": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CertificatesByCA",
+    "operations": [
+      "ListCertificatesByCA"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCertificatesByCA"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCertificatesByCA": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ClearDefaultAuthorizer",
+    "operations": [
+      "ClearDefaultAuthorizer"
+    ],
+    "tested": [],
+    "untested": [
+      "ClearDefaultAuthorizer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ClearDefaultAuthorizer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Command",
+    "operations": [
+      "CreateCommand",
+      "DeleteCommand",
+      "GetCommand",
+      "UpdateCommand"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCommand",
+      "DeleteCommand",
+      "GetCommand",
+      "UpdateCommand"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateCommand": "not_implemented",
+      "DeleteCommand": "not_implemented",
+      "GetCommand": "not_implemented",
+      "UpdateCommand": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CommandExecution",
+    "operations": [
+      "DeleteCommandExecution",
+      "GetCommandExecution"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteCommandExecution",
+      "GetCommandExecution"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteCommandExecution": "not_implemented",
+      "GetCommandExecution": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CommandExecutions",
+    "operations": [
+      "ListCommandExecutions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCommandExecutions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCommandExecutions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Commands",
+    "operations": [
+      "ListCommands"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCommands"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCommands": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DetectMitigationActionsTask",
+    "operations": [
+      "CancelDetectMitigationActionsTask",
+      "DescribeDetectMitigationActionsTask",
+      "StartDetectMitigationActionsTask"
+    ],
+    "tested": [
+      "DescribeDetectMitigationActionsTask"
+    ],
+    "untested": [
+      "CancelDetectMitigationActionsTask",
+      "StartDetectMitigationActionsTask"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "CancelDetectMitigationActionsTask": "not_implemented",
+      "DescribeDetectMitigationActionsTask": "working",
+      "StartDetectMitigationActionsTask": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EncryptionConfiguration",
+    "operations": [
+      "DescribeEncryptionConfiguration",
+      "UpdateEncryptionConfiguration"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeEncryptionConfiguration",
+      "UpdateEncryptionConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeEncryptionConfiguration": "not_implemented",
+      "UpdateEncryptionConfiguration": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EventConfigurations",
+    "operations": [
+      "DescribeEventConfigurations",
+      "UpdateEventConfigurations"
+    ],
+    "tested": [
+      "DescribeEventConfigurations"
+    ],
+    "untested": [
+      "UpdateEventConfigurations"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeEventConfigurations": "working",
+      "UpdateEventConfigurations": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Percentiles",
+    "operations": [
+      "GetPercentiles"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPercentiles"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetPercentiles": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PrincipalThingsV2",
+    "operations": [
+      "ListPrincipalThingsV2"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPrincipalThingsV2"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPrincipalThingsV2": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ProvisioningClaim",
+    "operations": [
+      "CreateProvisioningClaim"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateProvisioningClaim"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateProvisioningClaim": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RegistrationCode",
+    "operations": [
+      "DeleteRegistrationCode",
+      "GetRegistrationCode"
+    ],
+    "tested": [
+      "GetRegistrationCode"
+    ],
+    "untested": [
+      "DeleteRegistrationCode"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteRegistrationCode": "not_implemented",
+      "GetRegistrationCode": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SbomFromPackageVersion",
+    "operations": [
+      "DisassociateSbomFromPackageVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "DisassociateSbomFromPackageVersion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DisassociateSbomFromPackageVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SbomValidationResults",
+    "operations": [
+      "ListSbomValidationResults"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSbomValidationResults"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSbomValidationResults": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SbomWithPackageVersion",
+    "operations": [
+      "AssociateSbomWithPackageVersion"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateSbomWithPackageVersion"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateSbomWithPackageVersion": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TargetsWithJob",
+    "operations": [
+      "AssociateTargetsWithJob"
+    ],
+    "tested": [],
+    "untested": [
+      "AssociateTargetsWithJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "AssociateTargetsWithJob": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestAuthorization",
+    "operations": [
+      "TestAuthorization"
+    ],
+    "tested": [],
+    "untested": [
+      "TestAuthorization"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestAuthorization": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TestInvokeAuthorizer",
+    "operations": [
+      "TestInvokeAuthorizer"
+    ],
+    "tested": [],
+    "untested": [
+      "TestInvokeAuthorizer"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TestInvokeAuthorizer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Thing",
+    "operations": [
+      "CreateThing",
+      "DeleteThing",
+      "DescribeThing",
+      "RegisterThing",
+      "UpdateThing"
+    ],
+    "tested": [
+      "CreateThing",
+      "DeleteThing",
+      "DescribeThing",
+      "UpdateThing"
+    ],
+    "untested": [
+      "RegisterThing"
+    ],
+    "size": 5,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateThing": "working",
+      "DeleteThing": "working",
+      "DescribeThing": "working",
+      "RegisterThing": "not_implemented",
+      "UpdateThing": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ThingConnectivityData",
+    "operations": [
+      "GetThingConnectivityData"
+    ],
+    "tested": [],
+    "untested": [
+      "GetThingConnectivityData"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetThingConnectivityData": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ThingRegistrationTask",
+    "operations": [
+      "DescribeThingRegistrationTask",
+      "StartThingRegistrationTask",
+      "StopThingRegistrationTask"
+    ],
+    "tested": [
+      "DescribeThingRegistrationTask"
+    ],
+    "untested": [
+      "StartThingRegistrationTask",
+      "StopThingRegistrationTask"
+    ],
+    "size": 3,
+    "untested_count": 2,
+    "probe_status": {
+      "DescribeThingRegistrationTask": "working",
+      "StartThingRegistrationTask": "not_implemented",
+      "StopThingRegistrationTask": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ThingRegistrationTaskReports",
+    "operations": [
+      "ListThingRegistrationTaskReports"
+    ],
+    "tested": [],
+    "untested": [
+      "ListThingRegistrationTaskReports"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListThingRegistrationTaskReports": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ThingRegistrationTasks",
+    "operations": [
+      "ListThingRegistrationTasks"
+    ],
+    "tested": [],
+    "untested": [
+      "ListThingRegistrationTasks"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListThingRegistrationTasks": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TransferCertificate",
+    "operations": [
+      "TransferCertificate"
+    ],
+    "tested": [],
+    "untested": [
+      "TransferCertificate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "TransferCertificate": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "VerificationStateOnViolation",
+    "operations": [
+      "PutVerificationStateOnViolation"
+    ],
+    "tested": [],
+    "untested": [
+      "PutVerificationStateOnViolation"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PutVerificationStateOnViolation": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

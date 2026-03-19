@@ -1,0 +1,561 @@
+{
+  "service": "sesv2",
+  "counts": {
+    "working": 108,
+    "needs_params": 1,
+    "not_implemented": 1,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchGetMetricData",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CancelExportJob",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateConfigurationSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConfigurationSetEventDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateContact",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateContactList",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDedicatedIpPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDeliverabilityTestReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEmailIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEmailIdentityPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEmailTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateExportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateImportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMultiRegionEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTenant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTenantResourceAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConfigurationSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConfigurationSetEventDestination",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteContact",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteContactList",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDedicatedIpPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEmailIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEmailIdentityPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteEmailTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMultiRegionEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSuppressedDestination",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteTenant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTenantResourceAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBlacklistReports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetConfigurationSet",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetConfigurationSetEventDestinations",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetContact",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetContactList",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExistException: Custom verification email template does not exist: probe-tes)"
+    },
+    {
+      "operation": "GetDedicatedIp",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetDedicatedIpPool",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetDedicatedIps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDeliverabilityDashboardOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDeliverabilityTestReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDomainDeliverabilityCampaign",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDomainStatisticsReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEmailAddressInsights",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetEmailIdentity",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetEmailIdentityPolicies",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetEmailTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetExportJob",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetImportJob",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetMessageInsights",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMultiRegionEndpoint",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetReputationEntity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSuppressedDestination",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTenant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConfigurationSets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListContactLists",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListContacts",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListCustomVerificationEmailTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDedicatedIpPools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeliverabilityTestReports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDomainDeliverabilityCampaigns",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEmailIdentities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListEmailTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListExportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListImportJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMultiRegionEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReputationEntities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceTenants",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSuppressedDestinations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTenantResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTenants",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountDedicatedIpWarmupAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountDetails",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountSendingAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountSuppressionAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAccountVdmAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutConfigurationSetArchivingOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutConfigurationSetDeliveryOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutConfigurationSetReputationOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutConfigurationSetSendingOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutConfigurationSetSuppressionOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutConfigurationSetTrackingOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutConfigurationSetVdmOptions",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutDedicatedIpInPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutDedicatedIpPoolScalingAttributes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutDedicatedIpWarmupAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutDeliverabilityDashboardOption",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutEmailIdentityConfigurationSetAttributes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutEmailIdentityDkimAttributes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutEmailIdentityDkimSigningAttributes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutEmailIdentityFeedbackAttributes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutEmailIdentityMailFromAttributes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutSuppressedDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendBulkEmail",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendCustomVerificationEmail",
+      "status": "working",
+      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExistException: Custom verification email template does not exist: probe-tes)"
+    },
+    {
+      "operation": "SendEmail",
+      "status": "working",
+      "message": "likely implemented (MessageRejected: Email address not verified None)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestRenderEmailTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateConfigurationSetEventDestination",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateContact",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateContactList",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateCustomVerificationEmailTemplate",
+      "status": "working",
+      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExistException: Custom verification email template does not exist: probe-tes)"
+    },
+    {
+      "operation": "UpdateEmailIdentityPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateEmailTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateReputationEntityCustomerManagedStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateReputationEntityPolicy",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

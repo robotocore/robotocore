@@ -1,0 +1,106 @@
+{
+  "service": "s3vectors",
+  "counts": {
+    "working": 12,
+    "needs_params": 4,
+    "not_implemented": 3,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateIndex",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateVectorBucket",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIndex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteVectorBucket",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteVectorBucketPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteVectors",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetIndex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetVectorBucket",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetVectorBucketPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetVectors",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListIndexes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListVectorBuckets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVectors",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutVectorBucketPolicy",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "PutVectors",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "QueryVectors",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

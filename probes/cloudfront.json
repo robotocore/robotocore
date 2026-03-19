@@ -1,0 +1,841 @@
+{
+  "service": "cloudfront",
+  "counts": {
+    "working": 128,
+    "needs_params": 5,
+    "not_implemented": 1,
+    "500_error": 32
+  },
+  "operations": [
+    {
+      "operation": "AssociateAlias",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "AssociateDistributionTenantWebACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AssociateDistributionWebACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CopyDistribution",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "CreateAnycastIpList",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateCachePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCloudFrontOriginAccessIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConnectionFunction",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateConnectionGroup",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateContinuousDeploymentPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDistribution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDistributionTenant",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "CreateDistributionWithTags",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateFieldLevelEncryptionConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFieldLevelEncryptionProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInvalidation",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "CreateInvalidationForDistributionTenant",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "CreateKeyGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateKeyValueStore",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMonitoringSubscription",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "CreateOriginAccessControl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateOriginRequestPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePublicKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateRealtimeLogConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateResponseHeadersPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStreamingDistribution",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateStreamingDistributionWithTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTrustStore",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateVpcOrigin",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "DeleteAnycastIpList",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteCachePolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchCachePolicy: The specified cache policy does not exist.)"
+    },
+    {
+      "operation": "DeleteCloudFrontOriginAccessIdentity",
+      "status": "working",
+      "message": "likely implemented (NoSuchCloudFrontOriginAccessIdentity: The specified origin access identity does not exist.)"
+    },
+    {
+      "operation": "DeleteConnectionFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConnectionGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteContinuousDeploymentPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchContinuousDeploymentPolicy: The specified continuous deployment policy does not exist.)"
+    },
+    {
+      "operation": "DeleteDistribution",
+      "status": "working",
+      "message": "likely implemented (InvalidIfMatchVersion: The If-Match version is missing or not valid for the resourc)"
+    },
+    {
+      "operation": "DeleteDistributionTenant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFieldLevelEncryptionConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionConfig: The specified field-level encryption configuration does not )"
+    },
+    {
+      "operation": "DeleteFieldLevelEncryptionProfile",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionProfile: The specified field-level encryption profile does not exist.)"
+    },
+    {
+      "operation": "DeleteKeyGroup",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The specified key group does not exist.)"
+    },
+    {
+      "operation": "DeleteKeyValueStore",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMonitoringSubscription",
+      "status": "working",
+      "message": "likely implemented (NoSuchMonitoringSubscription: The specified monitoring subscription does not exist.)"
+    },
+    {
+      "operation": "DeleteOriginAccessControl",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginAccessControl: The specified origin access control does not exist.)"
+    },
+    {
+      "operation": "DeleteOriginRequestPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginRequestPolicy: The specified origin request policy does not exist.)"
+    },
+    {
+      "operation": "DeletePublicKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRealtimeLogConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchRealtimeLogConfig: The specified real-time log configuration does not exist.)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteResponseHeadersPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchResponseHeadersPolicy: The specified response headers policy does not exist.)"
+    },
+    {
+      "operation": "DeleteStreamingDistribution",
+      "status": "working",
+      "message": "likely implemented (NoSuchStreamingDistribution: The specified streaming distribution does not exist.)"
+    },
+    {
+      "operation": "DeleteTrustStore",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteVpcOrigin",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConnectionFunction",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "DescribeFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeKeyValueStore",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The key value store probe-test-value does not exist.)"
+    },
+    {
+      "operation": "DisassociateDistributionTenantWebACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateDistributionWebACL",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAnycastIpList",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The anycast IP list probe-test-value does not exist.)"
+    },
+    {
+      "operation": "GetCachePolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchCachePolicy: The specified cache policy does not exist.)"
+    },
+    {
+      "operation": "GetCachePolicyConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchCachePolicy: The specified cache policy does not exist.)"
+    },
+    {
+      "operation": "GetCloudFrontOriginAccessIdentity",
+      "status": "working",
+      "message": "likely implemented (NoSuchCloudFrontOriginAccessIdentity: The specified origin access identity does not exist.)"
+    },
+    {
+      "operation": "GetCloudFrontOriginAccessIdentityConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchCloudFrontOriginAccessIdentity: The specified origin access identity does not exist.)"
+    },
+    {
+      "operation": "GetConnectionFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetConnectionGroup",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetConnectionGroupByRoutingEndpoint",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetContinuousDeploymentPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchContinuousDeploymentPolicy: The specified continuous deployment policy does not exist.)"
+    },
+    {
+      "operation": "GetContinuousDeploymentPolicyConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchContinuousDeploymentPolicy: The specified continuous deployment policy does not exist.)"
+    },
+    {
+      "operation": "GetDistribution",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "GetDistributionConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "GetDistributionTenant",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetDistributionTenantByDomain",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetFieldLevelEncryption",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionConfig: The specified field-level encryption configuration does not )"
+    },
+    {
+      "operation": "GetFieldLevelEncryptionConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionConfig: The specified field-level encryption configuration does not )"
+    },
+    {
+      "operation": "GetFieldLevelEncryptionProfile",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionProfile: The specified field-level encryption profile does not exist.)"
+    },
+    {
+      "operation": "GetFieldLevelEncryptionProfileConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionProfile: The specified field-level encryption profile does not exist.)"
+    },
+    {
+      "operation": "GetFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInvalidation",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "GetInvalidationForDistributionTenant",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetKeyGroup",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The specified key group does not exist.)"
+    },
+    {
+      "operation": "GetKeyGroupConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The specified key group does not exist.)"
+    },
+    {
+      "operation": "GetManagedCertificateDetails",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetMonitoringSubscription",
+      "status": "working",
+      "message": "likely implemented (NoSuchMonitoringSubscription: The specified monitoring subscription does not exist.)"
+    },
+    {
+      "operation": "GetOriginAccessControl",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginAccessControl: The specified origin access control does not exist.)"
+    },
+    {
+      "operation": "GetOriginAccessControlConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginAccessControl: The specified origin access control does not exist.)"
+    },
+    {
+      "operation": "GetOriginRequestPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginRequestPolicy: The specified origin request policy does not exist.)"
+    },
+    {
+      "operation": "GetOriginRequestPolicyConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginRequestPolicy: The specified origin request policy does not exist.)"
+    },
+    {
+      "operation": "GetPublicKey",
+      "status": "working",
+      "message": "likely implemented (NoSuchPublicKey: The specified public key does not exist.)"
+    },
+    {
+      "operation": "GetPublicKeyConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchPublicKey: The specified public key does not exist.)"
+    },
+    {
+      "operation": "GetRealtimeLogConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchRealtimeLogConfig: The specified real-time log configuration does not exist.)"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetResponseHeadersPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchResponseHeadersPolicy: The specified response headers policy does not exist.)"
+    },
+    {
+      "operation": "GetResponseHeadersPolicyConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchResponseHeadersPolicy: The specified response headers policy does not exist.)"
+    },
+    {
+      "operation": "GetStreamingDistribution",
+      "status": "working",
+      "message": "likely implemented (NoSuchStreamingDistribution: The specified streaming distribution does not exist.)"
+    },
+    {
+      "operation": "GetStreamingDistributionConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchStreamingDistribution: The specified streaming distribution does not exist.)"
+    },
+    {
+      "operation": "GetTrustStore",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "GetVpcOrigin",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The VPC origin probe-test-value does not exist.)"
+    },
+    {
+      "operation": "ListAnycastIpLists",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListCachePolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCloudFrontOriginAccessIdentities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConflictingAliases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConnectionFunctions",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListConnectionGroups",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListContinuousDeploymentPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionTenants",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListDistributionTenantsByCustomization",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListDistributions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByAnycastIpListId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByCachePolicyId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByConnectionFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByConnectionMode",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByKeyGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByOriginRequestPolicyId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByOwnedResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDistributionsByRealtimeLogConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByResponseHeadersPolicyId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByTrustStore",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByVpcOriginId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDistributionsByWebACLId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDomainConflicts",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListFieldLevelEncryptionConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFieldLevelEncryptionProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFunctions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInvalidations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInvalidationsForDistributionTenant",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListKeyGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListKeyValueStores",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOriginAccessControls",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOriginRequestPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPublicKeys",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRealtimeLogConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResponseHeadersPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListStreamingDistributions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTrustStores",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "ListVpcOrigins",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "PublishConnectionFunction",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "PublishFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestConnectionFunction",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "TestFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAnycastIpList",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The anycast IP list probe-test-value does not exist.)"
+    },
+    {
+      "operation": "UpdateCachePolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchCachePolicy: The specified cache policy does not exist.)"
+    },
+    {
+      "operation": "UpdateCloudFrontOriginAccessIdentity",
+      "status": "working",
+      "message": "likely implemented (NoSuchCloudFrontOriginAccessIdentity: The specified origin access identity does not exist.)"
+    },
+    {
+      "operation": "UpdateConnectionFunction",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "UpdateConnectionGroup",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "UpdateContinuousDeploymentPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchContinuousDeploymentPolicy: The specified continuous deployment policy does not exist.)"
+    },
+    {
+      "operation": "UpdateDistribution",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDistributionTenant",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    },
+    {
+      "operation": "UpdateDistributionWithStagingConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
+    },
+    {
+      "operation": "UpdateDomainAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFieldLevelEncryptionConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionConfig: The specified field-level encryption configuration does not )"
+    },
+    {
+      "operation": "UpdateFieldLevelEncryptionProfile",
+      "status": "working",
+      "message": "likely implemented (NoSuchFieldLevelEncryptionProfile: The specified field-level encryption profile does not exist.)"
+    },
+    {
+      "operation": "UpdateFunction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateKeyGroup",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The specified key group does not exist.)"
+    },
+    {
+      "operation": "UpdateKeyValueStore",
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The key value store probe-test-value does not exist.)"
+    },
+    {
+      "operation": "UpdateOriginAccessControl",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginAccessControl: The specified origin access control does not exist.)"
+    },
+    {
+      "operation": "UpdateOriginRequestPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchOriginRequestPolicy: The specified origin request policy does not exist.)"
+    },
+    {
+      "operation": "UpdatePublicKey",
+      "status": "working",
+      "message": "likely implemented (NoSuchPublicKey: The specified public key does not exist.)"
+    },
+    {
+      "operation": "UpdateRealtimeLogConfig",
+      "status": "working",
+      "message": "likely implemented (NoSuchRealtimeLogConfig: The specified real-time log configuration does not exist.)"
+    },
+    {
+      "operation": "UpdateResponseHeadersPolicy",
+      "status": "working",
+      "message": "likely implemented (NoSuchResponseHeadersPolicy: The specified response headers policy does not exist.)"
+    },
+    {
+      "operation": "UpdateStreamingDistribution",
+      "status": "working",
+      "message": "likely implemented (NoSuchStreamingDistribution: The specified streaming distribution does not exist.)"
+    },
+    {
+      "operation": "UpdateTrustStore",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateVpcOrigin",
+      "status": "500_error",
+      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+    },
+    {
+      "operation": "VerifyDnsConfiguration",
+      "status": "500_error",
+      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "service": "polly",
+  "counts": {
+    "working": 6,
+    "needs_params": 0,
+    "not_implemented": 3,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "DeleteLexicon",
+      "status": "working",
+      "message": "likely implemented (LexiconNotFoundException: Lexicon not found)"
+    },
+    {
+      "operation": "DescribeVoices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetLexicon",
+      "status": "working",
+      "message": "likely implemented (LexiconNotFoundException: Lexicon not found)"
+    },
+    {
+      "operation": "GetSpeechSynthesisTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListLexicons",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSpeechSynthesisTasks",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutLexicon",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "StartSpeechSynthesisTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SynthesizeSpeech",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    }
+  ]
+}

@@ -1,0 +1,297 @@
+[
+  {
+    "noun": "ACL",
+    "operations": [
+      "CreateACL",
+      "DeleteACL",
+      "UpdateACL"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateACL",
+      "DeleteACL",
+      "UpdateACL"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateACL": "working",
+      "DeleteACL": "working",
+      "UpdateACL": "working"
+    },
+    "working_untested": [
+      "CreateACL",
+      "DeleteACL",
+      "UpdateACL"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "ACLs",
+    "operations": [
+      "DescribeACLs"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeACLs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeACLs": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AllowedMultiRegionClusterUpdates",
+    "operations": [
+      "ListAllowedMultiRegionClusterUpdates"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAllowedMultiRegionClusterUpdates"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAllowedMultiRegionClusterUpdates": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AllowedNodeTypeUpdates",
+    "operations": [
+      "ListAllowedNodeTypeUpdates"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAllowedNodeTypeUpdates"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAllowedNodeTypeUpdates": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "FailoverShard",
+    "operations": [
+      "FailoverShard"
+    ],
+    "tested": [],
+    "untested": [
+      "FailoverShard"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "FailoverShard": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MultiRegionCluster",
+    "operations": [
+      "CreateMultiRegionCluster",
+      "DeleteMultiRegionCluster",
+      "UpdateMultiRegionCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateMultiRegionCluster",
+      "DeleteMultiRegionCluster",
+      "UpdateMultiRegionCluster"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateMultiRegionCluster": "not_implemented",
+      "DeleteMultiRegionCluster": "not_implemented",
+      "UpdateMultiRegionCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MultiRegionClusters",
+    "operations": [
+      "DescribeMultiRegionClusters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeMultiRegionClusters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeMultiRegionClusters": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MultiRegionParameterGroups",
+    "operations": [
+      "DescribeMultiRegionParameterGroups"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeMultiRegionParameterGroups"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeMultiRegionParameterGroups": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MultiRegionParameters",
+    "operations": [
+      "DescribeMultiRegionParameters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeMultiRegionParameters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeMultiRegionParameters": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ParameterGroup",
+    "operations": [
+      "CreateParameterGroup",
+      "DeleteParameterGroup",
+      "ResetParameterGroup",
+      "UpdateParameterGroup"
+    ],
+    "tested": [
+      "CreateParameterGroup",
+      "DeleteParameterGroup",
+      "UpdateParameterGroup"
+    ],
+    "untested": [
+      "ResetParameterGroup"
+    ],
+    "size": 4,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateParameterGroup": "working",
+      "DeleteParameterGroup": "working",
+      "ResetParameterGroup": "not_implemented",
+      "UpdateParameterGroup": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Parameters",
+    "operations": [
+      "DescribeParameters"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeParameters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DescribeParameters": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PurchaseReservedNodesOffering",
+    "operations": [
+      "PurchaseReservedNodesOffering"
+    ],
+    "tested": [],
+    "untested": [
+      "PurchaseReservedNodesOffering"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "PurchaseReservedNodesOffering": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Snapshot",
+    "operations": [
+      "CopySnapshot",
+      "CreateSnapshot",
+      "DeleteSnapshot"
+    ],
+    "tested": [
+      "CreateSnapshot",
+      "DeleteSnapshot"
+    ],
+    "untested": [
+      "CopySnapshot"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CopySnapshot": "not_implemented",
+      "CreateSnapshot": "working",
+      "DeleteSnapshot": "working"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "SubnetGroup",
+    "operations": [
+      "CreateSubnetGroup",
+      "DeleteSubnetGroup",
+      "UpdateSubnetGroup"
+    ],
+    "tested": [
+      "CreateSubnetGroup",
+      "DeleteSubnetGroup"
+    ],
+    "untested": [
+      "UpdateSubnetGroup"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateSubnetGroup": "working",
+      "DeleteSubnetGroup": "working",
+      "UpdateSubnetGroup": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "UpdateCluster",
+    "operations": [
+      "BatchUpdateCluster"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchUpdateCluster"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchUpdateCluster": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

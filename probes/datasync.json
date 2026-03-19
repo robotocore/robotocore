@@ -1,0 +1,276 @@
+{
+  "service": "datasync",
+  "counts": {
+    "working": 27,
+    "needs_params": 9,
+    "not_implemented": 17,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CancelTaskExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "CreateAgent",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLocationAzureBlob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLocationEfs",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationFsxLustre",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationFsxOntap",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationFsxOpenZfs",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationFsxWindows",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationHdfs",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationNfs",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateLocationObjectStorage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLocationS3",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateLocationSmb",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateTask",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DeleteAgent",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteLocation",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DeleteTask",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeAgent",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationAzureBlob",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationEfs",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationFsxLustre",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationFsxOntap",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationFsxOpenZfs",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationFsxWindows",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationHdfs",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationNfs",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationObjectStorage",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationS3",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeLocationSmb",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeTask",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "DescribeTaskExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "ListAgents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListLocations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTaskExecutions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartTaskExecution",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateAgent",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationAzureBlob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationEfs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationFsxLustre",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationFsxOntap",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationFsxOpenZfs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationFsxWindows",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationHdfs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationNfs",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationObjectStorage",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationS3",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateLocationSmb",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateTask",
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
+    },
+    {
+      "operation": "UpdateTaskExecution",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

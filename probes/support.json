@@ -1,0 +1,91 @@
+{
+  "service": "support",
+  "counts": {
+    "working": 16,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddAttachmentsToSet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AddCommunicationToCase",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCase",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAttachment",
+      "status": "working",
+      "message": "likely implemented (AttachmentIdNotFound: Attachment ID not found: probe-test-value)"
+    },
+    {
+      "operation": "DescribeCases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCommunications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCreateCaseOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeServices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSeverityLevels",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSupportedLanguages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrustedAdvisorCheckRefreshStatuses",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrustedAdvisorCheckResult",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrustedAdvisorCheckSummaries",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTrustedAdvisorChecks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RefreshTrustedAdvisorCheck",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResolveCase",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

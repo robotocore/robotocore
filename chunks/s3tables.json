@@ -1,0 +1,219 @@
+[
+  {
+    "noun": "TableBucketEncryption",
+    "operations": [
+      "DeleteTableBucketEncryption",
+      "GetTableBucketEncryption",
+      "PutTableBucketEncryption"
+    ],
+    "tested": [
+      "DeleteTableBucketEncryption",
+      "GetTableBucketEncryption"
+    ],
+    "untested": [
+      "PutTableBucketEncryption"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteTableBucketEncryption": "working",
+      "GetTableBucketEncryption": "working",
+      "PutTableBucketEncryption": "working"
+    },
+    "working_untested": [
+      "PutTableBucketEncryption"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TableBucketMaintenanceConfiguration",
+    "operations": [
+      "GetTableBucketMaintenanceConfiguration",
+      "PutTableBucketMaintenanceConfiguration"
+    ],
+    "tested": [
+      "GetTableBucketMaintenanceConfiguration"
+    ],
+    "untested": [
+      "PutTableBucketMaintenanceConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTableBucketMaintenanceConfiguration": "working",
+      "PutTableBucketMaintenanceConfiguration": "working"
+    },
+    "working_untested": [
+      "PutTableBucketMaintenanceConfiguration"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TableBucketMetricsConfiguration",
+    "operations": [
+      "DeleteTableBucketMetricsConfiguration",
+      "GetTableBucketMetricsConfiguration",
+      "PutTableBucketMetricsConfiguration"
+    ],
+    "tested": [
+      "DeleteTableBucketMetricsConfiguration",
+      "GetTableBucketMetricsConfiguration"
+    ],
+    "untested": [
+      "PutTableBucketMetricsConfiguration"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteTableBucketMetricsConfiguration": "working",
+      "GetTableBucketMetricsConfiguration": "working",
+      "PutTableBucketMetricsConfiguration": "working"
+    },
+    "working_untested": [
+      "PutTableBucketMetricsConfiguration"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TableBucketPolicy",
+    "operations": [
+      "DeleteTableBucketPolicy",
+      "GetTableBucketPolicy",
+      "PutTableBucketPolicy"
+    ],
+    "tested": [
+      "DeleteTableBucketPolicy",
+      "GetTableBucketPolicy"
+    ],
+    "untested": [
+      "PutTableBucketPolicy"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteTableBucketPolicy": "working",
+      "GetTableBucketPolicy": "working",
+      "PutTableBucketPolicy": "working"
+    },
+    "working_untested": [
+      "PutTableBucketPolicy"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TableBucketStorageClass",
+    "operations": [
+      "GetTableBucketStorageClass",
+      "PutTableBucketStorageClass"
+    ],
+    "tested": [
+      "GetTableBucketStorageClass"
+    ],
+    "untested": [
+      "PutTableBucketStorageClass"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTableBucketStorageClass": "working",
+      "PutTableBucketStorageClass": "working"
+    },
+    "working_untested": [
+      "PutTableBucketStorageClass"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Table",
+    "operations": [
+      "CreateTable",
+      "DeleteTable",
+      "GetTable"
+    ],
+    "tested": [
+      "CreateTable",
+      "DeleteTable"
+    ],
+    "untested": [
+      "GetTable"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateTable": "working",
+      "DeleteTable": "unknown",
+      "GetTable": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableBucketReplication",
+    "operations": [
+      "DeleteTableBucketReplication",
+      "GetTableBucketReplication",
+      "PutTableBucketReplication"
+    ],
+    "tested": [
+      "DeleteTableBucketReplication",
+      "GetTableBucketReplication"
+    ],
+    "untested": [
+      "PutTableBucketReplication"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteTableBucketReplication": "working",
+      "GetTableBucketReplication": "working",
+      "PutTableBucketReplication": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableRecordExpirationConfiguration",
+    "operations": [
+      "GetTableRecordExpirationConfiguration",
+      "PutTableRecordExpirationConfiguration"
+    ],
+    "tested": [
+      "GetTableRecordExpirationConfiguration"
+    ],
+    "untested": [
+      "PutTableRecordExpirationConfiguration"
+    ],
+    "size": 2,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTableRecordExpirationConfiguration": "working",
+      "PutTableRecordExpirationConfiguration": "500_error"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TableReplication",
+    "operations": [
+      "DeleteTableReplication",
+      "GetTableReplication",
+      "PutTableReplication"
+    ],
+    "tested": [
+      "DeleteTableReplication",
+      "GetTableReplication"
+    ],
+    "untested": [
+      "PutTableReplication"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "DeleteTableReplication": "working",
+      "GetTableReplication": "working",
+      "PutTableReplication": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

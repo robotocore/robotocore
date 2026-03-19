@@ -1,0 +1,711 @@
+{
+  "service": "redshift",
+  "counts": {
+    "working": 127,
+    "needs_params": 2,
+    "not_implemented": 11,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptReservedNodeExchange",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AddPartner",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFound: Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "AssociateDataShareConsumer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AuthorizeClusterSecurityGroupIngress",
+      "status": "working",
+      "message": "likely implemented (ClusterSecurityGroupNotFound: The cluster security group name does not refer to an existin)"
+    },
+    {
+      "operation": "AuthorizeDataShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "AuthorizeEndpointAccess",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+    },
+    {
+      "operation": "AuthorizeSnapshotAccess",
+      "status": "working",
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot None not found.)"
+    },
+    {
+      "operation": "BatchDeleteClusterSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchModifyClusterSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelResize",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFound: Cluster probe-test-value not found.)"
+    },
+    {
+      "operation": "CopyClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "CreateAuthenticationProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateClusterParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateClusterSecurityGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateClusterSnapshot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateClusterSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (InvalidSubnet: Subnet [] not found.)"
+    },
+    {
+      "operation": "CreateCustomDomainAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEndpointAccess",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+    },
+    {
+      "operation": "CreateEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHsmClientCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHsmConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateIntegration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateRedshiftIdcApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateScheduledAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSnapshotCopyGrant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSnapshotSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTags",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "CreateUsageLimit",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeauthorizeDataShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAuthenticationProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteClusterParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteClusterSecurityGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteClusterSnapshot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteClusterSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (ClusterSubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteCustomDomainAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEndpointAccess",
+      "status": "working",
+      "message": "likely implemented (EndpointNotFound: Endpoint probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteEventSubscription",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHsmClientCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteHsmConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIntegration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeletePartner",
+      "status": "working",
+      "message": "likely implemented (PartnerNotFound: Partner probe-test-value not found.)"
+    },
+    {
+      "operation": "DeleteRedshiftIdcApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteScheduledAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSnapshotCopyGrant",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSnapshotSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "DeleteUsageLimit",
+      "status": "working",
+      "message": "likely implemented (UsageLimitNotFound: Usage limit probe-test-value not found.)"
+    },
+    {
+      "operation": "DeregisterNamespace",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DescribeAccountAttributes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAuthenticationProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterDbRevisions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterParameters",
+      "status": "working",
+      "message": "likely implemented (ClusterParameterGroupNotFound: ClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "DescribeClusterSecurityGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterSnapshots",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterSubnetGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterTracks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusterVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeCustomDomainAssociations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataShares",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataSharesForConsumer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDataSharesForProducer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDefaultClusterParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEndpointAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEndpointAuthorization",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventCategories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEventSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHsmClientCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeHsmConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeInboundIntegrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIntegrations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeLoggingStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeNodeConfigurationOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeOrderableClusterOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribePartners",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeRedshiftIdcApplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedNodeExchangeStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedNodeOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeReservedNodes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeResize",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeScheduledActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSnapshotCopyGrants",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeSnapshotSchedules",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeStorage",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTableRestoreStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeUsageLimits",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableLogging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableSnapshotCopy",
+      "status": "working",
+      "message": "likely implemented (SnapshotCopyAlreadyDisabledFault: Snapshot Copy is already disabled on Cluster probe-test-valu)"
+    },
+    {
+      "operation": "DisassociateDataShareConsumer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableLogging",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableSnapshotCopy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "FailoverPrimaryCompute",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetClusterCredentials",
+      "status": "working",
+      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+    },
+    {
+      "operation": "GetClusterCredentialsWithIAM",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIdentityCenterAuthToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetReservedNodeExchangeConfigurationOptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetReservedNodeExchangeOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ListRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyAquaConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyAuthenticationProfile",
+      "status": "working",
+      "message": "likely implemented (AuthenticationProfileNotFoundFault: Authentication profile probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyClusterDbRevision",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyClusterIamRoles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyClusterMaintenance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyClusterParameterGroup",
+      "status": "working",
+      "message": "likely implemented (ClusterParameterGroupNotFound: ClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "ModifyClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyClusterSnapshotSchedule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyClusterSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (ClusterSubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyCustomDomainAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyEndpointAccess",
+      "status": "working",
+      "message": "likely implemented (EndpointNotFound: Endpoint probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyEventSubscription",
+      "status": "working",
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifyIntegration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyLakehouseConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyRedshiftIdcApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ModifyScheduledAction",
+      "status": "working",
+      "message": "likely implemented (ScheduledActionNotFound: Scheduled Action probe-test-value not found.)"
+    },
+    {
+      "operation": "ModifySnapshotCopyRetentionPeriod",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifySnapshotSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundFault)"
+    },
+    {
+      "operation": "ModifyUsageLimit",
+      "status": "working",
+      "message": "likely implemented (UsageLimitNotFound: Usage limit probe-test-value not found.)"
+    },
+    {
+      "operation": "PauseCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PurchaseReservedNodeOffering",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RebootCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterNamespace",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RejectDataShare",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResetClusterParameterGroup",
+      "status": "working",
+      "message": "likely implemented (ClusterParameterGroupNotFound: ClusterParameterGroup not found: probe-test-value)"
+    },
+    {
+      "operation": "ResizeCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreFromClusterSnapshot",
+      "status": "working",
+      "message": "likely implemented (ClusterAlreadyExists: Cluster already exists)"
+    },
+    {
+      "operation": "RestoreTableFromClusterSnapshot",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ResumeCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RevokeClusterSecurityGroupIngress",
+      "status": "working",
+      "message": "likely implemented (ClusterSecurityGroupNotFound: The cluster security group name does not refer to an existin)"
+    },
+    {
+      "operation": "RevokeEndpointAccess",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RevokeSnapshotAccess",
+      "status": "working",
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot None not found.)"
+    },
+    {
+      "operation": "RotateEncryptionKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdatePartnerStatus",
+      "status": "working",
+      "message": "likely implemented (PartnerNotFound: Partner probe-test-value not found.)"
+    }
+  ]
+}

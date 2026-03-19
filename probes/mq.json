@@ -1,0 +1,131 @@
+{
+  "service": "mq",
+  "counts": {
+    "working": 12,
+    "needs_params": 0,
+    "not_implemented": 8,
+    "500_error": 4
+  },
+  "operations": [
+    {
+      "operation": "CreateBroker",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: Broker engine type [probe-test-value] is invalid. Valid valu)"
+    },
+    {
+      "operation": "CreateConfiguration",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: Broker engine type [probe-test-value] is invalid. Valid valu)"
+    },
+    {
+      "operation": "CreateTags",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateUser",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteBroker",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DeleteConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeBroker",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeBrokerEngineTypes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeBrokerInstanceOptions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeConfigurationRevision",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "DescribeUser",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListBrokers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConfigurationRevisions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListConfigurations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTags",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "Promote",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RebootBroker",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "UpdateBroker",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateConfiguration",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
+    },
+    {
+      "operation": "UpdateUser",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

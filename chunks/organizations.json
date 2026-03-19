@@ -1,0 +1,254 @@
+[
+  {
+    "noun": "AWSServiceAccess",
+    "operations": [
+      "DisableAWSServiceAccess",
+      "EnableAWSServiceAccess"
+    ],
+    "tested": [],
+    "untested": [
+      "DisableAWSServiceAccess",
+      "EnableAWSServiceAccess"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DisableAWSServiceAccess": "working",
+      "EnableAWSServiceAccess": "working"
+    },
+    "working_untested": [
+      "DisableAWSServiceAccess",
+      "EnableAWSServiceAccess"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "AWSServiceAccessForOrganization",
+    "operations": [
+      "ListAWSServiceAccessForOrganization"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAWSServiceAccessForOrganization"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAWSServiceAccessForOrganization": "working"
+    },
+    "working_untested": [
+      "ListAWSServiceAccessForOrganization"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "DeclineHandshake",
+    "operations": [
+      "DeclineHandshake"
+    ],
+    "tested": [],
+    "untested": [
+      "DeclineHandshake"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "DeclineHandshake": "working"
+    },
+    "working_untested": [
+      "DeclineHandshake"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Handshake",
+    "operations": [
+      "AcceptHandshake",
+      "CancelHandshake",
+      "DescribeHandshake"
+    ],
+    "tested": [
+      "CancelHandshake",
+      "DescribeHandshake"
+    ],
+    "untested": [
+      "AcceptHandshake"
+    ],
+    "size": 3,
+    "untested_count": 1,
+    "probe_status": {
+      "AcceptHandshake": "working",
+      "CancelHandshake": "working",
+      "DescribeHandshake": "working"
+    },
+    "working_untested": [
+      "AcceptHandshake"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AccountsWithInvalidEffectivePolicy",
+    "operations": [
+      "ListAccountsWithInvalidEffectivePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAccountsWithInvalidEffectivePolicy"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAccountsWithInvalidEffectivePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "EffectivePolicyValidationErrors",
+    "operations": [
+      "ListEffectivePolicyValidationErrors"
+    ],
+    "tested": [],
+    "untested": [
+      "ListEffectivePolicyValidationErrors"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListEffectivePolicyValidationErrors": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "GovCloudAccount",
+    "operations": [
+      "CreateGovCloudAccount"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateGovCloudAccount"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CreateGovCloudAccount": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InboundResponsibilityTransfers",
+    "operations": [
+      "ListInboundResponsibilityTransfers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListInboundResponsibilityTransfers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListInboundResponsibilityTransfers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "InviteOrganizationToTransferResponsibility",
+    "operations": [
+      "InviteOrganizationToTransferResponsibility"
+    ],
+    "tested": [],
+    "untested": [
+      "InviteOrganizationToTransferResponsibility"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "InviteOrganizationToTransferResponsibility": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "LeaveOrganization",
+    "operations": [
+      "LeaveOrganization"
+    ],
+    "tested": [],
+    "untested": [
+      "LeaveOrganization"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "LeaveOrganization": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OutboundResponsibilityTransfers",
+    "operations": [
+      "ListOutboundResponsibilityTransfers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListOutboundResponsibilityTransfers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListOutboundResponsibilityTransfers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourcePolicy",
+    "operations": [
+      "DeleteResourcePolicy",
+      "DescribeResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteResourcePolicy",
+      "DescribeResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteResourcePolicy": "not_implemented",
+      "DescribeResourcePolicy": "not_implemented",
+      "PutResourcePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResponsibilityTransfer",
+    "operations": [
+      "DescribeResponsibilityTransfer",
+      "TerminateResponsibilityTransfer",
+      "UpdateResponsibilityTransfer"
+    ],
+    "tested": [],
+    "untested": [
+      "DescribeResponsibilityTransfer",
+      "TerminateResponsibilityTransfer",
+      "UpdateResponsibilityTransfer"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DescribeResponsibilityTransfer": "not_implemented",
+      "TerminateResponsibilityTransfer": "not_implemented",
+      "UpdateResponsibilityTransfer": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]
