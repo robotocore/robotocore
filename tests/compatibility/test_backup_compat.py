@@ -2114,3 +2114,112 @@ class TestBackupTieringConfigurationOperations:
             backup.get_tiering_configuration(TieringConfigurationName="nonexistent-tiering-cfg")
         err = exc_info.value.response["Error"]
         assert err["Code"] in ("ResourceNotFoundException", "NotFoundException")
+
+    def test_create_tiering_configuration_returns_arn(self, backup):
+        """CreateTieringConfiguration returns ARN and name."""
+        vault_name = _unique("vault")
+        tc_name = _unique("tc")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            resp = backup.create_tiering_configuration(
+                TieringConfiguration={
+                    "TieringConfigurationName": tc_name,
+                    "BackupVaultName": vault_name,
+                    "ResourceSelection": [],
+                }
+            )
+            assert resp["TieringConfigurationName"] == tc_name
+            assert "TieringConfigurationArn" in resp
+            assert "CreationTime" in resp
+        finally:
+            backup.delete_tiering_configuration(TieringConfigurationName=tc_name)
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_create_tiering_configuration_appears_in_list(self, backup):
+        """A created TieringConfiguration appears in ListTieringConfigurations."""
+        vault_name = _unique("vault")
+        tc_name = _unique("tc")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            backup.create_tiering_configuration(
+                TieringConfiguration={
+                    "TieringConfigurationName": tc_name,
+                    "BackupVaultName": vault_name,
+                    "ResourceSelection": [],
+                }
+            )
+            resp = backup.list_tiering_configurations()
+            assert "TieringConfigurations" in resp
+            names = [tc["TieringConfigurationName"] for tc in resp["TieringConfigurations"]]
+            assert tc_name in names
+        finally:
+            backup.delete_tiering_configuration(TieringConfigurationName=tc_name)
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_get_tiering_configuration_after_create(self, backup):
+        """GetTieringConfiguration retrieves a created configuration."""
+        vault_name = _unique("vault")
+        tc_name = _unique("tc")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            backup.create_tiering_configuration(
+                TieringConfiguration={
+                    "TieringConfigurationName": tc_name,
+                    "BackupVaultName": vault_name,
+                    "ResourceSelection": [],
+                }
+            )
+            resp = backup.get_tiering_configuration(TieringConfigurationName=tc_name)
+            assert "TieringConfiguration" in resp
+            tc = resp["TieringConfiguration"]
+            assert tc["TieringConfigurationName"] == tc_name
+            assert "TieringConfigurationArn" in tc
+        finally:
+            backup.delete_tiering_configuration(TieringConfigurationName=tc_name)
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_update_tiering_configuration_returns_name(self, backup):
+        """UpdateTieringConfiguration returns updated configuration name and timestamp."""
+        vault_name = _unique("vault")
+        tc_name = _unique("tc")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            backup.create_tiering_configuration(
+                TieringConfiguration={
+                    "TieringConfigurationName": tc_name,
+                    "BackupVaultName": vault_name,
+                    "ResourceSelection": [],
+                }
+            )
+            resp = backup.update_tiering_configuration(
+                TieringConfigurationName=tc_name,
+                TieringConfiguration={
+                    "BackupVaultName": vault_name,
+                    "ResourceSelection": [],
+                },
+            )
+            assert resp["TieringConfigurationName"] == tc_name
+            assert "LastUpdatedTime" in resp
+        finally:
+            backup.delete_tiering_configuration(TieringConfigurationName=tc_name)
+            backup.delete_backup_vault(BackupVaultName=vault_name)
+
+    def test_delete_tiering_configuration_removes_from_list(self, backup):
+        """DeleteTieringConfiguration removes the configuration from list."""
+        vault_name = _unique("vault")
+        tc_name = _unique("tc")
+        backup.create_backup_vault(BackupVaultName=vault_name)
+        try:
+            backup.create_tiering_configuration(
+                TieringConfiguration={
+                    "TieringConfigurationName": tc_name,
+                    "BackupVaultName": vault_name,
+                    "ResourceSelection": [],
+                }
+            )
+            backup.delete_tiering_configuration(TieringConfigurationName=tc_name)
+            resp = backup.list_tiering_configurations()
+            names = [tc["TieringConfigurationName"] for tc in resp["TieringConfigurations"]]
+            assert tc_name not in names
+        finally:
+            backup.delete_backup_vault(BackupVaultName=vault_name)
