@@ -292,3 +292,15 @@ The overnight script (`scripts/overnight.sh`) uses a tight feedback loop:
 - If stuck on params for >2 minutes, skip the operation
 - If an operation returns 501, DELETE the test and move on
 - The goal is reliable coverage, not speed
+
+### Reviewing pull requests
+
+Use `/review-pr <number>` to review and merge external PRs. Key principles:
+
+- **The submitter's PR is their contribution.** Merge it in their shape. Fix only what blocks CI. Save improvements for a follow-up PR.
+- **Never cherry-pick to another branch.** Merge the PR directly so the author gets git credit.
+- **Welcome first-time contributors** with a warm comment.
+- **Gate on prompt log.** If the PR touches `src/`, `tests/`, or `scripts/` but has no `prompts/` entry, request changes — don't approve.
+- **Fix CI blockers yourself** by pushing fixup commits to the PR branch (bare except blocks, missing imports, lint).
+- **Approve and auto-merge** once CI is green: `gh pr review --approve` + `gh pr merge --merge --auto`.
+- **Give credit.** Every approval comment thanks the author by name

@@ -51,6 +51,8 @@ That file would be named `prompts/20260307-143208-fix-nil-pointer-auth.md`.
 
 **Optional:**
 - `model` — the model that generated the assistant reasoning (e.g. `model: claude-opus-4-6`)
+- `author` — GitHub username of the original contributor, when someone else writes the prompt log on their behalf (e.g. during PR review). Gives credit where it's due.
+- `pr` — PR number this prompt log accompanies (e.g. `pr: 191`). Makes it easy to cross-reference.
 - `tools` — list of tools/agents used (e.g. `tools: [subagent, git-worktree]`), helps reviewers understand how work was parallelized
 - `sequence` — integer ordering files within a session (1, 2, 3...) when a session spans multiple files
 - `reconstructed` — set to `true` when logging retroactively from session transcripts
@@ -108,6 +110,37 @@ and unblocking the main path mattered more right now.
 ```
 
 That belongs in a commit message. The prompt log is for the reasoning behind those changes.
+
+## External contributor PRs
+
+When reviewing a PR from an external contributor who didn't include a prompt log, the reviewer (human or AI) should write one on their behalf. Use the `author` and `pr` frontmatter fields:
+
+```
+---
+session: "pr-191-review"
+timestamp: "2026-03-18T23:00:00Z"
+model: claude-opus-4-6
+author: "launchdavewilliams"
+pr: 191
+---
+
+## Human
+
+(From PR #191 by @launchdavewilliams)
+
+Implement native GetWebIdentityToken for STS. Moto's response handler
+calls _get_multi_param which doesn't exist on BaseResponse, causing 500s.
+
+## Assistant
+
+## Key decisions
+
+**Native provider over Moto fix**: The operation needs multi-value
+Audience params via Audience.member.N — easier to handle in our
+native provider than to patch Moto's BaseResponse class.
+```
+
+The goal is provenance, not gatekeeping. If someone contributes great code without a prompt log, write one for them during review rather than blocking the PR. Credit them as the author.
 
 ## Retroactive logging
 
