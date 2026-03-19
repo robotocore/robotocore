@@ -59,6 +59,7 @@ a changelog — git diff shows what changed.>
 - DO explain WHY — architectural choices, rejected alternatives, tradeoffs
 - Keep `reconstructed: true` in frontmatter if writing retroactively
 - Never rewrite or shorten existing prompt files — they are permanent record
+- For external contributor PRs: use `author` and `pr` frontmatter fields to give credit. Write the log on their behalf rather than blocking the PR.
 
 ## Example
 
