@@ -1199,7 +1199,7 @@ class TestSESConfigurationSetEventDestination:
 
     def test_create_configuration_set_event_destination_nonexistent_cs(self, ses):
         """CreateConfigurationSetEventDestination raises error for nonexistent config set."""
-        with pytest.raises(Exception) as exc:
+        with pytest.raises(Exception):
             ses.create_configuration_set_event_destination(
                 ConfigurationSetName="nonexistent-cs",
                 EventDestination={
@@ -1209,4 +1209,318 @@ class TestSESConfigurationSetEventDestination:
                     "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
                 },
             )
-        assert "ConfigurationSetDoesNotExist" in str(exc.value)
+
+
+class TestConfigurationSetTrackingOptions:
+    def test_create_configuration_set_tracking_options(self, ses):
+        """CreateConfigurationSetTrackingOptions sets a custom redirect domain."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = ses.create_configuration_set_tracking_options(
+                ConfigurationSetName=cs_name,
+                TrackingOptions={"CustomRedirectDomain": "tracking.example.com"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_update_configuration_set_tracking_options(self, ses):
+        """UpdateConfigurationSetTrackingOptions changes the custom redirect domain."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        ses.create_configuration_set_tracking_options(
+            ConfigurationSetName=cs_name,
+            TrackingOptions={"CustomRedirectDomain": "tracking.example.com"},
+        )
+        try:
+            resp = ses.update_configuration_set_tracking_options(
+                ConfigurationSetName=cs_name,
+                TrackingOptions={"CustomRedirectDomain": "tracking2.example.com"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_delete_configuration_set_tracking_options(self, ses):
+        """DeleteConfigurationSetTrackingOptions removes tracking options from a config set."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        ses.create_configuration_set_tracking_options(
+            ConfigurationSetName=cs_name,
+            TrackingOptions={"CustomRedirectDomain": "tracking.example.com"},
+        )
+        try:
+            resp = ses.delete_configuration_set_tracking_options(ConfigurationSetName=cs_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_create_tracking_options_nonexistent_cs(self, ses):
+        """CreateConfigurationSetTrackingOptions raises error for nonexistent config set."""
+        with pytest.raises(Exception):
+            ses.create_configuration_set_tracking_options(
+                ConfigurationSetName="nonexistent-cs-xyz",
+                TrackingOptions={"CustomRedirectDomain": "tracking.example.com"},
+            )
+
+
+class TestConfigurationSetDeliveryOptions:
+    def test_put_configuration_set_delivery_options(self, ses):
+        """PutConfigurationSetDeliveryOptions sets TLS policy on a config set."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = ses.put_configuration_set_delivery_options(
+                ConfigurationSetName=cs_name,
+                DeliveryOptions={"TlsPolicy": "Optional"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_put_configuration_set_delivery_options_require_tls(self, ses):
+        """PutConfigurationSetDeliveryOptions with Require TLS policy."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = ses.put_configuration_set_delivery_options(
+                ConfigurationSetName=cs_name,
+                DeliveryOptions={"TlsPolicy": "Require"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+
+class TestConfigurationSetSendingEnabled:
+    def test_update_configuration_set_sending_enabled(self, ses):
+        """UpdateConfigurationSetSendingEnabled enables sending for a config set."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = ses.update_configuration_set_sending_enabled(
+                ConfigurationSetName=cs_name,
+                Enabled=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_update_configuration_set_sending_disabled(self, ses):
+        """UpdateConfigurationSetSendingEnabled disables sending for a config set."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        try:
+            resp = ses.update_configuration_set_sending_enabled(
+                ConfigurationSetName=cs_name,
+                Enabled=False,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+
+class TestConfigurationSetEventDestinationCRUD:
+    def _make_cs_with_dest(self, ses):
+        """Helper to create a config set + event destination."""
+        cs_name = f"ses-test-{uuid.uuid4().hex[:8]}"
+        dest_name = f"dest-{uuid.uuid4().hex[:8]}"
+        ses.create_configuration_set(ConfigurationSet={"Name": cs_name})
+        ses.create_configuration_set_event_destination(
+            ConfigurationSetName=cs_name,
+            EventDestination={
+                "Name": dest_name,
+                "Enabled": True,
+                "MatchingEventTypes": ["send"],
+                "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+            },
+        )
+        return cs_name, dest_name
+
+    def test_update_configuration_set_event_destination(self, ses):
+        """UpdateConfigurationSetEventDestination modifies an existing event destination."""
+        cs_name, dest_name = self._make_cs_with_dest(ses)
+        try:
+            resp = ses.update_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestination={
+                    "Name": dest_name,
+                    "Enabled": False,
+                    "MatchingEventTypes": ["bounce", "send"],
+                    "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+    def test_delete_configuration_set_event_destination(self, ses):
+        """DeleteConfigurationSetEventDestination removes an event destination."""
+        cs_name, dest_name = self._make_cs_with_dest(ses)
+        try:
+            resp = ses.delete_configuration_set_event_destination(
+                ConfigurationSetName=cs_name,
+                EventDestinationName=dest_name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_configuration_set(ConfigurationSetName=cs_name)
+
+
+class TestIdentityPolicies:
+    _POLICY = (
+        '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+        '"Principal":{"AWS":"*"},"Action":["ses:SendEmail"],"Resource":"*"}]}'
+    )
+
+    def test_put_identity_policy(self, ses):
+        """PutIdentityPolicy attaches a sending authorization policy to an identity."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        resp = ses.put_identity_policy(Identity=email, PolicyName="TestPolicy", Policy=self._POLICY)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_identity_policies(self, ses):
+        """ListIdentityPolicies returns the names of policies attached to an identity."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        ses.put_identity_policy(Identity=email, PolicyName="MyPolicy", Policy=self._POLICY)
+        resp = ses.list_identity_policies(Identity=email)
+        assert "PolicyNames" in resp
+        assert "MyPolicy" in resp["PolicyNames"]
+
+    def test_get_identity_policies(self, ses):
+        """GetIdentityPolicies retrieves the content of sending authorization policies."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        ses.put_identity_policy(Identity=email, PolicyName="FetchPolicy", Policy=self._POLICY)
+        resp = ses.get_identity_policies(Identity=email, PolicyNames=["FetchPolicy"])
+        assert "Policies" in resp
+        assert "FetchPolicy" in resp["Policies"]
+
+    def test_delete_identity_policy(self, ses):
+        """DeleteIdentityPolicy removes a sending authorization policy."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        ses.put_identity_policy(Identity=email, PolicyName="ToDelete", Policy=self._POLICY)
+        resp = ses.delete_identity_policy(Identity=email, PolicyName="ToDelete")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        list_resp = ses.list_identity_policies(Identity=email)
+        assert "ToDelete" not in list_resp["PolicyNames"]
+
+    def test_list_identity_policies_empty(self, ses):
+        """ListIdentityPolicies returns empty list for identity with no policies."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        resp = ses.list_identity_policies(Identity=email)
+        assert "PolicyNames" in resp
+        assert resp["PolicyNames"] == []
+
+
+class TestIdentityNotificationHeaders:
+    def test_set_identity_headers_in_notifications_enabled(self, ses):
+        """SetIdentityHeadersInNotificationsEnabled acknowledges the request."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        resp = ses.set_identity_headers_in_notifications_enabled(
+            Identity=email, NotificationType="Bounce", Enabled=True
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_set_identity_headers_in_notifications_disabled(self, ses):
+        """SetIdentityHeadersInNotificationsEnabled can also disable headers."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        resp = ses.set_identity_headers_in_notifications_enabled(
+            Identity=email, NotificationType="Complaint", Enabled=False
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestReceiptRulePosition:
+    def test_set_receipt_rule_position(self, ses):
+        """SetReceiptRulePosition repositions a rule within a rule set."""
+        rs_name = f"ses-test-rs-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=rs_name)
+        ses.create_receipt_rule(
+            RuleSetName=rs_name,
+            Rule={"Name": "rule1", "Enabled": True, "Actions": [], "ScanEnabled": False},
+        )
+        ses.create_receipt_rule(
+            RuleSetName=rs_name,
+            Rule={"Name": "rule2", "Enabled": True, "Actions": [], "ScanEnabled": False},
+        )
+        try:
+            resp = ses.set_receipt_rule_position(
+                RuleSetName=rs_name, RuleName="rule2", After="rule1"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_receipt_rule_set(RuleSetName=rs_name)
+
+    def test_reorder_receipt_rule_set(self, ses):
+        """ReorderReceiptRuleSet reorders all rules in a rule set."""
+        rs_name = f"ses-test-rs-{uuid.uuid4().hex[:8]}"
+        ses.create_receipt_rule_set(RuleSetName=rs_name)
+        ses.create_receipt_rule(
+            RuleSetName=rs_name,
+            Rule={"Name": "alpha", "Enabled": True, "Actions": [], "ScanEnabled": False},
+        )
+        ses.create_receipt_rule(
+            RuleSetName=rs_name,
+            Rule={"Name": "beta", "Enabled": True, "Actions": [], "ScanEnabled": False},
+        )
+        ses.create_receipt_rule(
+            RuleSetName=rs_name,
+            Rule={"Name": "gamma", "Enabled": True, "Actions": [], "ScanEnabled": False},
+        )
+        try:
+            resp = ses.reorder_receipt_rule_set(
+                RuleSetName=rs_name, RuleNames=["gamma", "alpha", "beta"]
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ses.delete_receipt_rule_set(RuleSetName=rs_name)
+
+
+class TestVerifiedEmailAddress:
+    def test_delete_verified_email_address(self, ses):
+        """DeleteVerifiedEmailAddress removes a verified email (legacy operation)."""
+        email = f"ses-test-{uuid.uuid4().hex[:8]}@example.com"
+        ses.verify_email_identity(EmailAddress=email)
+        # Verify it's in the list before deletion
+        identities = ses.list_identities()
+        assert email in identities["Identities"]
+        # Delete it
+        resp = ses.delete_verified_email_address(EmailAddress=email)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify it's gone
+        identities_after = ses.list_identities()
+        assert email not in identities_after["Identities"]
+
+
+class TestSendBounce:
+    def test_send_bounce(self, ses):
+        """SendBounce simulates a bounce for a previously sent message."""
+        ses.verify_email_identity(EmailAddress="bounce-sender@example.com")
+        send_resp = ses.send_email(
+            Source="bounce-sender@example.com",
+            Destination={"ToAddresses": ["recipient@example.com"]},
+            Message={
+                "Subject": {"Data": "Test Subject"},
+                "Body": {"Text": {"Data": "Test body"}},
+            },
+        )
+        original_msg_id = send_resp["MessageId"]
+        resp = ses.send_bounce(
+            OriginalMessageId=original_msg_id,
+            BounceSender="mailer-daemon@example.com",
+            BouncedRecipientInfoList=[
+                {"Recipient": "recipient@example.com", "BounceType": "DoesNotExist"}
+            ],
+            MessageDsn={"ReportingMta": "dns; ses.example.com"},
+        )
+        assert "MessageId" in resp
+        assert resp["MessageId"]

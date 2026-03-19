@@ -2037,3 +2037,344 @@ class TestRoute53VPCOps:
             HostedZoneId=hosted_zone,
         )
         assert "VPCs" in resp
+
+
+class TestRoute53TrafficPolicyCRUD:
+    """Tests for TrafficPolicy CRUD operations."""
+
+    def test_create_and_get_traffic_policy(self, route53):
+        """CreateTrafficPolicy and GetTrafficPolicy work end-to-end."""
+        import json
+
+        name = _unique("tp")
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        resp = route53.create_traffic_policy(Name=name, Document=doc, Comment="initial")
+        assert "TrafficPolicy" in resp
+        assert resp["TrafficPolicy"]["Name"] == name
+        pid = resp["TrafficPolicy"]["Id"]
+        pver = resp["TrafficPolicy"]["Version"]
+
+        get = route53.get_traffic_policy(Id=pid, Version=pver)
+        assert get["TrafficPolicy"]["Id"] == pid
+        assert get["TrafficPolicy"]["Name"] == name
+
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+    def test_delete_traffic_policy(self, route53):
+        """DeleteTrafficPolicy removes the policy."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        resp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = resp["TrafficPolicy"]["Id"]
+        pver = resp["TrafficPolicy"]["Version"]
+
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+        with pytest.raises(route53.exceptions.NoSuchTrafficPolicy):
+            route53.get_traffic_policy(Id=pid, Version=pver)
+
+    def test_update_traffic_policy_comment(self, route53):
+        """UpdateTrafficPolicyComment updates the comment field."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        resp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc, Comment="original")
+        pid = resp["TrafficPolicy"]["Id"]
+        pver = resp["TrafficPolicy"]["Version"]
+
+        upd = route53.update_traffic_policy_comment(Id=pid, Version=pver, Comment="updated comment")
+        assert upd["TrafficPolicy"]["Comment"] == "updated comment"
+
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+    def test_create_traffic_policy_version(self, route53):
+        """CreateTrafficPolicyVersion adds a new version of an existing policy."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        resp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = resp["TrafficPolicy"]["Id"]
+        pver = resp["TrafficPolicy"]["Version"]
+
+        doc2 = json.dumps({"Version": "2015-10-01", "RecordType": "AAAA"})
+        ver2 = route53.create_traffic_policy_version(Id=pid, Document=doc2, Comment="v2")
+        assert ver2["TrafficPolicy"]["Version"] == 2
+        assert ver2["TrafficPolicy"]["Id"] == pid
+
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+        route53.delete_traffic_policy(Id=pid, Version=2)
+
+    def test_list_traffic_policy_versions(self, route53):
+        """ListTrafficPolicyVersions returns all versions of a policy."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        resp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = resp["TrafficPolicy"]["Id"]
+        pver = resp["TrafficPolicy"]["Version"]
+        route53.create_traffic_policy_version(Id=pid, Document=doc)
+
+        vers = route53.list_traffic_policy_versions(Id=pid)
+        assert "TrafficPolicies" in vers
+        assert len(vers["TrafficPolicies"]) == 2
+
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+        route53.delete_traffic_policy(Id=pid, Version=2)
+
+    def test_get_traffic_policy_nonexistent(self, route53):
+        """GetTrafficPolicy raises NoSuchTrafficPolicy for missing policy."""
+        with pytest.raises(route53.exceptions.NoSuchTrafficPolicy):
+            route53.get_traffic_policy(Id="nonexistent-id", Version=1)
+
+
+class TestRoute53TrafficPolicyInstances:
+    """Tests for TrafficPolicyInstance CRUD operations."""
+
+    def test_create_get_delete_traffic_policy_instance(self, route53, hosted_zone):
+        """CreateTrafficPolicyInstance / GetTrafficPolicyInstance / DeleteTrafficPolicyInstance."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        tp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = tp["TrafficPolicy"]["Id"]
+        pver = tp["TrafficPolicy"]["Version"]
+
+        inst = route53.create_traffic_policy_instance(
+            HostedZoneId=hosted_zone,
+            Name=f"www.{uuid.uuid4().hex[:8]}.example.com.",
+            TTL=60,
+            TrafficPolicyId=pid,
+            TrafficPolicyVersion=pver,
+        )
+        assert "TrafficPolicyInstance" in inst
+        iid = inst["TrafficPolicyInstance"]["Id"]
+        assert inst["TrafficPolicyInstance"]["HostedZoneId"] == hosted_zone
+
+        get = route53.get_traffic_policy_instance(Id=iid)
+        assert get["TrafficPolicyInstance"]["Id"] == iid
+        assert get["TrafficPolicyInstance"]["State"] == "Applied"
+
+        route53.delete_traffic_policy_instance(Id=iid)
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+    def test_update_traffic_policy_instance(self, route53, hosted_zone):
+        """UpdateTrafficPolicyInstance updates TTL on an existing instance."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        tp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = tp["TrafficPolicy"]["Id"]
+        pver = tp["TrafficPolicy"]["Version"]
+
+        inst = route53.create_traffic_policy_instance(
+            HostedZoneId=hosted_zone,
+            Name=f"www2.{uuid.uuid4().hex[:8]}.example.com.",
+            TTL=60,
+            TrafficPolicyId=pid,
+            TrafficPolicyVersion=pver,
+        )
+        iid = inst["TrafficPolicyInstance"]["Id"]
+
+        upd = route53.update_traffic_policy_instance(
+            Id=iid, TTL=120, TrafficPolicyId=pid, TrafficPolicyVersion=pver
+        )
+        assert upd["TrafficPolicyInstance"]["TTL"] == 120
+
+        route53.delete_traffic_policy_instance(Id=iid)
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+    def test_list_traffic_policy_instances_by_hosted_zone(self, route53, hosted_zone):
+        """ListTrafficPolicyInstancesByHostedZone returns instances for a zone."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        tp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = tp["TrafficPolicy"]["Id"]
+        pver = tp["TrafficPolicy"]["Version"]
+
+        inst = route53.create_traffic_policy_instance(
+            HostedZoneId=hosted_zone,
+            Name=f"list.{uuid.uuid4().hex[:8]}.example.com.",
+            TTL=60,
+            TrafficPolicyId=pid,
+            TrafficPolicyVersion=pver,
+        )
+        iid = inst["TrafficPolicyInstance"]["Id"]
+
+        listed = route53.list_traffic_policy_instances_by_hosted_zone(HostedZoneId=hosted_zone)
+        assert "TrafficPolicyInstances" in listed
+        instance_ids = [i["Id"] for i in listed["TrafficPolicyInstances"]]
+        assert iid in instance_ids
+
+        route53.delete_traffic_policy_instance(Id=iid)
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+    def test_list_traffic_policy_instances_by_policy(self, route53, hosted_zone):
+        """ListTrafficPolicyInstancesByPolicy returns instances for a policy."""
+        import json
+
+        doc = json.dumps({"Version": "2015-10-01", "RecordType": "A"})
+        tp = route53.create_traffic_policy(Name=_unique("tp"), Document=doc)
+        pid = tp["TrafficPolicy"]["Id"]
+        pver = tp["TrafficPolicy"]["Version"]
+
+        inst = route53.create_traffic_policy_instance(
+            HostedZoneId=hosted_zone,
+            Name=f"list2.{uuid.uuid4().hex[:8]}.example.com.",
+            TTL=60,
+            TrafficPolicyId=pid,
+            TrafficPolicyVersion=pver,
+        )
+        iid = inst["TrafficPolicyInstance"]["Id"]
+
+        listed = route53.list_traffic_policy_instances_by_policy(
+            TrafficPolicyId=pid, TrafficPolicyVersion=pver
+        )
+        assert "TrafficPolicyInstances" in listed
+        instance_ids = [i["Id"] for i in listed["TrafficPolicyInstances"]]
+        assert iid in instance_ids
+
+        route53.delete_traffic_policy_instance(Id=iid)
+        route53.delete_traffic_policy(Id=pid, Version=pver)
+
+    def test_get_traffic_policy_instance_nonexistent(self, route53):
+        """GetTrafficPolicyInstance raises NoSuchTrafficPolicyInstance for missing instance."""
+        with pytest.raises(route53.exceptions.NoSuchTrafficPolicyInstance):
+            route53.get_traffic_policy_instance(Id="nonexistent-instance-id")
+
+
+class TestRoute53KeySigningKey:
+    """Tests for KeySigningKey CRUD operations."""
+
+    @pytest.fixture
+    def kms_key_arn(self):
+        kms = boto3.client(
+            "kms",
+            endpoint_url="http://localhost:4566",
+            region_name="us-east-1",
+            aws_access_key_id="test",
+            aws_secret_access_key="test",
+        )
+        key = kms.create_key(KeyUsage="SIGN_VERIFY", KeySpec="ECC_NIST_P256")
+        return key["KeyMetadata"]["Arn"]
+
+    def test_create_activate_deactivate_delete_ksk(self, route53, hosted_zone, kms_key_arn):
+        """Full KeySigningKey lifecycle: create, activate, deactivate, delete."""
+        ksk_name = f"ksk{uuid.uuid4().hex[:8]}"
+        create = route53.create_key_signing_key(
+            CallerReference=uuid.uuid4().hex,
+            HostedZoneId=hosted_zone,
+            KeyManagementServiceArn=kms_key_arn,
+            Name=ksk_name,
+            Status="INACTIVE",
+        )
+        assert create["KeySigningKey"]["Name"] == ksk_name
+        assert create["ChangeInfo"]["Status"] == "INSYNC"
+
+        activate = route53.activate_key_signing_key(HostedZoneId=hosted_zone, Name=ksk_name)
+        assert activate["ChangeInfo"]["Status"] == "INSYNC"
+
+        deactivate = route53.deactivate_key_signing_key(HostedZoneId=hosted_zone, Name=ksk_name)
+        assert deactivate["ChangeInfo"]["Status"] == "INSYNC"
+
+        delete = route53.delete_key_signing_key(HostedZoneId=hosted_zone, Name=ksk_name)
+        assert delete["ChangeInfo"]["Status"] == "INSYNC"
+
+
+class TestRoute53HostedZoneDNSSEC:
+    """Tests for EnableHostedZoneDNSSEC and DisableHostedZoneDNSSEC."""
+
+    def test_enable_hosted_zone_dnssec(self, route53, hosted_zone):
+        """EnableHostedZoneDNSSEC returns INSYNC change info."""
+        resp = route53.enable_hosted_zone_dnssec(HostedZoneId=hosted_zone)
+        assert "ChangeInfo" in resp
+        assert resp["ChangeInfo"]["Status"] == "INSYNC"
+
+    def test_disable_hosted_zone_dnssec(self, route53, hosted_zone):
+        """DisableHostedZoneDNSSEC returns INSYNC change info."""
+        resp = route53.disable_hosted_zone_dnssec(HostedZoneId=hosted_zone)
+        assert "ChangeInfo" in resp
+        assert resp["ChangeInfo"]["Status"] == "INSYNC"
+
+    def test_enable_disable_cycle(self, route53, hosted_zone):
+        """EnableHostedZoneDNSSEC followed by DisableHostedZoneDNSSEC both succeed."""
+        enable = route53.enable_hosted_zone_dnssec(HostedZoneId=hosted_zone)
+        assert enable["ChangeInfo"]["Status"] == "INSYNC"
+
+        disable = route53.disable_hosted_zone_dnssec(HostedZoneId=hosted_zone)
+        assert disable["ChangeInfo"]["Status"] == "INSYNC"
+
+
+class TestRoute53ChangeCidrCollection:
+    """Tests for ChangeCidrCollection."""
+
+    def test_change_cidr_collection_put(self, route53):
+        """ChangeCidrCollection PUT adds CIDRs to a location."""
+        cc = route53.create_cidr_collection(Name=_unique("cc"), CallerReference=uuid.uuid4().hex)
+        cc_id = cc["Collection"]["Id"]
+
+        resp = route53.change_cidr_collection(
+            Id=cc_id,
+            CollectionVersion=1,
+            Changes=[
+                {
+                    "LocationName": "location1",
+                    "Action": "PUT",
+                    "CidrList": ["10.0.0.0/8", "192.168.0.0/16"],
+                }
+            ],
+        )
+        assert "Id" in resp
+
+        blocks = route53.list_cidr_blocks(CollectionId=cc_id, LocationName="location1")
+        assert "CidrBlocks" in blocks
+        cidr_ips = [b["CidrBlock"] for b in blocks["CidrBlocks"]]
+        assert "10.0.0.0/8" in cidr_ips
+        assert "192.168.0.0/16" in cidr_ips
+
+        route53.delete_cidr_collection(Id=cc_id)
+
+    def test_change_cidr_collection_delete_if_exists(self, route53):
+        """ChangeCidrCollection DELETE_IF_EXISTS removes CIDRs from a location."""
+        cc = route53.create_cidr_collection(Name=_unique("cc"), CallerReference=uuid.uuid4().hex)
+        cc_id = cc["Collection"]["Id"]
+
+        route53.change_cidr_collection(
+            Id=cc_id,
+            CollectionVersion=1,
+            Changes=[
+                {
+                    "LocationName": "loc1",
+                    "Action": "PUT",
+                    "CidrList": ["10.1.0.0/16", "10.2.0.0/16"],
+                }
+            ],
+        )
+        route53.change_cidr_collection(
+            Id=cc_id,
+            CollectionVersion=2,
+            Changes=[
+                {
+                    "LocationName": "loc1",
+                    "Action": "DELETE_IF_EXISTS",
+                    "CidrList": ["10.1.0.0/16"],
+                }
+            ],
+        )
+
+        blocks = route53.list_cidr_blocks(CollectionId=cc_id, LocationName="loc1")
+        cidr_ips = [b["CidrBlock"] for b in blocks["CidrBlocks"]]
+        assert "10.1.0.0/16" not in cidr_ips
+        assert "10.2.0.0/16" in cidr_ips
+
+        route53.delete_cidr_collection(Id=cc_id)
+
+
+class TestRoute53UpdateHostedZoneFeatures:
+    """Tests for UpdateHostedZoneFeatures."""
+
+    def test_update_hosted_zone_features(self, route53, hosted_zone):
+        """UpdateHostedZoneFeatures returns a response without error."""
+        resp = route53.update_hosted_zone_features(HostedZoneId=hosted_zone)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
