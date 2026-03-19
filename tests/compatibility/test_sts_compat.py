@@ -1,6 +1,7 @@
 """STS compatibility tests."""
 
 import json
+import logging
 import uuid
 
 import pytest
@@ -787,7 +788,7 @@ class TestSTSGetWebIdentityToken:
             try:
                 iam.delete_role_policy(RoleName=role_name, PolicyName="wit-policy")
             except Exception:
-                pass  # policy may not exist if test failed early
+                logging.debug("best-effort cleanup of role policy failed")
             iam.delete_role(RoleName=role_name)
 
 

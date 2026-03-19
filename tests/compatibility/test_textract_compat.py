@@ -431,7 +431,7 @@ class TestTextractAdapterVersions:
         try:
             textract.delete_adapter(AdapterId=aid)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_create_adapter_version(self, textract, adapter_id):
         """create_adapter_version returns adapter ID and version."""
@@ -503,7 +503,7 @@ class TestTextractTagging:
         try:
             textract.delete_adapter(AdapterId=adapter_id)
         except ClientError:
-            pass
+            pass  # best-effort cleanup
 
     def test_tag_resource(self, textract, adapter_arn):
         """tag_resource adds tags to a resource."""
