@@ -2876,3 +2876,101 @@ class TestLambdaFunctionWithLayers:
         finally:
             lam.delete_function(FunctionName=fname)
             lam.delete_layer_version(LayerName=layer_name, VersionNumber=1)
+
+
+# ---------------------------------------------------------------------------
+# Standalone CodeSigningConfig CRUD (not function-level association)
+# ---------------------------------------------------------------------------
+
+
+class TestLambdaCodeSigningConfigCRUD:
+    """Tests for CreateCodeSigningConfig, GetCodeSigningConfig, ListCodeSigningConfigs,
+    DeleteCodeSigningConfig, and ListFunctionsByCodeSigningConfig."""
+
+    _SIGNING_PROFILE_ARN = "arn:aws:signer:us-east-1:123456789012:/signing-profiles/test/abc123"
+
+    def test_create_code_signing_config(self, lam):
+        """CreateCodeSigningConfig returns the new config with correct fields."""
+        suffix = uuid.uuid4().hex[:8]
+        resp = lam.create_code_signing_config(
+            Description=f"csc-create-{suffix}",
+            AllowedPublishers={"SigningProfileVersionArns": [self._SIGNING_PROFILE_ARN]},
+            CodeSigningPolicies={"UntrustedArtifactOnDeployment": "Warn"},
+        )
+        csc = resp["CodeSigningConfig"]
+        assert "CodeSigningConfigArn" in csc
+        assert csc["Description"] == f"csc-create-{suffix}"
+        assert self._SIGNING_PROFILE_ARN in csc["AllowedPublishers"]["SigningProfileVersionArns"]
+        # Cleanup
+        lam.delete_code_signing_config(CodeSigningConfigArn=csc["CodeSigningConfigArn"])
+
+    def test_get_code_signing_config(self, lam):
+        """GetCodeSigningConfig returns the config that was created."""
+        suffix = uuid.uuid4().hex[:8]
+        created = lam.create_code_signing_config(
+            Description=f"csc-get-{suffix}",
+            AllowedPublishers={"SigningProfileVersionArns": [self._SIGNING_PROFILE_ARN]},
+        )
+        csc_arn = created["CodeSigningConfig"]["CodeSigningConfigArn"]
+        try:
+            resp = lam.get_code_signing_config(CodeSigningConfigArn=csc_arn)
+            assert resp["CodeSigningConfig"]["Description"] == f"csc-get-{suffix}"
+            assert resp["CodeSigningConfig"]["CodeSigningConfigArn"] == csc_arn
+        finally:
+            lam.delete_code_signing_config(CodeSigningConfigArn=csc_arn)
+
+    def test_list_code_signing_configs(self, lam):
+        """ListCodeSigningConfigs returns a list including the created config."""
+        suffix = uuid.uuid4().hex[:8]
+        created = lam.create_code_signing_config(
+            Description=f"csc-list-{suffix}",
+            AllowedPublishers={"SigningProfileVersionArns": [self._SIGNING_PROFILE_ARN]},
+        )
+        csc_arn = created["CodeSigningConfig"]["CodeSigningConfigArn"]
+        try:
+            resp = lam.list_code_signing_configs()
+            arns = [c["CodeSigningConfigArn"] for c in resp["CodeSigningConfigs"]]
+            assert csc_arn in arns
+        finally:
+            lam.delete_code_signing_config(CodeSigningConfigArn=csc_arn)
+
+    def test_delete_code_signing_config(self, lam):
+        """DeleteCodeSigningConfig removes the config so Get raises ResourceNotFoundException."""
+        created = lam.create_code_signing_config(
+            AllowedPublishers={"SigningProfileVersionArns": [self._SIGNING_PROFILE_ARN]},
+        )
+        csc_arn = created["CodeSigningConfig"]["CodeSigningConfigArn"]
+        lam.delete_code_signing_config(CodeSigningConfigArn=csc_arn)
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_code_signing_config(CodeSigningConfigArn=csc_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_functions_by_code_signing_config_empty(self, lam):
+        """ListFunctionsByCodeSigningConfig returns empty list when no functions use it."""
+        created = lam.create_code_signing_config(
+            AllowedPublishers={"SigningProfileVersionArns": [self._SIGNING_PROFILE_ARN]},
+        )
+        csc_arn = created["CodeSigningConfig"]["CodeSigningConfigArn"]
+        try:
+            resp = lam.list_functions_by_code_signing_config(CodeSigningConfigArn=csc_arn)
+            assert "FunctionArns" in resp
+            assert resp["FunctionArns"] == []
+        finally:
+            lam.delete_code_signing_config(CodeSigningConfigArn=csc_arn)
+
+    def test_get_code_signing_config_nonexistent(self, lam):
+        """GetCodeSigningConfig with fake ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-notreal"
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_code_signing_config(CodeSigningConfigArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_code_signing_config_minimal(self, lam):
+        """CreateCodeSigningConfig with only required AllowedPublishers succeeds."""
+        created = lam.create_code_signing_config(
+            AllowedPublishers={"SigningProfileVersionArns": [self._SIGNING_PROFILE_ARN]},
+        )
+        csc = created["CodeSigningConfig"]
+        assert "CodeSigningConfigArn" in csc
+        assert "CodeSigningConfigId" in csc
+        lam.delete_code_signing_config(CodeSigningConfigArn=csc["CodeSigningConfigArn"])
