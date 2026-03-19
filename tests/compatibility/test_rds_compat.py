@@ -4510,3 +4510,297 @@ class TestRDSRestoreOperations2:
         client.delete_db_cluster(DBClusterIdentifier=restored, SkipFinalSnapshot=True)
         client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap)
         client.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+
+
+class TestRDSDescribeListOperations:
+    """Tests for list/describe operations that return collections with no required args."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_instances_returns_key(self, client):
+        """DescribeDBInstances returns DBInstances list."""
+        resp = client.describe_db_instances()
+        assert "DBInstances" in resp
+
+    def test_describe_db_clusters_returns_key(self, client):
+        """DescribeDBClusters returns DBClusters list."""
+        resp = client.describe_db_clusters()
+        assert "DBClusters" in resp
+
+    def test_describe_db_engine_versions_returns_versions(self, client):
+        """DescribeDBEngineVersions returns DBEngineVersions list."""
+        resp = client.describe_db_engine_versions()
+        assert "DBEngineVersions" in resp
+
+    def test_describe_db_parameter_groups_returns_key(self, client):
+        """DescribeDBParameterGroups returns DBParameterGroups list."""
+        resp = client.describe_db_parameter_groups()
+        assert "DBParameterGroups" in resp
+
+    def test_describe_db_cluster_parameter_groups_returns_key(self, client):
+        """DescribeDBClusterParameterGroups returns DBClusterParameterGroups list."""
+        resp = client.describe_db_cluster_parameter_groups()
+        assert "DBClusterParameterGroups" in resp
+
+    def test_describe_db_snapshots_returns_key(self, client):
+        """DescribeDBSnapshots returns DBSnapshots list."""
+        resp = client.describe_db_snapshots()
+        assert "DBSnapshots" in resp
+
+    def test_describe_db_cluster_snapshots_returns_key(self, client):
+        """DescribeDBClusterSnapshots returns DBClusterSnapshots list."""
+        resp = client.describe_db_cluster_snapshots()
+        assert "DBClusterSnapshots" in resp
+
+    def test_describe_db_subnet_groups_returns_key(self, client):
+        """DescribeDBSubnetGroups returns DBSubnetGroups list."""
+        resp = client.describe_db_subnet_groups()
+        assert "DBSubnetGroups" in resp
+
+    def test_describe_db_security_groups_returns_key(self, client):
+        """DescribeDBSecurityGroups returns DBSecurityGroups list."""
+        resp = client.describe_db_security_groups()
+        assert "DBSecurityGroups" in resp
+
+    def test_describe_reserved_db_instances_returns_key(self, client):
+        """DescribeReservedDBInstances returns ReservedDBInstances list."""
+        resp = client.describe_reserved_db_instances()
+        assert "ReservedDBInstances" in resp
+
+    def test_describe_reserved_db_instances_offerings_returns_key(self, client):
+        """DescribeReservedDBInstancesOfferings returns offerings list."""
+        resp = client.describe_reserved_db_instances_offerings()
+        assert "ReservedDBInstancesOfferings" in resp
+
+    def test_describe_orderable_db_instance_options_returns_key(self, client):
+        """DescribeOrderableDBInstanceOptions returns options list."""
+        resp = client.describe_orderable_db_instance_options(Engine="mysql")
+        assert "OrderableDBInstanceOptions" in resp
+
+    def test_describe_db_instance_automated_backups_returns_key(self, client):
+        """DescribeDBInstanceAutomatedBackups returns backups list."""
+        resp = client.describe_db_instance_automated_backups()
+        assert "DBInstanceAutomatedBackups" in resp
+
+    def test_describe_db_cluster_automated_backups_returns_key(self, client):
+        """DescribeDBClusterAutomatedBackups returns cluster backups list."""
+        resp = client.describe_db_cluster_automated_backups()
+        assert "DBClusterAutomatedBackups" in resp
+
+    def test_describe_db_proxies_returns_key(self, client):
+        """DescribeDBProxies returns DBProxies list."""
+        resp = client.describe_db_proxies()
+        assert "DBProxies" in resp
+
+    def test_describe_db_proxy_endpoints_returns_key(self, client):
+        """DescribeDBProxyEndpoints returns DBProxyEndpoints list."""
+        resp = client.describe_db_proxy_endpoints()
+        assert "DBProxyEndpoints" in resp
+
+    def test_describe_db_recommendations_returns_key(self, client):
+        """DescribeDBRecommendations returns DBRecommendations list."""
+        resp = client.describe_db_recommendations()
+        assert "DBRecommendations" in resp
+
+    def test_describe_db_shard_groups_returns_key(self, client):
+        """DescribeDBShardGroups returns DBShardGroups list."""
+        resp = client.describe_db_shard_groups()
+        assert "DBShardGroups" in resp
+
+    def test_describe_db_snapshot_tenant_databases_returns_key(self, client):
+        """DescribeDBSnapshotTenantDatabases returns tenant databases list."""
+        resp = client.describe_db_snapshot_tenant_databases()
+        assert "DBSnapshotTenantDatabases" in resp
+
+
+class TestRDSErrorResponseOperations:
+    """Tests that verify correct error codes for nonexistent resources."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_db_snapshot_attributes_not_found(self, client):
+        """DescribeDBSnapshotAttributes raises DBSnapshotNotFound for nonexistent snapshot."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_snapshot_attributes(DBSnapshotIdentifier=_unique("nonexistent-snap"))
+        assert exc.value.response["Error"]["Code"] == "DBSnapshotNotFound"
+
+    def test_describe_db_cluster_snapshot_attributes_not_found(self, client):
+        """DescribeDBClusterSnapshotAttributes raises error for nonexistent cluster snapshot."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_cluster_snapshot_attributes(
+                DBClusterSnapshotIdentifier=_unique("nonexistent-csnap")
+            )
+        assert exc.value.response["Error"]["Code"] == "DBClusterSnapshotNotFoundFault"
+
+    def test_describe_valid_db_instance_modifications_not_found(self, client):
+        """DescribeValidDBInstanceModifications raises DBInstanceNotFound for unknown instance."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_valid_db_instance_modifications(
+                DBInstanceIdentifier=_unique("nonexistent-inst")
+            )
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_describe_db_log_files_not_found(self, client):
+        """DescribeDBLogFiles raises DBInstanceNotFound for nonexistent instance."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_log_files(DBInstanceIdentifier=_unique("nonexistent-inst"))
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_describe_db_parameters_not_found(self, client):
+        """DescribeDBParameters raises DBParameterGroupNotFound for nonexistent group."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_parameters(DBParameterGroupName=_unique("nonexistent-pg"))
+        assert exc.value.response["Error"]["Code"] == "DBParameterGroupNotFound"
+
+    def test_describe_db_cluster_parameters_not_found(self, client):
+        """DescribeDBClusterParameters raises error for nonexistent cluster parameter group."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_cluster_parameters(
+                DBClusterParameterGroupName=_unique("nonexistent-cpg")
+            )
+        assert exc.value.response["Error"]["Code"] == "DBParameterGroupNotFound"
+
+    def test_modify_db_snapshot_attribute_not_found(self, client):
+        """ModifyDBSnapshotAttribute raises DBSnapshotNotFound for nonexistent snapshot."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_snapshot_attribute(
+                DBSnapshotIdentifier=_unique("nonexistent-snap"),
+                AttributeName="restore",
+            )
+        assert exc.value.response["Error"]["Code"] == "DBSnapshotNotFound"
+
+    def test_modify_db_cluster_snapshot_attribute_not_found(self, client):
+        """ModifyDBClusterSnapshotAttribute raises error for nonexistent cluster snapshot."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_cluster_snapshot_attribute(
+                DBClusterSnapshotIdentifier=_unique("nonexistent-csnap"),
+                AttributeName="restore",
+            )
+        assert exc.value.response["Error"]["Code"] == "DBClusterSnapshotNotFoundFault"
+
+    def test_describe_db_proxy_target_groups_not_found(self, client):
+        """DescribeDBProxyTargetGroups raises error for nonexistent proxy."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_proxy_target_groups(DBProxyName=_unique("nonexistent-proxy"))
+        assert exc.value.response["Error"]["Code"] == "DBProxyNotFoundFault"
+
+
+class TestRDSParameterGroupCRUD:
+    """Tests for DB parameter group create/copy/delete operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_create_and_delete_db_parameter_group(self, client):
+        """CreateDBParameterGroup creates a group; DeleteDBParameterGroup removes it."""
+        name = _unique("compat-pg")
+        resp = client.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="mysql8.0",
+            Description="compat test parameter group",
+        )
+        assert resp["DBParameterGroup"]["DBParameterGroupName"] == name
+        assert resp["DBParameterGroup"]["DBParameterGroupFamily"] == "mysql8.0"
+        # Cleanup
+        client.delete_db_parameter_group(DBParameterGroupName=name)
+        # After deletion, should not be in the list
+        all_groups = client.describe_db_parameter_groups()
+        names = [g["DBParameterGroupName"] for g in all_groups["DBParameterGroups"]]
+        assert name not in names
+
+    def test_copy_db_parameter_group(self, client):
+        """CopyDBParameterGroup copies an existing parameter group."""
+        source = _unique("compat-src-pg")
+        target = _unique("compat-tgt-pg")
+        client.create_db_parameter_group(
+            DBParameterGroupName=source,
+            DBParameterGroupFamily="mysql8.0",
+            Description="source parameter group",
+        )
+        try:
+            resp = client.copy_db_parameter_group(
+                SourceDBParameterGroupIdentifier=source,
+                TargetDBParameterGroupIdentifier=target,
+                TargetDBParameterGroupDescription="copied parameter group",
+            )
+            assert resp["DBParameterGroup"]["DBParameterGroupName"] == target
+            assert resp["DBParameterGroup"]["DBParameterGroupFamily"] == "mysql8.0"
+        finally:
+            client.delete_db_parameter_group(DBParameterGroupName=source)
+            try:
+                client.delete_db_parameter_group(DBParameterGroupName=target)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_describe_db_parameters_for_group(self, client):
+        """DescribeDBParameters returns parameters for an existing group."""
+        name = _unique("compat-pg")
+        client.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="mysql8.0",
+            Description="compat test parameter group",
+        )
+        try:
+            resp = client.describe_db_parameters(DBParameterGroupName=name)
+            assert "Parameters" in resp
+        finally:
+            client.delete_db_parameter_group(DBParameterGroupName=name)
+
+    def test_create_and_delete_db_cluster_parameter_group(self, client):
+        """CreateDBClusterParameterGroup creates a cluster group; delete removes it."""
+        name = _unique("compat-cpg")
+        resp = client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="compat test cluster parameter group",
+        )
+        assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == name
+        # Cleanup
+        client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+    def test_copy_db_cluster_parameter_group(self, client):
+        """CopyDBClusterParameterGroup copies an existing cluster parameter group."""
+        source = _unique("compat-src-cpg")
+        target = _unique("compat-tgt-cpg")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=source,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="source cluster parameter group",
+        )
+        try:
+            resp = client.copy_db_cluster_parameter_group(
+                SourceDBClusterParameterGroupIdentifier=source,
+                TargetDBClusterParameterGroupIdentifier=target,
+                TargetDBClusterParameterGroupDescription="copied cluster parameter group",
+            )
+            assert resp["DBClusterParameterGroup"]["DBClusterParameterGroupName"] == target
+        finally:
+            client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=source)
+            try:
+                client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=target)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_describe_db_cluster_parameters_for_group(self, client):
+        """DescribeDBClusterParameters returns parameters for an existing group."""
+        name = _unique("compat-cpg")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="compat test cluster parameter group",
+        )
+        try:
+            resp = client.describe_db_cluster_parameters(DBClusterParameterGroupName=name)
+            assert "Parameters" in resp
+        finally:
+            client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+
+    def test_delete_db_instance_automated_backup(self, client):
+        """DeleteDBInstanceAutomatedBackup returns the backup record."""
+        resp = client.delete_db_instance_automated_backup(DbiResourceId=_unique("fake-resource"))
+        assert "DBInstanceAutomatedBackup" in resp

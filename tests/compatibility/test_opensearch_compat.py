@@ -1488,7 +1488,7 @@ class TestOpenSearchNewOps2:
 
 
 class TestOpenSearchDataSourceOps:
-    """Tests for DataSource operations on OpenSearch domains."""
+    """Tests for DataSource CRUD operations on OpenSearch domains."""
 
     @pytest.fixture
     def opensearch(self):
@@ -1536,3 +1536,124 @@ class TestOpenSearchDataSourceOps:
                     "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
                 },
             )
+
+    @pytest.fixture
+    def domain(self, opensearch):
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            opensearch.delete_domain(DomainName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_add_data_source(self, opensearch, domain):
+        """AddDataSource creates a data source on a domain."""
+        ds_name = f"ds-{uuid.uuid4().hex[:8]}"
+        resp = opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds_name,
+            DataSourceType={
+                "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
+            },
+        )
+        assert "Message" in resp
+        opensearch.delete_data_source(DomainName=domain, Name=ds_name)
+
+    def test_get_data_source(self, opensearch, domain):
+        """GetDataSource returns the data source details after creation."""
+        ds_name = f"ds-{uuid.uuid4().hex[:8]}"
+        opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds_name,
+            DataSourceType={
+                "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
+            },
+        )
+        resp = opensearch.get_data_source(DomainName=domain, Name=ds_name)
+        assert resp["Name"] == ds_name
+        assert "DataSourceType" in resp
+        assert "Status" in resp
+        opensearch.delete_data_source(DomainName=domain, Name=ds_name)
+
+    def test_update_data_source(self, opensearch, domain):
+        """UpdateDataSource changes the role ARN of a data source."""
+        ds_name = f"ds-{uuid.uuid4().hex[:8]}"
+        opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds_name,
+            DataSourceType={
+                "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/role-original"}
+            },
+        )
+        resp = opensearch.update_data_source(
+            DomainName=domain,
+            Name=ds_name,
+            DataSourceType={
+                "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/role-updated"}
+            },
+        )
+        assert "Message" in resp
+        opensearch.delete_data_source(DomainName=domain, Name=ds_name)
+
+    def test_delete_data_source(self, opensearch, domain):
+        """DeleteDataSource removes a data source from a domain."""
+        ds_name = f"ds-{uuid.uuid4().hex[:8]}"
+        opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds_name,
+            DataSourceType={
+                "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
+            },
+        )
+        resp = opensearch.delete_data_source(DomainName=domain, Name=ds_name)
+        assert "Message" in resp
+
+    def test_list_data_sources_empty(self, opensearch, domain):
+        """ListDataSources returns empty list when no data sources exist."""
+        resp = opensearch.list_data_sources(DomainName=domain)
+        assert "DataSources" in resp
+        assert isinstance(resp["DataSources"], list)
+
+    def test_list_data_sources_with_entries(self, opensearch, domain):
+        """ListDataSources returns created data sources."""
+        ds_name = f"ds-{uuid.uuid4().hex[:8]}"
+        opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds_name,
+            DataSourceType={
+                "S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/test-role"}
+            },
+        )
+        resp = opensearch.list_data_sources(DomainName=domain)
+        assert "DataSources" in resp
+        names = [ds["Name"] for ds in resp["DataSources"]]
+        assert ds_name in names
+        opensearch.delete_data_source(DomainName=domain, Name=ds_name)
+
+    def test_get_data_source_nonexistent(self, opensearch, domain):
+        """GetDataSource raises ResourceNotFoundException for unknown data source."""
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.get_data_source(DomainName=domain, Name="nonexistent-datasource")
+
+    def test_add_multiple_data_sources(self, opensearch, domain):
+        """Add multiple data sources and verify both appear in list."""
+        ds1 = f"ds-{uuid.uuid4().hex[:8]}"
+        ds2 = f"ds-{uuid.uuid4().hex[:8]}"
+        role_arn = "arn:aws:iam::123456789012:role/test-role"
+        opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds1,
+            DataSourceType={"S3GlueDataCatalog": {"RoleArn": role_arn}},
+        )
+        opensearch.add_data_source(
+            DomainName=domain,
+            Name=ds2,
+            DataSourceType={"S3GlueDataCatalog": {"RoleArn": role_arn}},
+        )
+        resp = opensearch.list_data_sources(DomainName=domain)
+        names = [ds["Name"] for ds in resp["DataSources"]]
+        assert ds1 in names
+        assert ds2 in names
+        opensearch.delete_data_source(DomainName=domain, Name=ds1)
+        opensearch.delete_data_source(DomainName=domain, Name=ds2)

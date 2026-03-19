@@ -1348,3 +1348,113 @@ class TestDsLDAPSMicrosoftAD:
         """DescribeLDAPSSettings on MicrosoftAD returns settings info."""
         resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
         assert "LDAPSSettingsInfo" in resp
+
+    def test_enable_then_describe_ldaps_settings(self, ds, msad_directory):
+        """EnableLDAPS then DescribeLDAPSSettings reflects the enabled state."""
+        ds.enable_ldaps(DirectoryId=msad_directory, Type="Client")
+        resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
+        assert "LDAPSSettingsInfo" in resp
+        assert isinstance(resp["LDAPSSettingsInfo"], list)
+
+    def test_disable_ldaps_nonexistent(self, ds):
+        """DisableLDAPS for nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.disable_ldaps(DirectoryId="d-0000000000", Type="Client")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_enable_ldaps_nonexistent(self, ds):
+        """EnableLDAPS for nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.enable_ldaps(DirectoryId="d-0000000000", Type="Client")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsVerifyTrust:
+    """Test VerifyTrust operation."""
+
+    def test_verify_trust_nonexistent(self, ds):
+        """VerifyTrust with a nonexistent trust ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.verify_trust(TrustId="t-0000000000abcdef0")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+    def test_verify_trust_after_create(self, ds, directory):
+        """VerifyTrust on a real trust ID returns a TrustId."""
+        resp = ds.create_trust(
+            DirectoryId=directory,
+            RemoteDomainName="verify.example.com",
+            TrustPassword="TrustP@ss4!",
+            TrustDirection="One-Way: Outgoing",
+        )
+        trust_id = resp["TrustId"]
+        try:
+            verify_resp = ds.verify_trust(TrustId=trust_id)
+            assert "TrustId" in verify_resp
+            assert verify_resp["TrustId"] == trust_id
+        finally:
+            ds.delete_trust(TrustId=trust_id)
+
+
+class TestDsCAEnrollmentPolicy:
+    """Test DescribeCAEnrollmentPolicy on MicrosoftAD."""
+
+    def test_describe_ca_enrollment_policy_msad(self, ds, msad_directory):
+        """DescribeCAEnrollmentPolicy on MicrosoftAD returns policy status."""
+        resp = ds.describe_ca_enrollment_policy(DirectoryId=msad_directory)
+        assert "DirectoryId" in resp
+        assert resp["DirectoryId"] == msad_directory
+        assert "CaEnrollmentPolicyStatus" in resp
+
+    def test_describe_ca_enrollment_policy_nonexistent(self, ds):
+        """DescribeCAEnrollmentPolicy for nonexistent directory raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ca_enrollment_policy(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsADAssessment:
+    """Test AD Assessment operations."""
+
+    def test_describe_ad_assessment_nonexistent(self, ds):
+        """DescribeADAssessment with a fake assessment ID raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ad_assessment(AssessmentId="a-0000000000abcdef")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsRegions:
+    """Test DescribeRegions operation."""
+
+    def test_describe_regions_msad(self, ds, msad_directory):
+        """DescribeRegions on MicrosoftAD returns RegionsDescription list."""
+        resp = ds.describe_regions(DirectoryId=msad_directory)
+        assert "RegionsDescription" in resp
+        assert isinstance(resp["RegionsDescription"], list)
+
+    def test_describe_regions_nonexistent(self, ds):
+        """DescribeRegions for nonexistent directory raises EntityDoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_regions(DirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
+
+class TestDsSharedDirectoryErrors:
+    """Test shared directory error paths."""
+
+    def test_accept_shared_directory_nonexistent(self, ds):
+        """AcceptSharedDirectory with fake directory raises an error."""
+        with pytest.raises(ClientError) as exc:
+            ds.accept_shared_directory(SharedDirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "InternalError",
+        )
+
+    def test_reject_shared_directory_nonexistent(self, ds):
+        """RejectSharedDirectory with fake directory raises an error."""
+        with pytest.raises(ClientError) as exc:
+            ds.reject_shared_directory(SharedDirectoryId="d-0000000000")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "InternalError",
+        )
