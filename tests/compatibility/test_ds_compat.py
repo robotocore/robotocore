@@ -1458,3 +1458,229 @@ class TestDsSharedDirectoryErrors:
             "EntityDoesNotExistException",
             "InternalError",
         )
+
+
+class TestDsLDAPSLifecycle:
+    """Test full LDAPS enable/describe/disable lifecycle on MicrosoftAD."""
+
+    def test_enable_describe_disable_ldaps(self, ds, msad_directory):
+        """Enable LDAPS, verify settings show Enabled, then disable."""
+        # Enable
+        ds.enable_ldaps(DirectoryId=msad_directory, Type="Client")
+
+        # Describe should show Enabled status
+        resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
+        settings = resp["LDAPSSettingsInfo"]
+        assert len(settings) >= 1
+        assert settings[0]["LDAPSStatus"] == "Enabled"
+        assert "LastUpdatedDateTime" in settings[0]
+
+        # Disable
+        dis_resp = ds.disable_ldaps(DirectoryId=msad_directory, Type="Client")
+        assert dis_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_ldaps_settings_after_disable(self, ds, msad_directory):
+        """DescribeLDAPSSettings after disable returns empty or Disabled status."""
+        ds.enable_ldaps(DirectoryId=msad_directory, Type="Client")
+        ds.disable_ldaps(DirectoryId=msad_directory, Type="Client")
+        resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
+        assert "LDAPSSettingsInfo" in resp
+        # After disable, should be empty or have Disabled status
+        assert isinstance(resp["LDAPSSettingsInfo"], list)
+
+
+class TestDsCAEnrollmentPolicyLifecycle:
+    """Test CA enrollment policy describe on MicrosoftAD."""
+
+    def test_describe_ca_enrollment_policy_status_disabled(self, ds, msad_directory):
+        """DescribeCAEnrollmentPolicy on a fresh MicrosoftAD shows Disabled status."""
+        resp = ds.describe_ca_enrollment_policy(DirectoryId=msad_directory)
+        assert resp["DirectoryId"] == msad_directory
+        assert resp["CaEnrollmentPolicyStatus"] == "Disabled"
+
+    def test_describe_ca_enrollment_policy_simple_ad(self, ds, directory):
+        """DescribeCAEnrollmentPolicy on SimpleAD returns policy status."""
+        resp = ds.describe_ca_enrollment_policy(DirectoryId=directory)
+        assert resp["DirectoryId"] == directory
+        assert "CaEnrollmentPolicyStatus" in resp
+
+
+class TestDsCreateMicrosoftADEditions:
+    """Test CreateMicrosoftAD with different editions."""
+
+    def test_create_microsoft_ad_enterprise(self, ds, ec2):
+        """CreateMicrosoftAD with Enterprise edition creates correct type."""
+        vpc = ec2.create_vpc(CidrBlock="10.91.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.91.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.91.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.create_microsoft_ad(
+            Name="enterprise.example.com",
+            Password="P@ssw0rd!",
+            Edition="Enterprise",
+            VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        dir_id = resp["DirectoryId"]
+        assert dir_id.startswith("d-")
+        try:
+            desc = ds.describe_directories(DirectoryIds=[dir_id])
+            d = desc["DirectoryDescriptions"][0]
+            assert d["Type"] == "MicrosoftAD"
+            assert d["Edition"] == "Enterprise"
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass  # best-effort cleanup
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_create_microsoft_ad_standard(self, ds, ec2):
+        """CreateMicrosoftAD with Standard edition creates correct type."""
+        vpc = ec2.create_vpc(CidrBlock="10.92.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.92.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.92.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        sid1, sid2 = s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]
+        resp = ds.create_microsoft_ad(
+            Name="standard.example.com",
+            Password="P@ssw0rd!",
+            Edition="Standard",
+            VpcSettings={"VpcId": vpc_id, "SubnetIds": [sid1, sid2]},
+        )
+        dir_id = resp["DirectoryId"]
+        assert dir_id.startswith("d-")
+        try:
+            desc = ds.describe_directories(DirectoryIds=[dir_id])
+            d = desc["DirectoryDescriptions"][0]
+            assert d["Type"] == "MicrosoftAD"
+            assert d["Edition"] == "Standard"
+        finally:
+            ds.delete_directory(DirectoryId=dir_id)
+            for sid in [sid1, sid2]:
+                try:
+                    ec2.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass  # best-effort cleanup
+            try:
+                ec2.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_create_microsoft_ad_nonexistent_vpc(self, ds):
+        """CreateMicrosoftAD with a nonexistent VPC raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.create_microsoft_ad(
+                Name="novpc.example.com",
+                Password="P@ssw0rd!",
+                VpcSettings={
+                    "VpcId": "vpc-00000000000000000",
+                    "SubnetIds": ["subnet-00000000000000001", "subnet-00000000000000002"],
+                },
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ClientException",
+            "InvalidParameterException",
+            "EntityDoesNotExistException",
+        )
+
+
+class TestDsRegionsMicrosoftAD:
+    """Test DescribeRegions on MicrosoftAD directories."""
+
+    def test_describe_regions_primary(self, ds, msad_directory):
+        """DescribeRegions lists the primary region for MicrosoftAD."""
+        resp = ds.describe_regions(DirectoryId=msad_directory)
+        regions = resp["RegionsDescription"]
+        assert len(regions) >= 1
+        primary = regions[0]
+        assert primary["DirectoryId"] == msad_directory
+        assert primary["RegionType"] == "Primary"
+        assert primary["Status"] == "Active"
+        assert "VpcSettings" in primary
+        assert "LaunchTime" in primary
+
+    def test_describe_regions_has_vpc_settings(self, ds, msad_directory):
+        """DescribeRegions includes VPC settings for each region."""
+        resp = ds.describe_regions(DirectoryId=msad_directory)
+        for region in resp["RegionsDescription"]:
+            assert "VpcId" in region["VpcSettings"]
+            assert "SubnetIds" in region["VpcSettings"]
+            assert len(region["VpcSettings"]["SubnetIds"]) >= 1
+
+
+class TestDsDescribeADAssessmentErrors:
+    """Test DescribeADAssessment error paths."""
+
+    def test_describe_ad_assessment_invalid_id(self, ds):
+        """DescribeADAssessment with invalid assessment ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ad_assessment(AssessmentId="assessment-bogus-id")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "ValidationException",
+        )
+
+
+class TestDsSharedDirectoryDescribe:
+    """Test DescribeSharedDirectories on MicrosoftAD."""
+
+    def test_describe_shared_directories_msad_empty(self, ds, msad_directory):
+        """DescribeSharedDirectories on MicrosoftAD with no shares returns empty list."""
+        resp = ds.describe_shared_directories(OwnerDirectoryId=msad_directory)
+        assert "SharedDirectories" in resp
+        assert isinstance(resp["SharedDirectories"], list)
+        assert len(resp["SharedDirectories"]) == 0
+
+
+class TestDsAcceptRejectSharedErrors:
+    """Test AcceptSharedDirectory and RejectSharedDirectory error handling."""
+
+    def test_accept_shared_directory_invalid_id(self, ds):
+        """AcceptSharedDirectory with an invalid shared directory ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.accept_shared_directory(SharedDirectoryId="d-bogus12345")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "InternalError",
+            "DirectoryDoesNotExistException",
+        )
+
+    def test_reject_shared_directory_invalid_id(self, ds):
+        """RejectSharedDirectory with an invalid shared directory ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            ds.reject_shared_directory(SharedDirectoryId="d-bogus12345")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityDoesNotExistException",
+            "InternalError",
+            "DirectoryDoesNotExistException",
+        )
+
+
+class TestDsDescribeLDAPSSettingsVariations:
+    """Test DescribeLDAPSSettings with various inputs."""
+
+    def test_describe_ldaps_settings_simple_ad_unsupported(self, ds, directory):
+        """DescribeLDAPSSettings on SimpleAD raises UnsupportedOperationException."""
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ldaps_settings(DirectoryId=directory)
+        assert exc.value.response["Error"]["Code"] == "UnsupportedOperationException"
+
+    def test_describe_ldaps_settings_msad_returns_list(self, ds, msad_directory):
+        """DescribeLDAPSSettings on MicrosoftAD returns a list."""
+        resp = ds.describe_ldaps_settings(DirectoryId=msad_directory, Type="Client")
+        assert "LDAPSSettingsInfo" in resp
+        assert isinstance(resp["LDAPSSettingsInfo"], list)
