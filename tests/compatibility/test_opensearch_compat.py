@@ -1545,7 +1545,7 @@ class TestOpenSearchDataSourceOps:
         try:
             opensearch.delete_domain(DomainName=name)
         except Exception:
-            pass
+            pass  # best-effort cleanup
 
     def test_add_data_source(self, opensearch, domain):
         """AddDataSource creates a data source on a domain."""
