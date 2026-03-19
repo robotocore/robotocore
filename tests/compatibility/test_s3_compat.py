@@ -1533,3 +1533,458 @@ class TestS3ObjectOperations:
         resp = s3.get_bucket_acl(Bucket=bucket)
         assert "Owner" in resp
         assert "Grants" in resp
+
+
+class TestS3BucketOwnershipControls:
+    def test_put_get_delete_ownership_controls(self, s3):
+        bucket_name = f"ownership-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_ownership_controls(
+                Bucket=bucket_name,
+                OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerPreferred"}]},
+            )
+            resp = s3.get_bucket_ownership_controls(Bucket=bucket_name)
+            rule = resp["OwnershipControls"]["Rules"][0]
+            assert rule["ObjectOwnership"] == "BucketOwnerPreferred"
+            s3.delete_bucket_ownership_controls(Bucket=bucket_name)
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3PublicAccessBlock:
+    def test_put_get_delete_public_access_block(self, s3):
+        bucket_name = f"pab-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_public_access_block(
+                Bucket=bucket_name,
+                PublicAccessBlockConfiguration={
+                    "BlockPublicAcls": True,
+                    "IgnorePublicAcls": True,
+                    "BlockPublicPolicy": True,
+                    "RestrictPublicBuckets": True,
+                },
+            )
+            resp = s3.get_public_access_block(Bucket=bucket_name)
+            config = resp["PublicAccessBlockConfiguration"]
+            assert config["BlockPublicAcls"] is True
+            assert config["RestrictPublicBuckets"] is True
+            s3.delete_public_access_block(Bucket=bucket_name)
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketLogging:
+    def test_put_get_bucket_logging(self, s3):
+        bucket_name = f"logging-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_logging(Bucket=bucket_name, BucketLoggingStatus={})
+            resp = s3.get_bucket_logging(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketAccelerateConfiguration:
+    def test_put_get_accelerate_configuration(self, s3):
+        bucket_name = f"accel-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_accelerate_configuration(
+                Bucket=bucket_name,
+                AccelerateConfiguration={"Status": "Enabled"},
+            )
+            resp = s3.get_bucket_accelerate_configuration(Bucket=bucket_name)
+            assert resp["Status"] == "Enabled"
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketRequestPayment:
+    def test_put_get_request_payment(self, s3):
+        bucket_name = f"reqpay-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_request_payment(
+                Bucket=bucket_name,
+                RequestPaymentConfiguration={"Payer": "Requester"},
+            )
+            resp = s3.get_bucket_request_payment(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketAnalyticsConfiguration:
+    def test_put_get_list_delete_analytics(self, s3):
+        bucket_name = f"analytics-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_analytics_configuration(
+                Bucket=bucket_name,
+                Id="test-analytics",
+                AnalyticsConfiguration={"Id": "test-analytics", "StorageClassAnalysis": {}},
+            )
+            resp = s3.get_bucket_analytics_configuration(Bucket=bucket_name, Id="test-analytics")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            list_resp = s3.list_bucket_analytics_configurations(Bucket=bucket_name)
+            assert "IsTruncated" in list_resp
+            s3.delete_bucket_analytics_configuration(Bucket=bucket_name, Id="test-analytics")
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup; bucket may have been deleted by delete_analytics
+
+
+class TestS3BucketIntelligentTiering:
+    def test_put_get_list_delete_intelligent_tiering(self, s3):
+        bucket_name = f"tiering-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_intelligent_tiering_configuration(
+                Bucket=bucket_name,
+                Id="test-tiering",
+                IntelligentTieringConfiguration={
+                    "Id": "test-tiering",
+                    "Status": "Enabled",
+                    "Tierings": [{"Days": 90, "AccessTier": "ARCHIVE_ACCESS"}],
+                },
+            )
+            resp = s3.get_bucket_intelligent_tiering_configuration(
+                Bucket=bucket_name, Id="test-tiering"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            list_resp = s3.list_bucket_intelligent_tiering_configurations(Bucket=bucket_name)
+            assert "IsTruncated" in list_resp
+            s3.delete_bucket_intelligent_tiering_configuration(
+                Bucket=bucket_name, Id="test-tiering"
+            )
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup; bucket may have been deleted by delete_tiering
+
+
+class TestS3BucketMetricsConfiguration:
+    def test_put_get_list_delete_metrics(self, s3):
+        bucket_name = f"metrics-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_metrics_configuration(
+                Bucket=bucket_name,
+                Id="test-metrics",
+                MetricsConfiguration={"Id": "test-metrics"},
+            )
+            resp = s3.get_bucket_metrics_configuration(Bucket=bucket_name, Id="test-metrics")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            list_resp = s3.list_bucket_metrics_configurations(Bucket=bucket_name)
+            assert "IsTruncated" in list_resp
+            s3.delete_bucket_metrics_configuration(Bucket=bucket_name, Id="test-metrics")
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup; bucket may have been deleted by delete_metrics
+
+
+class TestS3BucketLifecycleLegacy:
+    def test_put_get_delete_lifecycle(self, s3):
+        bucket_name = f"lifecycle-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_lifecycle(
+                Bucket=bucket_name,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "expire-rule",
+                            "Status": "Enabled",
+                            "Prefix": "logs/",
+                            "Expiration": {"Days": 30},
+                        }
+                    ]
+                },
+            )
+            resp = s3.get_bucket_lifecycle(Bucket=bucket_name)
+            assert len(resp["Rules"]) == 1
+            assert resp["Rules"][0]["ID"] == "expire-rule"
+            s3.delete_bucket_lifecycle(Bucket=bucket_name)
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketReplication:
+    def test_put_get_delete_replication(self, s3):
+        bucket_name = f"replication-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        s3.put_bucket_versioning(Bucket=bucket_name, VersioningConfiguration={"Status": "Enabled"})
+        try:
+            s3.put_bucket_replication(
+                Bucket=bucket_name,
+                ReplicationConfiguration={
+                    "Role": "arn:aws:iam::123456789012:role/replication-role",
+                    "Rules": [
+                        {
+                            "Status": "Enabled",
+                            "Prefix": "",
+                            "Destination": {"Bucket": f"arn:aws:s3:::{bucket_name}"},
+                        }
+                    ],
+                },
+            )
+            resp = s3.get_bucket_replication(Bucket=bucket_name)
+            config = resp["ReplicationConfiguration"]
+            assert len(config["Rules"]) == 1
+            assert config["Rules"][0]["Status"] == "Enabled"
+            s3.delete_bucket_replication(Bucket=bucket_name)
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3ObjectLockConfiguration:
+    def test_put_get_object_lock_configuration(self, s3):
+        bucket_name = f"objlock-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name, ObjectLockEnabledForBucket=True)
+        try:
+            s3.put_object_lock_configuration(
+                Bucket=bucket_name,
+                ObjectLockConfiguration={
+                    "ObjectLockEnabled": "Enabled",
+                    "Rule": {"DefaultRetention": {"Mode": "GOVERNANCE", "Days": 1}},
+                },
+            )
+            resp = s3.get_object_lock_configuration(Bucket=bucket_name)
+            assert resp["ObjectLockConfiguration"]["ObjectLockEnabled"] == "Enabled"
+            retention = resp["ObjectLockConfiguration"]["Rule"]["DefaultRetention"]
+            assert retention["Mode"] == "GOVERNANCE"
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3ObjectLegalHold:
+    def test_put_get_object_legal_hold(self, s3):
+        bucket_name = f"legalhold-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name, ObjectLockEnabledForBucket=True)
+        put_resp = s3.put_object(Bucket=bucket_name, Key="locked.txt", Body=b"protected")
+        version_id = put_resp.get("VersionId")
+        try:
+            s3.put_object_legal_hold(
+                Bucket=bucket_name,
+                Key="locked.txt",
+                LegalHold={"Status": "ON"},
+            )
+            resp = s3.get_object_legal_hold(Bucket=bucket_name, Key="locked.txt")
+            assert resp["LegalHold"]["Status"] == "ON"
+            # Release hold before cleanup
+            s3.put_object_legal_hold(
+                Bucket=bucket_name,
+                Key="locked.txt",
+                LegalHold={"Status": "OFF"},
+            )
+        finally:
+            delete_kwargs = {"Bucket": bucket_name, "Key": "locked.txt"}
+            if version_id:
+                delete_kwargs["VersionId"] = version_id
+            try:
+                s3.delete_object(**delete_kwargs)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestS3ObjectRetention:
+    def test_put_get_object_retention(self, s3):
+        import datetime
+
+        bucket_name = f"retention-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name, ObjectLockEnabledForBucket=True)
+        put_resp = s3.put_object(Bucket=bucket_name, Key="retain.txt", Body=b"retained")
+        version_id = put_resp.get("VersionId")
+        retain_until = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+        try:
+            s3.put_object_retention(
+                Bucket=bucket_name,
+                Key="retain.txt",
+                Retention={"Mode": "GOVERNANCE", "RetainUntilDate": retain_until},
+            )
+            resp = s3.get_object_retention(Bucket=bucket_name, Key="retain.txt")
+            assert resp["Retention"]["Mode"] == "GOVERNANCE"
+        finally:
+            delete_kwargs = {
+                "Bucket": bucket_name,
+                "Key": "retain.txt",
+                "BypassGovernanceRetention": True,
+            }
+            if version_id:
+                delete_kwargs["VersionId"] = version_id
+            try:
+                s3.delete_object(**delete_kwargs)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestS3BucketNotification:
+    def test_put_get_bucket_notification(self, s3):
+        bucket_name = f"notif-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_notification(Bucket=bucket_name, NotificationConfiguration={})
+            resp = s3.get_bucket_notification(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketEncryption:
+    def test_delete_bucket_encryption(self, s3):
+        bucket_name = f"enc-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_encryption(
+                Bucket=bucket_name,
+                ServerSideEncryptionConfiguration={
+                    "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]
+                },
+            )
+            resp = s3.delete_bucket_encryption(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3GetObjectAttributes:
+    def test_get_object_attributes(self, s3):
+        bucket_name = f"objattrs-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        s3.put_object(Bucket=bucket_name, Key="test.txt", Body=b"hello world")
+        try:
+            resp = s3.get_object_attributes(
+                Bucket=bucket_name,
+                Key="test.txt",
+                ObjectAttributes=["ETag", "ObjectSize"],
+            )
+            assert resp["ETag"] is not None
+            assert resp["ObjectSize"] == 11
+        finally:
+            s3.delete_object(Bucket=bucket_name, Key="test.txt")
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3HeadBucket:
+    def test_head_bucket_exists(self, s3):
+        bucket_name = f"headbkt-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.head_bucket(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+    def test_head_bucket_not_found(self, s3):
+        with pytest.raises(Exception) as exc_info:
+            s3.head_bucket(Bucket="does-not-exist-xyz-12345")
+        assert exc_info.value.response["Error"]["Code"] in ("404", "NoSuchBucket")
+
+
+class TestS3ListObjects:
+    def test_list_objects(self, s3):
+        bucket_name = f"listobj-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        s3.put_object(Bucket=bucket_name, Key="file1.txt", Body=b"a")
+        s3.put_object(Bucket=bucket_name, Key="file2.txt", Body=b"b")
+        try:
+            resp = s3.list_objects(Bucket=bucket_name)
+            assert resp["Name"] == bucket_name
+            keys = [obj["Key"] for obj in resp.get("Contents", [])]
+            assert "file1.txt" in keys
+            assert "file2.txt" in keys
+        finally:
+            s3.delete_object(Bucket=bucket_name, Key="file1.txt")
+            s3.delete_object(Bucket=bucket_name, Key="file2.txt")
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3ListDirectoryBuckets:
+    def test_list_directory_buckets(self, s3):
+        resp = s3.list_directory_buckets()
+        assert "Buckets" in resp
+
+
+class TestS3UploadPartCopy:
+    def test_upload_part_copy(self, s3):
+        bucket_name = f"mpu-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        # Source object must be >=5MB for multipart, but UploadPartCopy works on any size
+        s3.put_object(Bucket=bucket_name, Key="source.txt", Body=b"x" * (6 * 1024 * 1024))
+        mpu = s3.create_multipart_upload(Bucket=bucket_name, Key="dest.txt")
+        upload_id = mpu["UploadId"]
+        try:
+            resp = s3.upload_part_copy(
+                Bucket=bucket_name,
+                Key="dest.txt",
+                PartNumber=1,
+                UploadId=upload_id,
+                CopySource={"Bucket": bucket_name, "Key": "source.txt"},
+            )
+            etag = resp["CopyPartResult"]["ETag"]
+            assert etag is not None
+            s3.complete_multipart_upload(
+                Bucket=bucket_name,
+                Key="dest.txt",
+                UploadId=upload_id,
+                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+            )
+        finally:
+            for key in ["source.txt", "dest.txt"]:
+                try:
+                    s3.delete_object(Bucket=bucket_name, Key=key)
+                except Exception:
+                    pass  # best-effort cleanup
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3GetObjectTorrent:
+    def test_get_object_torrent(self, s3):
+        bucket_name = f"torrent-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        s3.put_object(Bucket=bucket_name, Key="test.txt", Body=b"torrent content")
+        try:
+            resp = s3.get_object_torrent(Bucket=bucket_name, Key="test.txt")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_object(Bucket=bucket_name, Key="test.txt")
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3CreateSession:
+    def test_create_session(self, s3):
+        bucket_name = f"session-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.create_session(Bucket=bucket_name)
+            assert "Credentials" in resp
+            assert "AccessKeyId" in resp["Credentials"]
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketPolicyStatus:
+    def test_get_bucket_policy_status(self, s3):
+        bucket_name = f"policystatus-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.get_bucket_policy_status(Bucket=bucket_name)
+            assert "PolicyStatus" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
