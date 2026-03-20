@@ -1367,3 +1367,17 @@ class TestKinesisRetentionNoOp:
         assert retention == 24
 
         client.delete_stream(StreamName=stream_name)
+
+
+class TestKinesisTagsForResource:
+    """Tests for Kinesis ListTagsForResource operation."""
+
+    def test_list_tags_for_resource_nonexistent_stream(self, kinesis):
+        """ListTagsForResource with nonexistent stream ARN raises ResourceNotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            kinesis.list_tags_for_resource(
+                ResourceARN="arn:aws:kinesis:us-east-1:123456789012:stream/nonexistent-stream-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
