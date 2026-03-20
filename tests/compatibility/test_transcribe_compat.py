@@ -942,3 +942,357 @@ class TestTranscribeVocabularyFilters:
         """ListVocabularyFilters returns VocabularyFilters list."""
         resp = transcribe.list_vocabulary_filters()
         assert "VocabularyFilters" in resp
+
+
+class TestTranscribeNewOps:
+    """Tests for newly implemented Transcribe operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("transcribe")
+
+    # --- CallAnalyticsCategory ---
+
+    def test_create_call_analytics_category(self, client):
+        """CreateCallAnalyticsCategory creates and returns CategoryProperties."""
+        name = f"cat-{_uid()}"
+        resp = client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 60000,
+                        "AbsoluteTimeRange": {"First": 60000},
+                    }
+                }
+            ],
+        )
+        cat = resp["CategoryProperties"]
+        assert cat["CategoryName"] == name
+        assert len(cat["Rules"]) == 1
+        client.delete_call_analytics_category(CategoryName=name)
+
+    def test_get_call_analytics_category(self, client):
+        """GetCallAnalyticsCategory returns the created category."""
+        name = f"cat-get-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 60000,
+                        "AbsoluteTimeRange": {"First": 60000},
+                    }
+                }
+            ],
+        )
+        try:
+            resp = client.get_call_analytics_category(CategoryName=name)
+            assert resp["CategoryProperties"]["CategoryName"] == name
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
+
+    def test_update_call_analytics_category(self, client):
+        """UpdateCallAnalyticsCategory updates rules and returns updated properties."""
+        name = f"cat-upd-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 60000,
+                        "AbsoluteTimeRange": {"First": 60000},
+                    }
+                }
+            ],
+        )
+        try:
+            resp = client.update_call_analytics_category(
+                CategoryName=name,
+                Rules=[
+                    {
+                        "NonTalkTimeFilter": {
+                            "Threshold": 90000,
+                            "AbsoluteTimeRange": {"First": 90000},
+                        }
+                    }
+                ],
+            )
+            assert resp["CategoryProperties"]["CategoryName"] == name
+            assert resp["CategoryProperties"]["Rules"][0]["NonTalkTimeFilter"]["Threshold"] == 90000
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
+
+    def test_delete_call_analytics_category(self, client):
+        """DeleteCallAnalyticsCategory removes the category."""
+        name = f"cat-del-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 60000,
+                        "AbsoluteTimeRange": {"First": 60000},
+                    }
+                }
+            ],
+        )
+        client.delete_call_analytics_category(CategoryName=name)
+        resp = client.list_call_analytics_categories()
+        names = [c["CategoryName"] for c in resp["Categories"]]
+        assert name not in names
+
+    def test_list_call_analytics_categories_with_data(self, client):
+        """ListCallAnalyticsCategories includes created category."""
+        name = f"cat-list-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 60000,
+                        "AbsoluteTimeRange": {"First": 60000},
+                    }
+                }
+            ],
+        )
+        try:
+            resp = client.list_call_analytics_categories()
+            assert "Categories" in resp
+            names = [c["CategoryName"] for c in resp["Categories"]]
+            assert name in names
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
+
+    # --- CallAnalyticsJob ---
+
+    def test_start_call_analytics_job(self, client):
+        """StartCallAnalyticsJob creates and returns job details."""
+        name = f"caj-{_uid()}"
+        resp = client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        job = resp["CallAnalyticsJob"]
+        assert job["CallAnalyticsJobName"] == name
+        assert "CallAnalyticsJobStatus" in job
+        client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    def test_get_call_analytics_job(self, client):
+        """GetCallAnalyticsJob returns job details including status."""
+        name = f"caj-get-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        try:
+            resp = client.get_call_analytics_job(CallAnalyticsJobName=name)
+            job = resp["CallAnalyticsJob"]
+            assert job["CallAnalyticsJobName"] == name
+            assert job["CallAnalyticsJobStatus"] in (
+                "QUEUED",
+                "IN_PROGRESS",
+                "COMPLETED",
+                "FAILED",
+            )
+        finally:
+            client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    def test_delete_call_analytics_job(self, client):
+        """DeleteCallAnalyticsJob removes the job."""
+        name = f"caj-del-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        client.delete_call_analytics_job(CallAnalyticsJobName=name)
+        resp = client.list_call_analytics_jobs()
+        names = [j["CallAnalyticsJobName"] for j in resp["CallAnalyticsJobSummaries"]]
+        assert name not in names
+
+    def test_list_call_analytics_jobs_with_data(self, client):
+        """ListCallAnalyticsJobs includes created job."""
+        name = f"caj-list-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        try:
+            resp = client.list_call_analytics_jobs()
+            assert "CallAnalyticsJobSummaries" in resp
+            names = [j["CallAnalyticsJobName"] for j in resp["CallAnalyticsJobSummaries"]]
+            assert name in names
+        finally:
+            client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    # --- MedicalScribeJob ---
+
+    def test_start_medical_scribe_job(self, client):
+        """StartMedicalScribeJob creates and returns job details."""
+        name = f"msj-{_uid()}"
+        resp = client.start_medical_scribe_job(
+            MedicalScribeJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+            Settings={
+                "ShowSpeakerLabels": False,
+                "MaxSpeakerLabels": 2,
+                "ChannelIdentification": False,
+            },
+        )
+        job = resp["MedicalScribeJob"]
+        assert job["MedicalScribeJobName"] == name
+        assert "MedicalScribeJobStatus" in job
+        client.delete_medical_scribe_job(MedicalScribeJobName=name)
+
+    def test_get_medical_scribe_job(self, client):
+        """GetMedicalScribeJob returns job details."""
+        name = f"msj-get-{_uid()}"
+        client.start_medical_scribe_job(
+            MedicalScribeJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+            Settings={
+                "ShowSpeakerLabels": False,
+                "MaxSpeakerLabels": 2,
+                "ChannelIdentification": False,
+            },
+        )
+        try:
+            resp = client.get_medical_scribe_job(MedicalScribeJobName=name)
+            job = resp["MedicalScribeJob"]
+            assert job["MedicalScribeJobName"] == name
+            assert job["MedicalScribeJobStatus"] in (
+                "QUEUED",
+                "IN_PROGRESS",
+                "COMPLETED",
+                "FAILED",
+            )
+        finally:
+            client.delete_medical_scribe_job(MedicalScribeJobName=name)
+
+    def test_delete_medical_scribe_job(self, client):
+        """DeleteMedicalScribeJob removes the job."""
+        name = f"msj-del-{_uid()}"
+        client.start_medical_scribe_job(
+            MedicalScribeJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+            Settings={
+                "ShowSpeakerLabels": False,
+                "MaxSpeakerLabels": 2,
+                "ChannelIdentification": False,
+            },
+        )
+        client.delete_medical_scribe_job(MedicalScribeJobName=name)
+        resp = client.list_medical_scribe_jobs()
+        names = [j["MedicalScribeJobName"] for j in resp["MedicalScribeJobSummaries"]]
+        assert name not in names
+
+    def test_list_medical_scribe_jobs_with_data(self, client):
+        """ListMedicalScribeJobs includes created job."""
+        name = f"msj-list-{_uid()}"
+        client.start_medical_scribe_job(
+            MedicalScribeJobName=name,
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test",
+            Settings={
+                "ShowSpeakerLabels": False,
+                "MaxSpeakerLabels": 2,
+                "ChannelIdentification": False,
+            },
+        )
+        try:
+            resp = client.list_medical_scribe_jobs()
+            assert "MedicalScribeJobSummaries" in resp
+            names = [j["MedicalScribeJobName"] for j in resp["MedicalScribeJobSummaries"]]
+            assert name in names
+        finally:
+            client.delete_medical_scribe_job(MedicalScribeJobName=name)
+
+    # --- UpdateMedicalVocabulary ---
+
+    def test_update_medical_vocabulary(self, client):
+        """UpdateMedicalVocabulary updates the vocabulary and returns metadata."""
+        name = f"medvocab-upd-{_uid()}"
+        client.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        try:
+            resp = client.update_medical_vocabulary(
+                VocabularyName=name,
+                LanguageCode="en-US",
+                VocabularyFileUri="s3://my-bucket/vocab-v2.txt",
+            )
+            assert resp["VocabularyName"] == name
+            assert resp["LanguageCode"] == "en-US"
+            assert "VocabularyState" in resp
+        finally:
+            client.delete_medical_vocabulary(VocabularyName=name)
+
+    # --- TagResource / UntagResource / ListTagsForResource ---
+
+    def test_tag_and_list_tags_for_vocabulary(self, client):
+        """TagResource and ListTagsForResource work on a vocabulary."""
+        name = f"tagvocab-{_uid()}"
+        client.create_vocabulary(VocabularyName=name, LanguageCode="en-US", Phrases=["hello"])
+        arn = f"arn:aws:transcribe:us-east-1:123456789012:vocabulary/{name}"
+        try:
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "test"}])
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert resp["ResourceArn"] == arn
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["env"] == "test"
+        finally:
+            client.delete_vocabulary(VocabularyName=name)
+
+    def test_untag_resource(self, client):
+        """UntagResource removes the specified tag."""
+        name = f"untagvocab-{_uid()}"
+        client.create_vocabulary(VocabularyName=name, LanguageCode="en-US", Phrases=["hello"])
+        arn = f"arn:aws:transcribe:us-east-1:123456789012:vocabulary/{name}"
+        try:
+            client.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "ml"}],
+            )
+            client.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "env" not in tag_keys
+            assert "team" in tag_keys
+        finally:
+            client.delete_vocabulary(VocabularyName=name)
+
+    def test_tag_call_analytics_category(self, client):
+        """TagResource works on a call analytics category."""
+        name = f"tagcat-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 60000,
+                        "AbsoluteTimeRange": {"First": 60000},
+                    }
+                }
+            ],
+        )
+        arn = f"arn:aws:transcribe:us-east-1:123456789012:call-analytics-category/{name}"
+        try:
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "stage", "Value": "prod"}])
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            tags = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tags["stage"] == "prod"
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
