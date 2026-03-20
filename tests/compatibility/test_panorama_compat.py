@@ -336,3 +336,273 @@ class TestPanoramaAdditionalOps:
         assert "JobId" in resp
         assert isinstance(resp["JobId"], str)
         assert len(resp["JobId"]) > 0
+
+
+class TestPanoramaNewOps:
+    """Tests for newly implemented Panorama operations."""
+
+    def test_list_devices_jobs_returns_key(self, panorama):
+        resp = panorama.list_devices_jobs()
+        assert "DeviceJobs" in resp
+        assert isinstance(resp["DeviceJobs"], list)
+
+    def test_describe_device_job_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_device_job(JobId="nonexistent-job-id")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_job_for_devices_returns_jobs(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            resp = panorama.create_job_for_devices(
+                DeviceIds=[device_id],
+                DeviceJobConfig={
+                    "OTAJobConfig": {"ImageVersion": "6.2.1", "AllowMajorVersionUpdate": False}
+                },
+                JobType="OTA",
+            )
+            assert "Jobs" in resp
+            assert len(resp["Jobs"]) == 1
+            assert resp["Jobs"][0]["DeviceId"] == device_id
+            assert "JobId" in resp["Jobs"][0]
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_device_job_after_create(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            jobs_resp = panorama.create_job_for_devices(
+                DeviceIds=[device_id],
+                DeviceJobConfig={
+                    "OTAJobConfig": {"ImageVersion": "6.2.1", "AllowMajorVersionUpdate": False}
+                },
+                JobType="OTA",
+            )
+            job_id = jobs_resp["Jobs"][0]["JobId"]
+            resp = panorama.describe_device_job(JobId=job_id)
+            assert resp["JobId"] == job_id
+            assert resp["DeviceId"] == device_id
+            assert "Status" in resp
+            assert "JobType" in resp
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_register_package_version_succeeds(self, panorama):
+        pkg = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_id = pkg["PackageId"]
+        try:
+            resp = panorama.register_package_version(
+                PackageId=pkg_id,
+                PackageVersion="1.0",
+                PatchVersion="abc123def456",
+                MarkLatest=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                panorama.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_package_version_after_register(self, panorama):
+        pkg = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_id = pkg["PackageId"]
+        try:
+            panorama.register_package_version(
+                PackageId=pkg_id,
+                PackageVersion="1.0",
+                PatchVersion="abc123def456",
+                MarkLatest=True,
+            )
+            resp = panorama.describe_package_version(
+                PackageId=pkg_id,
+                PackageVersion="1.0",
+                PatchVersion="abc123def456",
+            )
+            assert resp["PackageId"] == pkg_id
+            assert resp["PackageVersion"] == "1.0"
+            assert resp["PatchVersion"] == "abc123def456"
+            assert resp["IsLatestPatch"] is True
+            assert "Status" in resp
+        finally:
+            try:
+                panorama.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_package_version_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_package_version(
+                PackageId="package-nonexistent",
+                PackageVersion="1.0",
+                PatchVersion="abc123",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_deregister_package_version(self, panorama):
+        pkg = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_id = pkg["PackageId"]
+        try:
+            panorama.register_package_version(
+                PackageId=pkg_id,
+                PackageVersion="1.0",
+                PatchVersion="patchabc123",
+            )
+            resp = panorama.deregister_package_version(
+                PackageId=pkg_id,
+                PackageVersion="1.0",
+                PatchVersion="patchabc123",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify it's gone
+            with pytest.raises(ClientError) as exc_info:
+                panorama.describe_package_version(
+                    PackageId=pkg_id,
+                    PackageVersion="1.0",
+                    PatchVersion="patchabc123",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            try:
+                panorama.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_tag_resource_and_list_tags(self, panorama):
+        pkg = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_arn = pkg["Arn"]
+        pkg_id = pkg["PackageId"]
+        try:
+            panorama.tag_resource(ResourceArn=pkg_arn, Tags={"env": "test", "project": "panorama"})
+            resp = panorama.list_tags_for_resource(ResourceArn=pkg_arn)
+            assert "Tags" in resp
+            assert resp["Tags"].get("env") == "test"
+            assert resp["Tags"].get("project") == "panorama"
+        finally:
+            try:
+                panorama.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_untag_resource_removes_tags(self, panorama):
+        pkg = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_arn = pkg["Arn"]
+        pkg_id = pkg["PackageId"]
+        try:
+            panorama.tag_resource(ResourceArn=pkg_arn, Tags={"k1": "v1", "k2": "v2", "k3": "v3"})
+            panorama.untag_resource(ResourceArn=pkg_arn, TagKeys=["k1", "k3"])
+            resp = panorama.list_tags_for_resource(ResourceArn=pkg_arn)
+            tags = resp["Tags"]
+            assert "k1" not in tags
+            assert "k3" not in tags
+            assert tags.get("k2") == "v2"
+        finally:
+            try:
+                panorama.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_tags_for_resource_empty(self, panorama):
+        pkg = panorama.create_package(PackageName=f"test-pkg-{uuid.uuid4().hex[:8]}")
+        pkg_arn = pkg["Arn"]
+        pkg_id = pkg["PackageId"]
+        try:
+            resp = panorama.list_tags_for_resource(ResourceArn=pkg_arn)
+            assert "Tags" in resp
+            assert isinstance(resp["Tags"], dict)
+        finally:
+            try:
+                panorama.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_application_instance_dependencies_returns_key(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            app = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": "{}"},
+            )
+            ai_id = app["ApplicationInstanceId"]
+            resp = panorama.list_application_instance_dependencies(ApplicationInstanceId=ai_id)
+            assert "PackageObjects" in resp
+            assert isinstance(resp["PackageObjects"], list)
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_application_instance_node_instances_returns_key(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            app = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": "{}"},
+            )
+            ai_id = app["ApplicationInstanceId"]
+            resp = panorama.list_application_instance_node_instances(ApplicationInstanceId=ai_id)
+            assert "NodeInstances" in resp
+            assert isinstance(resp["NodeInstances"], list)
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_signal_application_instance_node_instances(self, panorama):
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            app = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": "{}"},
+            )
+            ai_id = app["ApplicationInstanceId"]
+            resp = panorama.signal_application_instance_node_instances(
+                ApplicationInstanceId=ai_id,
+                NodeSignals=[{"NodeInstanceId": "test-node-instance", "Signal": "PAUSE"}],
+            )
+            assert resp["ApplicationInstanceId"] == ai_id
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_application_instance_dependencies_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.list_application_instance_dependencies(
+                ApplicationInstanceId="applicationInstance-nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_application_instance_node_instances_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.list_application_instance_node_instances(
+                ApplicationInstanceId="applicationInstance-nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_signal_application_instance_node_instances_not_found(self, panorama):
+        with pytest.raises(ClientError) as exc_info:
+            panorama.signal_application_instance_node_instances(
+                ApplicationInstanceId="applicationInstance-nonexistent",
+                NodeSignals=[{"NodeInstanceId": "x", "Signal": "PAUSE"}],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
