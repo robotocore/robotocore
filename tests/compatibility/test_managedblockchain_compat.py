@@ -594,3 +594,62 @@ class TestManagedBlockchainNodeUpdateOps:
             },
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestManagedBlockchainAccessor:
+    """Tests for Accessor CRUD and tagging operations."""
+
+    def test_create_and_list_accessors(self, managedblockchain):
+        resp = managedblockchain.create_accessor(AccessorType="BILLING_TOKEN")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccessorId" in resp
+        aid = resp["AccessorId"]
+        try:
+            r2 = managedblockchain.list_accessors()
+            ids = [a["Id"] for a in r2["Accessors"]]
+            assert aid in ids
+        finally:
+            managedblockchain.delete_accessor(AccessorId=aid)
+
+    def test_get_accessor(self, managedblockchain):
+        resp = managedblockchain.create_accessor(AccessorType="BILLING_TOKEN")
+        aid = resp["AccessorId"]
+        try:
+            r2 = managedblockchain.get_accessor(AccessorId=aid)
+            assert r2["Accessor"]["Id"] == aid
+            assert r2["Accessor"]["Status"] == "AVAILABLE"
+        finally:
+            managedblockchain.delete_accessor(AccessorId=aid)
+
+    def test_get_accessor_not_found(self, managedblockchain):
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            managedblockchain.get_accessor(AccessorId="nonexistent")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_accessor(self, managedblockchain):
+        resp = managedblockchain.create_accessor(AccessorType="BILLING_TOKEN")
+        aid = resp["AccessorId"]
+        managedblockchain.delete_accessor(AccessorId=aid)
+        r2 = managedblockchain.list_accessors()
+        ids = [a["Id"] for a in r2["Accessors"]]
+        assert aid not in ids
+
+    def test_tag_and_untag_accessor(self, managedblockchain):
+        resp = managedblockchain.create_accessor(AccessorType="BILLING_TOKEN", Tags={"Env": "test"})
+        aid = resp["AccessorId"]
+        try:
+            acc = managedblockchain.get_accessor(AccessorId=aid)["Accessor"]
+            arn = acc["Arn"]
+            r2 = managedblockchain.list_tags_for_resource(ResourceArn=arn)
+            assert r2["Tags"].get("Env") == "test"
+            managedblockchain.tag_resource(ResourceArn=arn, Tags={"NewTag": "val"})
+            r3 = managedblockchain.list_tags_for_resource(ResourceArn=arn)
+            assert r3["Tags"].get("NewTag") == "val"
+            managedblockchain.untag_resource(ResourceArn=arn, TagKeys=["Env"])
+            r4 = managedblockchain.list_tags_for_resource(ResourceArn=arn)
+            assert "Env" not in r4["Tags"]
+            assert r4["Tags"].get("NewTag") == "val"
+        finally:
+            managedblockchain.delete_accessor(AccessorId=aid)
