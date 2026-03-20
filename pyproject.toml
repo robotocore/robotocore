@@ -76,6 +76,9 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "BLE"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["robotocore"]
+
 [tool.ruff.lint.per-file-ignores]
 "scripts/build_slides.py" = ["E501"]  # HTML/CSS/JS template strings can't be line-wrapped
 "scripts/coverage_gaps.py" = ["E501"]
