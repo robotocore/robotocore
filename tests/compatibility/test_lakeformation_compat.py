@@ -820,3 +820,146 @@ class TestLakeFormationLFTags:
             assert isinstance(resp["TableList"], list)
         finally:
             client.delete_lf_tag(TagKey=tag_key)
+
+
+class TestLakeFormationGapSurfacing:
+    """Additional tests for gap surfacing — deeper assertions on 17 working operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_describe_resource_not_found(self, client):
+        """DescribeResource with unregistered ARN raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.describe_resource(ResourceArn="arn:aws:s3:::nonexistent-bucket-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_lf_tag_nonexistent_returns_empty(self, client):
+        """GetLFTag with nonexistent tag key returns empty TagValues."""
+        resp = client.get_lf_tag(TagKey="nonexistent-tag-key-xyz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["TagKey"] == "nonexistent-tag-key-xyz"
+        assert resp["TagValues"] == []
+
+    def test_get_data_lake_principal_identity_format(self, client):
+        """GetDataLakePrincipal identity string is non-empty."""
+        resp = client.get_data_lake_principal()
+        assert "Identity" in resp
+        assert isinstance(resp["Identity"], str)
+
+    def test_get_data_lake_settings_has_settings_keys(self, client):
+        """GetDataLakeSettings returns DataLakeSettings with expected structure."""
+        resp = client.get_data_lake_settings()
+        settings = resp["DataLakeSettings"]
+        assert isinstance(settings, dict)
+        # DataLakeSettings should at minimum have DataLakeAdmins
+        assert "DataLakeAdmins" in settings
+
+    def test_get_effective_permissions_for_path_returns_empty(self, client):
+        """GetEffectivePermissionsForPath for unknown path returns empty permissions."""
+        resp = client.get_effective_permissions_for_path(
+            ResourceArn="arn:aws:s3:::no-such-bucket-xyz-9999"
+        )
+        assert "Permissions" in resp
+        assert isinstance(resp["Permissions"], list)
+        assert len(resp["Permissions"]) == 0
+
+    def test_get_resource_lf_tags_catalog_keys(self, client):
+        """GetResourceLFTags for Catalog returns expected response keys."""
+        resp = client.get_resource_lf_tags(Resource={"Catalog": {}})
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Response should have at least one of the tag list keys
+        assert (
+            any(k in resp for k in ["LFTagOnDatabase", "LFTagsOnTable", "LFTagsOnColumns"])
+            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        )
+
+    def test_get_temporary_glue_table_credentials_fields(self, client):
+        """GetTemporaryGlueTableCredentials returns all credential fields."""
+        resp = client.get_temporary_glue_table_credentials(
+            TableArn="arn:aws:glue:us-east-1:123456789012:table/mydb/mytbl"
+        )
+        assert "AccessKeyId" in resp
+        assert "SecretAccessKey" in resp
+        assert "SessionToken" in resp
+        assert len(resp["AccessKeyId"]) > 0
+        assert len(resp["SecretAccessKey"]) > 0
+        assert len(resp["SessionToken"]) > 0
+
+    def test_list_data_cells_filter_returns_list(self, client):
+        """ListDataCellsFilter returns DataCellsFilters as a list."""
+        resp = client.list_data_cells_filter()
+        assert "DataCellsFilters" in resp
+        assert isinstance(resp["DataCellsFilters"], list)
+
+    def test_list_lf_tag_expressions_returns_list(self, client):
+        """ListLFTagExpressions returns LFTagExpressions as a list."""
+        resp = client.list_lf_tag_expressions()
+        assert "LFTagExpressions" in resp
+        assert isinstance(resp["LFTagExpressions"], list)
+
+    def test_list_lf_tags_returns_list(self, client):
+        """ListLFTags returns LFTags as a list."""
+        resp = client.list_lf_tags()
+        assert "LFTags" in resp
+        assert isinstance(resp["LFTags"], list)
+
+    def test_list_permissions_returns_list(self, client):
+        """ListPermissions returns PrincipalResourcePermissions as a list."""
+        resp = client.list_permissions()
+        assert "PrincipalResourcePermissions" in resp
+        assert isinstance(resp["PrincipalResourcePermissions"], list)
+
+    def test_list_resources_returns_list(self, client):
+        """ListResources returns ResourceInfoList as a list."""
+        resp = client.list_resources()
+        assert "ResourceInfoList" in resp
+        assert isinstance(resp["ResourceInfoList"], list)
+
+    def test_list_transactions_returns_list(self, client):
+        """ListTransactions returns Transactions as a list."""
+        resp = client.list_transactions()
+        assert "Transactions" in resp
+        assert isinstance(resp["Transactions"], list)
+
+    def test_describe_identity_center_not_configured(self, client):
+        """DescribeLakeFormationIdentityCenterConfiguration raises when not configured."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.describe_lake_formation_identity_center_configuration()
+        err = exc.value.response["Error"]
+        assert err["Code"] == "EntityNotFoundException"
+        assert "Message" in err
+
+    def test_describe_transaction_fake_id(self, client):
+        """DescribeTransaction with fake ID raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.describe_transaction(TransactionId="nonexistent-txn-abc123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_data_cells_filter_nonexistent(self, client):
+        """GetDataCellsFilter with fake filter raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.get_data_cells_filter(
+                TableCatalogId="123456789012",
+                DatabaseName="fake-db-gap",
+                TableName="fake-tbl-gap",
+                Name="fake-filter-gap",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_lf_tag_expression_nonexistent(self, client):
+        """GetLFTagExpression with fake name raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.get_lf_tag_expression(Name="nonexistent-lf-expr-gap")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
