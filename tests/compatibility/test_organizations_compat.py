@@ -1072,3 +1072,19 @@ class TestOrganizationsGapOps:
         )
         assert "Policies" in resp
         assert isinstance(resp["Policies"], list)
+
+
+class TestOrganizationsNewStubOps:
+    """Tests for newly-implemented organizations stub operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("organizations")
+
+    def test_list_accounts_with_invalid_effective_policy(self, client):
+        """ListAccountsWithInvalidEffectivePolicy returns empty Accounts list."""
+        resp = client.list_accounts_with_invalid_effective_policy(
+            PolicyType="AISERVICES_OPT_OUT_POLICY"
+        )
+        assert "Accounts" in resp
+        assert isinstance(resp["Accounts"], list)

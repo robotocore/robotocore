@@ -4908,3 +4908,32 @@ class TestRDSMissingGapOps:
             assert role_arn not in role_arns
         finally:
             client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+
+
+class TestRDSNewStubOps:
+    """Tests for newly-implemented RDS stub operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_disable_http_endpoint(self, client):
+        """DisableHttpEndpoint returns ResourceArn and HttpEndpointEnabled=False."""
+        resp = client.disable_http_endpoint(
+            ResourceArn="arn:aws:rds:us-east-1:123456789012:cluster/fake-cluster",
+        )
+        assert "HttpEndpointEnabled" in resp
+        assert resp["HttpEndpointEnabled"] is False
+
+    def test_enable_http_endpoint(self, client):
+        """EnableHttpEndpoint returns ResourceArn and HttpEndpointEnabled=True."""
+        resp = client.enable_http_endpoint(
+            ResourceArn="arn:aws:rds:us-east-1:123456789012:cluster/fake-cluster",
+        )
+        assert "HttpEndpointEnabled" in resp
+        assert resp["HttpEndpointEnabled"] is True
+
+    def test_modify_certificates(self, client):
+        """ModifyCertificates returns Certificate key."""
+        resp = client.modify_certificates()
+        assert "Certificate" in resp

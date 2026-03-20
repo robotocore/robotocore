@@ -1264,3 +1264,30 @@ class TestElastiCacheGapOps:
         )
         assert "CacheCluster" in resp
         assert resp["CacheCluster"]["CacheClusterId"] == cluster
+
+
+class TestElastiCacheNewStubOps:
+    """Tests for newly-implemented ElastiCache stub operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("elasticache")
+
+    def test_copy_serverless_cache_snapshot(self, client):
+        """CopyServerlessCacheSnapshot returns ServerlessCacheSnapshot."""
+        import uuid
+
+        src = f"src-snap-{uuid.uuid4().hex[:8]}"
+        tgt = f"tgt-snap-{uuid.uuid4().hex[:8]}"
+        resp = client.copy_serverless_cache_snapshot(
+            SourceServerlessCacheSnapshotName=src,
+            TargetServerlessCacheSnapshotName=tgt,
+        )
+        assert "ServerlessCacheSnapshot" in resp
+
+    def test_purchase_reserved_cache_nodes_offering(self, client):
+        """PurchaseReservedCacheNodesOffering returns ReservedCacheNode."""
+        resp = client.purchase_reserved_cache_nodes_offering(
+            ReservedCacheNodesOfferingId="fake-offering-id-xyz",
+        )
+        assert "ReservedCacheNode" in resp

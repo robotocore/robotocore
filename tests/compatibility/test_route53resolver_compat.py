@@ -1094,3 +1094,56 @@ class TestRoute53ResolverQueryLogConfigPolicy:
             assert len(resp["ResolverQueryLogConfigPolicy"]) > 0
         finally:
             resolver.delete_resolver_query_log_config(ResolverQueryLogConfigId=qlc_id)
+
+
+class TestRoute53ResolverFirewallConfigGapOps:
+    """Tests for newly-implemented Route53Resolver firewall/resolver config operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("route53resolver")
+
+    def test_get_firewall_config(self, client):
+        """GetFirewallConfig returns FirewallConfig for a VPC ID."""
+        resp = client.get_firewall_config(ResourceId="vpc-0123456789abcdef0")
+        assert "FirewallConfig" in resp
+        assert resp["FirewallConfig"]["ResourceId"] == "vpc-0123456789abcdef0"
+
+    def test_get_resolver_config(self, client):
+        """GetResolverConfig returns ResolverConfig for a VPC ID."""
+        resp = client.get_resolver_config(ResourceId="vpc-0123456789abcdef0")
+        assert "ResolverConfig" in resp
+        assert resp["ResolverConfig"]["ResourceId"] == "vpc-0123456789abcdef0"
+
+    def test_import_firewall_domains(self, client):
+        """ImportFirewallDomains returns Status key."""
+        resp = client.import_firewall_domains(
+            FirewallDomainListId="rslvr-fdl-0123456789abcdef0",
+            Operation="REPLACE",
+            DomainFileUrl="s3://fake-bucket/domains.txt",
+        )
+        assert "Status" in resp
+
+    def test_update_firewall_config(self, client):
+        """UpdateFirewallConfig returns updated FirewallConfig."""
+        resp = client.update_firewall_config(
+            ResourceId="vpc-0123456789abcdef0",
+            FirewallFailOpen="DISABLED",
+        )
+        assert "FirewallConfig" in resp
+
+    def test_update_firewall_rule_group_association(self, client):
+        """UpdateFirewallRuleGroupAssociation returns FirewallRuleGroupAssociation."""
+        resp = client.update_firewall_rule_group_association(
+            FirewallRuleGroupAssociationId="rslvr-frgassoc-0123456789abcdef0",
+            Priority=100,
+        )
+        assert "FirewallRuleGroupAssociation" in resp
+
+    def test_update_resolver_config(self, client):
+        """UpdateResolverConfig returns updated ResolverConfig."""
+        resp = client.update_resolver_config(
+            ResourceId="vpc-0123456789abcdef0",
+            AutodefinedReverseFlag="ENABLE",
+        )
+        assert "ResolverConfig" in resp

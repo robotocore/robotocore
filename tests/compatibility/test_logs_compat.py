@@ -2437,3 +2437,20 @@ class TestLogsTransformer:
                 transformerConfig=[{"parseJSON": {}}],
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestLogsNewStubOps:
+    """Tests for newly-implemented CloudWatch Logs stub operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("logs")
+
+    def test_test_metric_filter(self, client):
+        """TestMetricFilter returns matches list."""
+        resp = client.test_metric_filter(
+            filterPattern="[..., level=ERROR]",
+            logEventMessages=["error: something went wrong", "info: all good"],
+        )
+        assert "matches" in resp
+        assert isinstance(resp["matches"], list)

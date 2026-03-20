@@ -3647,3 +3647,25 @@ class TestS3ControlBucketLifecycle:
                 },
             )
         assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
+
+
+class TestS3ControlNewStubOps:
+    """Tests for newly-implemented S3 Control stub operations."""
+
+    ACCOUNT_ID = "123456789012"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("s3control")
+
+    def test_list_access_points_for_object_lambda(self, client):
+        """ListAccessPointsForObjectLambda returns list."""
+        resp = client.list_access_points_for_object_lambda(AccountId=self.ACCOUNT_ID)
+        assert "ObjectLambdaAccessPointList" in resp
+        assert isinstance(resp["ObjectLambdaAccessPointList"], list)
+
+    def test_list_regional_buckets(self, client):
+        """ListRegionalBuckets returns RegionalBucketList."""
+        resp = client.list_regional_buckets(AccountId=self.ACCOUNT_ID)
+        assert "RegionalBucketList" in resp
+        assert isinstance(resp["RegionalBucketList"], list)
