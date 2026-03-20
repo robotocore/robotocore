@@ -9934,3 +9934,25 @@ class TestEC2VerifiedAccessGroupOps:
             assert "VerifiedAccessGroup" in del_resp
         finally:
             ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
+
+
+class TestEC2CapacityBlocks:
+    """Tests for DescribeCapacityBlockOfferings operation."""
+
+    def test_describe_capacity_block_offerings(self, ec2):
+        """DescribeCapacityBlockOfferings returns offerings list."""
+        resp = ec2.describe_capacity_block_offerings(
+            InstanceType="p4d.24xlarge",
+            InstanceCount=1,
+            CapacityDurationHours=24,
+        )
+        assert "CapacityBlockOfferings" in resp
+
+
+class TestEC2DeclarativePolicies:
+    """Tests for GetDeclarativePoliciesReportSummary operation."""
+
+    def test_get_declarative_policies_report_summary(self, ec2):
+        """GetDeclarativePoliciesReportSummary returns a response."""
+        resp = ec2.get_declarative_policies_report_summary(ReportId="fake-report-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
