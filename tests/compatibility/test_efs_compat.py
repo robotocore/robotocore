@@ -583,3 +583,21 @@ class TestEFSLegacyTagOps:
             assert "SourceFileSystemId" in resp
         finally:
             efs.delete_file_system(FileSystemId=fs_id)
+
+
+class TestEFSReplicationAndProtection:
+    """Test DeleteReplicationConfiguration and UpdateFileSystemProtection."""
+
+    def test_delete_replication_configuration_nonexistent(self, efs):
+        """DeleteReplicationConfiguration with nonexistent FS returns FileSystemNotFound."""
+        with pytest.raises(ClientError) as exc:
+            efs.delete_replication_configuration(SourceFileSystemId="fs-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "FileSystemNotFound"
+
+    def test_update_file_system_protection_nonexistent(self, efs):
+        """UpdateFileSystemProtection with nonexistent FS returns FileSystemNotFound."""
+        with pytest.raises(ClientError) as exc:
+            efs.update_file_system_protection(
+                FileSystemId="fs-nonexistent", ReplicationOverwriteProtection="ENABLED"
+            )
+        assert exc.value.response["Error"]["Code"] == "FileSystemNotFound"

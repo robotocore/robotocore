@@ -2276,3 +2276,17 @@ class TestS3WriteGetObjectResponse:
             Body=b"hello from object lambda",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestS3RestoreObject:
+    """Test RestoreObject."""
+
+    def test_restore_object_nonexistent_bucket(self, s3):
+        """RestoreObject with nonexistent bucket returns NoSuchBucket."""
+        with pytest.raises(ClientError) as exc:
+            s3.restore_object(
+                Bucket="nonexistent-bucket-xyz-123",
+                Key="test-key",
+                RestoreRequest={"Days": 7},
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"

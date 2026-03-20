@@ -528,3 +528,42 @@ class TestS3TablesBucketSubPaths:
             },
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestS3TablesStorageClassAndExpiration:
+    """Test PutTableBucketStorageClass and PutTableRecordExpirationConfiguration."""
+
+    @pytest.fixture
+    def bucket_and_table(self, s3tables):
+        import uuid as _uuid
+
+        bucket_name = f"test-bucket-{_uuid.uuid4().hex[:8]}"
+        bucket_resp = s3tables.create_table_bucket(name=bucket_name)
+        bucket_arn = bucket_resp["arn"]
+        s3tables.create_namespace(tableBucketARN=bucket_arn, namespace=["testns"])
+        table_resp = s3tables.create_table(
+            tableBucketARN=bucket_arn,
+            namespace="testns",
+            name="test-table",
+            format="ICEBERG",
+        )
+        table_arn = table_resp["tableARN"]
+        yield bucket_arn, table_arn
+
+    def test_put_table_bucket_storage_class(self, s3tables, bucket_and_table):
+        """PutTableBucketStorageClass sets storage class on a table bucket."""
+        bucket_arn, _ = bucket_and_table
+        resp = s3tables.put_table_bucket_storage_class(
+            tableBucketARN=bucket_arn,
+            storageClassConfiguration={"storageClass": "STANDARD_INFREQUENT_ACCESS"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_table_record_expiration_configuration(self, s3tables, bucket_and_table):
+        """PutTableRecordExpirationConfiguration sets expiration on a table."""
+        _, table_arn = bucket_and_table
+        resp = s3tables.put_table_record_expiration_configuration(
+            tableArn=table_arn,
+            value={"status": "enabled", "settings": {"days": 365}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
