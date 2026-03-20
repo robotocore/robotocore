@@ -574,3 +574,60 @@ class TestEsVpcEndpointOperations:
                 ReservationName="test-reservation",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestESGapOps:
+    """Tests for previously-missing ES operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("es")
+
+    @pytest.fixture
+    def domain(self, client):
+        name = f"es-gap-{_uid()}"
+        client.create_elasticsearch_domain(DomainName=name)
+        yield name
+        try:
+            client.delete_elasticsearch_domain(DomainName=name)
+        except Exception:
+            pass
+
+    def test_get_upgrade_history(self, client, domain):
+        """GetUpgradeHistory returns history list."""
+        resp = client.get_upgrade_history(DomainName=domain)
+        assert "UpgradeHistories" in resp
+
+    def test_get_upgrade_status(self, client, domain):
+        """GetUpgradeStatus returns step and status."""
+        resp = client.get_upgrade_status(DomainName=domain)
+        assert "UpgradeStep" in resp
+        assert "StepStatus" in resp
+
+    def test_cancel_elasticsearch_service_software_update(self, client, domain):
+        """CancelElasticsearchServiceSoftwareUpdate returns ServiceSoftwareOptions."""
+        resp = client.cancel_elasticsearch_service_software_update(DomainName=domain)
+        assert "ServiceSoftwareOptions" in resp
+
+    def test_start_elasticsearch_service_software_update(self, client, domain):
+        """StartElasticsearchServiceSoftwareUpdate returns ServiceSoftwareOptions."""
+        resp = client.start_elasticsearch_service_software_update(DomainName=domain)
+        assert "ServiceSoftwareOptions" in resp
+
+    def test_upgrade_elasticsearch_domain(self, client, domain):
+        """UpgradeElasticsearchDomain returns domain name and target version."""
+        resp = client.upgrade_elasticsearch_domain(
+            DomainName=domain, TargetVersion="OpenSearch_2.3"
+        )
+        assert resp["DomainName"] == domain
+        assert resp["TargetVersion"] == "OpenSearch_2.3"
+
+    def test_list_vpc_endpoint_access(self, client, domain):
+        """ListVpcEndpointAccess returns authorized principals list."""
+        resp = client.list_vpc_endpoint_access(DomainName=domain)
+        assert "AuthorizedPrincipalList" in resp
+
+    def test_list_packages_for_domain(self, client, domain):
+        """ListPackagesForDomain returns domain package details list."""
+        resp = client.list_packages_for_domain(DomainName=domain)
+        assert "DomainPackageDetailsList" in resp
