@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -397,3 +398,66 @@ class TestRouteOperations:
             appmesh_client.delete_route(
                 meshName=mesh_name, virtualRouterName=router_name, routeName=route_name
             )
+
+
+class TestErrorPaths:
+    """Tests that verify proper error responses for nonexistent resources."""
+
+    def test_list_meshes_empty(self, appmesh_client):
+        """ListMeshes returns a list even when no meshes exist."""
+        resp = appmesh_client.list_meshes()
+        assert "meshes" in resp
+
+    def test_describe_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.describe_mesh(meshName="nonexistent-mesh-xyz")
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_describe_route_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.describe_route(
+                meshName="nonexistent-mesh-xyz",
+                virtualRouterName="nonexistent-router",
+                routeName="nonexistent-route",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_describe_virtual_node_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.describe_virtual_node(
+                meshName="nonexistent-mesh-xyz",
+                virtualNodeName="nonexistent-node",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_describe_virtual_router_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.describe_virtual_router(
+                meshName="nonexistent-mesh-xyz",
+                virtualRouterName="nonexistent-router",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_list_routes_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.list_routes(
+                meshName="nonexistent-mesh-xyz",
+                virtualRouterName="nonexistent-router",
+            )
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_list_virtual_nodes_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.list_virtual_nodes(meshName="nonexistent-mesh-xyz")
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_list_virtual_routers_mesh_not_found(self, appmesh_client):
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.list_virtual_routers(meshName="nonexistent-mesh-xyz")
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_list_tags_for_resource_not_found(self, appmesh_client):
+        fake_arn = "arn:aws:appmesh:us-east-1:123456789012:mesh/nonexistent-mesh-xyz"
+        with pytest.raises(ClientError) as exc_info:
+            appmesh_client.list_tags_for_resource(resourceArn=fake_arn)
+        assert "NotFound" in exc_info.value.response["Error"]["Code"]
