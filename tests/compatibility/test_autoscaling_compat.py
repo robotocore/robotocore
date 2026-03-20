@@ -1362,3 +1362,22 @@ class TestAutoScalingTrafficSources:
         with pytest.raises(ClientError) as exc:
             autoscaling.describe_traffic_sources(AutoScalingGroupName="nonexistent-asg-xyz")
         assert exc.value.response["Error"]["Code"] == "ValidationError"
+
+
+class TestAutoScalingPredictiveScaling:
+    """Tests for GetPredictiveScalingForecast operation."""
+
+    def test_get_predictive_scaling_forecast_nonexistent_asg(self, autoscaling):
+        """GetPredictiveScalingForecast with nonexistent ASG raises ValidationError."""
+        import datetime
+
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            autoscaling.get_predictive_scaling_forecast(
+                AutoScalingGroupName="nonexistent-asg-xyz",
+                PolicyName="nonexistent-policy-xyz",
+                StartTime=datetime.datetime(2026, 1, 1),
+                EndTime=datetime.datetime(2026, 1, 2),
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationError"

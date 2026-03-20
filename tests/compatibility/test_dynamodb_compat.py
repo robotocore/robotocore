@@ -3327,3 +3327,13 @@ class TestDynamoDBReplicaAutoScaling:
         assert "TableAutoScalingDescription" in resp
         desc = resp["TableAutoScalingDescription"]
         assert desc["TableName"] == table
+
+
+class TestDynamoDBGlobalTableSettings:
+    """Tests for DescribeGlobalTableSettings operation."""
+
+    def test_describe_global_table_settings_nonexistent(self, dynamodb):
+        """DescribeGlobalTableSettings with nonexistent table raises GlobalTableNotFoundException."""  # noqa: E501
+        with pytest.raises(ClientError) as exc:
+            dynamodb.describe_global_table_settings(GlobalTableName="nonexistent-global-table-xyz")
+        assert exc.value.response["Error"]["Code"] == "GlobalTableNotFoundException"

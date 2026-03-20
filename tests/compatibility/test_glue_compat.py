@@ -4876,3 +4876,78 @@ class TestGlueStubOps:
         with pytest.raises(ClientError) as exc:
             glue.test_connection(ConnectionName="nonexistent-conn")
         assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InternalError")
+
+
+class TestGlueNewOps:
+    """Tests for Glue newer operations."""
+
+    def test_describe_connection_type_nonexistent(self, glue):
+        """DescribeConnectionType with unknown type raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.describe_connection_type(ConnectionType="FAKE_NONEXISTENT_TYPE")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_describe_entity_nonexistent(self, glue):
+        """DescribeEntity with nonexistent connection raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.describe_entity(ConnectionName="nonexistent-conn-xyz", EntityName="fake-entity")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_dataflow_graph(self, glue):
+        """GetDataflowGraph returns DAG nodes and edges."""
+        resp = glue.get_dataflow_graph(PythonScript="x = 1")
+        assert "DagNodes" in resp
+        assert "DagEdges" in resp
+
+    def test_get_glue_identity_center_configuration_not_found(self, glue):
+        """GetGlueIdentityCenterConfiguration raises EntityNotFoundException when not configured."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_glue_identity_center_configuration()
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_materialized_view_refresh_task_run_not_found(self, glue):
+        """GetMaterializedViewRefreshTaskRun with nonexistent run raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_materialized_view_refresh_task_run(
+                CatalogId="123456789012",
+                MaterializedViewRefreshTaskRunId="nonexistent-run-id",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_table_optimizer_not_found(self, glue):
+        """GetTableOptimizer with nonexistent table raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName="nonexistent-db-xyz",
+                TableName="nonexistent-table-xyz",
+                Type="compaction",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_connection_types(self, glue):
+        """ListConnectionTypes returns connection types list."""
+        resp = glue.list_connection_types()
+        assert "ConnectionTypes" in resp
+
+    def test_list_entities_nonexistent_connection(self, glue):
+        """ListEntities with nonexistent connection raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.list_entities(ConnectionName="nonexistent-conn-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_materialized_view_refresh_task_runs(self, glue):
+        """ListMaterializedViewRefreshTaskRuns returns empty list for nonexistent view."""
+        resp = glue.list_materialized_view_refresh_task_runs(CatalogId="123456789012")
+        assert "MaterializedViewRefreshTaskRuns" in resp
+
+    def test_list_table_optimizer_runs_not_found(self, glue):
+        """ListTableOptimizerRuns with nonexistent table raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.list_table_optimizer_runs(
+                CatalogId="123456789012",
+                DatabaseName="nonexistent-db-xyz",
+                TableName="nonexistent-table-xyz",
+                Type="compaction",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
