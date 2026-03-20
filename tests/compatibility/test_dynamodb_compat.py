@@ -3349,3 +3349,67 @@ class TestDynamoDBDescribeImport:
                 ImportArn="arn:aws:dynamodb:us-east-1:123456789012:table/test/import/nonexistent"
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestDynamoDBKinesisStreamingGapOps:
+    """Tests for Kinesis streaming destination and related gap operations."""
+
+    @pytest.fixture
+    def table_name(self, dynamodb):
+        name = f"test-kinesis-{uuid.uuid4().hex[:8]}"
+        dynamodb.create_table(
+            TableName=name,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        yield name
+        dynamodb.delete_table(TableName=name)
+
+    def test_enable_kinesis_streaming_destination(self, dynamodb, table_name):
+        """EnableKinesisStreamingDestination sets up a stream."""
+        stream_arn = f"arn:aws:kinesis:us-east-1:123456789012:stream/test-{uuid.uuid4().hex[:8]}"
+        resp = dynamodb.enable_kinesis_streaming_destination(
+            TableName=table_name, StreamArn=stream_arn
+        )
+        assert resp["TableName"] == table_name
+        assert "DestinationStatus" in resp
+
+    def test_disable_kinesis_streaming_destination(self, dynamodb, table_name):
+        """DisableKinesisStreamingDestination removes a stream."""
+        stream_arn = f"arn:aws:kinesis:us-east-1:123456789012:stream/test-{uuid.uuid4().hex[:8]}"
+        dynamodb.enable_kinesis_streaming_destination(TableName=table_name, StreamArn=stream_arn)
+        resp = dynamodb.disable_kinesis_streaming_destination(
+            TableName=table_name, StreamArn=stream_arn
+        )
+        assert "DestinationStatus" in resp
+
+    def test_update_kinesis_streaming_destination(self, dynamodb, table_name):
+        """UpdateKinesisStreamingDestination modifies precision."""
+        stream_arn = f"arn:aws:kinesis:us-east-1:123456789012:stream/test-{uuid.uuid4().hex[:8]}"
+        dynamodb.enable_kinesis_streaming_destination(TableName=table_name, StreamArn=stream_arn)
+        resp = dynamodb.update_kinesis_streaming_destination(
+            TableName=table_name,
+            StreamArn=stream_arn,
+            UpdateKinesisStreamingConfiguration={
+                "ApproximateCreationDateTimePrecision": "MICROSECOND"
+            },
+        )
+        assert "TableName" in resp
+
+    def test_update_contributor_insights(self, dynamodb, table_name):
+        """UpdateContributorInsights enables insights on a table."""
+        resp = dynamodb.update_contributor_insights(
+            TableName=table_name, ContributorInsightsAction="ENABLE"
+        )
+        assert resp["ContributorInsightsStatus"] == "ENABLED"
+
+    def test_update_global_table_settings(self, dynamodb, table_name):
+        """UpdateGlobalTableSettings returns GlobalTableName."""
+        resp = dynamodb.update_global_table_settings(GlobalTableName=table_name)
+        assert resp["GlobalTableName"] == table_name
+
+    def test_update_table_replica_auto_scaling(self, dynamodb, table_name):
+        """UpdateTableReplicaAutoScaling returns table description."""
+        resp = dynamodb.update_table_replica_auto_scaling(TableName=table_name)
+        assert "TableAutoScalingDescription" in resp

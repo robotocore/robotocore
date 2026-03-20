@@ -1208,3 +1208,37 @@ class TestEMRStudioSessionMappingOperations:
                 IdentityName="nonexistent@example.com",
             )
         assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+
+
+class TestEMRMissingGapOps:
+    """Tests for previously-missing EMR operations."""
+
+    def test_list_studio_session_mappings(self, emr):
+        """ListStudioSessionMappings returns session mappings list."""
+        resp = emr.list_studio_session_mappings()
+        assert "SessionMappings" in resp
+
+    def test_set_keep_job_flow_alive_when_no_steps(self, emr):
+        """SetKeepJobFlowAliveWhenNoSteps returns 200 (no-op for fake cluster ID)."""
+        resp = emr.set_keep_job_flow_alive_when_no_steps(
+            JobFlowIds=["j-FAKE123456"],
+            KeepJobFlowAliveWhenNoSteps=True,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_set_unhealthy_node_replacement(self, emr):
+        """SetUnhealthyNodeReplacement returns 200 (no-op for fake cluster ID)."""
+        resp = emr.set_unhealthy_node_replacement(
+            JobFlowIds=["j-FAKE123456"],
+            UnhealthyNodeReplacement=True,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_cluster_session_credentials(self, emr):
+        """GetClusterSessionCredentials returns credentials struct."""
+        resp = emr.get_cluster_session_credentials(
+            ClusterId="j-FAKE12345",
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert "Credentials" in resp
+        assert "ExpiresAt" in resp

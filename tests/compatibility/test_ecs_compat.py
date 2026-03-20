@@ -1328,3 +1328,26 @@ class TestEcsServiceDeploymentOperations:
         resp = ecs.describe_service_revisions(serviceRevisionArns=[])
         assert "serviceRevisions" in resp
         assert isinstance(resp["serviceRevisions"], list)
+
+
+class TestECSMissingGapOps:
+    """Tests for previously-missing ECS operations."""
+
+    def test_stop_service_deployment(self, ecs):
+        """StopServiceDeployment returns 200."""
+        fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-deployment/test/fake-deployment"
+        resp = ecs.stop_service_deployment(serviceDeploymentArn=fake_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_submit_attachment_state_changes(self, ecs):
+        """SubmitAttachmentStateChanges returns an acknowledgment."""
+        resp = ecs.submit_attachment_state_changes(
+            cluster="default",
+            attachments=[
+                {
+                    "attachmentArn": "arn:aws:ecs:us-east-1:123456789012:attachment/abc",
+                    "status": "ATTACHED",
+                }
+            ],
+        )
+        assert "acknowledgment" in resp
