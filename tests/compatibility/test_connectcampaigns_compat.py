@@ -277,3 +277,45 @@ class TestConnectCampaignsUpdateOps:
         finally:
             connectcampaigns.delete_campaign(id=id1)
             connectcampaigns.delete_campaign(id=id2)
+
+
+class TestConnectCampaignsNewStubs:
+    """Tests for new stub operations: DeleteConnectInstanceConfig, DeleteInstanceOnboardingJob,
+    GetInstanceOnboardingJobStatus, PutDialRequestBatch."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("connectcampaigns")
+
+    def test_delete_connect_instance_config(self, client):
+        """DeleteConnectInstanceConfig returns 200."""
+        result = client.delete_connect_instance_config(connectInstanceId="instance-001")
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_instance_onboarding_job(self, client):
+        """DeleteInstanceOnboardingJob returns 200."""
+        result = client.delete_instance_onboarding_job(connectInstanceId="instance-001")
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_instance_onboarding_job_status(self, client):
+        """GetInstanceOnboardingJobStatus returns connectInstanceOnboardingJobStatus."""
+        result = client.get_instance_onboarding_job_status(connectInstanceId="instance-001")
+        assert "connectInstanceOnboardingJobStatus" in result
+
+    def test_put_dial_request_batch(self, client):
+        """PutDialRequestBatch returns successfulRequests and failedRequests."""
+        import datetime
+
+        result = client.put_dial_request_batch(
+            id="abc",
+            dialRequests=[
+                {
+                    "clientToken": "tok-001",
+                    "phoneNumber": "+15555551234",
+                    "expirationTime": datetime.datetime(2026, 12, 31, tzinfo=datetime.UTC),
+                    "attributes": {},
+                }
+            ],
+        )
+        assert "successfulRequests" in result
+        assert "failedRequests" in result

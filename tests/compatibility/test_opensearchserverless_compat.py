@@ -895,3 +895,59 @@ class TestOpenSearchServerlessLifecyclePolicyGap:
                 policy='{"Rules":[{"ResourceType":"index","Resource":["index/test-collection/*"],"MinIndexRetention":"81d"}]}',
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestOpenSearchServerlessCollectionGroupStubs:
+    """Tests for CollectionGroup stub operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_list_collection_groups(self, client):
+        """ListCollectionGroups returns a list (possibly empty)."""
+        result = client.list_collection_groups()
+        assert "collectionGroupSummaries" in result
+
+    def test_batch_get_collection_group(self, client):
+        """BatchGetCollectionGroup returns details and error details."""
+        result = client.batch_get_collection_group(ids=["grp"])
+        assert "collectionGroupDetails" in result
+        assert "collectionGroupErrorDetails" in result
+
+    def test_create_collection_group(self, client):
+        """CreateCollectionGroup returns createCollectionGroupDetail."""
+        result = client.create_collection_group(name="grp", standbyReplicas="ENABLED")
+        assert "createCollectionGroupDetail" in result
+
+    def test_delete_collection_group(self, client):
+        """DeleteCollectionGroup returns 200."""
+        result = client.delete_collection_group(id="grp")
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_collection_group(self, client):
+        """UpdateCollectionGroup returns updateCollectionGroupDetail."""
+        result = client.update_collection_group(id="grp")
+        assert "updateCollectionGroupDetail" in result
+
+
+class TestOpenSearchServerlessIndexOps:
+    """Tests for Index operations (CreateIndex, GetIndex, UpdateIndex, DeleteIndex)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearchserverless")
+
+    def test_create_and_delete_index(self, client):
+        """CreateIndex creates an index; DeleteIndex removes it."""
+        client.create_index(id="col1", indexName="idx1")
+        result = client.get_index(id="col1", indexName="idx1")
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_index(id="col1", indexName="idx1")
+
+    def test_update_index(self, client):
+        """UpdateIndex returns 200."""
+        client.create_index(id="col2", indexName="idx2")
+        result = client.update_index(id="col2", indexName="idx2")
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_index(id="col2", indexName="idx2")
