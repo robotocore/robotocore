@@ -662,3 +662,115 @@ class TestElasticBeanstalkSwapCNAMEs:
                 DestinationEnvironmentName="fake-env-2",
             )
         assert exc_info.value.response["Error"]["Code"] == "InvalidParameterValue"
+
+
+class TestElasticBeanstalkNewOps:
+    """Tests for newly implemented ElasticBeanstalk operations."""
+
+    def test_check_dns_availability(self, eb):
+        """CheckDNSAvailability returns availability and FQCN."""
+        resp = eb.check_dns_availability(CNAMEPrefix="my-unique-prefix-xyz")
+        assert "Available" in resp
+        assert "FullyQualifiedCNAME" in resp
+
+    def test_create_storage_location(self, eb):
+        """CreateStorageLocation returns the S3 bucket name."""
+        resp = eb.create_storage_location()
+        assert "S3Bucket" in resp
+        assert "elasticbeanstalk" in resp["S3Bucket"]
+
+    def test_associate_environment_operations_role_nonexistent(self, eb):
+        """AssociateEnvironmentOperationsRole with nonexistent env succeeds silently."""
+        # AWS silently ignores nonexistent environments
+        resp = eb.associate_environment_operations_role(
+            EnvironmentName="nonexistent-env-xyz",
+            OperationsRole="arn:aws:iam::123456789012:role/fake-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_environment_operations_role_nonexistent(self, eb):
+        """DisassociateEnvironmentOperationsRole with nonexistent env succeeds silently."""
+        resp = eb.disassociate_environment_operations_role(
+            EnvironmentName="nonexistent-env-xyz",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_restart_app_server_nonexistent(self, eb):
+        """RestartAppServer with nonexistent env succeeds silently."""
+        resp = eb.restart_app_server(EnvironmentName="nonexistent-env-xyz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_environment_configuration_nonexistent(self, eb):
+        """DeleteEnvironmentConfiguration with nonexistent env succeeds silently."""
+        resp = eb.delete_environment_configuration(
+            ApplicationName="nonexistent-app-xyz",
+            EnvironmentName="nonexistent-env-xyz",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_application_nonexistent(self, eb):
+        """UpdateApplication with nonexistent app raises InvalidParameterValue."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            eb.update_application(ApplicationName="nonexistent-app-xyz")
+        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+
+    def test_validate_configuration_settings_nonexistent_app(self, eb):
+        """ValidateConfigurationSettings with nonexistent app raises InvalidParameterValue."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            eb.validate_configuration_settings(
+                ApplicationName="nonexistent-app-xyz",
+                OptionSettings=[],
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+
+    def test_update_application_and_version(self, eb):
+        """UpdateApplication and UpdateApplicationVersion on real resources work."""
+        app_name = _unique("app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            eb.create_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1.0",
+                Description="Initial version",
+            )
+            # Update application description
+            upd = eb.update_application(
+                ApplicationName=app_name,
+                Description="Updated description",
+            )
+            assert "Application" in upd
+
+            # Update application version description
+            ver_upd = eb.update_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1.0",
+                Description="Updated version description",
+            )
+            assert "ApplicationVersion" in ver_upd
+
+            # Delete application version
+            eb.delete_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1.0",
+            )
+
+            # Update resource lifecycle config
+            res = eb.update_application_resource_lifecycle(
+                ApplicationName=app_name,
+                ResourceLifecycleConfig={
+                    "VersionLifecycleConfig": {
+                        "MaxCountRule": {
+                            "Enabled": False,
+                            "MaxCount": 5,
+                            "DeleteSourceFromS3": False,
+                        }
+                    }
+                },
+            )
+            assert "ApplicationName" in res
+        finally:
+            eb.delete_application(ApplicationName=app_name)
