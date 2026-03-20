@@ -1,5 +1,7 @@
 """Amazon Connect compatibility tests."""
 
+from datetime import UTC
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -3110,3 +3112,265 @@ class TestConnectDataTableAttribute:
                 AttributeName="agentWorkload",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectContactEvaluationCRUD:
+    """Tests for ContactEvaluation create/delete/update operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_start_contact_evaluation_returns_evaluation_id(self, connect, instance_id):
+        import uuid
+
+        resp = connect.start_contact_evaluation(
+            InstanceId=instance_id,
+            ContactId=str(uuid.uuid4()),
+            EvaluationFormId=str(uuid.uuid4()),
+        )
+        assert "EvaluationId" in resp
+        assert len(resp["EvaluationId"]) > 0
+
+    def test_delete_contact_evaluation_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_contact_evaluation(
+                InstanceId=instance_id,
+                EvaluationId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_contact_evaluation_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.update_contact_evaluation(
+                InstanceId=instance_id,
+                EvaluationId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectContactFlowModuleAliasCRUD:
+    """Tests for ContactFlowModuleAlias create/update operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_contact_flow_module_alias_returns_id(self, connect, instance_id):
+        import uuid
+
+        resp = connect.create_contact_flow_module_alias(
+            InstanceId=instance_id,
+            ContactFlowModuleId=str(uuid.uuid4()),
+            ContactFlowModuleVersion=1,
+            AliasName="test-alias",
+        )
+        assert "Id" in resp
+        assert len(resp["Id"]) > 0
+
+    def test_update_contact_flow_module_alias_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.update_contact_flow_module_alias(
+                InstanceId=instance_id,
+                ContactFlowModuleId=str(uuid.uuid4()),
+                AliasId=str(uuid.uuid4()),
+                Name="updated-alias",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectDataTableCRUD:
+    """Tests for DataTable and DataTableAttribute create/delete/update operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_data_table_returns_id(self, connect, instance_id):
+        resp = connect.create_data_table(
+            InstanceId=instance_id,
+            Name="test-table",
+            TimeZone="UTC",
+            ValueLockLevel="INSTANCE",
+            Status="ACTIVE",
+        )
+        assert "Id" in resp
+        assert len(resp["Id"]) > 0
+
+    def test_delete_data_table_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_data_table(
+                InstanceId=instance_id,
+                DataTableId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_data_table_attribute_nonexistent_table(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.create_data_table_attribute(
+                InstanceId=instance_id,
+                DataTableId=str(uuid.uuid4()),
+                Name="attr",
+                ValueType="STRING",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_data_table_attribute_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_data_table_attribute(
+                InstanceId=instance_id,
+                DataTableId=str(uuid.uuid4()),
+                AttributeName="attr",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_data_table_attribute_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.update_data_table_attribute(
+                InstanceId=instance_id,
+                DataTableId=str(uuid.uuid4()),
+                AttributeName="attr",
+                Name="attr",
+                ValueType="STRING",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectEmailAddressCRUD:
+    """Tests for EmailAddress create/delete operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_email_address_returns_id(self, connect, instance_id):
+        resp = connect.create_email_address(
+            InstanceId=instance_id,
+            EmailAddress="test@example.com",
+        )
+        assert "EmailAddressId" in resp
+        assert len(resp["EmailAddressId"]) > 0
+
+    def test_delete_email_address_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_email_address(
+                InstanceId=instance_id,
+                EmailAddressId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectWorkspaceCRUD:
+    """Tests for Workspace create/delete operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_workspace_returns_id(self, connect, instance_id):
+        resp = connect.create_workspace(
+            InstanceId=instance_id,
+            Name="test-workspace",
+        )
+        assert "WorkspaceId" in resp
+        assert len(resp["WorkspaceId"]) > 0
+
+    def test_delete_workspace_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_workspace(
+                InstanceId=instance_id,
+                WorkspaceId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectNotificationCRUD:
+    """Tests for Notification create/delete operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_notification_returns_id(self, connect, instance_id):
+        from datetime import datetime
+
+        resp = connect.create_notification(
+            InstanceId=instance_id,
+            ExpiresAt=datetime(2025, 12, 31, tzinfo=UTC),
+            Recipients=["fake-user-id"],
+            Content={"Type": "BASIC", "Title": "Test Notification"},
+        )
+        assert "NotificationId" in resp
+        assert len(resp["NotificationId"]) > 0
+
+    def test_delete_notification_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_notification(
+                InstanceId=instance_id,
+                NotificationId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestConnectTestCaseCRUD:
+    """Tests for TestCase create/delete/update operations."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_create_test_case_returns_id(self, connect, instance_id):
+        resp = connect.create_test_case(
+            InstanceId=instance_id,
+            Name="test-case",
+            Content="{}",
+        )
+        assert "TestCaseId" in resp
+        assert len(resp["TestCaseId"]) > 0
+
+    def test_delete_test_case_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.delete_test_case(
+                InstanceId=instance_id,
+                TestCaseId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_test_case_nonexistent(self, connect, instance_id):
+        import uuid
+
+        with pytest.raises(ClientError) as exc_info:
+            connect.update_test_case(
+                InstanceId=instance_id,
+                TestCaseId=str(uuid.uuid4()),
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"

@@ -89,3 +89,79 @@ class TestPersonalizeGapListOps:
         client.tag_resource(resourceArn=arn, tags=[{"tagKey": "env", "tagValue": "test"}])
         resp = client.list_tags_for_resource(resourceArn=arn)
         assert "tags" in resp
+
+    def test_list_dataset_export_jobs_no_params(self, client):
+        resp = client.list_dataset_export_jobs()
+        assert "datasetExportJobs" in resp
+        assert isinstance(resp["datasetExportJobs"], list)
+
+    def test_list_metric_attribution_metrics(self, client):
+        resp = client.list_metric_attribution_metrics(
+            metricAttributionArn="arn:aws:personalize:us-east-1:123456789012:metric-attribution/fake"
+        )
+        assert "metrics" in resp
+
+
+class TestPersonalizeSchemaCRUD:
+    """CRUD tests for Schema with describe and delete."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    @pytest.fixture
+    def schema_json(self):
+        return (
+            '{"type":"record","name":"Interactions",'
+            '"namespace":"com.amazonaws.personalize.schema",'
+            '"fields":['
+            '{"name":"USER_ID","type":"string"},'
+            '{"name":"ITEM_ID","type":"string"},'
+            '{"name":"TIMESTAMP","type":"long"}'
+            '],"version":"1.0"}'
+        )
+
+    def test_create_describe_delete_schema(self, client, schema_json):
+        resp = client.create_schema(name="test-schema-crud", schema=schema_json)
+        schema_arn = resp["schemaArn"]
+        assert "personalize" in schema_arn
+        assert "schema" in schema_arn
+
+        describe_resp = client.describe_schema(schemaArn=schema_arn)
+        assert "schema" in describe_resp
+        assert describe_resp["schema"]["name"] == "test-schema-crud"
+
+        client.delete_schema(schemaArn=schema_arn)
+
+        with pytest.raises(ClientError) as exc:
+            client.describe_schema(schemaArn=schema_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_schema_tag_untag(self, client, schema_json):
+        resp = client.create_schema(name="test-schema-tags", schema=schema_json)
+        schema_arn = resp["schemaArn"]
+
+        client.tag_resource(
+            resourceArn=schema_arn,
+            tags=[{"tagKey": "project", "tagValue": "robotocore"}],
+        )
+        tag_resp = client.list_tags_for_resource(resourceArn=schema_arn)
+        assert "tags" in tag_resp
+        assert any(t["tagKey"] == "project" for t in tag_resp["tags"])
+
+        client.untag_resource(resourceArn=schema_arn, tagKeys=["project"])
+        tag_resp2 = client.list_tags_for_resource(resourceArn=schema_arn)
+        assert not any(t["tagKey"] == "project" for t in tag_resp2.get("tags", []))
+
+        client.delete_schema(schemaArn=schema_arn)
+
+    def test_list_schemas_returns_created(self, client, schema_json):
+        resp = client.create_schema(name="test-schema-list", schema=schema_json)
+        schema_arn = resp["schemaArn"]
+
+        list_resp = client.list_schemas()
+        assert "schemas" in list_resp
+        arns = [s["schemaArn"] for s in list_resp["schemas"]]
+        assert schema_arn in arns
+
+        client.delete_schema(schemaArn=schema_arn)

@@ -9956,3 +9956,187 @@ class TestEC2DeclarativePolicies:
         """GetDeclarativePoliciesReportSummary returns a response."""
         resp = ec2.get_declarative_policies_report_summary(ReportId="fake-report-id")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2GapDescribeOps:
+    """Tests for previously-untested Describe* operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_fpga_images_returns_list(self, ec2):
+        """DescribeFpgaImages returns a list (may be empty)."""
+        resp = ec2.describe_fpga_images()
+        assert "FpgaImages" not in resp or isinstance(resp.get("FpgaImages", []), list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_export_tasks_empty(self, ec2):
+        """DescribeExportTasks returns successfully with no tasks."""
+        resp = ec2.describe_export_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_bundle_tasks_returns_list(self, ec2):
+        """DescribeBundleTasks returns BundleTasks list."""
+        resp = ec2.describe_bundle_tasks()
+        assert "BundleTasks" in resp
+        assert isinstance(resp["BundleTasks"], list)
+
+    def test_describe_reserved_instances_modifications_returns_list(self, ec2):
+        """DescribeReservedInstancesModifications returns modification list."""
+        resp = ec2.describe_reserved_instances_modifications()
+        assert "ReservedInstancesModifications" in resp
+        assert isinstance(resp["ReservedInstancesModifications"], list)
+
+    def test_describe_reserved_instances_offerings_returns_list(self, ec2):
+        """DescribeReservedInstancesOfferings returns non-empty offerings."""
+        resp = ec2.describe_reserved_instances_offerings()
+        assert "ReservedInstancesOfferings" in resp
+        assert len(resp["ReservedInstancesOfferings"]) > 0
+
+    def test_describe_spot_price_history_returns_list(self, ec2):
+        """DescribeSpotPriceHistory returns SpotPriceHistory list."""
+        resp = ec2.describe_spot_price_history()
+        assert "SpotPriceHistory" in resp
+        assert isinstance(resp["SpotPriceHistory"], list)
+
+    def test_describe_snapshot_attribute_invalid_id(self, ec2):
+        """DescribeSnapshotAttribute returns error for unknown snapshot ID."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_snapshot_attribute(
+                SnapshotId="snap-00000000000000000",
+                Attribute="createVolumePermission",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidSnapshot.NotFound"
+
+
+class TestEC2GapModifyInstanceMetadata:
+    """Tests for ModifyInstanceMetadataOptions operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_instance_metadata_options_invalid_id(self, ec2):
+        """ModifyInstanceMetadataOptions returns error for unknown instance ID."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.modify_instance_metadata_options(InstanceId="i-00000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "InvalidInstanceID.NotFound"
+
+
+class TestEC2GapReplaceRootVolumeTask:
+    """Tests for CreateReplaceRootVolumeTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_replace_root_volume_task_invalid_instance(self, ec2):
+        """CreateReplaceRootVolumeTask returns a task object (even for fake instance)."""
+        resp = ec2.create_replace_root_volume_task(InstanceId="i-00000000000000000")
+        assert "ReplaceRootVolumeTask" in resp
+        task = resp["ReplaceRootVolumeTask"]
+        assert "ReplaceRootVolumeTaskId" in task
+        assert "InstanceId" in task
+        assert task["InstanceId"] == "i-00000000000000000"
+        assert "TaskState" in task
+
+
+class TestEC2GapStoreImageTask:
+    """Tests for CreateStoreImageTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_store_image_task_returns_object_key(self, ec2):
+        """CreateStoreImageTask returns an ObjectKey."""
+        resp = ec2.create_store_image_task(
+            ImageId="ami-00000000000000000",
+            Bucket="my-test-bucket",
+        )
+        assert "ObjectKey" in resp
+        assert resp["ObjectKey"] != ""
+
+
+class TestEC2GapVerifiedAccessEndpoint:
+    """Tests for CreateVerifiedAccessEndpoint and DeleteVerifiedAccessEndpoint."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_and_delete_verified_access_endpoint(self, ec2):
+        """CreateVerifiedAccessEndpoint creates endpoint; delete removes it."""
+        vai = ec2.create_verified_access_instance(Description="gap-test-vai")
+        vai_id = vai["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        try:
+            grp = ec2.create_verified_access_group(
+                VerifiedAccessInstanceId=vai_id, Description="gap-test-grp"
+            )
+            grp_id = grp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+            try:
+                resp = ec2.create_verified_access_endpoint(
+                    VerifiedAccessGroupId=grp_id,
+                    EndpointType="network-interface",
+                    AttachmentType="vpc",
+                    DomainCertificateArn=(
+                        "arn:aws:acm:us-east-1:123456789012:certificate/"
+                        "00000000-0000-0000-0000-000000000000"
+                    ),
+                    ApplicationDomain="test.example.com",
+                    EndpointDomainPrefix="test-ep-prefix",
+                )
+                assert "VerifiedAccessEndpoint" in resp
+                endpoint_id = resp["VerifiedAccessEndpoint"]["VerifiedAccessEndpointId"]
+                assert endpoint_id.startswith("vae-")
+                del_resp = ec2.delete_verified_access_endpoint(VerifiedAccessEndpointId=endpoint_id)
+                assert "VerifiedAccessEndpoint" in del_resp
+            finally:
+                ec2.delete_verified_access_group(VerifiedAccessGroupId=grp_id)
+        finally:
+            ec2.delete_verified_access_instance(VerifiedAccessInstanceId=vai_id)
+
+    def test_delete_verified_access_endpoint_not_found(self, ec2):
+        """DeleteVerifiedAccessEndpoint raises NotFound for unknown endpoint."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.delete_verified_access_endpoint(VerifiedAccessEndpointId="vae-00000000000000000")
+        assert (
+            exc_info.value.response["Error"]["Code"] == "InvalidVerifiedAccessEndpointId.NotFound"
+        )
+
+
+class TestEC2GapPurchaseCapacityBlock:
+    """Tests for PurchaseCapacityBlock operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_purchase_capacity_block_returns_reservation(self, ec2):
+        """PurchaseCapacityBlock returns a CapacityReservation."""
+        resp = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId="cbo-00000000000000000",
+            InstancePlatform="Linux/UNIX",
+        )
+        assert "CapacityReservation" in resp
+        reservation = resp["CapacityReservation"]
+        assert "CapacityReservationId" in reservation
+        assert "State" in reservation
+
+
+class TestEC2GapDeprovisionPublicIpv4PoolCidr:
+    """Tests for DeprovisionPublicIpv4PoolCidr operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_deprovision_public_ipv4_pool_cidr_not_found(self, ec2):
+        """DeprovisionPublicIpv4PoolCidr raises error for unknown pool."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.deprovision_public_ipv4_pool_cidr(
+                PoolId="ipv4pool-ec2-00000000",
+                Cidr="1.2.3.0/24",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidPublicIpv4PoolID.NotFound"
