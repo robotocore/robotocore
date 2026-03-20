@@ -275,3 +275,92 @@ class TestKinesisVideoUpdates:
             assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             kinesisvideo_client.delete_signaling_channel(ChannelARN=sig_arn)
+
+
+class TestKinesisVideoNewOps:
+    """Tests for newly implemented KinesisVideo operations."""
+
+    def test_list_tags_for_stream(self, kinesisvideo_client):
+        name = f"test-tags-{uuid.uuid4().hex[:8]}"
+        kinesisvideo_client.create_stream(StreamName=name)
+        try:
+            resp = kinesisvideo_client.list_tags_for_stream(StreamName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Tags" in resp
+        finally:
+            arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_update_data_retention(self, kinesisvideo_client):
+        name = f"test-dr-{uuid.uuid4().hex[:8]}"
+        kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=1)
+        try:
+            version = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["Version"]
+            resp = kinesisvideo_client.update_data_retention(
+                StreamName=name,
+                CurrentVersion=version,
+                Operation="INCREASE_DATA_RETENTION",
+                DataRetentionChangeInHours=2,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_describe_image_generation_configuration(self, kinesisvideo_client):
+        name = f"test-imgcfg-{uuid.uuid4().hex[:8]}"
+        kinesisvideo_client.create_stream(StreamName=name)
+        try:
+            resp = kinesisvideo_client.describe_image_generation_configuration(StreamName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_describe_notification_configuration(self, kinesisvideo_client):
+        name = f"test-notifcfg-{uuid.uuid4().hex[:8]}"
+        kinesisvideo_client.create_stream(StreamName=name)
+        try:
+            resp = kinesisvideo_client.describe_notification_configuration(StreamName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_get_signaling_channel_endpoint(self, kinesisvideo_client):
+        name = f"test-ep-{uuid.uuid4().hex[:8]}"
+        ch_resp = kinesisvideo_client.create_signaling_channel(ChannelName=name)
+        ch_arn = ch_resp["ChannelARN"]
+        try:
+            resp = kinesisvideo_client.get_signaling_channel_endpoint(
+                ChannelARN=ch_arn,
+                SingleMasterChannelEndpointConfiguration={"Protocols": ["WSS"], "Role": "MASTER"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ResourceEndpointList" in resp
+        finally:
+            version = kinesisvideo_client.describe_signaling_channel(ChannelARN=ch_arn)[
+                "ChannelInfo"
+            ]["Version"]
+            kinesisvideo_client.delete_signaling_channel(ChannelARN=ch_arn, CurrentVersion=version)
+
+    def test_describe_stream_storage_configuration(self, kinesisvideo_client):
+        name = f"test-storecfg-{uuid.uuid4().hex[:8]}"
+        kinesisvideo_client.create_stream(StreamName=name)
+        try:
+            resp = kinesisvideo_client.describe_stream_storage_configuration(StreamName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
+            kinesisvideo_client.delete_stream(StreamARN=arn)
+
+    def test_describe_mapped_resource_configuration(self, kinesisvideo_client):
+        name = f"test-mrcfg-{uuid.uuid4().hex[:8]}"
+        kinesisvideo_client.create_stream(StreamName=name)
+        try:
+            resp = kinesisvideo_client.describe_mapped_resource_configuration(StreamName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "MappedResourceConfigurationList" in resp
+        finally:
+            arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
+            kinesisvideo_client.delete_stream(StreamARN=arn)
