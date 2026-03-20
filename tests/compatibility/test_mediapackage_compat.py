@@ -207,3 +207,54 @@ class TestMediaPackageTagOps:
         resp = client.update_channel(Id=channel["id"], Description="updated description")
         assert resp["Description"] == "updated description"
         assert resp["Id"] == channel["id"]
+
+
+class TestMediaPackageNewOps:
+    """Tests for newly-implemented mediapackage gap operations."""
+
+    @pytest.fixture
+    def mp(self):
+        return make_client("mediapackage")
+
+    def test_configure_logs(self, mp):
+        """ConfigureLogs returns updated channel."""
+        channel_id = _unique_id("ch")
+        mp.create_channel(Id=channel_id)
+        try:
+            resp = mp.configure_logs(Id=channel_id)
+            assert "Id" in resp
+        finally:
+            mp.delete_channel(Id=channel_id)
+
+    def test_create_harvest_job(self, mp):
+        """CreateHarvestJob returns HarvestJob with id."""
+        channel_id = _unique_id("ch")
+        ep_id = _unique_id("ep")
+        mp.create_channel(Id=channel_id)
+        mp.create_origin_endpoint(ChannelId=channel_id, Id=ep_id)
+        try:
+            resp = mp.create_harvest_job(
+                Id=_unique_id("hj"),
+                OriginEndpointId=ep_id,
+                StartTime="2023-01-01T00:00:00Z",
+                EndTime="2023-01-02T00:00:00Z",
+                S3Destination={
+                    "BucketName": "my-bucket",
+                    "ManifestKey": "harvest/output.m3u8",
+                    "RoleArn": "arn:aws:iam::123456789012:role/MediaPackage",
+                },
+            )
+            assert "Id" in resp
+        finally:
+            mp.delete_origin_endpoint(Id=ep_id)
+            mp.delete_channel(Id=channel_id)
+
+    def test_rotate_channel_credentials(self, mp):
+        """RotateChannelCredentials returns the channel."""
+        channel_id = _unique_id("ch")
+        mp.create_channel(Id=channel_id)
+        try:
+            resp = mp.rotate_channel_credentials(Id=channel_id)
+            assert "Id" in resp
+        finally:
+            mp.delete_channel(Id=channel_id)
