@@ -1093,7 +1093,7 @@ def _handle_put_managed_insight_rules(params: dict, region: str, account_id: str
 
 def _handle_describe_alarm_contributors(params: dict, region: str, account_id: str) -> dict:
     """Return empty alarm contributors."""
-    return {"Contributors": []}
+    return {"AlarmContributors": []}
 
 
 def _handle_put_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
