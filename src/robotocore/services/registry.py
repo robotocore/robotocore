@@ -338,6 +338,43 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "workspacesweb", ServiceStatus.MOTO_BACKED, "rest-json", "WorkSpaces Web"
     ),
     "xray": ServiceInfo("xray", ServiceStatus.NATIVE, "rest-json", "X-Ray Distributed Tracing"),
+    # Auto-registered Moto-backed services
+    "directconnect": ServiceInfo(
+        "directconnect", ServiceStatus.MOTO_BACKED, "json", "Direct Connect"
+    ),
+    # Auto-registered Moto-backed services
+    "ebs": ServiceInfo("ebs", ServiceStatus.MOTO_BACKED, "rest-json", "EBS Direct APIs"),
+    # Auto-registered Moto-backed services
+    "forecast": ServiceInfo("forecast", ServiceStatus.MOTO_BACKED, "json", "Amazon Forecast"),
+    # Auto-registered Moto-backed services
+    "personalize": ServiceInfo(
+        "personalize", ServiceStatus.MOTO_BACKED, "json", "Amazon Personalize"
+    ),
+    # Auto-registered Moto-backed services
+    "sdb": ServiceInfo("sdb", ServiceStatus.MOTO_BACKED, "query", "SimpleDB"),
+    # Auto-registered Moto-backed services
+    "service-quotas": ServiceInfo(
+        "service-quotas", ServiceStatus.MOTO_BACKED, "json", "Service Quotas"
+    ),
+    # Auto-registered Moto-backed services
+    "sagemaker-runtime": ServiceInfo(
+        "sagemaker-runtime", ServiceStatus.MOTO_BACKED, "rest-json", "Sagemaker Runtime"
+    ),
+    # Auto-registered Moto-backed services
+    "mediastore-data": ServiceInfo(
+        "mediastore-data", ServiceStatus.MOTO_BACKED, "rest-json", "Mediastore Data"
+    ),
+    # Auto-registered Moto-backed services
+    "kinesis-video-archived-media": ServiceInfo(
+        "kinesis-video-archived-media",
+        ServiceStatus.MOTO_BACKED,
+        "rest-json",
+        "Kinesis Video Archived Media",
+    ),
+    # Auto-registered Moto-backed services
+    "bedrock-runtime": ServiceInfo(
+        "bedrock-runtime", ServiceStatus.MOTO_BACKED, "rest-json", "Bedrock Runtime"
+    ),
 }
 
 

@@ -162,6 +162,7 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
     "workspaces-web": "workspacesweb",
     "sso": "ssoadmin",
     "execute-api": "apigatewaymanagementapi",
+    "servicequotas": "service-quotas",
 }
 
 
