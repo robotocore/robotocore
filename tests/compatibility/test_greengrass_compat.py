@@ -1450,18 +1450,10 @@ class TestGreengrassUnimplementedGapOps:
             "BadRequestException",
         )
 
-    def test_update_group_certificate_configuration_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.update_group_certificate_configuration(GroupId="abc-123-group")
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "BadRequestException",
-        )
+    def test_update_group_certificate_configuration_returns_200(self, client):
+        resp = client.update_group_certificate_configuration(GroupId="abc-123-group")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_update_thing_runtime_configuration_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.update_thing_runtime_configuration(ThingName="myThing")
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "BadRequestException",
-        )
+    def test_update_thing_runtime_configuration_returns_200(self, client):
+        resp = client.update_thing_runtime_configuration(ThingName="myThing")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
