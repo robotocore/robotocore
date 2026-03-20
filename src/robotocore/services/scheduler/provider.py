@@ -516,7 +516,7 @@ class ScheduleExecutor:
 
     @staticmethod
     def _send_sqs(target_arn: str, payload: str, account_id: str, region: str) -> None:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         # Parse queue name from ARN: arn:aws:sqs:REGION:ACCOUNT:QUEUE_NAME
         parts = target_arn.split(":")
@@ -539,7 +539,7 @@ class ScheduleExecutor:
 
     @staticmethod
     def _publish_sns(target_arn: str, payload: str, account_id: str, region: str) -> None:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         parts = target_arn.split(":")
         if len(parts) < 6:

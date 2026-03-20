@@ -47,7 +47,7 @@ def notify_table_change(
         account_id: AWS account ID.
     """
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID

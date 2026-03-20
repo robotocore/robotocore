@@ -37,7 +37,7 @@ def _delete_test_secret(backend, name: str):
 
 
 def _get_backend():
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     return get_backend("secretsmanager")["123456789012"]["us-east-1"]
 

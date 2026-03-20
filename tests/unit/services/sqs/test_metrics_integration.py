@@ -9,8 +9,8 @@ import hashlib
 from unittest.mock import patch
 
 import pytest
-from moto import mock_aws
 
+from moto import mock_aws
 from robotocore.services.sqs.metrics import (
     SqsMetricsPublisher,
     _counter_lock,
@@ -57,7 +57,7 @@ class TestEndToEndSendAndPublish:
 
         publish_metrics(ACCOUNT_ID, REGION)
 
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw = get_backend("cloudwatch")[ACCOUNT_ID][REGION]
         found = _find_metric(cw, "ApproximateNumberOfMessagesVisible", "visible-test")
@@ -74,7 +74,7 @@ class TestEndToEndSendAndPublish:
 
         publish_metrics(ACCOUNT_ID, REGION)
 
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw = get_backend("cloudwatch")[ACCOUNT_ID][REGION]
 
@@ -96,7 +96,7 @@ class TestEndToEndSendAndPublish:
 
         publish_metrics(ACCOUNT_ID, REGION)
 
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw = get_backend("cloudwatch")[ACCOUNT_ID][REGION]
         metric = _find_metric(cw, "NumberOfEmptyReceives", "empty-recv-test")
@@ -113,7 +113,7 @@ class TestMetricsNamespaceAndDimension:
 
         publish_metrics(ACCOUNT_ID, REGION)
 
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw = get_backend("cloudwatch")[ACCOUNT_ID][REGION]
         # All SQS metrics should be in AWS/SQS namespace
@@ -128,7 +128,7 @@ class TestMetricsNamespaceAndDimension:
 
         publish_metrics(ACCOUNT_ID, REGION)
 
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw = get_backend("cloudwatch")[ACCOUNT_ID][REGION]
         found_queue_dim = False

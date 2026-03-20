@@ -297,7 +297,7 @@ def publish_canary_metrics(
       - CloudWatchSynthetics/CanaryName/Duration
     """
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw_backend = get_backend("cloudwatch")[account_id][region]
 

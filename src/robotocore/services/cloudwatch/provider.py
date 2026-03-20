@@ -439,7 +439,7 @@ def get_metric_data(params: dict, region: str, account_id: str) -> dict:
     collected_data: dict[str, list[float]] = {}
     labels: dict[str, str] = {}
 
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     try:
         cw_backend = get_backend("cloudwatch")[account_id][region]
@@ -624,7 +624,7 @@ def _dispatch_sns_action(
     )
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         sns_backend = get_backend("sns")[sns_account][sns_region]
         sns_backend.publish(message=message, arn=topic_arn, subject=f"ALARM: {alarm_name}")
@@ -868,7 +868,7 @@ def _handle_delete_alarms(params: dict, region: str, account_id: str) -> dict:
 
     # Also delete from Moto (for metric alarms)
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("cloudwatch")[account_id][region]
         for name in alarm_names:
@@ -914,7 +914,7 @@ def _handle_enable_alarm_actions(params: dict, region: str, account_id: str) -> 
                 store[name]["ActionsEnabled"] = True
 
     # Update Moto metric alarms
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("cloudwatch")[account_id][region]
     for name in alarm_names:
@@ -937,7 +937,7 @@ def _handle_disable_alarm_actions(params: dict, region: str, account_id: str) ->
                 store[name]["ActionsEnabled"] = False
 
     # Update Moto metric alarms
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("cloudwatch")[account_id][region]
     for name in alarm_names:
@@ -1178,7 +1178,7 @@ def _error_response(code: str, message: str, status: int) -> Response:
 
 def _handle_get_metric_statistics(params: dict, region: str, account_id: str) -> dict:
     """GetMetricStatistics with ExtendedStatistics support."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("cloudwatch")[account_id][region]
     namespace = params.get("Namespace", "")

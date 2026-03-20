@@ -61,7 +61,7 @@ async def _handle_tags(
     region: str,
 ) -> Response:
     """Handle TagResource / UntagResource / GetTags."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("apigateway")[account_id][region]
 
@@ -112,7 +112,7 @@ async def _handle_tags(
 
 
 def _delete_model(rest_api_id: str, model_name: str, account_id: str, region: str) -> Response:
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("apigateway")[account_id][region]
     try:

@@ -192,7 +192,7 @@ def _gather_policies(access_key_id: str, account_id: str, region: str) -> list[d
     inline policies, attached managed policies, and group policies.
     """
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         iam_backend = get_backend("iam")[account_id]["global"]
     except Exception:  # noqa: BLE001

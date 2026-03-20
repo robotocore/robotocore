@@ -300,7 +300,7 @@ def _replicate_mutation(target: str, body_bytes: bytes, region: str, account_id:
 def _get_existing_item(table_name: str, keys: dict, region: str, account_id: str) -> dict | None:
     """Try to get an existing item from Moto's backend by key."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
@@ -316,7 +316,7 @@ def _get_existing_item(table_name: str, keys: dict, region: str, account_id: str
 def _extract_keys_from_item(table_name: str, item: dict, region: str, account_id: str) -> dict:
     """Extract just the key attributes from a full item, using Moto's table key schema."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
@@ -445,7 +445,7 @@ def _table_exists(table_name: str, region: str, account_id: str) -> bool:
     if not table_name:
         return False
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID

@@ -32,7 +32,7 @@ _evaluation_statuses: dict[tuple[str, str], dict[str, dict]] = {}
 
 def _get_config_backend(account_id: str, region: str):
     """Get the Moto config backend."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     return get_backend("config")[account_id][region]
 

@@ -52,7 +52,7 @@ def scan_and_remove_expired_items() -> int:
     total_removed = 0
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
     except ImportError:
         logger.debug("Moto not available, skipping TTL scan")
         return 0

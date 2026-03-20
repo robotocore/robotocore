@@ -515,7 +515,7 @@ def _execute_query(query_id: str, region: str, account_id: str) -> None:
     # Collect log events from Moto
     all_events: list[dict] = []
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         logs_backend = get_backend("logs")[account_id][region]
         for lg_name in log_group_names:

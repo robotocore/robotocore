@@ -67,7 +67,7 @@ async def _handle_start_canary(
 
     # Trigger immediate execution
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("synthetics")[account_id][region]
         canary = backend.canaries.get(canary_name)
@@ -97,7 +97,7 @@ def _handle_get_canary_runs(canary_name: str, region: str, account_id: str) -> R
     """Return canary runs from our execution store."""
     # First check if canary exists via Moto
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("synthetics")[account_id][region]
         if canary_name not in backend.canaries:

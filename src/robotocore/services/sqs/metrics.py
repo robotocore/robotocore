@@ -132,7 +132,7 @@ def publish_metrics(
     counter_snapshot = snapshot_and_reset_counters()
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw_backend = get_backend("cloudwatch")[account_id][region]
     except (KeyError, TypeError):

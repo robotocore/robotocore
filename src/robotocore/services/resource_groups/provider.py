@@ -67,7 +67,7 @@ async def handle_resource_groups_request(
 
 
 def _get_tags(arn: str, region: str, account_id: str) -> Response:
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     # Use request region, not ARN region — Moto hardcodes us-west-1 in ARNs
     backend = get_backend("resource-groups")[account_id][region]
@@ -84,7 +84,7 @@ def _get_tags(arn: str, region: str, account_id: str) -> Response:
 
 
 def _tag(arn: str, body: bytes, region: str, account_id: str) -> Response:
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     params = json.loads(body) if body else {}
     new_tags = params.get("Tags", {})
@@ -105,7 +105,7 @@ def _tag(arn: str, body: bytes, region: str, account_id: str) -> Response:
 
 
 def _untag(arn: str, body: bytes, region: str, account_id: str) -> Response:
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     params = json.loads(body) if body else {}
     keys = params.get("Keys", [])
@@ -143,7 +143,7 @@ def _get_account_settings() -> Response:
 
 def _list_group_resources(body: bytes, region: str, account_id: str) -> Response:
     """ListGroupResources — return resources in a group."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     params = json.loads(body) if body else {}
     group_name = params.get("Group") or params.get("GroupName", "")

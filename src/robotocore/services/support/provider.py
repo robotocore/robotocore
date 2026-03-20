@@ -174,7 +174,7 @@ def _describe_communications(params: dict, region: str, account_id: str) -> dict
 
     # Also pull initial communication from Moto's case if available
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("support")[account_id]["us-east-1"]
         if case_id in backend.cases:

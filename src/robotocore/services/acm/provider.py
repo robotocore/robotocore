@@ -23,7 +23,7 @@ async def handle_acm_request(request: Request, region: str, account_id: str) -> 
         cert_arn = params.get("CertificateArn", "")
         options = params.get("Options", {})
 
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("acm")[account_id][region]
         if cert_arn in backend._certificates:

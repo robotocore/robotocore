@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def _get_ses_backend(account_id: str, region: str):
     """Get the Moto SES backend."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     return get_backend("ses")[account_id][region]
 

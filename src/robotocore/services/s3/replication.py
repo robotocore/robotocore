@@ -3,7 +3,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from moto.backends import get_backend
+from moto.backends import get_backend  # noqa: I001
 
 from robotocore.services.s3.notifications import fire_event
 

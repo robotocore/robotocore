@@ -52,7 +52,7 @@ def _inject_user_permissions_boundary(
 ) -> Response:
     """Inject PermissionsBoundary into GetUser response if set on the user."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.iam.exceptions import NoSuchEntity
 
         backend = get_backend("iam")[account_id]["global"]
@@ -171,7 +171,7 @@ def _simulate_principal_policy(params: dict, region: str, account_id: str) -> Re
 
 
 def _put_user_permissions_boundary(params: dict, region: str, account_id: str) -> Response:
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
     from moto.iam.exceptions import NoSuchEntity
 
     user_name = _get_param(params, "UserName")
@@ -197,7 +197,7 @@ def _put_user_permissions_boundary(params: dict, region: str, account_id: str) -
 
 
 def _delete_user_permissions_boundary(params: dict, region: str, account_id: str) -> Response:
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
     from moto.iam.exceptions import NoSuchEntity
 
     user_name = _get_param(params, "UserName")

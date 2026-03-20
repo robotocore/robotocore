@@ -87,7 +87,8 @@ def execute_api_request(
 
     Returns (status_code, headers, body).
     """
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
+
     from moto.core import DEFAULT_ACCOUNT_ID
 
     acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
@@ -1058,7 +1059,8 @@ def _forward_dynamodb_action(
 ) -> str:
     """Forward a DynamoDB action through the API Gateway AWS integration."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
+
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID
@@ -1217,7 +1219,8 @@ def _invoke_lambda(function_name: str, event: dict, region: str, account_id: str
     from robotocore.services.lambda_.executor import execute_python_handler
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
+
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id if account_id != "123456789012" else DEFAULT_ACCOUNT_ID

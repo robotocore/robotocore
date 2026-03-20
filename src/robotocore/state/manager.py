@@ -1054,7 +1054,7 @@ class StateManager:
     def _save_moto_state(self, path: Path, services: list[str] | None = None) -> None:
         """Pickle all Moto backends."""
         try:
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
 
             state = {}
             for service_name in self._list_moto_services(services):
@@ -1096,7 +1096,7 @@ class StateManager:
         (security violation). Other errors return False.
         """
         try:
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
 
             with open(path, "rb") as f:
                 state = _RestrictedUnpickler(f).load()
@@ -1188,7 +1188,7 @@ class StateManager:
                     moto_models.base_decorator.reset()
                     return
 
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
 
             target_services = (
                 self._list_moto_services(services) if services else self._list_moto_services()
@@ -1227,7 +1227,7 @@ class StateManager:
 
         # Capture Moto state via pickle round-trip into bytes
         try:
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
 
             moto_state: dict = {}
             for service_name in self._list_moto_services(services):
@@ -1269,7 +1269,7 @@ class StateManager:
         moto_bytes = state.get("moto", b"")
         if moto_bytes:
             try:
-                from moto.backends import get_backend
+                from moto.backends import get_backend  # noqa: I001
 
                 moto_state = _RestrictedUnpickler(io.BytesIO(moto_bytes)).load()
                 # Restore threading primitives that were replaced with sentinels

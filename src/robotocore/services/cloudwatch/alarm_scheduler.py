@@ -13,7 +13,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 
-from moto.backends import get_backend
+from moto.backends import get_backend  # noqa: I001
 
 logger = logging.getLogger(__name__)
 

@@ -153,7 +153,7 @@ def _sync_pool_to_moto(
 ) -> None:
     """Create a matching pool in Moto's backend."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("cognito-idp")[account_id][region]
         # Use Moto's create_user_pool; it returns a CognitoIdpUserPool.
@@ -173,7 +173,7 @@ def _sync_user_to_moto(
 ) -> None:
     """Create a matching user in Moto's backend."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("cognito-idp")[account_id][region]
         backend.admin_create_user(pool_id, username, password, {})
@@ -186,7 +186,7 @@ def _sync_client_to_moto(
 ) -> None:
     """Create a matching client in Moto's backend and override its ID."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("cognito-idp")[account_id][region]
         moto_client = backend.create_user_pool_client(pool_id, False, {"ClientName": client_name})
@@ -204,7 +204,7 @@ def _sync_client_to_moto(
 def _delete_pool_from_moto(pool_id: str, region: str, account_id: str) -> None:
     """Remove a pool from Moto's backend."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("cognito-idp")[account_id][region]
         backend.user_pools.pop(pool_id, None)

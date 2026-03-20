@@ -13,10 +13,10 @@ import time
 from urllib.parse import unquote
 
 from moto.backends import get_backend
-from moto.core import DEFAULT_ACCOUNT_ID as MOTO_DEFAULT_ACCOUNT_ID
 from starlette.requests import Request
 from starlette.responses import Response
 
+from moto.core import DEFAULT_ACCOUNT_ID as MOTO_DEFAULT_ACCOUNT_ID
 from robotocore.services.lambda_.invoke import invoke_lambda_async, invoke_lambda_sync
 
 logger = logging.getLogger(__name__)

@@ -25,7 +25,7 @@ _DEFAULT_REGION = "us-east-1"
 def _get_verified_identities(account_id: str, region: str) -> set[str]:
     """Get verified email addresses and domains from the Moto SES backend."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("ses")[account_id][region]
         identities: set[str] = set()

@@ -39,7 +39,7 @@ RESOURCE_ATTRS = {
 def _get_backend(service_name: str, account_id: str = DEFAULT_ACCOUNT_ID):
     """Safely get a Moto backend instance."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend_dict = get_backend(service_name)
         if isinstance(backend_dict, BackendDict):

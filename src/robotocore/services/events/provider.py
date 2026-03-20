@@ -778,7 +778,7 @@ def _invoke_lambda_target(arn: str, payload: str, region: str, account_id: str):
     # so errors there don't propagate back.
     func_name = arn.rsplit(":", 1)[-1]
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("lambda")[account_id][region]
         backend.get_function(func_name)
@@ -958,7 +958,7 @@ def _invoke_stepfunctions_target(arn: str, payload: str, region: str, account_id
 def _invoke_logs_target(arn: str, payload: str, region: str, account_id: str):
     """Put a log event to CloudWatch Logs from EventBridge."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         logs_backend = get_backend("logs")[account_id][region]
         # Extract log group from ARN:

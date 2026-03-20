@@ -65,7 +65,7 @@ class TestEventsRegionIsolation:
 class TestLambdaRegionIsolation:
     def test_lambda_uses_moto_per_region_backend(self):
         """Lambda functions are stored in Moto backends which are keyed per-region."""
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         east = get_backend("lambda")["123456789012"]["us-east-1"]
         west = get_backend("lambda")["123456789012"]["us-west-2"]
@@ -75,7 +75,7 @@ class TestLambdaRegionIsolation:
 class TestSecretsManagerRegionIsolation:
     def test_moto_backends_per_region(self):
         """SecretsManager uses Moto backends which are keyed per-region."""
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         east = get_backend("secretsmanager")["123456789012"]["us-east-1"]
         west = get_backend("secretsmanager")["123456789012"]["us-west-2"]
@@ -106,7 +106,7 @@ class TestSchedulerRegionIsolation:
 class TestCloudWatchRegionIsolation:
     def test_moto_backends_per_region(self):
         """CloudWatch uses Moto backends which are keyed per-region."""
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         east = get_backend("cloudwatch")["123456789012"]["us-east-1"]
         west = get_backend("cloudwatch")["123456789012"]["us-west-2"]

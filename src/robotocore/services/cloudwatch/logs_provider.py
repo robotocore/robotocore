@@ -131,7 +131,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
         if resource_arn.endswith(":*"):
             resource_arn = resource_arn[:-2]
         try:
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
             from moto.core import DEFAULT_ACCOUNT_ID
 
             acct = account_id or DEFAULT_ACCOUNT_ID
@@ -148,7 +148,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             resource_arn = resource_arn[:-2]
         tags = params.get("tags", {})
         try:
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
             from moto.core import DEFAULT_ACCOUNT_ID
 
             acct = account_id or DEFAULT_ACCOUNT_ID
@@ -165,7 +165,7 @@ async def handle_logs_request(request: Request, region: str, account_id: str) ->
             resource_arn = resource_arn[:-2]
         tag_keys = params.get("tagKeys", [])
         try:
-            from moto.backends import get_backend
+            from moto.backends import get_backend  # noqa: I001
             from moto.core import DEFAULT_ACCOUNT_ID
 
             acct = account_id or DEFAULT_ACCOUNT_ID
@@ -195,7 +195,7 @@ async def _filter_log_events_with_prefix(
     log_group_name = params.get("logGroupName", "")
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id or DEFAULT_ACCOUNT_ID
@@ -257,7 +257,7 @@ def _associate_kms_key(params: dict, region: str, account_id: str) -> dict:
         raise LogsError("InvalidParameterException", "kmsKeyId is required")
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id or DEFAULT_ACCOUNT_ID
@@ -283,7 +283,7 @@ def _disassociate_kms_key(params: dict, region: str, account_id: str) -> dict:
         raise LogsError("InvalidParameterException", "logGroupName is required")
 
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
         from moto.core import DEFAULT_ACCOUNT_ID
 
         acct = account_id or DEFAULT_ACCOUNT_ID

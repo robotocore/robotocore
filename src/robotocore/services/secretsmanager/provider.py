@@ -63,7 +63,7 @@ def _resolve_secret(backend, secret_id: str):
 
 def _rotate_secret(params: dict, region: str, account_id: str) -> dict:
     """RotateSecret — handle without Lambda validation."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("secretsmanager")[account_id][region]
     secret_id = params.get("SecretId", "")
@@ -135,7 +135,7 @@ def _validate_resource_policy(params: dict, region: str, account_id: str) -> dic
 
 def _replicate_secret_to_regions(params: dict, region: str, account_id: str) -> dict:
     """ReplicateSecretToRegions — return simulated replication status."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     backend = get_backend("secretsmanager")[account_id][region]
     secret_id = params.get("SecretId", "")

@@ -360,7 +360,7 @@ def _handle_get_health_check_count(account_id: str) -> Response:
     """GetHealthCheckCount — return count of health checks."""
     count = 0
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("route53")[account_id]["global"]
         count = len(backend.health_checks.values())
@@ -464,7 +464,7 @@ def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> R
     # Try to look up the actual record
     record_data = []
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         backend = get_backend("route53")[account_id]["global"]
         zone = backend.get_hosted_zone(hosted_zone_id)
@@ -542,7 +542,7 @@ def _no_such_hosted_zone_response(zone_id: str) -> Response:
 
 def _handle_associate_vpc(zone_id: str, body: bytes, region: str, account_id: str) -> Response:
     """AssociateVPCWithHostedZone — store VPC association."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     try:
         backend = get_backend("route53")[account_id]["global"]
@@ -573,7 +573,7 @@ def _handle_associate_vpc(zone_id: str, body: bytes, region: str, account_id: st
 
 def _handle_disassociate_vpc(zone_id: str, body: bytes, region: str, account_id: str) -> Response:
     """DisassociateVPCFromHostedZone."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     try:
         backend = get_backend("route53")[account_id]["global"]
@@ -612,7 +612,7 @@ def _handle_change_cidr_collection(collection_id: str, body: bytes) -> Response:
     )
     # Forward to Moto with fixed body
     import xmltodict as _xmltodict
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     parsed = _xmltodict.parse(body_str)
     req = parsed.get("ChangeCidrCollectionRequest", {})

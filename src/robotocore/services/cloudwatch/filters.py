@@ -347,7 +347,7 @@ def process_log_events(
 def _emit_metric_from_filter(mf: MetricFilter, region: str, account_id: str) -> None:
     """Emit metric data from a matching metric filter."""
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         cw_backend = get_backend("cloudwatch")[account_id][region]
         for transform in mf.metric_transformations:

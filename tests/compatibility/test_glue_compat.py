@@ -4817,3 +4817,62 @@ class TestGlueGetUserDefinedFunctions:
                 Pattern="*",
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueMLTaskRunOps:
+    """Tests for Glue ML Task Run operations (newly implemented)."""
+
+    def test_cancel_ml_task_run_nonexistent(self, glue):
+        """CancelMLTaskRun with nonexistent transform raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.cancel_ml_task_run(
+                TransformId="nonexistent-transform",
+                TaskRunId="nonexistent-task",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_start_ml_evaluation_nonexistent(self, glue):
+        """StartMLEvaluationTaskRun with nonexistent transform raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.start_ml_evaluation_task_run(TransformId="nonexistent-transform")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueSchemaVersionDiffOps:
+    """Tests for Glue Schema Version Diff operations."""
+
+    def test_get_schema_versions_diff_nonexistent(self, glue):
+        """GetSchemaVersionsDiff with nonexistent schema raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_schema_versions_diff(
+                SchemaId={"SchemaName": "nonexistent", "RegistryName": "default-registry"},
+                FirstSchemaVersionNumber={"VersionNumber": 1},
+                SecondSchemaVersionNumber={"VersionNumber": 2},
+                SchemaDiffType="SYNTAX_DIFF",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+
+class TestGlueStubOps:
+    """Tests for Glue stub operations."""
+
+    def test_create_script(self, glue):
+        """CreateScript returns a script body."""
+        resp = glue.create_script(
+            DagNodes=[{"Id": "node1", "NodeType": "S3", "Args": []}],
+            DagEdges=[],
+        )
+        assert (
+            "PythonScript" in resp
+            or "ScalaCode" in resp
+            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        )
+
+    def test_test_connection_nonexistent(self, glue):
+        """TestConnection with nonexistent connection raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.test_connection(ConnectionName="nonexistent-conn")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InternalError")

@@ -6,9 +6,9 @@ the website serving and virtual-hosted routing logic end-to-end.
 
 import asyncio
 
-from moto import mock_aws
 from starlette.requests import Request
 
+from moto import mock_aws
 from robotocore.gateway.s3_routing import rewrite_vhost_to_path
 from robotocore.services.s3.website import handle_website_request
 

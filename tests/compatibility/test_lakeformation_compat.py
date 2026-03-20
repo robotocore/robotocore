@@ -963,3 +963,100 @@ class TestLakeFormationGapSurfacing:
         with pytest.raises(BotoClientError) as exc:
             client.get_lf_tag_expression(Name="nonexistent-lf-expr-gap")
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestLakeFormationLFTagExpressionCRUD:
+    """Tests for CreateLFTagExpression, UpdateLFTagExpression, DeleteLFTagExpression."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_create_lf_tag_expression(self, client):
+        """CreateLFTagExpression creates a new LF tag expression."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"expr-tag-{suffix}"
+        expr_name = f"expr-{suffix}"
+        # Create an LF tag first (required for expressions)
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1", "v2"])
+        try:
+            resp = client.create_lf_tag_expression(
+                Name=expr_name,
+                Expression=[{"TagKey": tag_key, "TagValues": ["v1"]}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_lf_tag_expression(Name=expr_name)
+            except Exception:
+                pass  # best-effort cleanup
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_delete_lf_tag_expression(self, client):
+        """DeleteLFTagExpression removes a created expression."""
+        suffix = uuid.uuid4().hex[:8]
+        tag_key = f"del-expr-tag-{suffix}"
+        expr_name = f"del-expr-{suffix}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1"])
+        try:
+            client.create_lf_tag_expression(
+                Name=expr_name,
+                Expression=[{"TagKey": tag_key, "TagValues": ["v1"]}],
+            )
+            resp = client.delete_lf_tag_expression(Name=expr_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify it's gone
+            list_resp = client.list_lf_tag_expressions()
+            names = [e["Name"] for e in list_resp.get("LFTagExpressions", [])]
+            assert expr_name not in names
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_update_lf_tag_expression_not_found(self, client):
+        """UpdateLFTagExpression with nonexistent name raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        with pytest.raises(BotoClientError) as exc:
+            client.update_lf_tag_expression(
+                Name="nonexistent-expr-xyz-99",
+                Expression=[{"TagKey": "fake-tag", "TagValues": ["v1"]}],
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestLakeFormationIdentityCenterCRUD:
+    """Tests for Create/Update/Delete LakeFormationIdentityCenterConfiguration."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_create_identity_center_configuration(self, client):
+        """CreateLakeFormationIdentityCenterConfiguration returns OK."""
+        resp = client.create_lake_formation_identity_center_configuration()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Cleanup
+        try:
+            client.delete_lake_formation_identity_center_configuration()
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_delete_identity_center_configuration(self, client):
+        """DeleteLakeFormationIdentityCenterConfiguration removes config."""
+        client.create_lake_formation_identity_center_configuration()
+        resp = client.delete_lake_formation_identity_center_configuration()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_identity_center_configuration_not_found(self, client):
+        """UpdateLakeFormationIdentityCenterConfiguration raises EntityNotFoundException."""
+        from botocore.exceptions import ClientError as BotoClientError
+
+        # Ensure no config exists first
+        try:
+            client.delete_lake_formation_identity_center_configuration()
+        except Exception:
+            pass  # may not exist
+
+        with pytest.raises(BotoClientError) as exc:
+            client.update_lake_formation_identity_center_configuration()
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"

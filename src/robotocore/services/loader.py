@@ -180,7 +180,7 @@ def initialize_service(service_name: str) -> None:
 
     log.debug("Loading service %s...", service_name)
     try:
-        from moto.backends import get_backend
+        from moto.backends import get_backend  # noqa: I001
 
         get_backend(service_name)
     except Exception as exc:  # noqa: BLE001

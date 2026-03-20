@@ -194,7 +194,7 @@ def _delete_placement_group(params: dict, region: str, account_id: str) -> Respo
 
 def _detach_volume(params: dict, region: str, account_id: str) -> Response:
     """DetachVolume — handle missing InstanceId by finding it from the volume."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     volume_id = _get_param(params, "VolumeId")
     instance_id = _get_param(params, "InstanceId")
@@ -226,7 +226,7 @@ def _detach_volume(params: dict, region: str, account_id: str) -> Response:
 
 def _delete_vpc_endpoints(params: dict, region: str, account_id: str) -> Response:
     """DeleteVpcEndpoints — handle Moto NoneType.lower() bug."""
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     endpoint_ids = []
     i = 1

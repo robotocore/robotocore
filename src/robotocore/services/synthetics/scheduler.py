@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 
-from moto.backends import get_backend
+from moto.backends import get_backend  # noqa: I001
 
 from robotocore.services.synthetics.executor import (
     CanaryRunResult,

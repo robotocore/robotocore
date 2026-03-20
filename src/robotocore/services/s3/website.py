@@ -133,7 +133,7 @@ def _get_s3_backend(account_id: str, region: str):
     S3 in Moto is global — the region key is typically 'global' or 'aws',
     not an actual AWS region name. We try the common Moto region keys.
     """
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
 
     account_backends = get_backend("s3")[account_id]
     # Try common Moto S3 region keys

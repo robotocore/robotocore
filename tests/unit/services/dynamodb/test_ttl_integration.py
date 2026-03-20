@@ -4,8 +4,8 @@ import os
 import time
 
 import pytest
-from moto import mock_aws
 
+from moto import mock_aws
 from robotocore.services.dynamodb.ttl import scan_and_remove_expired_items
 
 
@@ -28,7 +28,7 @@ def _ttl_enabled():
 
 
 def _get_backend(region: str = "us-east-1"):
-    from moto.backends import get_backend
+    from moto.backends import get_backend  # noqa: I001
     from moto.core import DEFAULT_ACCOUNT_ID
 
     return get_backend("dynamodb")[DEFAULT_ACCOUNT_ID][region]
