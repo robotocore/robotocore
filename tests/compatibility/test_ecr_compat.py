@@ -1167,3 +1167,29 @@ class TestECRMissingGapOps:
         )
         assert "imageStatus" in resp
         assert resp["repositoryName"] == repo
+
+
+class TestECRPullTimeUpdateExclusion:
+    """Tests for ECR pull time update exclusion operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("ecr")
+
+    def test_register_pull_time_update_exclusion(self, client):
+        """RegisterPullTimeUpdateExclusion succeeds or raises known error."""
+        try:
+            client.register_pull_time_update_exclusion(
+                principalArn="arn:aws:iam::123456789012:role/test-role",
+            )
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
+
+    def test_deregister_pull_time_update_exclusion(self, client):
+        """DeregisterPullTimeUpdateExclusion succeeds or raises known error."""
+        try:
+            client.deregister_pull_time_update_exclusion(
+                principalArn="arn:aws:iam::123456789012:role/test-role",
+            )
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

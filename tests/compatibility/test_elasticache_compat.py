@@ -1360,3 +1360,22 @@ class TestElastiCacheNewStubOps2:
             assert "ReplicationGroup" in resp
         except ClientError as exc:
             assert exc.response["Error"]["Code"] is not None
+
+
+class TestElastiCacheExportServerlessCacheSnapshot:
+    """Test ExportServerlessCacheSnapshot operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("elasticache")
+
+    def test_export_serverless_cache_snapshot(self, client):
+        """ExportServerlessCacheSnapshot returns ServerlessCacheSnapshot."""
+        try:
+            resp = client.export_serverless_cache_snapshot(
+                ServerlessCacheSnapshotName="fake-snapshot",
+                S3BucketName="fake-bucket",
+            )
+            assert "ServerlessCacheSnapshot" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

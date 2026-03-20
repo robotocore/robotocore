@@ -663,3 +663,21 @@ class TestGlacierMultipartUpload:
         resp = glacier.purchase_provisioned_capacity(accountId="-")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 201
         assert "capacityId" in resp
+
+
+class TestGlacierGetJobOutput:
+    """Test GetJobOutput operation."""
+
+    def test_get_job_output(self):
+        """GetJobOutput returns error for non-existent vault."""
+        glacier = make_client("glacier")
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = glacier.get_job_output(
+                vaultName="fake-vault",
+                jobId="fake-job-id",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

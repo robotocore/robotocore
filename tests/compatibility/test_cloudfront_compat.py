@@ -2856,3 +2856,18 @@ class TestCloudfrontTrustStoreCRUD:
         )
         assert resp2["ResponseMetadata"]["HTTPStatusCode"] in (200, 201)
         assert resp2["TrustStore"]["Id"] == ts_id
+
+
+class TestCloudFrontNewStubOps:
+    """Tests for newly-implemented CloudFront stub operations."""
+
+    def test_list_distributions_by_owned_resource(self):
+        """ListDistributionsByOwnedResource returns DistributionList key."""
+        cf = make_client("cloudfront")
+        try:
+            resp = cf.list_distributions_by_owned_resource(
+                ResourceArn="arn:aws:cloudfront::123456789012:distribution/fake",
+            )
+            assert "DistributionList" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

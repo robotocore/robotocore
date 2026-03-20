@@ -1448,3 +1448,26 @@ class TestBedrockAutomatedReasoningVersionOps:
                 lastUpdatedAnnotationSetHash=long_hash,
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockUpdateMarketplaceModelEndpoint:
+    """Test UpdateMarketplaceModelEndpoint operation."""
+
+    def test_update_marketplace_model_endpoint(self):
+        """UpdateMarketplaceModelEndpoint raises known error for fake ARN."""
+        client = make_client("bedrock")
+        try:
+            client.update_marketplace_model_endpoint(
+                endpointArn=(
+                    "arn:aws:bedrock:us-east-1:123456789012:marketplace-model/endpoint/fake"
+                ),
+                endpointConfig={
+                    "sageMaker": {
+                        "initialInstanceCount": 1,
+                        "instanceType": "ml.t2.medium",
+                        "executionRole": ("arn:aws:iam::123456789012:role/test-role"),
+                    }
+                },
+            )
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

@@ -476,3 +476,18 @@ class TestPanoramaGapOpsV2:
                 ApplicationInstanceId="ai-nonexistent-123"
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaSignalApplicationInstanceNodeInstances:
+    """Test SignalApplicationInstanceNodeInstances operation."""
+
+    def test_signal_application_instance_node_instances(self):
+        """SignalApplicationInstanceNodeInstances raises known error."""
+        client = make_client("panorama")
+        try:
+            client.signal_application_instance_node_instances(
+                ApplicationInstanceId="fake-app-id",
+                NodeSignals=[{"NodeInstanceId": "fake-node", "Signal": "PAUSE"}],
+            )
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

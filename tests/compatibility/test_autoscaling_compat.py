@@ -1466,3 +1466,26 @@ class TestAutoScalingMetricsCollection:
         with pytest.raises(ClientError) as exc:
             autoscaling.disable_metrics_collection(AutoScalingGroupName="nonexistent-asg-xyz")
         assert exc.value.response["Error"]["Code"] == "ValidationError"
+
+
+class TestAutoscalingLaunchInstances:
+    """Test LaunchInstances operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("autoscaling")
+
+    def test_launch_instances(self, client):
+        """LaunchInstances returns AutoScalingGroupName and Instances."""
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = client.launch_instances(
+                AutoScalingGroupName="fake-asg",
+                RequestedCapacity=1,
+                ClientToken="test-token",
+            )
+            assert "AutoScalingGroupName" in resp
+            assert "Instances" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None

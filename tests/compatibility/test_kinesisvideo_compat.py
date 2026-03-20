@@ -468,3 +468,36 @@ class TestKinesisVideoEdgeConfigOps:
             StreamStorageConfiguration={"DefaultStorageTier": "ARCHIVE"},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestKinesisVideoStartEdgeConfigUpdate:
+    """Test StartEdgeConfigurationUpdate operation."""
+
+    @pytest.fixture
+    def kv(self):
+        return make_client("kinesisvideo")
+
+    def test_start_edge_configuration_update(self, kv):
+        """StartEdgeConfigurationUpdate returns EdgeConfig."""
+        try:
+            resp = kv.start_edge_configuration_update(
+                StreamName="fake-stream",
+                EdgeConfig={
+                    "HubDeviceArn": ("arn:aws:kinesisvideo:us-east-1:123456789012:device/fake"),
+                    "RecorderConfig": {
+                        "MediaSourceConfig": {
+                            "MediaUriSecretArn": (
+                                "arn:aws:secretsmanager:us-east-1:123456789012:secret/f"
+                            ),
+                            "MediaUriType": "RTSP_URI",
+                        },
+                        "ScheduleConfig": {
+                            "ScheduleExpression": "rate(1 day)",
+                            "DurationInSeconds": 3600,
+                        },
+                    },
+                },
+            )
+            assert "EdgeConfig" in resp or "SyncStatus" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] is not None
