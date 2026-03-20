@@ -1988,3 +1988,69 @@ class TestS3BucketPolicyStatus:
             assert "PolicyStatus" in resp
         finally:
             s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3MetadataConfiguration:
+    """Tests for S3 metadata configuration operations."""
+
+    def test_get_bucket_metadata_configuration(self, s3):
+        """GetBucketMetadataConfiguration returns result for a bucket."""
+        bucket_name = f"metadata-cfg-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.get_bucket_metadata_configuration(Bucket=bucket_name)
+            assert "GetBucketMetadataConfigurationResult" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+    def test_get_bucket_metadata_table_configuration(self, s3):
+        """GetBucketMetadataTableConfiguration returns result for a bucket."""
+        bucket_name = f"metadata-tbl-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.get_bucket_metadata_table_configuration(Bucket=bucket_name)
+            assert "GetBucketMetadataTableConfigurationResult" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3InventoryConfiguration:
+    """Tests for S3 inventory configuration operations."""
+
+    def test_list_bucket_inventory_configurations(self, s3):
+        """ListBucketInventoryConfigurations returns IsTruncated field."""
+        bucket_name = f"inventory-list-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.list_bucket_inventory_configurations(Bucket=bucket_name)
+            assert "IsTruncated" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketAbac:
+    """Tests for S3 ABAC operations."""
+
+    def test_get_bucket_abac(self, s3):
+        """GetBucketAbac returns AbacStatus for a bucket."""
+        bucket_name = f"abac-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.get_bucket_abac(Bucket=bucket_name)
+            assert "AbacStatus" in resp
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketNotificationConfiguration:
+    """Tests for S3 bucket notification configuration."""
+
+    def test_get_bucket_notification_configuration(self, s3):
+        """GetBucketNotificationConfiguration returns 200 for existing bucket."""
+        bucket_name = f"notif-cfg-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.get_bucket_notification_configuration(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)

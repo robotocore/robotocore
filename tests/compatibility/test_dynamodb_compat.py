@@ -3227,6 +3227,27 @@ class TestDynamoDBExportImport:
         assert resp["ExportDescription"]["ExportArn"] == export_arn
         assert "ExportStatus" in resp["ExportDescription"]
 
+    def test_list_imports(self, dynamodb):
+        """ListImports returns ImportSummaryList."""
+        resp = dynamodb.list_imports()
+        assert "ImportSummaryList" in resp
+
+
+class TestDynamoDBKinesisStreaming:
+    """Tests for DynamoDB Kinesis Streaming Destination operations."""
+
+    @pytest.fixture
+    def dynamodb(self):
+        return make_client("dynamodb")
+
+    def test_describe_kinesis_streaming_destination_nonexistent(self, dynamodb):
+        """DescribeKinesisStreamingDestination for nonexistent table raises ResourceNotFoundException."""  # noqa: E501
+        with pytest.raises(ClientError) as exc:
+            dynamodb.describe_kinesis_streaming_destination(
+                TableName="nonexistent-table-xyz-kinesis"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
 
 class TestDynamoDBGlobalTables:
     """Tests for DynamoDB Global Tables operations."""
@@ -3283,6 +3304,12 @@ class TestDynamoDBContributorInsights:
         """ListContributorInsights returns a list."""
         resp = dynamodb.list_contributor_insights()
         assert "ContributorInsightsSummaries" in resp
+
+    def test_describe_contributor_insights_nonexistent(self, dynamodb):
+        """DescribeContributorInsights for nonexistent table raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            dynamodb.describe_contributor_insights(TableName="nonexistent-table-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestDynamoDBReplicaAutoScaling:
