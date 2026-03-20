@@ -780,3 +780,71 @@ class TestDataSyncLocationFsxOpenZfsOperations:
         assert "LocationUri" in desc
 
         datasync.delete_location(LocationArn=arn)
+
+
+class TestDataSyncTagAndUpdateOps:
+    """Tests for DataSync tag operations and update location operations."""
+
+    def _create_s3_location(self, client):
+        resp = client.create_location_s3(
+            S3BucketArn="arn:aws:s3:::test-bucket",
+            S3Config={"BucketAccessRoleArn": "arn:aws:iam::123456789012:role/test"},
+            Subdirectory="/test",
+        )
+        return resp["LocationArn"]
+
+    def test_tag_and_list_and_untag_resource(self, datasync):
+        """TagResource, ListTagsForResource, and UntagResource work on a location."""
+        arn = self._create_s3_location(datasync)
+        try:
+            datasync.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "test"}])
+
+            tags_resp = datasync.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tags_resp
+            assert len(tags_resp["Tags"]) >= 1
+
+            datasync.untag_resource(ResourceArn=arn, Keys=["env"])
+
+            tags_after = datasync.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tags_after
+            assert len(tags_after["Tags"]) == 0
+        finally:
+            datasync.delete_location(LocationArn=arn)
+
+    def test_list_task_executions(self, datasync):
+        """ListTaskExecutions returns a list of task executions."""
+        resp = datasync.list_task_executions()
+        assert "TaskExecutions" in resp
+
+    def test_update_location_s3(self, datasync):
+        """UpdateLocationS3 returns HTTP 200."""
+        arn = self._create_s3_location(datasync)
+        try:
+            resp = datasync.update_location_s3(LocationArn=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datasync.delete_location(LocationArn=arn)
+
+    def test_update_location_nfs(self, datasync):
+        """UpdateLocationNfs returns HTTP 200 when location exists."""
+        from botocore.exceptions import ClientError
+
+        try:
+            create_resp = datasync.create_location_nfs(
+                ServerHostname="fake-server",
+                Subdirectory="/mnt/share",
+                OnPremConfig={
+                    "AgentArns": ["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"]
+                },
+            )
+            arn = create_resp["LocationArn"]
+        except ClientError as exc:
+            if "ValidationException" in exc.response["Error"]["Code"]:
+                pytest.skip("NFS location creation not supported with these params")
+            raise
+
+        try:
+            resp = datasync.update_location_nfs(LocationArn=arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            datasync.delete_location(LocationArn=arn)

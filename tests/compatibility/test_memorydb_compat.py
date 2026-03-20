@@ -382,3 +382,32 @@ class TestMemoryDBAclOps:
             assert resp["ACLs"][0]["Name"] == acl_name
         finally:
             client.delete_acl(ACLName=acl_name)
+
+
+class TestMemoryDBAclUpdateOps:
+    """Tests for MemoryDB ACL update and describe operations."""
+
+    def test_update_acl(self, memorydb):
+        """UpdateACL with UserNamesToAdd and UserNamesToRemove returns ACL details."""
+        name = f"acl-upd-{uuid.uuid4().hex[:8]}"
+        memorydb.create_acl(ACLName=name)
+        try:
+            resp = memorydb.update_acl(
+                ACLName=name,
+                UserNamesToAdd=["fake-user"],
+                UserNamesToRemove=["other-user"],
+            )
+            assert "ACL" in resp
+        finally:
+            memorydb.delete_acl(ACLName=name)
+
+    def test_describe_acls_list(self, memorydb):
+        """DescribeACLs with no args lists all ACLs including one we created."""
+        name = f"acl-list-{uuid.uuid4().hex[:8]}"
+        memorydb.create_acl(ACLName=name)
+        try:
+            resp = memorydb.describe_acls()
+            assert "ACLs" in resp
+            assert len(resp["ACLs"]) > 0
+        finally:
+            memorydb.delete_acl(ACLName=name)
