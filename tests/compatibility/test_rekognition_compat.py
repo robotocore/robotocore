@@ -1207,3 +1207,18 @@ class TestRekognitionSearchFacesEdgeCases:
             assert isinstance(resp["DeletedFaces"], list)
         finally:
             rekognition.delete_collection(CollectionId=col_id)
+
+
+class TestRekognitionUserOperations:
+    """Tests for Rekognition User operations."""
+
+    def test_list_users_returns_users_key(self, rekognition):
+        """ListUsers returns a response with a Users key."""
+        col_id = _unique("usr")
+        rekognition.create_collection(CollectionId=col_id)
+        try:
+            resp = rekognition.list_users(CollectionId=col_id)
+            assert "Users" in resp
+            assert isinstance(resp["Users"], list)
+        finally:
+            rekognition.delete_collection(CollectionId=col_id)

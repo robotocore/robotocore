@@ -2223,3 +2223,20 @@ class TestBackupTieringConfigurationOperations:
             assert tc_name not in names
         finally:
             backup.delete_backup_vault(BackupVaultName=vault_name)
+
+
+class TestBackupStartScanJob:
+    """Tests for StartScanJob operation."""
+
+    def test_start_scan_job_fake_recovery_point(self, backup):
+        """StartScanJob with a fake recovery point ARN raises ClientError."""
+        rp_arn = "arn:aws:backup:us-east-1:123456789012:recovery-point:fake-" + _unique("rp")
+        with pytest.raises(ClientError):
+            backup.start_scan_job(
+                BackupVaultName=_unique("vault"),
+                IamRoleArn="arn:aws:iam::123456789012:role/backup-role",
+                MalwareScanner="GUARD_DUTY",
+                RecoveryPointArn=rp_arn,
+                ScanMode="INSTANCE_SNAPSHOT_AND_SOURCE",
+                ScannerRoleArn="arn:aws:iam::123456789012:role/scanner-role",
+            )

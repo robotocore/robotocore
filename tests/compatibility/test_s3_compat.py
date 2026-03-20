@@ -1988,3 +1988,253 @@ class TestS3BucketPolicyStatus:
             assert "PolicyStatus" in resp
         finally:
             s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketNotificationConfiguration:
+    """GetBucketNotificationConfiguration on an existing bucket."""
+
+    def test_get_bucket_notification_configuration(self, s3):
+        bucket_name = f"notifcfg-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.get_bucket_notification_configuration(Bucket=bucket_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+
+class TestS3BucketInventoryConfiguration:
+    """PutBucketInventoryConfiguration, GetBucketInventoryConfiguration,
+    ListBucketInventoryConfigurations, DeleteBucketInventoryConfiguration."""
+
+    def test_put_get_list_delete_inventory(self, s3):
+        bucket_name = f"inv-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            s3.put_bucket_inventory_configuration(
+                Bucket=bucket_name,
+                Id="test-inventory",
+                InventoryConfiguration={
+                    "Destination": {
+                        "S3BucketDestination": {
+                            "Bucket": f"arn:aws:s3:::{bucket_name}",
+                            "Format": "CSV",
+                        }
+                    },
+                    "IsEnabled": True,
+                    "Id": "test-inventory",
+                    "IncludedObjectVersions": "Current",
+                    "Schedule": {"Frequency": "Weekly"},
+                },
+            )
+            get_resp = s3.get_bucket_inventory_configuration(
+                Bucket=bucket_name, Id="test-inventory"
+            )
+            assert get_resp["InventoryConfiguration"]["Id"] == "test-inventory"
+            assert get_resp["InventoryConfiguration"]["IsEnabled"] is True
+
+            list_resp = s3.list_bucket_inventory_configurations(Bucket=bucket_name)
+            assert "InventoryConfigurationList" in list_resp
+            ids = [c["Id"] for c in list_resp["InventoryConfigurationList"]]
+            assert "test-inventory" in ids
+
+            del_resp = s3.delete_bucket_inventory_configuration(
+                Bucket=bucket_name, Id="test-inventory"
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_delete_inventory_nonexistent_bucket(self, s3):
+        """DeleteBucketInventoryConfiguration on a nonexistent bucket returns NoSuchBucket."""
+        with pytest.raises(ClientError) as exc_info:
+            s3.delete_bucket_inventory_configuration(
+                Bucket="nonexistent-inv-bucket-xyz-99999", Id="doesnt-matter"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_get_inventory_nonexistent_bucket(self, s3):
+        """GetBucketInventoryConfiguration on a nonexistent bucket returns NoSuchBucket."""
+        with pytest.raises(ClientError) as exc_info:
+            s3.get_bucket_inventory_configuration(
+                Bucket="nonexistent-inv-bucket-xyz-99999", Id="doesnt-matter"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_list_inventory_nonexistent_bucket(self, s3):
+        """ListBucketInventoryConfigurations on a nonexistent bucket returns NoSuchBucket."""
+        with pytest.raises(ClientError) as exc_info:
+            s3.list_bucket_inventory_configurations(Bucket="nonexistent-inv-bucket-xyz-99999")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+
+class TestS3BucketAbac:
+    """PutBucketAbac, GetBucketAbac."""
+
+    def test_put_and_get_bucket_abac(self, s3):
+        bucket_name = f"abac-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            put_resp = s3.put_bucket_abac(
+                Bucket=bucket_name,
+                AbacStatus={"Status": "Enabled"},
+            )
+            assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            get_resp = s3.get_bucket_abac(Bucket=bucket_name)
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            s3.delete_bucket(Bucket=bucket_name)
+
+    def test_get_bucket_abac_nonexistent_bucket(self, s3):
+        """GetBucketAbac on a nonexistent bucket returns NoSuchBucket."""
+        with pytest.raises(ClientError) as exc_info:
+            s3.get_bucket_abac(Bucket="nonexistent-abac-bucket-xyz-99999")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+
+class TestS3BucketMetadataConfiguration:
+    """CreateBucketMetadataConfiguration, GetBucketMetadataConfiguration,
+    DeleteBucketMetadataConfiguration."""
+
+    def test_create_and_get_metadata_configuration(self, s3):
+        bucket_name = f"metacfg-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            create_resp = s3.create_bucket_metadata_configuration(
+                Bucket=bucket_name,
+                MetadataConfiguration={
+                    "JournalTableConfiguration": {
+                        "RecordExpiration": {"Expiration": "ENABLED", "Days": 30}
+                    },
+                    "InventoryTableConfiguration": {"ConfigurationState": "ENABLED"},
+                },
+            )
+            assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            get_resp = s3.get_bucket_metadata_configuration(Bucket=bucket_name)
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_delete_metadata_configuration(self, s3):
+        bucket_name = f"metacfgdel-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            del_resp = s3.delete_bucket_metadata_configuration(Bucket=bucket_name)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_get_metadata_configuration_nonexistent_bucket(self, s3):
+        with pytest.raises(ClientError) as exc_info:
+            s3.get_bucket_metadata_configuration(Bucket="nonexistent-metacfg-bucket-xyz-99999")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_delete_metadata_configuration_nonexistent_bucket(self, s3):
+        with pytest.raises(ClientError) as exc_info:
+            s3.delete_bucket_metadata_configuration(Bucket="nonexistent-metacfg-bucket-xyz-99999")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+
+class TestS3BucketMetadataTableConfiguration:
+    """CreateBucketMetadataTableConfiguration, GetBucketMetadataTableConfiguration,
+    DeleteBucketMetadataTableConfiguration."""
+
+    def test_create_get_delete_metadata_table_configuration(self, s3):
+        bucket_name = f"metatbl-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            create_resp = s3.create_bucket_metadata_table_configuration(
+                Bucket=bucket_name,
+                MetadataTableConfiguration={
+                    "S3TablesDestination": {
+                        "TableBucketArn": "arn:aws:s3:::test-table-bucket",
+                        "TableName": "test-table",
+                    }
+                },
+            )
+            assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            get_resp = s3.get_bucket_metadata_table_configuration(Bucket=bucket_name)
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            del_resp = s3.delete_bucket_metadata_table_configuration(Bucket=bucket_name)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_get_metadata_table_configuration_nonexistent_bucket(self, s3):
+        with pytest.raises(ClientError) as exc_info:
+            s3.get_bucket_metadata_table_configuration(
+                Bucket="nonexistent-metatbl-bucket-xyz-99999"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_delete_metadata_table_configuration_nonexistent_bucket(self, s3):
+        with pytest.raises(ClientError) as exc_info:
+            s3.delete_bucket_metadata_table_configuration(
+                Bucket="nonexistent-metatbl-bucket-xyz-99999"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
+
+
+class TestS3UpdateBucketMetadataTableConfigurations:
+    """UpdateBucketMetadataInventoryTableConfiguration,
+    UpdateBucketMetadataJournalTableConfiguration."""
+
+    def test_update_metadata_inventory_table_configuration(self, s3):
+        bucket_name = f"updinv-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.update_bucket_metadata_inventory_table_configuration(
+                Bucket=bucket_name,
+                InventoryTableConfiguration={"ConfigurationState": "ENABLED"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_update_metadata_journal_table_configuration(self, s3):
+        bucket_name = f"updjrn-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket_name)
+        try:
+            resp = s3.update_bucket_metadata_journal_table_configuration(
+                Bucket=bucket_name,
+                JournalTableConfiguration={
+                    "RecordExpiration": {"Expiration": "ENABLED", "Days": 30}
+                },
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestS3WriteGetObjectResponse:
+    """WriteGetObjectResponse."""
+
+    def test_write_get_object_response(self, s3):
+        resp = s3.write_get_object_response(
+            RequestRoute="route-placeholder",
+            RequestToken="token-placeholder",
+            Body=b"hello from object lambda",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

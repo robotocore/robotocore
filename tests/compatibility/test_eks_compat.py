@@ -1576,6 +1576,18 @@ class TestEKSClusterCRUDExplicit:
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
+class TestEKSDescribeInsightsRefresh:
+    """Tests for EKS DescribeInsightsRefresh operation."""
+
+    def test_describe_insights_refresh_nonexistent_cluster(self, eks):
+        """DescribeInsightsRefresh with fake cluster raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.describe_insights_refresh(
+                clusterName="nonexistent-cluster-xyz-99",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
 class TestEKSInsightsRefreshOperations:
     """Tests for EKS StartInsightsRefresh operation."""
 

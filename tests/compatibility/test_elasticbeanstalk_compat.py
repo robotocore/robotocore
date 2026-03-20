@@ -646,3 +646,19 @@ class TestApplyEnvironmentManagedAction:
         )
         assert "ActionId" in resp
         assert "Status" in resp
+
+
+class TestElasticBeanstalkSwapCNAMEs:
+    """Tests for SwapEnvironmentCNAMEs operation."""
+
+    def test_swap_environment_cnames_not_found(self, eb):
+        """SwapEnvironmentCNAMEs with fake environments raises InvalidParameterValue."""
+        import pytest
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            eb.swap_environment_cnames(
+                SourceEnvironmentName="fake-env-1",
+                DestinationEnvironmentName="fake-env-2",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidParameterValue"

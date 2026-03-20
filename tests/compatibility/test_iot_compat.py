@@ -3224,3 +3224,146 @@ class TestIoTThingCrud:
         with pytest.raises(ClientError) as exc:
             iot.describe_thing(thingName=name)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIoTCommandOperations:
+    """Tests for IoT Command operations."""
+
+    def test_list_commands_returns_key(self, iot):
+        """ListCommands returns Commands list key."""
+        resp = iot.list_commands()
+        assert "commands" in resp
+
+    def test_get_command_not_found(self, iot):
+        """GetCommand with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.get_command(commandId=_unique("cmd"))
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "404",
+        )
+
+    def test_delete_command_not_found(self, iot):
+        """DeleteCommand with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.delete_command(commandId=_unique("cmd"))
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "404",
+        )
+
+    def test_update_command_not_found(self, iot):
+        """UpdateCommand with fake ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.update_command(commandId=_unique("cmd"), displayName="test")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "404",
+        )
+
+    def test_create_command_minimal(self, iot):
+        """CreateCommand with minimal params returns commandId."""
+        cmd_id = _unique("cmd")
+        resp = iot.create_command(
+            commandId=cmd_id,
+            namespace="AWS-IoT",
+        )
+        assert resp["commandId"] == cmd_id
+        iot.delete_command(commandId=cmd_id)
+
+
+class TestIoTCertificateProviderOperations:
+    """Tests for IoT CertificateProvider operations."""
+
+    def test_list_certificate_providers_returns_key(self, iot):
+        """ListCertificateProviders returns certificateProviders list key."""
+        resp = iot.list_certificate_providers()
+        assert "certificateProviders" in resp
+
+    def test_describe_certificate_provider_not_found(self, iot):
+        """DescribeCertificateProvider with fake name raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.describe_certificate_provider(certificateProviderName=_unique("cp"))
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_certificate_provider_not_found(self, iot):
+        """DeleteCertificateProvider with fake name raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.delete_certificate_provider(certificateProviderName=_unique("cp"))
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_certificate_provider_not_found(self, iot):
+        """UpdateCertificateProvider with fake name raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.update_certificate_provider(
+                certificateProviderName=_unique("cp"),
+                lambdaFunctionArn="arn:aws:lambda:us-east-1:123456789012:function:fake",
+                accountDefaultForOperations=["CreateCertificateFromCsr"],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIoTEncryptionAndConnectivity:
+    """Tests for IoT encryption configuration and thing connectivity."""
+
+    def test_describe_encryption_configuration(self, iot):
+        """DescribeEncryptionConfiguration returns encryptionType."""
+        resp = iot.describe_encryption_configuration()
+        assert "encryptionType" in resp
+
+    def test_get_thing_connectivity_data_not_found(self, iot):
+        """GetThingConnectivityData with fake thing raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.get_thing_connectivity_data(thingName=_unique("thing"))
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIoTThingRegistrationTasks:
+    """Tests for StartThingRegistrationTask and StopThingRegistrationTask."""
+
+    def test_start_thing_registration_task(self, iot):
+        """StartThingRegistrationTask returns taskId."""
+        resp = iot.start_thing_registration_task(
+            templateBody='{"Parameters":{"ThingName":{"Type":"String"}},"Resources":{"thing":{"Type":"AWS::IoT::Thing","Properties":{"ThingName":{"Ref":"ThingName"}}}}}',
+            inputFileBucket="my-bucket",
+            inputFileKey="things.json",
+            roleArn="arn:aws:iam::123456789012:role/iot-reg-role",
+        )
+        assert "taskId" in resp
+
+    def test_stop_thing_registration_task_not_found(self, iot):
+        """StopThingRegistrationTask with fake task ID raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            iot.stop_thing_registration_task(taskId=_unique("task"))
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InvalidRequestException",
+        )
+
+
+class TestIoTTagOperations:
+    """Tests for IoT tag operations."""
+
+    def test_list_tags_for_resource_fake_arn(self, iot):
+        """ListTagsForResource with nonexistent ARN raises ClientError."""
+        fake_arn = "arn:aws:iot:us-east-1:123456789012:thing/fake-thing-" + uuid.uuid4().hex[:8]
+        with pytest.raises(ClientError):
+            iot.list_tags_for_resource(resourceArn=fake_arn)
+
+    def test_tag_resource_fake_arn_raises(self, iot):
+        """TagResource with nonexistent ARN raises an error."""
+        fake_arn = "arn:aws:iot:us-east-1:123456789012:thing/nonexistent-" + uuid.uuid4().hex[:8]
+        with pytest.raises(ClientError):
+            iot.tag_resource(
+                resourceArn=fake_arn,
+                tags=[{"Key": "env", "Value": "test"}],
+            )
+
+    def test_untag_resource_fake_arn_raises(self, iot):
+        """UntagResource with nonexistent ARN raises an error."""
+        fake_arn = "arn:aws:iot:us-east-1:123456789012:thing/nonexistent-" + uuid.uuid4().hex[:8]
+        with pytest.raises(ClientError):
+            iot.untag_resource(
+                resourceArn=fake_arn,
+                tagKeys=["env"],
+            )

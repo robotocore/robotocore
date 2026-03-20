@@ -447,6 +447,337 @@ class TestCloudFrontOriginAccessControlErrors:
         assert exc_info.value.response["Error"]["Code"] is not None
 
 
+class TestCloudFrontAnycastIpListCRUD:
+    def test_create_anycast_ip_list(self, cf):
+        name = _unique("anycast")
+        resp = cf.create_anycast_ip_list(Name=name, IpCount=2)
+        assert "AnycastIpList" in resp
+        assert resp["AnycastIpList"]["Name"] == name
+        assert "Id" in resp["AnycastIpList"]
+        assert "ETag" in resp
+
+    def test_list_anycast_ip_lists(self, cf):
+        name = _unique("anycast-list")
+        cf.create_anycast_ip_list(Name=name, IpCount=2)
+        resp = cf.list_anycast_ip_lists()
+        assert "AnycastIpLists" in resp
+        assert "Items" in resp["AnycastIpLists"]
+        names = [item["Name"] for item in resp["AnycastIpLists"]["Items"]]
+        assert name in names
+
+
+class TestCloudFrontConnectionFunctionCRUD:
+    def _create_connection_function(self, cf):
+        name = _unique("cf-fn")
+        resp = cf.create_connection_function(
+            Name=name,
+            ConnectionFunctionConfig={"Runtime": "cloudfront-js-2.0", "Comment": "test"},
+            ConnectionFunctionCode=b"function handler(event) { return event.request; }",
+        )
+        return resp["ConnectionFunctionSummary"]["Name"], resp["ETag"]
+
+    def test_create_connection_function(self, cf):
+        name = _unique("cf-fn-create")
+        resp = cf.create_connection_function(
+            Name=name,
+            ConnectionFunctionConfig={"Runtime": "cloudfront-js-2.0", "Comment": "create test"},
+            ConnectionFunctionCode=b"function handler(event) { return event.request; }",
+        )
+        fn = resp["ConnectionFunctionSummary"]
+        assert fn["Name"] == name
+        assert "Id" in fn
+        assert "ETag" in resp
+
+    def test_describe_connection_function(self, cf):
+        name, etag = self._create_connection_function(cf)
+        resp = cf.describe_connection_function(Identifier=name, Stage="DEVELOPMENT")
+        assert "ConnectionFunctionSummary" in resp
+        assert resp["ConnectionFunctionSummary"]["Name"] == name
+        assert "ETag" in resp
+
+    def test_list_connection_functions(self, cf):
+        # list_connection_functions returns empty response body on success
+        resp = cf.list_connection_functions()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_connection_function(self, cf):
+        name, etag = self._create_connection_function(cf)
+        resp = cf.update_connection_function(
+            Id=name,
+            IfMatch=etag,
+            ConnectionFunctionConfig={"Runtime": "cloudfront-js-2.0", "Comment": "updated"},
+            ConnectionFunctionCode=b"function handler(event) { return event.request; }",
+        )
+        assert "ConnectionFunctionSummary" in resp
+        assert "ETag" in resp
+
+    def test_publish_connection_function(self, cf):
+        name, etag = self._create_connection_function(cf)
+        resp = cf.publish_connection_function(Id=name, IfMatch=etag)
+        assert "ConnectionFunctionSummary" in resp
+        assert resp["ConnectionFunctionSummary"]["Stage"] == "LIVE"
+
+    def test_test_connection_function(self, cf):
+        name, etag = self._create_connection_function(cf)
+        resp = cf.test_connection_function(
+            Id=name,
+            IfMatch=etag,
+            Stage="DEVELOPMENT",
+            ConnectionObject=b"{}",
+        )
+        assert "ConnectionFunctionTestResult" in resp
+        assert "ComputeUtilization" in resp["ConnectionFunctionTestResult"]
+
+
+class TestCloudFrontConnectionGroupCRUD:
+    def _create_connection_group(self, cf):
+        name = _unique("cg")
+        resp = cf.create_connection_group(Name=name, Ipv6Enabled=False)
+        return resp["ConnectionGroup"]["Id"], resp["ETag"], name
+
+    def test_create_connection_group(self, cf):
+        name = _unique("cg-create")
+        resp = cf.create_connection_group(Name=name, Ipv6Enabled=False)
+        cg = resp["ConnectionGroup"]
+        assert cg["Name"] == name
+        assert "Id" in cg
+        assert "ETag" in resp
+
+    def test_get_connection_group(self, cf):
+        cg_id, etag, name = self._create_connection_group(cf)
+        resp = cf.get_connection_group(Identifier=cg_id)
+        assert resp["ConnectionGroup"]["Id"] == cg_id
+        assert resp["ConnectionGroup"]["Name"] == name
+        assert "ETag" in resp
+
+    def test_get_connection_group_by_routing_endpoint(self, cf):
+        # Returns empty dict for unknown endpoint — assert HTTP 200
+        resp = cf.get_connection_group_by_routing_endpoint(RoutingEndpoint="test.cloudfront.net")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_connection_groups(self, cf):
+        # list_connection_groups returns empty response body on success
+        resp = cf.list_connection_groups()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_connection_group(self, cf):
+        cg_id, etag, _ = self._create_connection_group(cf)
+        resp = cf.update_connection_group(Id=cg_id, IfMatch=etag, Ipv6Enabled=True)
+        assert "ConnectionGroup" in resp
+        assert resp["ConnectionGroup"]["Id"] == cg_id
+        assert "ETag" in resp
+
+
+class TestCloudFrontDistributionTenantCRUD:
+    def _create_tenant(self, cf, domain=None):
+        name = _unique("tenant")
+        domain = domain or f"{uuid.uuid4().hex[:8]}.example.com"
+        resp = cf.create_distribution_tenant(
+            DistributionId="ENONEXISTENT123",
+            Name=name,
+            Domains=[{"Domain": domain}],
+        )
+        return resp["DistributionTenant"]["Id"], resp["ETag"], name, domain
+
+    def test_create_distribution_tenant(self, cf):
+        name = _unique("tenant-create")
+        resp = cf.create_distribution_tenant(
+            DistributionId="ENONEXISTENT123",
+            Name=name,
+            Domains=[{"Domain": f"{uuid.uuid4().hex[:8]}.example.com"}],
+        )
+        tenant = resp["DistributionTenant"]
+        assert tenant["Name"] == name
+        assert "Id" in tenant
+        assert "ETag" in resp
+
+    def test_get_distribution_tenant(self, cf):
+        tenant_id, etag, name, _ = self._create_tenant(cf)
+        resp = cf.get_distribution_tenant(Identifier=tenant_id)
+        assert resp["DistributionTenant"]["Id"] == tenant_id
+        assert resp["DistributionTenant"]["Name"] == name
+        assert "ETag" in resp
+
+    def test_get_distribution_tenant_by_domain(self, cf):
+        # Returns empty dict for unknown domain — assert HTTP 200
+        resp = cf.get_distribution_tenant_by_domain(Domain="unknown.example.com")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_distribution_tenants(self, cf):
+        # list_distribution_tenants returns empty response on success
+        resp = cf.list_distribution_tenants()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_distribution_tenants_by_customization(self, cf):
+        resp = cf.list_distribution_tenants_by_customization(
+            CertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_distribution_tenant(self, cf):
+        tenant_id, etag, _, _ = self._create_tenant(cf)
+        resp = cf.update_distribution_tenant(Id=tenant_id, IfMatch=etag, Enabled=False)
+        assert "DistributionTenant" in resp
+        assert resp["DistributionTenant"]["Id"] == tenant_id
+        assert "ETag" in resp
+
+    def test_create_invalidation_for_distribution_tenant(self, cf):
+        tenant_id, _, _, _ = self._create_tenant(cf)
+        resp = cf.create_invalidation_for_distribution_tenant(
+            Id=tenant_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": 1, "Items": ["/index.html"]},
+                "CallerReference": str(uuid.uuid4()),
+            },
+        )
+        assert "Invalidation" in resp
+        inv = resp["Invalidation"]
+        assert "Id" in inv
+
+    def test_get_invalidation_for_distribution_tenant(self, cf):
+        tenant_id, _, _, _ = self._create_tenant(cf)
+        create_resp = cf.create_invalidation_for_distribution_tenant(
+            Id=tenant_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": 1, "Items": ["/test.html"]},
+                "CallerReference": str(uuid.uuid4()),
+            },
+        )
+        inv_id = create_resp["Invalidation"]["Id"]
+
+        resp = cf.get_invalidation_for_distribution_tenant(
+            DistributionTenantId=tenant_id, Id=inv_id
+        )
+        assert "Invalidation" in resp
+        assert resp["Invalidation"]["Id"] == inv_id
+
+    def test_list_invalidations_for_distribution_tenant(self, cf):
+        tenant_id, _, _, _ = self._create_tenant(cf)
+        resp = cf.list_invalidations_for_distribution_tenant(Id=tenant_id)
+        assert "InvalidationList" in resp
+        assert "Quantity" in resp["InvalidationList"]
+
+    def test_verify_dns_configuration(self, cf):
+        resp = cf.verify_dns_configuration(Identifier="ENONEXISTENT123")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_domain_conflicts(self, cf):
+        resp = cf.list_domain_conflicts(
+            Domain="test.example.com",
+            DomainControlValidationResource={"DistributionTenantId": "ENONEXISTENT123"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontVpcOriginCRUD:
+    def _create_vpc_origin(self, cf):
+        name = _unique("vpc-origin")
+        resp = cf.create_vpc_origin(
+            VpcOriginEndpointConfig={
+                "Name": name,
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "http-only",
+                "Arn": (
+                    "arn:aws:elasticloadbalancing:"
+                    "us-east-1:123456789012:loadbalancer/app/test/abc123"
+                ),
+            }
+        )
+        return resp["VpcOrigin"]["Id"], resp["ETag"], name
+
+    def test_create_vpc_origin(self, cf):
+        name = _unique("vpc-create")
+        resp = cf.create_vpc_origin(
+            VpcOriginEndpointConfig={
+                "Name": name,
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "http-only",
+                "Arn": (
+                    "arn:aws:elasticloadbalancing:"
+                    "us-east-1:123456789012:loadbalancer/app/test/abc123"
+                ),
+            }
+        )
+        vpc = resp["VpcOrigin"]
+        assert "Id" in vpc
+        assert vpc["VpcOriginEndpointConfig"]["Name"] == name
+        assert "ETag" in resp
+
+    def test_list_vpc_origins(self, cf):
+        name = _unique("vpc-list")
+        cf.create_vpc_origin(
+            VpcOriginEndpointConfig={
+                "Name": name,
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "http-only",
+                "Arn": (
+                    "arn:aws:elasticloadbalancing:"
+                    "us-east-1:123456789012:loadbalancer/app/test/abc123"
+                ),
+            }
+        )
+        resp = cf.list_vpc_origins()
+        assert "VpcOriginList" in resp
+        assert "Items" in resp["VpcOriginList"]
+        names = [item["Name"] for item in resp["VpcOriginList"]["Items"]]
+        assert name in names
+
+    def test_update_vpc_origin(self, cf):
+        vpc_id, etag, name = self._create_vpc_origin(cf)
+        resp = cf.update_vpc_origin(
+            Id=vpc_id,
+            IfMatch=etag,
+            VpcOriginEndpointConfig={
+                "Name": name,
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "https-only",
+                "Arn": (
+                    "arn:aws:elasticloadbalancing:"
+                    "us-east-1:123456789012:loadbalancer/app/test/abc123"
+                ),
+            },
+        )
+        assert "VpcOrigin" in resp
+        assert resp["VpcOrigin"]["VpcOriginEndpointConfig"]["OriginProtocolPolicy"] == "https-only"
+        assert "ETag" in resp
+
+
+class TestCloudFrontTrustStoreCRUD:
+    def test_list_trust_stores(self, cf):
+        # list_trust_stores returns empty response on success
+        resp = cf.list_trust_stores()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_nonexistent_trust_store(self, cf):
+        with pytest.raises(ClientError) as exc_info:
+            cf.get_trust_store(Identifier="ENONEXISTENT123")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchResource"
+
+
+class TestCloudFrontResourcePolicyCRUD:
+    def test_put_resource_policy(self, cf):
+        arn = "arn:aws:cloudfront::123456789012:distribution/ETEST123"
+        policy = '{"Version":"2012-10-17","Statement":[]}'
+        resp = cf.put_resource_policy(ResourceArn=arn, PolicyDocument=policy)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_resource_policy(self, cf):
+        arn = "arn:aws:cloudfront::123456789012:distribution/ETEST456"
+        resp = cf.get_resource_policy(ResourceArn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudFrontManagedCertificate:
+    def test_get_managed_certificate_details(self, cf):
+        resp = cf.get_managed_certificate_details(Identifier="ENONEXISTENT123")
+        assert "ManagedCertificateDetails" in resp
+        assert "CertificateStatus" in resp["ManagedCertificateDetails"]
+
+
 class TestCloudFrontInvalidationErrors:
     def test_get_invalidation_nonexistent_distribution(self, cf):
         with pytest.raises(cf.exceptions.ClientError) as exc_info:

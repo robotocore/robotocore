@@ -1275,3 +1275,23 @@ class TestEcsUpdateServicePrimaryTaskSet:
             "ServiceNotFoundException",
             "InvalidParameterException",
         )
+
+
+class TestEcsServiceDeploymentOperations:
+    """Tests for ECS service deployment and revision operations."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_describe_service_deployments_empty(self, ecs):
+        """DescribeServiceDeployments with empty list returns response structure."""
+        resp = ecs.describe_service_deployments(serviceDeploymentArns=[])
+        assert "serviceDeployments" in resp
+        assert isinstance(resp["serviceDeployments"], list)
+
+    def test_describe_service_revisions_empty(self, ecs):
+        """DescribeServiceRevisions with empty list returns response structure."""
+        resp = ecs.describe_service_revisions(serviceRevisionArns=[])
+        assert "serviceRevisions" in resp
+        assert isinstance(resp["serviceRevisions"], list)
