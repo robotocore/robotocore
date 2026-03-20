@@ -952,6 +952,171 @@ def _handle_describe_alarm_history(params: dict, region: str, account_id: str) -
 
 
 # ---------------------------------------------------------------------------
+# Metric Streams
+# ---------------------------------------------------------------------------
+
+# In-memory metric stream store: {region: {stream_name: MetricStreamData}}
+_metric_streams: dict[str, dict[str, dict]] = {}
+_metric_stream_lock = threading.Lock()
+
+
+def _get_stream_store(region: str) -> dict[str, dict]:
+    with _metric_stream_lock:
+        if region not in _metric_streams:
+            _metric_streams[region] = {}
+        return _metric_streams[region]
+
+
+def _handle_put_metric_stream(params: dict, region: str, account_id: str) -> dict:
+    """Create or update a metric stream."""
+    name = params.get("Name", "")
+    if not name:
+        raise CloudWatchError("ValidationError", "Name is required")
+    firehose_arn = params.get("FirehoseArn", "")
+    role_arn = params.get("RoleArn", "")
+    output_format = params.get("OutputFormat", "json")
+
+    store = _get_stream_store(region)
+    arn = f"arn:aws:cloudwatch:{region}:{account_id}:metric-stream/{name}"
+
+    import datetime as dt
+
+    now = dt.datetime.now(dt.UTC).isoformat()
+    with _metric_stream_lock:
+        store[name] = {
+            "Arn": arn,
+            "Name": name,
+            "FirehoseArn": firehose_arn,
+            "RoleArn": role_arn,
+            "OutputFormat": output_format,
+            "IncludeFilters": params.get("IncludeFilters", []),
+            "ExcludeFilters": params.get("ExcludeFilters", []),
+            "StatisticsConfigurations": params.get("StatisticsConfigurations", []),
+            "State": "running",
+            "CreationDate": now,
+            "LastUpdateDate": now,
+            "IncludeLinkedAccountsMetrics": params.get("IncludeLinkedAccountsMetrics", False),
+        }
+
+    return {"Arn": arn}
+
+
+def _handle_get_metric_stream(params: dict, region: str, account_id: str) -> dict:
+    """Get a metric stream by name."""
+    name = params.get("Name", "")
+    store = _get_stream_store(region)
+    with _metric_stream_lock:
+        stream = store.get(name)
+    if not stream:
+        raise CloudWatchError(
+            "ResourceNotFoundException",
+            f"MetricStream {name} does not exist",
+            status=404,
+        )
+    return dict(stream)
+
+
+def _handle_delete_metric_stream(params: dict, region: str, account_id: str) -> dict:
+    """Delete a metric stream by name."""
+    name = params.get("Name", "")
+    store = _get_stream_store(region)
+    with _metric_stream_lock:
+        store.pop(name, None)
+    return {}
+
+
+def _handle_start_metric_streams(params: dict, region: str, account_id: str) -> dict:
+    """Start metric streams."""
+    names = params.get("Names", [])
+    if isinstance(names, str):
+        names = [names]
+    store = _get_stream_store(region)
+    with _metric_stream_lock:
+        for name in names:
+            if name in store:
+                store[name]["State"] = "running"
+    return {}
+
+
+def _handle_stop_metric_streams(params: dict, region: str, account_id: str) -> dict:
+    """Stop metric streams."""
+    names = params.get("Names", [])
+    if isinstance(names, str):
+        names = [names]
+    store = _get_stream_store(region)
+    with _metric_stream_lock:
+        for name in names:
+            if name in store:
+                store[name]["State"] = "stopped"
+    return {}
+
+
+def _handle_list_metric_streams(params: dict, region: str, account_id: str) -> dict:
+    """List all metric streams."""
+    store = _get_stream_store(region)
+    with _metric_stream_lock:
+        entries = list(store.values())
+    return {"Entries": entries}
+
+
+# ---------------------------------------------------------------------------
+# Stub handlers for remaining gap operations
+# ---------------------------------------------------------------------------
+
+
+def _handle_get_metric_widget_image(params: dict, region: str, account_id: str) -> dict:
+    """Return a minimal 1x1 PNG image."""
+    import base64
+
+    minimal_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+    return {"MetricWidgetImage": base64.b64encode(minimal_png).decode("utf-8")}
+
+
+def _handle_get_insight_rule_report(params: dict, region: str, account_id: str) -> dict:
+    """Return an empty insight rule report."""
+    return {
+        "KeyLabels": [],
+        "AggregationStatistic": "Sum",
+        "AggregateValue": 0.0,
+        "ApproximateUniqueCount": 0,
+        "Contributors": [],
+        "MetricDatapoints": [],
+    }
+
+
+def _handle_put_managed_insight_rules(params: dict, region: str, account_id: str) -> dict:
+    """Accept managed insight rules input, return empty failures."""
+    return {"Failures": []}
+
+
+def _handle_describe_alarm_contributors(params: dict, region: str, account_id: str) -> dict:
+    """Return empty alarm contributors."""
+    return {"Contributors": []}
+
+
+def _handle_put_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
+    """Stub for PutAlarmMuteRule - accept and return empty."""
+    return {}
+
+
+def _handle_get_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
+    """Stub for GetAlarmMuteRule."""
+    name = params.get("MuteRuleName", params.get("Name", ""))
+    raise CloudWatchError(
+        "ResourceNotFoundException",
+        f"Mute rule {name} does not exist",
+        status=404,
+    )
+
+
+def _handle_delete_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
+    """Stub for DeleteAlarmMuteRule - no-op."""
+    return {}
+
+
+# ---------------------------------------------------------------------------
 # Response helpers
 # ---------------------------------------------------------------------------
 
@@ -1086,4 +1251,19 @@ _ACTION_MAP: dict[str, Callable] = {
     "EnableAlarmActions": _handle_enable_alarm_actions,
     "DisableAlarmActions": _handle_disable_alarm_actions,
     "DescribeAlarmHistory": _handle_describe_alarm_history,
+    # Metric Streams
+    "PutMetricStream": _handle_put_metric_stream,
+    "GetMetricStream": _handle_get_metric_stream,
+    "DeleteMetricStream": _handle_delete_metric_stream,
+    "StartMetricStreams": _handle_start_metric_streams,
+    "StopMetricStreams": _handle_stop_metric_streams,
+    "ListMetricStreams": _handle_list_metric_streams,
+    # Gap stubs
+    "GetMetricWidgetImage": _handle_get_metric_widget_image,
+    "GetInsightRuleReport": _handle_get_insight_rule_report,
+    "PutManagedInsightRules": _handle_put_managed_insight_rules,
+    "DescribeAlarmContributors": _handle_describe_alarm_contributors,
+    "PutAlarmMuteRule": _handle_put_alarm_mute_rule,
+    "GetAlarmMuteRule": _handle_get_alarm_mute_rule,
+    "DeleteAlarmMuteRule": _handle_delete_alarm_mute_rule,
 }
