@@ -332,3 +332,18 @@ class TestIdentityStoreErrors:
                 GroupId="00000000-0000-0000-0000-000000000000",
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIdentitystoreGroupMembership:
+    """Tests for DescribeGroupMembership operation."""
+
+    def test_describe_group_membership_nonexistent(self, identitystore):
+        """DescribeGroupMembership with nonexistent membership ID raises ResourceNotFoundException."""  # noqa: E501
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            identitystore.describe_group_membership(
+                IdentityStoreId=IDENTITY_STORE_ID,
+                MembershipId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"

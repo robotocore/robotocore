@@ -407,3 +407,14 @@ class TestIVSStreamKeyBatchOperations:
         batch = ivs.batch_get_stream_key(arns=[fake_arn])
         assert "errors" in batch
         assert "streamKeys" in batch
+
+
+class TestIvsPlaybackRestrictionPolicy:
+    """Tests for GetPlaybackRestrictionPolicy operation."""
+
+    def test_get_playback_restriction_policy_not_found(self, ivs):
+        """GetPlaybackRestrictionPolicy with nonexistent ARN raises ResourceNotFoundException."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:playback-restriction-policy/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_playback_restriction_policy(arn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
