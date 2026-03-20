@@ -1275,3 +1275,303 @@ class TestCloudTrailImportGet:
         with pytest.raises(ClientError) as exc_info:
             cloudtrail.get_import(ImportId=fake_import_id)
         assert exc_info.value.response["Error"]["Code"] == "ImportNotFoundException"
+
+
+class TestCloudTrailLookupEvents:
+    """Tests for LookupEvents operation."""
+
+    def test_lookup_events_empty(self, cloudtrail):
+        """LookupEvents returns an empty Events list."""
+        resp = cloudtrail.lookup_events()
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+        assert len(resp["Events"]) == 0
+
+    def test_lookup_events_with_max_results(self, cloudtrail):
+        """LookupEvents with MaxResults parameter."""
+        resp = cloudtrail.lookup_events(MaxResults=10)
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_lookup_events_with_lookup_attributes(self, cloudtrail):
+        """LookupEvents with LookupAttributes filter."""
+        resp = cloudtrail.lookup_events(
+            LookupAttributes=[{"AttributeKey": "EventName", "AttributeValue": "CreateTrail"}]
+        )
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+
+class TestCloudTrailListPublicKeys:
+    """Tests for ListPublicKeys operation."""
+
+    def test_list_public_keys(self, cloudtrail):
+        """ListPublicKeys returns a PublicKeyList."""
+        resp = cloudtrail.list_public_keys()
+        assert "PublicKeyList" in resp
+        assert isinstance(resp["PublicKeyList"], list)
+
+    def test_list_public_keys_response_status(self, cloudtrail):
+        """ListPublicKeys returns 200 status."""
+        resp = cloudtrail.list_public_keys()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudTrailDashboardCRUD:
+    """Tests for Dashboard create/update/delete/refresh operations."""
+
+    def test_create_dashboard(self, cloudtrail):
+        """CreateDashboard returns DashboardArn and Name."""
+        name = _unique("ct-dash")
+        resp = cloudtrail.create_dashboard(Name=name)
+        assert "DashboardArn" in resp
+        assert resp["Name"] == name
+        assert resp["Type"] == "CUSTOM"
+        # Cleanup
+        cloudtrail.delete_dashboard(DashboardId=name)
+
+    def test_create_and_get_dashboard(self, cloudtrail):
+        """CreateDashboard then GetDashboard returns the same ARN."""
+        name = _unique("ct-dash")
+        create_resp = cloudtrail.create_dashboard(Name=name)
+        try:
+            get_resp = cloudtrail.get_dashboard(DashboardId=name)
+            assert get_resp["DashboardArn"] == create_resp["DashboardArn"]
+            assert get_resp["Type"] == "CUSTOM"
+        finally:
+            cloudtrail.delete_dashboard(DashboardId=name)
+
+    def test_update_dashboard_widgets(self, cloudtrail):
+        """UpdateDashboard can update widgets."""
+        name = _unique("ct-dash")
+        cloudtrail.create_dashboard(Name=name)
+        try:
+            resp = cloudtrail.update_dashboard(
+                DashboardId=name,
+                Widgets=[
+                    {
+                        "QueryStatement": "SELECT eventTime FROM eds LIMIT 10",
+                        "ViewProperties": {"Width": "600", "Height": "400"},
+                    }
+                ],
+            )
+            assert len(resp["Widgets"]) == 1
+            assert resp["Widgets"][0]["QueryStatement"] == "SELECT eventTime FROM eds LIMIT 10"
+        finally:
+            cloudtrail.delete_dashboard(DashboardId=name)
+
+    def test_delete_dashboard(self, cloudtrail):
+        """DeleteDashboard removes the dashboard."""
+        name = _unique("ct-dash")
+        cloudtrail.create_dashboard(Name=name)
+        cloudtrail.delete_dashboard(DashboardId=name)
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.get_dashboard(DashboardId=name)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_dashboard_refresh(self, cloudtrail):
+        """StartDashboardRefresh returns a RefreshId."""
+        name = _unique("ct-dash")
+        cloudtrail.create_dashboard(Name=name)
+        try:
+            resp = cloudtrail.start_dashboard_refresh(DashboardId=name)
+            assert "RefreshId" in resp
+            assert len(resp["RefreshId"]) > 0
+        finally:
+            cloudtrail.delete_dashboard(DashboardId=name)
+
+    def test_create_dashboard_appears_in_list(self, cloudtrail):
+        """Created dashboard appears in ListDashboards."""
+        name = _unique("ct-dash")
+        create_resp = cloudtrail.create_dashboard(Name=name)
+        dash_arn = create_resp["DashboardArn"]
+        try:
+            list_resp = cloudtrail.list_dashboards()
+            arns = [d["DashboardArn"] for d in list_resp["Dashboards"]]
+            assert dash_arn in arns
+        finally:
+            cloudtrail.delete_dashboard(DashboardId=name)
+
+
+class TestCloudTrailEDSIngestion:
+    """Tests for StartEventDataStoreIngestion and StopEventDataStoreIngestion."""
+
+    def test_stop_ingestion(self, cloudtrail):
+        """StopEventDataStoreIngestion changes status to STOPPED_INGESTION."""
+        name = _unique("ct-eds")
+        eds = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = eds["EventDataStoreArn"]
+        cloudtrail.stop_event_data_store_ingestion(EventDataStore=eds_arn)
+        get = cloudtrail.get_event_data_store(EventDataStore=eds_arn)
+        assert get["Status"] == "STOPPED_INGESTION"
+
+    def test_start_ingestion_after_stop(self, cloudtrail):
+        """StartEventDataStoreIngestion restores ENABLED status."""
+        name = _unique("ct-eds")
+        eds = cloudtrail.create_event_data_store(Name=name)
+        eds_arn = eds["EventDataStoreArn"]
+        cloudtrail.stop_event_data_store_ingestion(EventDataStore=eds_arn)
+        cloudtrail.start_event_data_store_ingestion(EventDataStore=eds_arn)
+        get = cloudtrail.get_event_data_store(EventDataStore=eds_arn)
+        assert get["Status"] == "ENABLED"
+
+    def test_stop_ingestion_nonexistent(self, cloudtrail):
+        """StopEventDataStoreIngestion on nonexistent EDS raises error."""
+        fake_arn = (
+            "arn:aws:cloudtrail:us-east-1:123456789012:"
+            "eventdatastore/00000000-0000-0000-0000-000000000099"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.stop_event_data_store_ingestion(EventDataStore=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "EventDataStoreNotFoundException"
+
+
+class TestCloudTrailGenerateQuery:
+    """Tests for GenerateQuery operation."""
+
+    def test_generate_query(self, cloudtrail):
+        """GenerateQuery returns a QueryStatement."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        resp = cloudtrail.generate_query(
+            EventDataStores=[eds_arn],
+            Prompt="Show me all events",
+        )
+        assert "QueryStatement" in resp
+        assert len(resp["QueryStatement"]) > 0
+
+    def test_generate_query_has_alias(self, cloudtrail):
+        """GenerateQuery returns a QueryAlias."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        resp = cloudtrail.generate_query(
+            EventDataStores=[eds_arn],
+            Prompt="Show me events",
+        )
+        assert "QueryAlias" in resp
+
+
+class TestCloudTrailSearchSampleQueries:
+    """Tests for SearchSampleQueries operation."""
+
+    def test_search_sample_queries(self, cloudtrail):
+        """SearchSampleQueries returns SearchResults list."""
+        resp = cloudtrail.search_sample_queries(SearchPhrase="security events")
+        assert "SearchResults" in resp
+        assert isinstance(resp["SearchResults"], list)
+
+    def test_search_sample_queries_with_max_results(self, cloudtrail):
+        """SearchSampleQueries with MaxResults parameter."""
+        resp = cloudtrail.search_sample_queries(
+            SearchPhrase="management events",
+            MaxResults=5,
+        )
+        assert "SearchResults" in resp
+        assert isinstance(resp["SearchResults"], list)
+
+
+class TestCloudTrailListImportFailures:
+    """Tests for ListImportFailures operation."""
+
+    def test_list_import_failures_empty(self, cloudtrail):
+        """ListImportFailures returns empty Failures list for a new import."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        imp = cloudtrail.start_import(
+            Destinations=[eds_arn],
+            ImportSource={
+                "S3": {
+                    "S3LocationUri": "s3://fake-bucket/prefix/",
+                    "S3BucketRegion": "us-east-1",
+                    "S3BucketAccessRoleArn": "arn:aws:iam::123456789012:role/import-role",
+                }
+            },
+        )
+        import_id = imp["ImportId"]
+        resp = cloudtrail.list_import_failures(ImportId=import_id)
+        assert "Failures" in resp
+        assert isinstance(resp["Failures"], list)
+
+    def test_list_import_failures_nonexistent(self, cloudtrail):
+        """ListImportFailures for nonexistent import raises error."""
+        fake_id = str(uuid.uuid4())
+        with pytest.raises(ClientError) as exc_info:
+            cloudtrail.list_import_failures(ImportId=fake_id)
+        assert exc_info.value.response["Error"]["Code"] == "ImportNotFoundException"
+
+
+class TestCloudTrailListInsightsData:
+    """Tests for ListInsightsData operation."""
+
+    def test_list_insights_data(self, cloudtrail):
+        """ListInsightsData returns Events list."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        resp = cloudtrail.list_insights_data(
+            InsightSource=eds_arn,
+            DataType="ApiCallRateInsight",
+        )
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_list_insights_data_response_status(self, cloudtrail):
+        """ListInsightsData returns 200 status."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        resp = cloudtrail.list_insights_data(
+            InsightSource=eds_arn,
+            DataType="ApiCallRateInsight",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudTrailListInsightsMetricData:
+    """Tests for ListInsightsMetricData operation."""
+
+    def test_list_insights_metric_data(self, cloudtrail):
+        """ListInsightsMetricData returns Timestamps and Values."""
+        resp = cloudtrail.list_insights_metric_data(
+            EventSource="s3.amazonaws.com",
+            EventName="GetObject",
+            InsightType="ApiCallRateInsight",
+        )
+        assert "Timestamps" in resp
+        assert isinstance(resp["Timestamps"], list)
+        assert "Values" in resp
+        assert isinstance(resp["Values"], list)
+
+    def test_list_insights_metric_data_has_event_info(self, cloudtrail):
+        """ListInsightsMetricData returns EventSource and EventName."""
+        resp = cloudtrail.list_insights_metric_data(
+            EventSource="s3.amazonaws.com",
+            EventName="GetObject",
+            InsightType="ApiCallRateInsight",
+        )
+        assert resp["EventSource"] == "s3.amazonaws.com"
+        assert resp["EventName"] == "GetObject"
+        assert resp["InsightType"] == "ApiCallRateInsight"
+
+
+class TestCloudTrailPutEventConfiguration:
+    """Tests for PutEventConfiguration operation."""
+
+    def test_put_event_configuration(self, cloudtrail):
+        """PutEventConfiguration sets config on an EDS."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        resp = cloudtrail.put_event_configuration(
+            EventDataStore=eds_arn,
+            MaxEventSize="Large",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_and_get_event_configuration(self, cloudtrail):
+        """PutEventConfiguration then GetEventConfiguration returns the config."""
+        eds = cloudtrail.create_event_data_store(Name=_unique("ct-eds"))
+        eds_arn = eds["EventDataStoreArn"]
+        cloudtrail.put_event_configuration(
+            EventDataStore=eds_arn,
+            MaxEventSize="Large",
+        )
+        resp = cloudtrail.get_event_configuration(EventDataStore=eds_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
