@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -1255,6 +1256,38 @@ class TestEcsAccountSettings:
         settings = list_resp.get("settings", [])
         active = [s for s in settings if s.get("value") == "enabled"]
         assert len(active) == 0
+
+
+class TestEcsServiceDeployments:
+    """Tests for service deployment operations."""
+
+    def test_describe_service_deployments_empty(self, ecs):
+        """DescribeServiceDeployments with unknown ARNs returns empty list."""
+        fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-deployment/fake-id"
+        resp = ecs.describe_service_deployments(serviceDeploymentArns=[fake_arn])
+        assert "serviceDeployments" in resp
+        assert "failures" in resp
+
+    def test_describe_service_revisions_empty(self, ecs):
+        """DescribeServiceRevisions with unknown ARNs returns empty list."""
+        fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-revision/fake-id"
+        resp = ecs.describe_service_revisions(serviceRevisionArns=[fake_arn])
+        assert "serviceRevisions" in resp
+        assert "failures" in resp
+
+    def test_list_service_deployments_nonexistent_service(self, ecs):
+        """ListServiceDeployments with a nonexistent service raises ServiceNotFoundException."""
+        resp = ecs.create_cluster(clusterName="test-svc-deploy-cls")
+        cluster_arn = resp["cluster"]["clusterArn"]
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ecs.list_service_deployments(
+                    service="nonexistent-service",
+                    cluster=cluster_arn,
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ServiceNotFoundException"
+        finally:
+            ecs.delete_cluster(cluster=cluster_arn)
 
 
 class TestEcsUpdateServicePrimaryTaskSet:

@@ -1717,3 +1717,13 @@ class TestEKSCapabilityOperations:
             eks.delete_capability(clusterName=cluster_name, capabilityName=cap_name)
         finally:
             eks.delete_cluster(name=cluster_name)
+
+
+class TestEksInsightsRefresh:
+    """Tests for DescribeInsightsRefresh operation."""
+
+    def test_describe_insights_refresh_nonexistent_cluster(self, eks):
+        """DescribeInsightsRefresh with nonexistent cluster raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc_info:
+            eks.describe_insights_refresh(clusterName="nonexistent-cluster")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
