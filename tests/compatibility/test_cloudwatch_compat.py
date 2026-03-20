@@ -1396,3 +1396,160 @@ class TestCloudWatchMetricStreams:
         """ListMetricStreams returns entries list."""
         resp = cw.list_metric_streams()
         assert "Entries" in resp
+
+    def test_metric_stream_lifecycle(self, cw):
+        """PutMetricStream, GetMetricStream, ListMetricStreams, DeleteMetricStream."""
+        stream_name = f"test-stream-{uuid.uuid4().hex[:8]}"
+        firehose_arn = "arn:aws:firehose:us-east-1:123456789012:deliverystream/test"
+        role_arn = "arn:aws:iam::123456789012:role/cw-stream-role"
+
+        # Put
+        resp = cw.put_metric_stream(
+            Name=stream_name,
+            FirehoseArn=firehose_arn,
+            RoleArn=role_arn,
+            OutputFormat="json",
+        )
+        assert "Arn" in resp
+        assert stream_name in resp["Arn"]
+
+        try:
+            # Get
+            resp = cw.get_metric_stream(Name=stream_name)
+            assert resp["Name"] == stream_name
+            assert resp["FirehoseArn"] == firehose_arn
+            assert resp["RoleArn"] == role_arn
+            assert resp["OutputFormat"] == "json"
+            assert resp["State"] == "running"
+
+            # List
+            resp = cw.list_metric_streams()
+            names = [e["Name"] for e in resp["Entries"]]
+            assert stream_name in names
+        finally:
+            # Delete
+            resp = cw.delete_metric_stream(Name=stream_name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify gone from list
+        resp = cw.list_metric_streams()
+        names = [e["Name"] for e in resp["Entries"]]
+        assert stream_name not in names
+
+    def test_stop_and_start_metric_streams(self, cw):
+        """StopMetricStreams and StartMetricStreams toggle state."""
+        stream_name = f"toggle-stream-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_stream(
+            Name=stream_name,
+            FirehoseArn="arn:aws:firehose:us-east-1:123456789012:deliverystream/test",
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            OutputFormat="json",
+        )
+        try:
+            # Stop
+            resp = cw.stop_metric_streams(Names=[stream_name])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            stream = cw.get_metric_stream(Name=stream_name)
+            assert stream["State"] == "stopped"
+
+            # Start
+            resp = cw.start_metric_streams(Names=[stream_name])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            stream = cw.get_metric_stream(Name=stream_name)
+            assert stream["State"] == "running"
+        finally:
+            cw.delete_metric_stream(Name=stream_name)
+
+    def test_put_metric_stream_with_include_filters(self, cw):
+        """PutMetricStream with IncludeFilters."""
+        stream_name = f"filter-stream-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_stream(
+            Name=stream_name,
+            FirehoseArn="arn:aws:firehose:us-east-1:123456789012:deliverystream/test",
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            OutputFormat="json",
+            IncludeFilters=[{"Namespace": "AWS/EC2"}],
+        )
+        try:
+            stream = cw.get_metric_stream(Name=stream_name)
+            assert stream["Name"] == stream_name
+            assert len(stream.get("IncludeFilters", [])) >= 1
+        finally:
+            cw.delete_metric_stream(Name=stream_name)
+
+    def test_delete_nonexistent_metric_stream(self, cw):
+        """DeleteMetricStream on nonexistent stream does not error."""
+        resp = cw.delete_metric_stream(Name="nonexistent-stream")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_metric_stream_opentelemetry_format(self, cw):
+        """PutMetricStream with opentelemetry1.0 output format."""
+        stream_name = f"otel-stream-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_stream(
+            Name=stream_name,
+            FirehoseArn="arn:aws:firehose:us-east-1:123456789012:deliverystream/test",
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            OutputFormat="opentelemetry1.0",
+        )
+        try:
+            stream = cw.get_metric_stream(Name=stream_name)
+            assert stream["OutputFormat"] == "opentelemetry1.0"
+        finally:
+            cw.delete_metric_stream(Name=stream_name)
+
+
+class TestCloudWatchGapOps:
+    """Tests for newly-implemented CloudWatch gap operations."""
+
+    def test_get_metric_widget_image(self, cw):
+        """GetMetricWidgetImage returns image bytes."""
+        import json
+
+        resp = cw.get_metric_widget_image(
+            MetricWidget=json.dumps(
+                {
+                    "metrics": [["AWS/EC2", "CPUUtilization", "InstanceId", "i-12345"]],
+                    "period": 300,
+                }
+            )
+        )
+        assert "MetricWidgetImage" in resp
+        image_data = resp["MetricWidgetImage"]
+        assert len(image_data) > 0
+
+    def test_get_insight_rule_report(self, cw):
+        """GetInsightRuleReport returns report after creating a rule."""
+        rule_name = f"report-rule-{uuid.uuid4().hex[:8]}"
+        rule_def = (
+            '{"Schema":{"Name":"CloudWatchLogRule","Version":1},'
+            '"LogGroupNames":["/test"],'
+            '"Contributions":{"Filters":[],"Keys":["$.key"],"ValueOf":"$.value"}}'
+        )
+        cw.put_insight_rule(RuleName=rule_name, RuleDefinition=rule_def, RuleState="ENABLED")
+        try:
+            now = datetime.now(UTC)
+            resp = cw.get_insight_rule_report(
+                RuleName=rule_name,
+                StartTime=now - timedelta(hours=1),
+                EndTime=now,
+                Period=300,
+            )
+            assert "Contributors" in resp
+            assert "KeyLabels" in resp
+            assert "AggregateValue" in resp
+        finally:
+            cw.delete_insight_rules(RuleNames=[rule_name])
+
+    def test_put_managed_insight_rules(self, cw):
+        """PutManagedInsightRules returns empty failures list."""
+        resp = cw.put_managed_insight_rules(
+            ManagedRules=[
+                {
+                    "TemplateName": "DynamoDBContributorInsights",
+                    "ResourceARN": "arn:aws:dynamodb:us-east-1:123456789012:table/test",
+                    "Tags": [],
+                }
+            ]
+        )
+        assert "Failures" in resp
+        assert len(resp["Failures"]) == 0
