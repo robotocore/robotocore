@@ -942,3 +942,74 @@ class TestTranscribeVocabularyFilters:
         """ListVocabularyFilters returns VocabularyFilters list."""
         resp = transcribe.list_vocabulary_filters()
         assert "VocabularyFilters" in resp
+
+
+class TestTranscribeCallAnalyticsAndTags:
+    """Tests for call analytics categories, jobs, and resource tags."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("transcribe")
+
+    def test_create_get_delete_call_analytics_category(self, client):
+        name = f"cat-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 10,
+                        "AbsoluteTimeRange": {"First": 0, "Last": 100},
+                        "Negate": False,
+                    }
+                }
+            ],
+        )
+        try:
+            resp = client.get_call_analytics_category(CategoryName=name)
+            assert resp["CategoryProperties"]["CategoryName"] == name
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
+
+    def test_start_get_delete_call_analytics_job(self, client):
+        name = f"cajob-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://test-bucket/test.mp3"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = client.get_call_analytics_job(CallAnalyticsJobName=name)
+            assert "CallAnalyticsJob" in resp
+        finally:
+            client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    def test_list_tags_for_resource(self, client):
+        name = f"vocab-tag-{_uid()}"
+        client.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["hello", "world"],
+        )
+        try:
+            arn = f"arn:aws:transcribe:us-east-1:123456789012:vocabulary/{name}"
+            resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in resp
+        finally:
+            client.delete_vocabulary(VocabularyName=name)
+
+    def test_tag_and_untag_resource(self, client):
+        name = f"vocab-tu-{_uid()}"
+        client.create_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            Phrases=["hello", "world"],
+        )
+        try:
+            arn = f"arn:aws:transcribe:us-east-1:123456789012:vocabulary/{name}"
+            tag_resp = client.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "test"}])
+            assert tag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            untag_resp = client.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            assert untag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_vocabulary(VocabularyName=name)

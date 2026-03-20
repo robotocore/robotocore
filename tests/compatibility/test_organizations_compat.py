@@ -434,6 +434,25 @@ class TestOrganizationsServiceAccess:
         assert "EnabledServicePrincipals" in resp
         assert isinstance(resp["EnabledServicePrincipals"], list)
 
+    def test_enable_and_list_service_access(self, orgs):
+        try:
+            orgs.create_organization(FeatureSet="ALL")
+        except Exception:
+            pass  # already exists
+        orgs.enable_aws_service_access(ServicePrincipal="config.amazonaws.com")
+        resp = orgs.list_aws_service_access_for_organization()
+        assert "EnabledServicePrincipals" in resp
+
+    def test_disable_service_access(self, orgs):
+        try:
+            orgs.create_organization(FeatureSet="ALL")
+        except Exception:
+            pass  # already exists
+        orgs.enable_aws_service_access(ServicePrincipal="config.amazonaws.com")
+        orgs.disable_aws_service_access(ServicePrincipal="config.amazonaws.com")
+        resp = orgs.list_aws_service_access_for_organization()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
 
 class TestOrganizationsDelegatedAdmin:
     """Tests for delegated administrator operations."""

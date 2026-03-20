@@ -334,6 +334,69 @@ class TestLakeFormationGetResourceLFTags:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestLakeFormationTagOps:
+    """Tests for LF tag operations, tag expressions, and transactions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("lakeformation")
+
+    def test_create_get_delete_lf_tag(self, client):
+        tag_key = f"key-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1", "v2"])
+        try:
+            resp = client.get_lf_tag(TagKey=tag_key)
+            assert "TagValues" in resp
+            assert set(resp["TagValues"]) == {"v1", "v2"}
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_list_lf_tags(self, client):
+        resp = client.list_lf_tags()
+        assert "LFTags" in resp
+
+    def test_add_lf_tags_to_resource(self, client):
+        tag_key = f"key-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag(TagKey=tag_key, TagValues=["v1", "v2"])
+        try:
+            resp = client.add_lf_tags_to_resource(
+                Resource={"Database": {"Name": f"db-{uuid.uuid4().hex[:8]}"}},
+                LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_lf_tag(TagKey=tag_key)
+
+    def test_create_get_delete_lf_tag_expression(self, client):
+        name = f"expr-{uuid.uuid4().hex[:8]}"
+        client.create_lf_tag_expression(
+            Name=name,
+            Expression=[{"TagKey": "env", "TagValues": ["test"]}],
+        )
+        try:
+            resp = client.get_lf_tag_expression(Name=name)
+            assert "Name" in resp
+        finally:
+            client.delete_lf_tag_expression(Name=name)
+
+    def test_list_lf_tag_expressions(self, client):
+        resp = client.list_lf_tag_expressions()
+        assert "LFTagExpressions" in resp
+
+    def test_list_permissions(self, client):
+        resp = client.list_permissions()
+        assert "PrincipalResourcePermissions" in resp
+
+    def test_get_and_put_data_lake_settings(self, client):
+        resp = client.get_data_lake_settings()
+        assert "DataLakeSettings" in resp
+        client.put_data_lake_settings(DataLakeSettings={"DataLakeAdmins": []})
+
+    def test_start_transaction(self, client):
+        resp = client.start_transaction()
+        assert "TransactionId" in resp
+
+
 class TestLakeFormationAdditionalOps:
     """Tests for additional LakeFormation operations."""
 

@@ -364,3 +364,21 @@ class TestMemoryDBUpdates:
             assert resp["User"]["Name"] == user_name
         finally:
             memorydb.delete_user(UserName=user_name)
+
+
+class TestMemoryDBAclOps:
+    """Tests for ACL create/describe/delete operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("memorydb")
+
+    def test_create_describe_delete_acl(self, client):
+        acl_name = f"acl-{_uid()}"
+        client.create_acl(ACLName=acl_name)
+        try:
+            resp = client.describe_acls(ACLName=acl_name)
+            assert len(resp["ACLs"]) > 0
+            assert resp["ACLs"][0]["Name"] == acl_name
+        finally:
+            client.delete_acl(ACLName=acl_name)
