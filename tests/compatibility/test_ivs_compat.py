@@ -418,3 +418,145 @@ class TestIvsPlaybackRestrictionPolicy:
         with pytest.raises(ClientError) as exc_info:
             ivs.get_playback_restriction_policy(arn=fake_arn)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestIVSNewOps:
+    """Tests for newly implemented IVS operations."""
+
+    def test_list_streams_empty(self, ivs):
+        """list_streams returns empty list when no streams are active."""
+        resp = ivs.list_streams()
+        assert "streams" in resp
+        assert isinstance(resp["streams"], list)
+
+    def test_stop_stream(self, ivs):
+        """stop_stream succeeds for a valid channel."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.stop_stream(channelArn=channel_arn)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_put_metadata(self, ivs):
+        """put_metadata sends metadata to a channel successfully."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.put_metadata(channelArn=channel_arn, metadata="test-metadata")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_list_stream_sessions_empty(self, ivs):
+        """list_stream_sessions returns empty list for channel with no sessions."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.list_stream_sessions(channelArn=channel_arn)
+            assert "streamSessions" in resp
+            assert isinstance(resp["streamSessions"], list)
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_get_stream_session(self, ivs):
+        """get_stream_session returns a streamSession for a valid channel."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.get_stream_session(channelArn=channel_arn)
+            assert "streamSession" in resp
+            assert "streamId" in resp["streamSession"]
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_create_and_list_playback_restriction_policies(self, ivs):
+        """create_playback_restriction_policy + list_playback_restriction_policies work."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US", "CA"],
+            allowedOrigins=["https://example.com"],
+            enableStrictOriginEnforcement=False,
+            name=_unique("policy"),
+        )
+        policy = resp["playbackRestrictionPolicy"]
+        policy_arn = policy["arn"]
+        try:
+            assert "arn" in policy
+            assert policy["arn"].startswith("arn:aws:ivs:")
+            assert "US" in policy["allowedCountries"]
+            list_resp = ivs.list_playback_restriction_policies()
+            assert "playbackRestrictionPolicies" in list_resp
+            arns = [p["arn"] for p in list_resp["playbackRestrictionPolicies"]]
+            assert policy_arn in arns
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_update_playback_restriction_policy(self, ivs):
+        """update_playback_restriction_policy modifies allowed countries."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://example.com"],
+            name=_unique("policy"),
+        )
+        policy_arn = resp["playbackRestrictionPolicy"]["arn"]
+        try:
+            updated = ivs.update_playback_restriction_policy(
+                arn=policy_arn,
+                allowedCountries=["US", "GB", "DE"],
+            )
+            assert "playbackRestrictionPolicy" in updated
+            assert set(updated["playbackRestrictionPolicy"]["allowedCountries"]) == {
+                "US",
+                "GB",
+                "DE",
+            }
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_delete_playback_restriction_policy(self, ivs):
+        """delete_playback_restriction_policy removes the policy."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://example.com"],
+            name=_unique("policy"),
+        )
+        policy_arn = resp["playbackRestrictionPolicy"]["arn"]
+        ivs.delete_playback_restriction_policy(arn=policy_arn)
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_playback_restriction_policy(arn=policy_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_start_viewer_session_revocation(self, ivs):
+        """start_viewer_session_revocation succeeds for a valid channel and viewer."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.start_viewer_session_revocation(
+                channelArn=channel_arn,
+                viewerId="viewer-abc123",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_batch_start_viewer_session_revocation(self, ivs):
+        """batch_start_viewer_session_revocation returns no errors for valid channels."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.batch_start_viewer_session_revocation(
+                viewerSessions=[
+                    {"channelArn": channel_arn, "viewerId": "viewer-001"},
+                ]
+            )
+            assert "errors" in resp
+            assert resp["errors"] == []
+        finally:
+            ivs.delete_channel(arn=channel_arn)
