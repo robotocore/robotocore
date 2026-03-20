@@ -4817,3 +4817,645 @@ class TestGlueGetUserDefinedFunctions:
                 Pattern="*",
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueTableOptimizerOperations:
+    """Tests for TableOptimizer CRUD operations."""
+
+    def test_create_and_get_table_optimizer(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            glue.create_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+                TableOptimizerConfiguration={
+                    "roleArn": "arn:aws:iam::123456789012:role/test",
+                    "enabled": True,
+                },
+            )
+            resp = glue.get_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            assert "TableOptimizer" in resp
+            assert resp["DatabaseName"] == db_name
+            assert resp["TableName"] == tbl_name
+        finally:
+            glue.delete_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_batch_get_table_optimizer(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            glue.create_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+                TableOptimizerConfiguration={
+                    "roleArn": "arn:aws:iam::123456789012:role/test",
+                    "enabled": True,
+                },
+            )
+            resp = glue.batch_get_table_optimizer(
+                Entries=[
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": db_name,
+                        "tableName": tbl_name,
+                        "type": "compaction",
+                    }
+                ]
+            )
+            assert "TableOptimizers" in resp
+            assert "Failures" in resp
+        finally:
+            glue.delete_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_list_table_optimizer_runs(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            glue.create_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+                TableOptimizerConfiguration={
+                    "roleArn": "arn:aws:iam::123456789012:role/test",
+                    "enabled": True,
+                },
+            )
+            resp = glue.list_table_optimizer_runs(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            assert "TableOptimizerRuns" in resp
+            assert isinstance(resp["TableOptimizerRuns"], list)
+        finally:
+            glue.delete_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_delete_table_optimizer(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            glue.create_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+                TableOptimizerConfiguration={
+                    "roleArn": "arn:aws:iam::123456789012:role/test",
+                    "enabled": True,
+                },
+            )
+            glue.delete_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            with pytest.raises(ClientError) as exc:
+                glue.get_table_optimizer(
+                    CatalogId="123456789012",
+                    DatabaseName=db_name,
+                    TableName=tbl_name,
+                    Type="compaction",
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueConnectionTypeOperations:
+    """Tests for ConnectionType CRUD operations."""
+
+    def test_list_connection_types(self, glue):
+        resp = glue.list_connection_types()
+        assert "ConnectionTypes" in resp
+        assert isinstance(resp["ConnectionTypes"], list)
+
+    def test_register_and_describe_connection_type(self, glue):
+        ct_name = _unique("ct")
+        try:
+            resp = glue.register_connection_type(
+                ConnectionType=ct_name,
+                IntegrationType="CUSTOM",
+                Description="Test connection type",
+                ConnectionProperties={
+                    "Url": {
+                        "Name": "Url",
+                        "Required": True,
+                        "PropertyType": "STRING",
+                        "DefaultValue": "https://example.com",
+                    },
+                },
+                ConnectorAuthenticationConfiguration={
+                    "AuthenticationTypes": ["BASIC"],
+                },
+                RestConfiguration={},
+            )
+            assert "ConnectionTypeArn" in resp
+
+            desc = glue.describe_connection_type(ConnectionType=ct_name)
+            assert desc["ConnectionType"] == ct_name
+        finally:
+            glue.delete_connection_type(ConnectionType=ct_name)
+
+    def test_delete_connection_type(self, glue):
+        ct_name = _unique("ct")
+        glue.register_connection_type(
+            ConnectionType=ct_name,
+            IntegrationType="CUSTOM",
+            Description="Temp",
+            ConnectionProperties={
+                "Url": {
+                    "Name": "Url",
+                    "Required": False,
+                    "PropertyType": "STRING",
+                },
+            },
+            ConnectorAuthenticationConfiguration={
+                "AuthenticationTypes": ["BASIC"],
+            },
+            RestConfiguration={},
+        )
+        glue.delete_connection_type(ConnectionType=ct_name)
+        with pytest.raises(ClientError) as exc:
+            glue.describe_connection_type(ConnectionType=ct_name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueIdentityCenterOperations:
+    """Tests for Glue Identity Center configuration."""
+
+    def test_create_and_get_identity_center_config(self, glue):
+        try:
+            resp = glue.create_glue_identity_center_configuration(
+                InstanceArn="arn:aws:sso:::instance/ssoins-123456"
+            )
+            assert "ApplicationArn" in resp
+
+            config = glue.get_glue_identity_center_configuration()
+            assert "InstanceArn" in config
+            assert config["InstanceArn"] == "arn:aws:sso:::instance/ssoins-123456"
+        finally:
+            glue.delete_glue_identity_center_configuration()
+
+    def test_update_identity_center_config(self, glue):
+        try:
+            glue.create_glue_identity_center_configuration(
+                InstanceArn="arn:aws:sso:::instance/ssoins-123456"
+            )
+            glue.update_glue_identity_center_configuration(
+                Scopes=["openid", "profile"],
+            )
+            config = glue.get_glue_identity_center_configuration()
+            assert "InstanceArn" in config
+        finally:
+            glue.delete_glue_identity_center_configuration()
+
+    def test_delete_identity_center_config(self, glue):
+        glue.create_glue_identity_center_configuration(
+            InstanceArn="arn:aws:sso:::instance/ssoins-todel"
+        )
+        glue.delete_glue_identity_center_configuration()
+        with pytest.raises(ClientError) as exc:
+            glue.get_glue_identity_center_configuration()
+        assert "Error" in exc.value.response
+
+
+class TestGlueMaterializedViewOperations:
+    """Tests for Materialized View Refresh Task Runs."""
+
+    def test_start_and_get_materialized_view_refresh(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            resp = glue.start_materialized_view_refresh_task_run(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+            )
+            assert "MaterializedViewRefreshTaskRunId" in resp
+            task_run_id = resp["MaterializedViewRefreshTaskRunId"]
+
+            detail = glue.get_materialized_view_refresh_task_run(
+                CatalogId="123456789012",
+                MaterializedViewRefreshTaskRunId=task_run_id,
+            )
+            assert "MaterializedViewRefreshTaskRun" in detail
+            run = detail["MaterializedViewRefreshTaskRun"]
+            assert run["MaterializedViewRefreshTaskRunId"] == task_run_id
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_list_materialized_view_refresh_task_runs(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            glue.start_materialized_view_refresh_task_run(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+            )
+            resp = glue.list_materialized_view_refresh_task_runs(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+            )
+            assert "MaterializedViewRefreshTaskRuns" in resp
+            assert len(resp["MaterializedViewRefreshTaskRuns"]) >= 1
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueMLTaskRunOperations:
+    """Tests for ML task run operations (CancelMLTaskRun, StartML*)."""
+
+    @pytest.fixture
+    def ml_transform(self, glue):
+        resp = glue.create_ml_transform(
+            Name=_unique("ml"),
+            InputRecordTables=[{"DatabaseName": "db", "TableName": "tbl"}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "id"},
+            },
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        tid = resp["TransformId"]
+        yield tid
+        glue.delete_ml_transform(TransformId=tid)
+
+    def test_cancel_ml_task_run(self, glue, ml_transform):
+        resp = glue.cancel_ml_task_run(TransformId=ml_transform, TaskRunId="fake-task-run")
+        assert resp["TransformId"] == ml_transform
+        assert resp["TaskRunId"] == "fake-task-run"
+        assert "Status" in resp
+
+    def test_start_ml_evaluation_task_run(self, glue, ml_transform):
+        resp = glue.start_ml_evaluation_task_run(TransformId=ml_transform)
+        assert "TaskRunId" in resp
+        assert len(resp["TaskRunId"]) > 0
+
+    def test_start_ml_labeling_set_generation(self, glue, ml_transform):
+        resp = glue.start_ml_labeling_set_generation_task_run(
+            TransformId=ml_transform, OutputS3Path="s3://bucket/output"
+        )
+        assert "TaskRunId" in resp
+        assert len(resp["TaskRunId"]) > 0
+
+    def test_start_export_labels_task_run(self, glue, ml_transform):
+        resp = glue.start_export_labels_task_run(
+            TransformId=ml_transform, OutputS3Path="s3://bucket/labels"
+        )
+        assert "TaskRunId" in resp
+        assert len(resp["TaskRunId"]) > 0
+
+    def test_start_import_labels_task_run(self, glue, ml_transform):
+        resp = glue.start_import_labels_task_run(
+            TransformId=ml_transform, InputS3Path="s3://bucket/labels"
+        )
+        assert "TaskRunId" in resp
+        assert len(resp["TaskRunId"]) > 0
+
+
+class TestGlueSchemaVersionDiffOps:
+    """Tests for schema version diff, query metadata, remove metadata."""
+
+    @pytest.fixture
+    def schema_setup(self, glue):
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name)
+        v1_def = '{"type": "record", "name": "T", "fields": [{"name": "id", "type": "int"}]}'
+        v2_def = (
+            '{"type": "record", "name": "T",'
+            ' "fields": [{"name": "id", "type": "int"},'
+            ' {"name": "name", "type": "string"}]}'
+        )
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=v1_def,
+        )
+        glue.register_schema_version(
+            SchemaId={"RegistryName": reg_name, "SchemaName": schema_name},
+            SchemaDefinition=v2_def,
+        )
+        yield reg_name, schema_name
+        glue.delete_schema(SchemaId={"RegistryName": reg_name, "SchemaName": schema_name})
+        glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_get_schema_versions_diff(self, glue, schema_setup):
+        reg_name, schema_name = schema_setup
+        resp = glue.get_schema_versions_diff(
+            SchemaId={"RegistryName": reg_name, "SchemaName": schema_name},
+            FirstSchemaVersionNumber={"VersionNumber": 1},
+            SecondSchemaVersionNumber={"VersionNumber": 2},
+            SchemaDiffType="SYNTAX_DIFF",
+        )
+        assert "Diff" in resp
+        assert len(resp["Diff"]) > 0
+
+    def test_query_schema_version_metadata(self, glue, schema_setup):
+        reg_name, schema_name = schema_setup
+        glue.put_schema_version_metadata(
+            SchemaId={"RegistryName": reg_name, "SchemaName": schema_name},
+            SchemaVersionNumber={"VersionNumber": 1},
+            MetadataKeyValue={"MetadataKey": "testkey", "MetadataValue": "testval"},
+        )
+        resp = glue.query_schema_version_metadata(
+            SchemaId={"RegistryName": reg_name, "SchemaName": schema_name},
+            SchemaVersionNumber={"VersionNumber": 1},
+        )
+        assert "MetadataInfoMap" in resp
+        assert "SchemaVersionId" in resp
+
+    def test_remove_schema_version_metadata(self, glue, schema_setup):
+        reg_name, schema_name = schema_setup
+        glue.put_schema_version_metadata(
+            SchemaId={"RegistryName": reg_name, "SchemaName": schema_name},
+            SchemaVersionNumber={"VersionNumber": 1},
+            MetadataKeyValue={"MetadataKey": "rmkey", "MetadataValue": "rmval"},
+        )
+        resp = glue.remove_schema_version_metadata(
+            SchemaId={"RegistryName": reg_name, "SchemaName": schema_name},
+            SchemaVersionNumber={"VersionNumber": 1},
+            MetadataKeyValue={"MetadataKey": "rmkey", "MetadataValue": "rmval"},
+        )
+        assert "SchemaVersionId" in resp
+        assert resp["MetadataKey"] == "rmkey"
+        assert resp["MetadataValue"] == "rmval"
+
+
+class TestGlueStubOperations:
+    """Tests for CreateScript, GetDataflowGraph, GetPlan, and other stub ops."""
+
+    def test_create_script(self, glue):
+        resp = glue.create_script(
+            DagNodes=[
+                {
+                    "Id": "node1",
+                    "NodeType": "S3",
+                    "Args": [{"Name": "path", "Value": "s3://bucket/input"}],
+                }
+            ],
+            DagEdges=[],
+        )
+        assert "PythonScript" in resp
+        assert len(resp["PythonScript"]) > 0
+
+    def test_get_dataflow_graph(self, glue):
+        resp = glue.get_dataflow_graph()
+        assert "DagNodes" in resp
+        assert "DagEdges" in resp
+        assert isinstance(resp["DagNodes"], list)
+
+    def test_get_plan(self, glue):
+        resp = glue.get_plan(
+            Mapping=[{"SourceTable": "src", "SourcePath": "path", "SourceType": "type"}],
+            Source={"DatabaseName": "db", "TableName": "tbl"},
+        )
+        assert "PythonScript" in resp
+        assert len(resp["PythonScript"]) > 0
+
+    def test_update_job_from_source_control(self, glue):
+        resp = glue.update_job_from_source_control()
+        assert "JobName" in resp
+
+    def test_update_source_control_from_job(self, glue):
+        resp = glue.update_source_control_from_job()
+        assert "JobName" in resp
+
+
+class TestGlueConnectionEntityOps:
+    """Tests for TestConnection, DescribeEntity, ListEntities."""
+
+    @pytest.fixture
+    def connection(self, glue):
+        name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://localhost:3306/mydb",
+                    "USERNAME": "user",
+                    "PASSWORD": "pass",
+                },
+            }
+        )
+        yield name
+        glue.delete_connection(ConnectionName=name)
+
+    def test_test_connection(self, glue, connection):
+        resp = glue.test_connection(ConnectionName=connection)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_test_connection_not_found(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.test_connection(ConnectionName="nonexistent-conn-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_describe_entity(self, glue, connection):
+        resp = glue.describe_entity(ConnectionName=connection, EntityName="test_entity")
+        assert "Fields" in resp
+
+    def test_describe_entity_not_found(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.describe_entity(ConnectionName="nonexistent-conn-xyz", EntityName="e")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_entities(self, glue, connection):
+        resp = glue.list_entities(ConnectionName=connection)
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_list_entities_not_found(self, glue):
+        with pytest.raises(ClientError) as exc:
+            glue.list_entities(ConnectionName="nonexistent-conn-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueUnfilteredMetadataOps:
+    """Tests for GetUnfilteredTableMetadata and GetUnfilteredPartitionsMetadata."""
+
+    @pytest.fixture
+    def table_with_partition(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/t",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "dt", "Type": "string"}],
+            },
+        )
+        yield db_name, tbl_name
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        glue.delete_database(Name=db_name)
+
+    def test_get_unfiltered_table_metadata(self, glue, table_with_partition):
+        db_name, tbl_name = table_with_partition
+        resp = glue.get_unfiltered_table_metadata(
+            CatalogId="123456789012",
+            DatabaseName=db_name,
+            Name=tbl_name,
+            SupportedPermissionTypes=["COLUMN_PERMISSION"],
+        )
+        assert "Table" in resp
+        assert resp["Table"]["Name"] == tbl_name
+        assert "AuthorizedColumns" in resp
+        assert "IsRegisteredWithLakeFormation" in resp
+
+    def test_get_unfiltered_partitions_metadata(self, glue, table_with_partition):
+        db_name, tbl_name = table_with_partition
+        resp = glue.get_unfiltered_partitions_metadata(
+            CatalogId="123456789012",
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            SupportedPermissionTypes=["COLUMN_PERMISSION"],
+        )
+        assert "UnfilteredPartitions" in resp
+        assert isinstance(resp["UnfilteredPartitions"], list)
