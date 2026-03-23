@@ -55,6 +55,46 @@ def _to_snake_case(name: str) -> str:
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
+def _extract_client_variable_names(tree: ast.AST) -> set[str]:
+    """Find variable names that are likely boto3 clients.
+
+    Detects:
+    - Fixture parameters: def test_foo(self, sqs, client):
+    - Assignments: client = boto3.client('sqs')
+    - Common client variable names
+    """
+    clients = set()
+
+    # Common client variable names used in tests
+    common_names = {"client", "sqs", "sns", "s3", "iam", "ec2", "dynamodb", "lambda_client",
+                    "logs", "events", "kinesis", "firehose", "stepfunctions", "ssm",
+                    "secretsmanager", "kms", "cloudwatch", "cloudformation", "sts",
+                    "apigateway", "cognito", "ses", "route53", "acm", "ecs", "ecr",
+                    "batch", "scheduler", "xray", "rekognition", "appsync"}
+
+    for node in ast.walk(tree):
+        # Fixture parameters in test functions
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            for arg in node.args.args:
+                if arg.arg not in ("self", "cls"):
+                    clients.add(arg.arg)
+
+        # Assignments like: client = boto3.client(...)
+        if isinstance(node, ast.Assign):
+            if isinstance(node.value, ast.Call):
+                func = node.value.func
+                # boto3.client(...) or session.client(...)
+                if isinstance(func, ast.Attribute) and func.attr == "client":
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            clients.add(target.id)
+
+    # Also add common names that might be used
+    clients.update(common_names)
+
+    return clients
+
+
 def discover_services() -> dict[str, str]:
     """Discover all registered services and map to botocore names.
 
@@ -122,7 +162,11 @@ def find_test_file(service_name: str) -> Path:
 
 
 def get_tested_operations(test_file: Path) -> set[str]:
-    """Extract AWS operation names tested in a file."""
+    """Extract AWS operation names tested in a file.
+
+    Only counts actual boto3 client method calls, not Python built-ins.
+    Does NOT infer operations from test names (which caused false positives).
+    """
     if not test_file.exists():
         return set()
 
@@ -134,20 +178,33 @@ def get_tested_operations(test_file: Path) -> set[str]:
     except SyntaxError:
         return set()
 
-    # Find all method calls on client objects (e.g., s3.list_buckets())
+    # Find client variable names
+    client_vars = _extract_client_variable_names(tree)
+
+    # Find method calls on client objects only
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            method_name = node.func.attr
-            pascal = "".join(word.capitalize() for word in method_name.split("_"))
-            tested.add(pascal)
+            # Get the object the method is called on
+            obj = node.func.value
+            obj_name = None
+            if isinstance(obj, ast.Name):
+                obj_name = obj.id
+            elif isinstance(obj, ast.Attribute):
+                # Handle self.client.method()
+                obj_name = obj.attr
 
-    # Also scan test names for operation hints
-    for match in re.finditer(r"def test_(\w+)", source):
-        test_name = match.group(1)
-        parts = test_name.split("_")
-        for i in range(1, len(parts) + 1):
-            candidate = "".join(word.capitalize() for word in parts[:i])
-            tested.add(candidate)
+            # Only count if called on a known client variable
+            if obj_name and obj_name in client_vars:
+                method_name = node.func.attr
+                # Skip Python built-in methods and common non-AWS methods
+                if method_name.startswith("_") or method_name in {
+                    "get", "set", "items", "keys", "values", "update", "pop",
+                    "append", "extend", "remove", "clear", "copy", "close",
+                }:
+                    continue
+                # Convert snake_case to PascalCase
+                pascal = "".join(word.capitalize() for word in method_name.split("_"))
+                tested.add(pascal)
 
     return tested
 
