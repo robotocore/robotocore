@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -102,10 +103,38 @@ def extract_noun(op_name: str) -> str:
     return op_name
 
 
-def get_tested_operations(service_name: str) -> set[str]:
-    """Get operations already tested in the compat file."""
-    import ast
+def _extract_client_variable_names(tree: ast.AST) -> set[str]:
+    """Find variable names that are likely boto3 clients."""
+    clients = set()
+    # Common client variable names
+    common_names = {"client", "sqs", "sns", "s3", "iam", "ec2", "dynamodb", "lambda_client",
+                    "logs", "events", "kinesis", "firehose", "stepfunctions", "ssm",
+                    "secretsmanager", "kms", "cloudwatch", "cloudformation", "sts",
+                    "apigateway", "cognito", "ses", "route53", "acm", "ecs", "ecr",
+                    "batch", "scheduler", "xray", "rekognition", "appsync"}
 
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            for arg in node.args.args:
+                if arg.arg not in ("self", "cls"):
+                    clients.add(arg.arg)
+        if isinstance(node, ast.Assign):
+            if isinstance(node.value, ast.Call):
+                func = node.value.func
+                if isinstance(func, ast.Attribute) and func.attr == "client":
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            clients.add(target.id)
+
+    clients.update(common_names)
+    return clients
+
+
+def get_tested_operations(service_name: str) -> set[str]:
+    """Get operations already tested in the compat file.
+
+    Only counts actual boto3 client method calls, not Python built-ins.
+    """
     test_dir = Path("tests/compatibility")
     # Try variations
     for name in [
@@ -125,11 +154,26 @@ def get_tested_operations(service_name: str) -> set[str]:
     except SyntaxError:
         return set()
 
+    client_vars = _extract_client_variable_names(tree)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            method = node.func.attr
-            pascal = "".join(w.capitalize() for w in method.split("_"))
-            tested.add(pascal)
+            obj = node.func.value
+            obj_name = None
+            if isinstance(obj, ast.Name):
+                obj_name = obj.id
+            elif isinstance(obj, ast.Attribute):
+                obj_name = obj.attr
+
+            if obj_name and obj_name in client_vars:
+                method = node.func.attr
+                if method.startswith("_") or method in {
+                    "get", "set", "items", "keys", "values", "update", "pop",
+                    "append", "extend", "remove", "clear", "copy", "close",
+                }:
+                    continue
+                pascal = "".join(w.capitalize() for w in method.split("_"))
+                tested.add(pascal)
     return tested
 
 
