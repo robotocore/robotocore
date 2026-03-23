@@ -22,13 +22,20 @@ class TestEventBridgeOperations:
             State="ENABLED",
         )
         assert "RuleArn" in response
+        assert "test-rule" in response["RuleArn"]
+        assert response["RuleArn"].startswith("arn:aws:events:")
         events.delete_rule(Name="test-rule")
 
     def test_list_rules(self, events):
         events.put_rule(Name="list-rule", ScheduleExpression="rate(1 hour)")
         response = events.list_rules()
+        assert "Rules" in response
         names = [r["Name"] for r in response["Rules"]]
         assert "list-rule" in names
+        # Verify the rule has expected structure
+        list_rule = next((r for r in response["Rules"] if r["Name"] == "list-rule"), None)
+        assert list_rule is not None
+        assert list_rule["State"] in ["ENABLED", "DISABLED"]
         events.delete_rule(Name="list-rule")
 
     def test_describe_rule(self, events):
@@ -400,8 +407,14 @@ class TestEventBridgeRulePatterns:
 class TestEventBridgeEventBus:
     def test_list_event_buses_includes_default(self, events):
         buses = events.list_event_buses()
+        assert "EventBuses" in buses
         names = [b["Name"] for b in buses["EventBuses"]]
         assert "default" in names
+        # Verify default bus has expected structure
+        default_bus = next((b for b in buses["EventBuses"] if b["Name"] == "default"), None)
+        assert default_bus is not None
+        assert "Arn" in default_bus
+        assert "arn:aws:events:" in default_bus["Arn"]
 
     def test_create_describe_delete_event_bus(self, events):
         suffix = uuid.uuid4().hex[:8]
@@ -649,6 +662,7 @@ class TestEventBridgeRuleState:
                 EventSourceArn=bus_arn,
             )
             resp = events.list_archives()
+            assert "Archives" in resp
             names = [a["ArchiveName"] for a in resp["Archives"]]
             assert archive_name in names
         finally:
@@ -818,8 +832,8 @@ class TestEventBridgeListRulesFilter:
 
 class TestEventBridgePartnerEvents:
     def test_put_partner_events_source(self, events):
-        """PutPartnerEventsSource is not commonly supported in emulators."""
-        events.put_partner_events(
+        """PutPartnerEvents accepts partner events."""
+        resp = events.put_partner_events(
             Entries=[
                 {
                     "Source": "aws.partner/example.com/test",
@@ -828,6 +842,9 @@ class TestEventBridgePartnerEvents:
                 }
             ]
         )
+        assert "FailedEntryCount" in resp
+        assert resp["FailedEntryCount"] == 0
+        assert "Entries" in resp
 
 
 class TestEventBridgeRuleTagging:
@@ -1158,6 +1175,7 @@ class TestEventBridgeExtended:
     def test_list_event_buses(self, events):
         resp = events.list_event_buses()
         assert "EventBuses" in resp
+        assert isinstance(resp["EventBuses"], list)
         names = [b["Name"] for b in resp["EventBuses"]]
         assert "default" in names
 
@@ -1238,6 +1256,7 @@ class TestEventBridgeExtended:
     def test_list_archives(self, events):
         resp = events.list_archives()
         assert "Archives" in resp
+        assert isinstance(resp["Archives"], list)
 
     def test_put_rule_with_description(self, events):
         suffix = uuid.uuid4().hex[:8]
@@ -1461,14 +1480,17 @@ class TestEventsGapStubs:
     def test_list_connections(self, events):
         resp = events.list_connections()
         assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
 
     def test_list_api_destinations(self, events):
         resp = events.list_api_destinations()
         assert "ApiDestinations" in resp
+        assert isinstance(resp["ApiDestinations"], list)
 
     def test_list_endpoints(self, events):
         resp = events.list_endpoints()
         assert "Endpoints" in resp
+        assert isinstance(resp["Endpoints"], list)
 
 
 class TestEventBridgeDeleteConnection:
@@ -1574,30 +1596,47 @@ class TestEventsAutoCoverage:
         """ListEventSources returns a response."""
         resp = client.list_event_sources()
         assert "EventSources" in resp
+        assert isinstance(resp["EventSources"], list)
 
     def test_list_replays(self, client):
         """ListReplays returns a response."""
         resp = client.list_replays()
         assert "Replays" in resp
+        assert isinstance(resp["Replays"], list)
 
     def test_put_permission(self, client):
-        """PutPermission returns a response."""
-        try:
+        """PutPermission validates required parameters."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
             client.put_permission()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
+        # Requires EventBusName, StatementId, Action, and Principal
+        assert exc.value.response["Error"]["Code"] in [
+            "MissingParameter",
+            "InvalidParameter",
+            "ValidationException",
+        ]
 
     def test_remove_permission(self, client):
-        """RemovePermission returns a response."""
-        try:
+        """RemovePermission validates required parameters."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
             client.remove_permission()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
+        # Requires StatementId - can return validation or resource not found
+        assert exc.value.response["Error"]["Code"] in [
+            "MissingParameter",
+            "InvalidParameter",
+            "ValidationException",
+            "ResourceNotFoundException",
+        ]
 
     def test_update_event_bus(self, client):
         """UpdateEventBus returns a response."""
         resp = client.update_event_bus()
         assert "Arn" in resp
+        assert resp["Arn"].startswith("arn:aws:events:")
+        assert "default" in resp["Arn"]
 
 
 class TestEventBridgePartnerEventSource:
@@ -2319,4 +2358,6 @@ class TestEventBridgeMissingGapOps:
             },
         )
         assert "Arn" in resp
+        assert name in resp["Arn"]
+        assert resp["Arn"].startswith("arn:aws:events:")
         events.delete_endpoint(Name=name)
