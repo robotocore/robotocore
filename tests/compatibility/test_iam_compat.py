@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import datetime
 
 import pytest
 from botocore.exceptions import ClientError
@@ -48,6 +49,8 @@ class TestIAMUserOperations:
     def test_list_users(self, iam):
         iam.create_user(UserName="list-user-1")
         response = iam.list_users()
+        assert "Users" in response
+        assert isinstance(response["Users"], list)
         names = [u["UserName"] for u in response["Users"]]
         assert "list-user-1" in names
         iam.delete_user(UserName="list-user-1")
@@ -81,6 +84,8 @@ class TestIAMRoleOperations:
         trust = json.dumps({"Version": "2012-10-17", "Statement": []})
         iam.create_role(RoleName="list-role", AssumeRolePolicyDocument=trust)
         response = iam.list_roles()
+        assert "Roles" in response
+        assert isinstance(response["Roles"], list)
         names = [r["RoleName"] for r in response["Roles"]]
         assert "list-role" in names
         iam.delete_role(RoleName="list-role")
@@ -835,6 +840,9 @@ class TestIAMPolicyVersionsExtended:
             iam.create_policy_version(PolicyArn=arn, PolicyDocument=doc2, SetAsDefault=False)
             iam.create_policy_version(PolicyArn=arn, PolicyDocument=doc3, SetAsDefault=False)
             resp = iam.list_policy_versions(PolicyArn=arn)
+            assert "Versions" in resp
+            assert isinstance(resp["Versions"], list)
+            assert len(resp["Versions"]) == 3
             version_ids = [v["VersionId"] for v in resp["Versions"]]
             assert "v1" in version_ids
             assert "v2" in version_ids
@@ -1196,6 +1204,8 @@ class TestIAMSAMLProvider:
         try:
             get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
             assert "SAMLMetadataDocument" in get_resp
+            assert isinstance(get_resp["SAMLMetadataDocument"], str)
+            assert "EntityDescriptor" in get_resp["SAMLMetadataDocument"]
         finally:
             iam.delete_saml_provider(SAMLProviderArn=arn)
 
@@ -1215,6 +1225,8 @@ class TestIAMSimulatePolicy:
                 ActionNames=["s3:GetObject"],
             )
             assert "EvaluationResults" in resp
+            assert isinstance(resp["EvaluationResults"], list)
+            assert len(resp["EvaluationResults"]) > 0
         finally:
             iam.detach_role_policy(RoleName=role_name, PolicyArn=arn)
             iam.delete_policy(PolicyArn=arn)
@@ -1227,16 +1239,22 @@ class TestIAMSimulatePolicy:
             ActionNames=["s3:GetObject"],
         )
         assert "EvaluationResults" in resp
+        assert isinstance(resp["EvaluationResults"], list)
+        assert len(resp["EvaluationResults"]) > 0
 
 
 class TestIAMAccountSummary:
     def test_get_account_summary(self, iam):
         """GetAccountSummary returns a summary map."""
         resp = iam.get_account_summary()
+        assert "SummaryMap" in resp
         summary = resp["SummaryMap"]
         assert "Users" in summary
+        assert isinstance(summary["Users"], int)
         assert "Roles" in summary
+        assert isinstance(summary["Roles"], int)
         assert "Policies" in summary
+        assert isinstance(summary["Policies"], int)
 
 
 class TestIAMPolicyVersionsV2:
@@ -1342,7 +1360,9 @@ class TestIAMAccountPasswordPolicy:
 class TestIAMChangePassword:
     def test_change_password(self, iam):
         """ChangePassword."""
-        iam.change_password(OldPassword="oldpass", NewPassword="newpass123!")
+        resp = iam.change_password(OldPassword="oldpass", NewPassword="newpass123!")
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestIAMMFADevices:
@@ -1379,6 +1399,7 @@ class TestIAMSSHPublicKeys:
         try:
             resp = iam.list_ssh_public_keys(UserName=user_name)
             assert "SSHPublicKeys" in resp
+            assert isinstance(resp["SSHPublicKeys"], list)
         finally:
             iam.delete_user(UserName=user_name)
 
@@ -2096,6 +2117,7 @@ class TestIAMSAMLProviderExtended:
         try:
             upd = iam.update_saml_provider(SAMLProviderArn=arn, SAMLMetadataDocument=SAML_METADATA)
             assert "SAMLProviderArn" in upd
+            assert upd["SAMLProviderArn"] == arn
         finally:
             iam.delete_saml_provider(SAMLProviderArn=arn)
 
@@ -2320,16 +2342,19 @@ class TestIAMGapStubs:
         """ListOpenIDConnectProviders returns a list (possibly empty)."""
         resp = iam.list_open_id_connect_providers()
         assert "OpenIDConnectProviderList" in resp
+        assert isinstance(resp["OpenIDConnectProviderList"], list)
 
     def test_list_saml_providers(self, iam):
         """ListSAMLProviders returns a list (possibly empty)."""
         resp = iam.list_saml_providers()
         assert "SAMLProviderList" in resp
+        assert isinstance(resp["SAMLProviderList"], list)
 
     def test_list_service_specific_credentials(self, iam):
         """ListServiceSpecificCredentials returns a list (possibly empty)."""
         resp = iam.list_service_specific_credentials()
         assert "ServiceSpecificCredentials" in resp
+        assert isinstance(resp["ServiceSpecificCredentials"], list)
 
     def test_generate_credential_report(self, iam):
         """GenerateCredentialReport returns a State."""
@@ -2365,58 +2390,73 @@ class TestIamAutoCoverage:
         """DisableOrganizationsRootCredentialsManagement returns a response."""
         resp = client.disable_organizations_root_credentials_management()
         assert "OrganizationId" in resp
+        assert isinstance(resp["OrganizationId"], str)
 
     def test_disable_organizations_root_sessions(self, client):
         """DisableOrganizationsRootSessions returns a response."""
         resp = client.disable_organizations_root_sessions()
         assert "OrganizationId" in resp
+        assert isinstance(resp["OrganizationId"], str)
 
     def test_disable_outbound_web_identity_federation(self, client):
         """DisableOutboundWebIdentityFederation returns a response."""
-        client.disable_outbound_web_identity_federation()
+        resp = client.disable_outbound_web_identity_federation()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_enable_organizations_root_credentials_management(self, client):
         """EnableOrganizationsRootCredentialsManagement returns a response."""
         resp = client.enable_organizations_root_credentials_management()
         assert "OrganizationId" in resp
+        assert isinstance(resp["OrganizationId"], str)
 
     def test_enable_organizations_root_sessions(self, client):
         """EnableOrganizationsRootSessions returns a response."""
         resp = client.enable_organizations_root_sessions()
         assert "OrganizationId" in resp
+        assert isinstance(resp["OrganizationId"], str)
 
     def test_enable_outbound_web_identity_federation(self, client):
         """EnableOutboundWebIdentityFederation returns a response."""
-        client.enable_outbound_web_identity_federation()
+        resp = client.enable_outbound_web_identity_federation()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_outbound_web_identity_federation_info(self, client):
         """GetOutboundWebIdentityFederationInfo returns a response."""
-        client.get_outbound_web_identity_federation_info()
+        resp = client.get_outbound_web_identity_federation_info()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_delegation_requests(self, client):
         """ListDelegationRequests returns a response."""
         resp = client.list_delegation_requests()
         assert "DelegationRequests" in resp
+        assert isinstance(resp["DelegationRequests"], list)
 
     def test_list_open_id_connect_providers(self, client):
         """ListOpenIDConnectProviders returns a response."""
         resp = client.list_open_id_connect_providers()
         assert "OpenIDConnectProviderList" in resp
+        assert isinstance(resp["OpenIDConnectProviderList"], list)
 
     def test_list_organizations_features(self, client):
         """ListOrganizationsFeatures returns a response."""
         resp = client.list_organizations_features()
         assert "OrganizationId" in resp
+        assert isinstance(resp["OrganizationId"], str)
 
     def test_list_saml_providers(self, client):
         """ListSAMLProviders returns a response."""
         resp = client.list_saml_providers()
         assert "SAMLProviderList" in resp
+        assert isinstance(resp["SAMLProviderList"], list)
 
     def test_list_virtual_mfa_devices(self, client):
         """ListVirtualMFADevices returns a response."""
         resp = client.list_virtual_mfa_devices()
         assert "VirtualMFADevices" in resp
+        assert isinstance(resp["VirtualMFADevices"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -2435,9 +2475,15 @@ class TestIAMInstanceProfileTags:
                 Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "platform"}],
             )
             resp = iam.get_instance_profile(InstanceProfileName=name)
-            tag_keys = {t["Key"] for t in resp["InstanceProfile"].get("Tags", [])}
+            assert "InstanceProfile" in resp
+            assert "Tags" in resp["InstanceProfile"]
+            tags = resp["InstanceProfile"]["Tags"]
+            tag_keys = {t["Key"] for t in tags}
             assert "env" in tag_keys
             assert "team" in tag_keys
+            tag_map = {t["Key"]: t["Value"] for t in tags}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "platform"
         finally:
             iam.delete_instance_profile(InstanceProfileName=name)
 
@@ -2528,7 +2574,9 @@ class TestIAMAccessKeyLastUsed:
             access_key_id = key_resp["AccessKey"]["AccessKeyId"]
             resp = iam.get_access_key_last_used(AccessKeyId=access_key_id)
             assert "AccessKeyLastUsed" in resp
+            assert isinstance(resp["AccessKeyLastUsed"], dict)
             assert "UserName" in resp
+            assert resp["UserName"] == user_name
         finally:
             iam.delete_access_key(UserName=user_name, AccessKeyId=access_key_id)
             iam.delete_user(UserName=user_name)
@@ -2561,6 +2609,12 @@ class TestIAMUpdateAssumeRolePolicy:
             resp = iam.get_role(RoleName=role_name)
             # The trust policy should be updated
             assert "AssumeRolePolicyDocument" in resp["Role"]
+            policy_doc = resp["Role"]["AssumeRolePolicyDocument"]
+            assert isinstance(policy_doc, dict)
+            assert "Statement" in policy_doc
+            assert len(policy_doc["Statement"]) > 0
+            # Verify the principal was updated to ec2
+            assert policy_doc["Statement"][0]["Principal"]["Service"] == "ec2.amazonaws.com"
         finally:
             iam.delete_role(RoleName=role_name)
 
@@ -2977,8 +3031,11 @@ class TestIAMCreateOpenIDConnectProvider:
         )
         arn = resp["OpenIDConnectProviderArn"]
         try:
+            assert "OpenIDConnectProviderArn" in resp
             assert "arn:aws:iam:" in arn
             provider = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "ClientIDList" in provider
+            assert isinstance(provider["ClientIDList"], list)
             assert "test-client" in provider["ClientIDList"]
         finally:
             iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
@@ -3003,10 +3060,14 @@ class TestIAMCreateSAMLProvider:
         saml_doc = saml_doc + " " * max(0, 1000 - len(saml_doc))
         resp = iam.create_saml_provider(SAMLMetadataDocument=saml_doc, Name=name)
         arn = resp["SAMLProviderArn"]
+        assert "SAMLProviderArn" in resp
+        arn = resp["SAMLProviderArn"]
         try:
             assert "arn:aws:iam:" in arn
             provider = iam.get_saml_provider(SAMLProviderArn=arn)
             assert "SAMLMetadataDocument" in provider
+            assert isinstance(provider["SAMLMetadataDocument"], str)
+            assert len(provider["SAMLMetadataDocument"]) >= 1000
         finally:
             iam.delete_saml_provider(SAMLProviderArn=arn)
 
@@ -3233,7 +3294,10 @@ class TestIAMGetSAMLProvider:
         try:
             provider = iam.get_saml_provider(SAMLProviderArn=arn)
             assert "SAMLMetadataDocument" in provider
+            assert isinstance(provider["SAMLMetadataDocument"], str)
+            assert "EntityDescriptor" in provider["SAMLMetadataDocument"]
             assert "CreateDate" in provider
+            assert isinstance(provider["CreateDate"], datetime)
         finally:
             iam.delete_saml_provider(SAMLProviderArn=arn)
 
@@ -3690,8 +3754,11 @@ class TestIAMOIDCClientID:
                 OpenIDConnectProviderArn=arn, ClientID="new-client"
             )
             get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "ClientIDList" in get_resp
+            assert isinstance(get_resp["ClientIDList"], list)
             assert "new-client" in get_resp["ClientIDList"]
             assert "original-client" in get_resp["ClientIDList"]
+            assert len(get_resp["ClientIDList"]) == 2
         finally:
             iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
 
@@ -4765,6 +4832,7 @@ class TestIAMSshPublicKeys:
         try:
             resp = iam.list_ssh_public_keys(UserName=user_name)
             assert "SSHPublicKeys" in resp
+            assert isinstance(resp["SSHPublicKeys"], list)
             assert len(resp["SSHPublicKeys"]) == 0
         finally:
             iam.delete_user(UserName=user_name)
@@ -4983,8 +5051,11 @@ class TestIAMOIDCProviderExplicit:
                 OpenIDConnectProviderArn=arn, ClientID="new-client"
             )
             get_resp = iam.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
+            assert "ClientIDList" in get_resp
+            assert isinstance(get_resp["ClientIDList"], list)
             assert "new-client" in get_resp["ClientIDList"]
             assert "orig-client" in get_resp["ClientIDList"]
+            assert len(get_resp["ClientIDList"]) == 2
         finally:
             iam.delete_open_id_connect_provider(OpenIDConnectProviderArn=arn)
 
@@ -5027,6 +5098,8 @@ class TestIAMSAMLProviderExplicit:
         try:
             get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
             assert "SAMLMetadataDocument" in get_resp
+            assert isinstance(get_resp["SAMLMetadataDocument"], str)
+            assert "EntityDescriptor" in get_resp["SAMLMetadataDocument"]
         finally:
             iam.delete_saml_provider(SAMLProviderArn=arn)
 
@@ -5529,7 +5602,10 @@ class TestIAMSAMLProviderOperations:
         try:
             get_resp = iam.get_saml_provider(SAMLProviderArn=arn)
             assert "SAMLMetadataDocument" in get_resp
+            assert isinstance(get_resp["SAMLMetadataDocument"], str)
+            assert "EntityDescriptor" in get_resp["SAMLMetadataDocument"]
             assert "CreateDate" in get_resp
+            assert isinstance(get_resp["CreateDate"], datetime)
         finally:
             iam.delete_saml_provider(SAMLProviderArn=arn)
 
@@ -5652,6 +5728,7 @@ class TestIAMSSHPublicKeyOperations:
         try:
             resp = iam.list_ssh_public_keys(UserName=user)
             assert "SSHPublicKeys" in resp
+            assert isinstance(resp["SSHPublicKeys"], list)
             assert len(resp["SSHPublicKeys"]) == 0
         finally:
             iam.delete_user(UserName=user)
@@ -5674,11 +5751,15 @@ class TestIAMNewStubOps:
         """GenerateOrganizationsAccessReport returns JobId."""
         resp = iam.generate_organizations_access_report(EntityPath="/o-12345678901/r-abcd")
         assert "JobId" in resp
+        assert isinstance(resp["JobId"], str)
+        assert len(resp["JobId"]) > 0
 
     def test_get_organizations_access_report(self, iam):
         """GetOrganizationsAccessReport returns JobStatus."""
         resp = iam.get_organizations_access_report(JobId="a" * 36)
         assert "JobStatus" in resp
+        assert isinstance(resp["JobStatus"], str)
+        assert resp["JobStatus"] in ("IN_PROGRESS", "COMPLETED", "FAILED")
 
     def test_list_policies_granting_service_access(self, iam):
         """ListPoliciesGrantingServiceAccess returns PoliciesGrantingServiceAccess."""
@@ -5687,11 +5768,13 @@ class TestIAMNewStubOps:
             ServiceNamespaces=["s3"],
         )
         assert "PoliciesGrantingServiceAccess" in resp
+        assert isinstance(resp["PoliciesGrantingServiceAccess"], list)
 
     def test_get_human_readable_summary(self, iam):
         """GetHumanReadableSummary returns SummaryState."""
         resp = iam.get_human_readable_summary(EntityArn="arn:aws:iam::123456789012:user/testuser")
         assert "SummaryState" in resp
+        assert isinstance(resp["SummaryState"], str)
 
     def test_accept_delegation_request(self, iam):
         """AcceptDelegationRequest stub returns 200."""
@@ -5722,6 +5805,7 @@ class TestIAMNewStubOps:
         """GetDelegationRequest stub returns DelegationRequest."""
         resp = iam.get_delegation_request(DelegationRequestId="a" * 16)
         assert "DelegationRequest" in resp
+        assert isinstance(resp["DelegationRequest"], dict)
 
     def test_reset_service_specific_credential(self, iam):
         """ResetServiceSpecificCredential stub returns 200."""
@@ -5745,3 +5829,5 @@ class TestIAMNewStubOps:
             SessionDuration=3600,
         )
         assert "DelegationRequestId" in resp
+        assert isinstance(resp["DelegationRequestId"], str)
+        assert len(resp["DelegationRequestId"]) > 0
