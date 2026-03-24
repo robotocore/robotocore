@@ -655,7 +655,11 @@ class TestConfigExtended:
             accounts = [a["AuthorizedAccountId"] for a in resp["AggregationAuthorizations"]]
             assert "123456789012" in accounts
             # Verify the region matches
-            auth = next(a for a in resp["AggregationAuthorizations"] if a["AuthorizedAccountId"] == "123456789012")
+            auth = next(
+                a
+                for a in resp["AggregationAuthorizations"]
+                if a["AuthorizedAccountId"] == "123456789012"
+            )
             assert auth["AuthorizedAwsRegion"] == "us-west-2"
         finally:
             config.delete_aggregation_authorization(
@@ -1307,7 +1311,10 @@ class TestConfigAggregationOperations:
         resp = config.describe_aggregation_authorizations()
         # Verify the specific account/region combo is no longer present
         for auth in resp.get("AggregationAuthorizations", []):
-            assert not (auth["AuthorizedAccountId"] == "123456789012" and auth["AuthorizedAwsRegion"] == "us-east-1")
+            assert not (
+                auth["AuthorizedAccountId"] == "123456789012"
+                and auth["AuthorizedAwsRegion"] == "us-east-1"
+            )
 
     def test_delete_configuration_aggregator(self, config):
         """DeleteConfigurationAggregator removes the aggregator."""

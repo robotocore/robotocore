@@ -92,7 +92,6 @@ def analyze_service(service: str, with_probe: bool = False) -> dict:
     probe = get_probe_data(service) if with_probe else {}
 
     # Build operation status map
-    covered_ops = set(coverage.get("covered_ops", []))
     missing_ops = set(coverage.get("missing_ops", []))
 
     # Probe status by operation
@@ -235,7 +234,7 @@ def generate_work_items(analysis: dict):
     if impl_not_tested:
         print(f"### 1. Add tests for {len(impl_not_tested)} implemented operations\n")
         print("```bash")
-        print(f"# Generate tests for operations that work on the server")
+        print("# Generate tests for operations that work on the server")
         for item in impl_not_tested[:5]:
             print(f"# - {item['operation']}")
         if len(impl_not_tested) > 5:
@@ -247,7 +246,8 @@ def generate_work_items(analysis: dict):
     if weak and weak[0].get("count", 0) > 0:
         print(f"### 2. Add assertions to {weak[0]['count']} weak tests\n")
         print("```bash")
-        print(f"uv run python scripts/validate_test_quality.py --file tests/compatibility/test_{svc.replace('-', '_')}_compat.py --problems-only")
+        svc_file = f"tests/compatibility/test_{svc.replace('-', '_')}_compat.py"
+        print(f"uv run python scripts/validate_test_quality.py --file {svc_file} --problems-only")
         print("```\n")
 
     # Item 3: Implement missing operations
@@ -255,7 +255,7 @@ def generate_work_items(analysis: dict):
     if not_impl:
         print(f"### 3. Implement {len(not_impl)} missing operations\n")
         print("```bash")
-        print(f"# These operations return 501 or 500 - need provider work")
+        print("# These operations return 501 or 500 - need provider work")
         for item in not_impl[:5]:
             print(f"# - {item['operation']}")
         if len(not_impl) > 5:

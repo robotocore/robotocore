@@ -59,7 +59,7 @@ def topic(client: Any, name: str | None = None) -> Generator[str, None, None]:
                         try:
                             client.unsubscribe(SubscriptionArn=sub["SubscriptionArn"])
                         except ClientError:
-                            pass
+                            pass  # best-effort cleanup
 
             client.delete_topic(TopicArn=topic_arn)
         except ClientError:

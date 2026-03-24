@@ -14,9 +14,10 @@ Usage:
 
 import argparse
 import ast
+from pathlib import Path
+
 import botocore.loaders
 import botocore.session
-from pathlib import Path
 
 
 def get_operation_output_shape(service: str, operation: str) -> dict:

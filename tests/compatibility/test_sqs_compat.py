@@ -77,7 +77,9 @@ class TestSQSBasicOperations:
         assert delete_response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
         # Verify message is gone - receive should return empty or different message
-        after_delete = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=1, WaitTimeSeconds=1)
+        after_delete = sqs.receive_message(
+            QueueUrl=queue_url, MaxNumberOfMessages=1, WaitTimeSeconds=1
+        )
         assert "Messages" not in after_delete or len(after_delete.get("Messages", [])) == 0
 
     def test_get_queue_attributes(self, sqs, queue_url):
