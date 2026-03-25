@@ -174,6 +174,15 @@ class TestMemoryDBACLs:
         names = [a["Name"] for a in resp["ACLs"]]
         assert "open-access" in names
 
+    def test_describe_acls_returns_acl_fields(self, memorydb):
+        """DescribeACLs returns ACL objects with expected fields."""
+        resp = memorydb.describe_acls()
+        assert "ACLs" in resp
+        assert isinstance(resp["ACLs"], list)
+        acl = next(a for a in resp["ACLs"] if a["Name"] == "open-access")
+        assert "Status" in acl
+        assert "ARN" in acl
+
     def test_create_and_delete_acl(self, memorydb):
         """CreateACL creates an ACL, DeleteACL removes it."""
         name = f"test-acl-{_uid()}"
