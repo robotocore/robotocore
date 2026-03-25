@@ -5695,3 +5695,121 @@ class TestSageMakerBatchAddClusterNodes:
             NodesToAdd=[{"InstanceGroupName": "worker-group", "IncrementTargetCountBy": 1}],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerMonitoringJobDefinitions:
+    """Tests for model monitoring job definition operations."""
+
+    _MONITORING_OUTPUT = {
+        "MonitoringOutputs": [
+            {
+                "S3Output": {
+                    "S3Uri": "s3://bucket/output",
+                    "LocalPath": "/opt/ml/processing/output",
+                    "S3UploadMode": "EndOfJob",
+                }
+            }
+        ]
+    }
+    _JOB_RESOURCES = {
+        "ClusterConfig": {
+            "InstanceCount": 1,
+            "InstanceType": "ml.m5.xlarge",
+            "VolumeSizeInGB": 10,
+        }
+    }
+    _ROLE_ARN = "arn:aws:iam::123456789012:role/SageMakerRole"
+
+    def test_create_model_bias_job_definition(self, sagemaker):
+        name = _uid("bias")
+        resp = sagemaker.create_model_bias_job_definition(
+            JobDefinitionName=name,
+            ModelBiasAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/clarify:latest",
+                "ConfigUri": "s3://bucket/config.json",
+            },
+            ModelBiasJobInput={
+                "EndpointInput": {
+                    "EndpointName": "test-endpoint",
+                    "LocalPath": "/opt/ml/processing/input/endpoint",
+                },
+                "GroundTruthS3Input": {
+                    "S3Uri": "s3://bucket/ground-truth",
+                },
+            },
+            ModelBiasJobOutputConfig=self._MONITORING_OUTPUT,
+            JobResources=self._JOB_RESOURCES,
+            RoleArn=self._ROLE_ARN,
+        )
+        assert "JobDefinitionArn" in resp
+        assert name in resp["JobDefinitionArn"]
+
+    def test_create_model_explainability_job_definition(self, sagemaker):
+        name = _uid("explain")
+        resp = sagemaker.create_model_explainability_job_definition(
+            JobDefinitionName=name,
+            ModelExplainabilityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/clarify:latest",
+                "ConfigUri": "s3://bucket/config.json",
+            },
+            ModelExplainabilityJobInput={
+                "EndpointInput": {
+                    "EndpointName": "test-endpoint",
+                    "LocalPath": "/opt/ml/processing/input/endpoint",
+                },
+            },
+            ModelExplainabilityJobOutputConfig=self._MONITORING_OUTPUT,
+            JobResources=self._JOB_RESOURCES,
+            RoleArn=self._ROLE_ARN,
+        )
+        assert "JobDefinitionArn" in resp
+        assert name in resp["JobDefinitionArn"]
+
+    def test_create_model_quality_job_definition(self, sagemaker):
+        name = _uid("quality")
+        resp = sagemaker.create_model_quality_job_definition(
+            JobDefinitionName=name,
+            ModelQualityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/model-monitor:latest",
+                "ProblemType": "BinaryClassification",
+            },
+            ModelQualityJobInput={
+                "EndpointInput": {
+                    "EndpointName": "test-endpoint",
+                    "LocalPath": "/opt/ml/processing/input/endpoint",
+                    "InferenceAttribute": "prediction",
+                    "ProbabilityAttribute": "probability",
+                },
+                "GroundTruthS3Input": {
+                    "S3Uri": "s3://bucket/ground-truth",
+                },
+            },
+            ModelQualityJobOutputConfig=self._MONITORING_OUTPUT,
+            JobResources=self._JOB_RESOURCES,
+            RoleArn=self._ROLE_ARN,
+        )
+        assert "JobDefinitionArn" in resp
+        assert name in resp["JobDefinitionArn"]
+
+
+class TestSageMakerProcessingJob:
+    """Tests for CreateProcessingJob operation."""
+
+    def test_create_processing_job(self, sagemaker):
+        name = _uid("proc")
+        resp = sagemaker.create_processing_job(
+            ProcessingJobName=name,
+            ProcessingResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m5.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            AppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/proc:latest",
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "ProcessingJobArn" in resp
+        assert name in resp["ProcessingJobArn"]
