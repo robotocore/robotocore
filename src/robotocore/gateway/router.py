@@ -123,6 +123,11 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/v1/cancel"), "batch"),
     (re.compile(r"^/v1/tags"), "batch"),
     (re.compile(r"^/v1/untag"), "batch"),
+    # Bedrock Runtime paths (signing name is 'bedrock', but runtime uses /model/)
+    (re.compile(r"^/model/"), "bedrock-runtime"),
+    (re.compile(r"^/async-invoke"), "bedrock-runtime"),
+    # SageMaker Runtime paths (signing name is 'sagemaker', runtime uses /endpoints/.../invocations)
+    (re.compile(r"^/endpoints/[^/]+/(?:async-)?invocations"), "sagemaker-runtime"),
     # Endpoint strategy path-style routes
     (re.compile(r"^/queue/[a-z0-9-]+/\d+/"), "sqs"),
     (re.compile(r"^/opensearch/[a-z0-9-]+/[A-Za-z0-9-]+"), "opensearch"),
