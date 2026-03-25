@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -187,6 +188,126 @@ class TestACMPCAOperations:
         assert tag_map["team"] == "platform"
         assert tag_map["cost-center"] == "12345"
         assert tag_map["owner"] == "test-user"
+
+    def test_delete_policy_nonexistent(self, acmpca):
+        """DeletePolicy on a non-existent CA raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.delete_policy(ResourceArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_certificate_nonexistent(self, acmpca):
+        """GetCertificate on a non-existent CA raises ResourceNotFoundException."""
+        fake_ca_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        fake_cert_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000/certificate/aaaabbbbcccc"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.get_certificate(
+                CertificateAuthorityArn=fake_ca_arn,
+                CertificateArn=fake_cert_arn,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_certificate_authority_certificate_nonexistent(self, acmpca):
+        """GetCertificateAuthorityCertificate on non-existent CA raises ResourceNotFound."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.get_certificate_authority_certificate(CertificateAuthorityArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_certificate_authority_csr(self, acmpca, certificate_authority):
+        """GetCertificateAuthorityCsr returns a CSR for a created CA."""
+        resp = acmpca.get_certificate_authority_csr(CertificateAuthorityArn=certificate_authority)
+        assert "Csr" in resp
+        assert "BEGIN CERTIFICATE REQUEST" in resp["Csr"]
+
+    def test_get_policy_nonexistent(self, acmpca):
+        """GetPolicy on a non-existent CA raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.get_policy(ResourceArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_put_policy_nonexistent_ca(self, acmpca):
+        """PutPolicy on a non-existent CA raises ResourceNotFoundException."""
+        import json
+
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": ["acm-pca:DescribeCertificateAuthority"],
+                        "Resource": fake_arn,
+                    }
+                ],
+            }
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.put_policy(ResourceArn=fake_arn, Policy=policy)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_issue_certificate_nonexistent_ca(self, acmpca):
+        """IssueCertificate on a non-existent CA raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.issue_certificate(
+                CertificateAuthorityArn=fake_arn,
+                Csr=b"fake-csr",
+                SigningAlgorithm="SHA256WITHRSA",
+                Validity={"Type": "DAYS", "Value": 365},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_revoke_certificate_nonexistent_ca(self, acmpca):
+        """RevokeCertificate on a non-existent CA raises ResourceNotFoundException."""
+        fake_ca_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.revoke_certificate(
+                CertificateAuthorityArn=fake_ca_arn,
+                CertificateSerial="01",
+                RevocationReason="KEY_COMPROMISE",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_certificate_authority_certificate_nonexistent(self, acmpca):
+        """ImportCertificateAuthorityCertificate on non-existent CA raises ResourceNotFound."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(ClientError) as exc_info:
+            acmpca.import_certificate_authority_certificate(
+                CertificateAuthorityArn=fake_arn,
+                Certificate=b"fake-cert-pem",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_and_describe_subordinate_ca(self, acmpca):
         """Create a SUBORDINATE CA and verify its type."""
