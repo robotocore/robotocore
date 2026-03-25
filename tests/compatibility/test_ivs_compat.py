@@ -560,3 +560,22 @@ class TestIVSNewOps:
             assert resp["errors"] == []
         finally:
             ivs.delete_channel(arn=channel_arn)
+
+    def test_get_stream_not_found_for_fake_channel(self, ivs):
+        """get_stream raises ResourceNotFoundException for a nonexistent channel."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:channel/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_stream(channelArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_stream_no_active_stream(self, ivs):
+        """get_stream raises ResourceNotFoundException when channel has no live stream."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ivs.get_stream(channelArn=channel_arn)
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
