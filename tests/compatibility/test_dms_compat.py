@@ -1445,6 +1445,28 @@ class TestDMSDescribeOperationsExpanded:
         assert "FleetAdvisorSchemaObjects" in response
         assert isinstance(response["FleetAdvisorSchemaObjects"], list)
 
+    def test_delete_fleet_advisor_collector(self, dms):
+        """DeleteFleetAdvisorCollector deletes a collector without error."""
+        create_resp = dms.create_fleet_advisor_collector(
+            CollectorName="test-collector",
+            ServiceAccessRoleArn="arn:aws:iam::123456789012:role/fleet-advisor-role",
+            S3BucketName="test-bucket-for-fleet-advisor",
+        )
+        collector_id = create_resp["CollectorReferencedId"]
+        assert collector_id
+        resp = dms.delete_fleet_advisor_collector(
+            CollectorReferencedId=collector_id
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_recommendations(self, dms):
+        """StartRecommendations accepts a database ID and settings."""
+        resp = dms.start_recommendations(
+            DatabaseId="test-db-123",
+            Settings={"InstanceSizingType": "serverless", "WorkloadType": "production"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
     def test_describe_recommendations_empty(self, dms):
         """DescribeRecommendations returns empty list."""
         response = dms.describe_recommendations()
