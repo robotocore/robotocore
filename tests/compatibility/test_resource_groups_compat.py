@@ -310,3 +310,82 @@ class TestResourceGroupsAutoCoverage:
         """UpdateAccountSettings returns a response."""
         resp = client.update_account_settings()
         assert "AccountSettings" in resp
+
+
+class TestTagSyncTasks:
+    """Tests for tag sync task operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("resource-groups")
+
+    @pytest.fixture
+    def group_with_task(self, client):
+        name = f"sync-group-{_uid()}"
+        client.create_group(
+            Name=name,
+            Description="Tag sync test group",
+            ResourceQuery=RESOURCE_QUERY,
+        )
+        resp = client.start_tag_sync_task(
+            Group=name,
+            TagKey="env",
+            TagValue="test",
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        task_arn = resp["TaskArn"]
+        yield name, task_arn
+        try:
+            client.delete_group(GroupName=name)
+        except Exception:
+            pass
+
+    def test_start_tag_sync_task(self, client):
+        """StartTagSyncTask returns task details including TaskArn."""
+        name = f"start-sync-{_uid()}"
+        client.create_group(
+            Name=name,
+            Description="Start sync task group",
+            ResourceQuery=RESOURCE_QUERY,
+        )
+        try:
+            resp = client.start_tag_sync_task(
+                Group=name,
+                TagKey="team",
+                TagValue="platform",
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+            )
+            assert "TaskArn" in resp
+            assert resp["TagKey"] == "team"
+            assert resp["TagValue"] == "platform"
+        finally:
+            client.delete_group(GroupName=name)
+
+    def test_get_tag_sync_task(self, client, group_with_task):
+        """GetTagSyncTask returns task status and metadata."""
+        _name, task_arn = group_with_task
+        resp = client.get_tag_sync_task(TaskArn=task_arn)
+        assert resp["TaskArn"] == task_arn
+        assert "Status" in resp
+        assert "CreatedAt" in resp
+
+    def test_cancel_tag_sync_task(self, client):
+        """CancelTagSyncTask returns HTTP 200."""
+        name = f"cancel-sync-{_uid()}"
+        client.create_group(
+            Name=name,
+            Description="Cancel sync task group",
+            ResourceQuery=RESOURCE_QUERY,
+        )
+        try:
+            start_resp = client.start_tag_sync_task(
+                Group=name,
+                TagKey="env",
+                TagValue="staging",
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+            )
+            task_arn = start_resp["TaskArn"]
+            cancel_resp = client.cancel_tag_sync_task(TaskArn=task_arn)
+            assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_group(GroupName=name)
