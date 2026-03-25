@@ -55,11 +55,11 @@ _PROVIDER_DIR_OVERRIDES: dict[str, str] = {
     "cognito-idp": "cognito",
     "resource-groups": "resource_groups",
     "resourcegroupstaggingapi": "tagging",
-    "es": "opensearch",       # shared provider
-    "sesv2": "ses",            # shared provider
-    "logs": "cloudwatch",      # logs_provider.py lives in cloudwatch/
-    "iotdata": "iot",          # shared provider
-    "rdsdata": "rds",          # shared provider
+    "es": "opensearch",  # shared provider
+    "sesv2": "ses",  # shared provider
+    "logs": "cloudwatch",  # logs_provider.py lives in cloudwatch/
+    "iotdata": "iot",  # shared provider
+    "rdsdata": "rds",  # shared provider
 }
 
 # registry name → Moto vendor directory name (only where they differ)
@@ -104,9 +104,9 @@ _TEST_STEM_SKIP = {
 class ServiceNames:
     registry: str
     botocore: str
-    provider_dir: str | None   # None if no native provider
-    moto_dir: str | None       # None if Moto doesn't have this service
-    test_stem: str | None      # None if no compat test file exists
+    provider_dir: str | None  # None if no native provider
+    moto_dir: str | None  # None if Moto doesn't have this service
+    test_stem: str | None  # None if no compat test file exists
 
 
 def _derive_botocore_name(registry_name: str) -> str:

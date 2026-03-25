@@ -52,9 +52,24 @@ SKIP_OPERATIONS = {
 # ── CRUD prefix detection ──
 
 _CRUD_PREFIXES = [
-    "Create", "Delete", "Remove", "Get", "Describe", "List", "Update",
-    "Put", "Tag", "Untag", "Start", "Stop", "Enable", "Disable",
-    "Register", "Deregister", "Add", "Batch",
+    "Create",
+    "Delete",
+    "Remove",
+    "Get",
+    "Describe",
+    "List",
+    "Update",
+    "Put",
+    "Tag",
+    "Untag",
+    "Start",
+    "Stop",
+    "Enable",
+    "Disable",
+    "Register",
+    "Deregister",
+    "Add",
+    "Batch",
 ]
 
 
@@ -62,7 +77,7 @@ def _derive_crud(operation: str) -> tuple[str, str]:
     """Derive CRUD group and role from operation name."""
     for prefix in _CRUD_PREFIXES:
         if operation.startswith(prefix):
-            remainder = operation[len(prefix):]
+            remainder = operation[len(prefix) :]
             if remainder:
                 return remainder, prefix.lower()
     return operation, "other"
@@ -70,9 +85,11 @@ def _derive_crud(operation: str) -> tuple[str, str]:
 
 # ── Botocore operations ──
 
+
 def get_botocore_operations(botocore_name: str) -> list[str]:
     """Get all operation names from botocore for a service."""
     import botocore.session
+
     try:
         session = botocore.session.get_session()
         model = session.get_service_model(botocore_name)
@@ -82,6 +99,7 @@ def get_botocore_operations(botocore_name: str) -> list[str]:
 
 
 # ── Native provider operations ──
+
 
 def _extract_action_map_keys(filepath: Path) -> list[str]:
     """Extract operation names from _ACTION_MAP dicts in a provider file."""
@@ -172,6 +190,7 @@ def get_native_operations(names: ServiceNames) -> tuple[set[str], bool]:
 
 
 # ── Moto operations + stub detection ──
+
 
 def _to_snake(name: str) -> str:
     s1 = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
@@ -265,6 +284,7 @@ def get_moto_operations(names: ServiceNames) -> tuple[set[str], set[str]]:
 
 # ── Moto @aws_verified test scanning ──
 
+
 def get_aws_verified_operations(names: ServiceNames) -> set[str]:
     """Find operations covered by Moto's @aws_verified tests."""
     if not names.moto_dir:
@@ -317,17 +337,80 @@ def get_aws_verified_operations(names: ServiceNames) -> set[str]:
 # ── Compat test operations + quality ──
 
 # Non-AWS method names to exclude
-_SKIP_METHODS = frozenset({
-    "get", "set", "items", "keys", "values", "append", "extend", "update",
-    "format", "join", "split", "strip", "encode", "decode", "read", "write",
-    "close", "sleep", "client", "resource", "startswith", "endswith",
-    "replace", "lower", "upper", "pop", "add", "remove", "clear", "copy",
-    "sort", "reverse", "count", "index", "find", "match", "search", "sub",
-    "group", "dump", "dumps", "load", "loads", "open", "seek", "tell",
-    "flush", "isinstance", "len", "str", "int", "float", "bool", "list",
-    "dict", "tuple", "type", "print", "range", "enumerate", "zip", "map",
-    "filter", "sorted", "any", "all", "min", "max", "sum", "abs",
-})
+_SKIP_METHODS = frozenset(
+    {
+        "get",
+        "set",
+        "items",
+        "keys",
+        "values",
+        "append",
+        "extend",
+        "update",
+        "format",
+        "join",
+        "split",
+        "strip",
+        "encode",
+        "decode",
+        "read",
+        "write",
+        "close",
+        "sleep",
+        "client",
+        "resource",
+        "startswith",
+        "endswith",
+        "replace",
+        "lower",
+        "upper",
+        "pop",
+        "add",
+        "remove",
+        "clear",
+        "copy",
+        "sort",
+        "reverse",
+        "count",
+        "index",
+        "find",
+        "match",
+        "search",
+        "sub",
+        "group",
+        "dump",
+        "dumps",
+        "load",
+        "loads",
+        "open",
+        "seek",
+        "tell",
+        "flush",
+        "isinstance",
+        "len",
+        "str",
+        "int",
+        "float",
+        "bool",
+        "list",
+        "dict",
+        "tuple",
+        "type",
+        "print",
+        "range",
+        "enumerate",
+        "zip",
+        "map",
+        "filter",
+        "sorted",
+        "any",
+        "all",
+        "min",
+        "max",
+        "sum",
+        "abs",
+    }
+)
 
 
 def _is_key_presence_assert(node: ast.Assert) -> bool:
@@ -458,6 +541,7 @@ def _process_test_func(
 
 # ── Confidence lattice ──
 
+
 def compute_confidence(evidence: dict) -> str:
     """Compute implementation confidence level from evidence."""
     if evidence.get("moto_aws_verified"):
@@ -467,8 +551,9 @@ def compute_confidence(evidence: dict) -> str:
     if evidence.get("probe_status") == "working":
         return "probe_working"
     me = evidence.get("method_exists", {})
-    if (me.get("native") or me.get("moto_backend") or me.get("moto_response")) \
-            and not evidence.get("moto_is_stub"):
+    if (me.get("native") or me.get("moto_backend") or me.get("moto_response")) and not evidence.get(
+        "moto_is_stub"
+    ):
         return "method_exists"
     if evidence.get("moto_is_stub"):
         return "method_is_stub"
@@ -476,6 +561,7 @@ def compute_confidence(evidence: dict) -> str:
 
 
 # ── MECE classification ──
+
 
 def classify(record: dict) -> str:
     """Total function: every operation gets exactly one category.
@@ -507,6 +593,7 @@ def classify(record: dict) -> str:
 
 
 # ── Main catalog builder ──
+
 
 def build_catalog(
     service_filter: str | None = None,
@@ -615,6 +702,7 @@ def build_catalog(
 
 # ── Output formatting ──
 
+
 def print_summary(catalog: list[dict]) -> None:
     """Print summary counts."""
     from collections import Counter
@@ -629,8 +717,14 @@ def print_summary(catalog: list[dict]) -> None:
 
     print("MECE Categories:")
     cats = [
-        "done", "test", "implement", "strengthen_test",
-        "fix_test", "fix_impl", "verify", "skip",
+        "done",
+        "test",
+        "implement",
+        "strengthen_test",
+        "fix_test",
+        "fix_impl",
+        "verify",
+        "skip",
     ]
     for cat in cats:
         count = by_category.get(cat, 0)
@@ -640,8 +734,12 @@ def print_summary(catalog: list[dict]) -> None:
 
     print("\nImplementation Confidence:")
     for level in [
-        "behaviorally_verified", "shape_conformant", "probe_working",
-        "method_exists", "method_is_stub", "unimplemented",
+        "behaviorally_verified",
+        "shape_conformant",
+        "probe_working",
+        "method_exists",
+        "method_is_stub",
+        "unimplemented",
     ]:
         count = by_confidence.get(level, 0)
         pct = count / total * 100 if total else 0
@@ -663,12 +761,19 @@ def print_mece_table(catalog: list[dict], as_md: bool = False) -> None:
         print("# MECE Task List\n")
         print(f"Generated from {len(catalog)} total operations.\n")
         from collections import Counter
+
         cats = Counter(r["mece_category"] for r in catalog)
         print("| Category | Count |")
         print("|----------|-------|")
         mece_cats = [
-            "done", "test", "implement", "strengthen_test",
-            "fix_test", "fix_impl", "verify", "skip",
+            "done",
+            "test",
+            "implement",
+            "strengthen_test",
+            "fix_test",
+            "fix_impl",
+            "verify",
+            "skip",
         ]
         for c in mece_cats:
             print(f"| {c} | {cats.get(c, 0)} |")
@@ -697,6 +802,7 @@ def print_service_detail(catalog: list[dict], service: str) -> None:
         return
 
     from collections import Counter
+
     cats = Counter(r["mece_category"] for r in records)
     confs = Counter(r["impl_confidence"] for r in records)
 

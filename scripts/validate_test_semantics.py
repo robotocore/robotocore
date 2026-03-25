@@ -40,7 +40,10 @@ COMPAT_DIR = PROJECT_ROOT / "tests" / "compatibility"
 # Keys added by boto3 client-side, NOT in botocore output shapes
 BOTO3_INJECTED_KEYS = {"ResponseMetadata"}
 RESPONSE_METADATA_CHILDREN = {
-    "HTTPStatusCode", "RequestId", "HTTPHeaders", "RetryAttempts",
+    "HTTPStatusCode",
+    "RequestId",
+    "HTTPHeaders",
+    "RetryAttempts",
 }
 
 
@@ -100,9 +103,7 @@ class ResponseTracker(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign):
         # resp = client.foo(...) → bindings["resp"] = "Foo"
-        if isinstance(node.value, ast.Call) and isinstance(
-            node.value.func, ast.Attribute
-        ):
+        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute):
             method = node.value.func.attr
             pascal = self.snake_to_pascal.get(method)
             if pascal:
@@ -114,9 +115,7 @@ class ResponseTracker(ast.NodeVisitor):
 
     def visit_Expr(self, node: ast.Expr):
         # Bare client.foo() calls without assignment
-        if isinstance(node.value, ast.Call) and isinstance(
-            node.value.func, ast.Attribute
-        ):
+        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute):
             method = node.value.func.attr
             pascal = self.snake_to_pascal.get(method)
             if pascal:
@@ -131,9 +130,7 @@ class ResponseTracker(ast.NodeVisitor):
 
     def visit_Subscript(self, node: ast.Subscript):
         # resp["Key"] or resp.get("Key")
-        if isinstance(node.value, ast.Name) and isinstance(
-            node.slice, ast.Constant
-        ):
+        if isinstance(node.value, ast.Name) and isinstance(node.slice, ast.Constant):
             var = node.value.id
             key = node.slice.value
             if isinstance(key, str) and var in self.bindings:
@@ -193,64 +190,70 @@ def analyze_test_function(
         uncovered = shape_key_names - asserted_clean
         # Shape coverage
         coverage = (
-            len(shape_key_names & asserted_clean) / len(shape_key_names)
-            if shape_key_names else 1.0
+            len(shape_key_names & asserted_clean) / len(shape_key_names) if shape_key_names else 1.0
         )
 
         issues = []
 
         for k in sorted(phantom):
-            issues.append({
-                "type": "phantom_key",
-                "severity": "error",
-                "key": k,
-                "message": f"Asserted key '{k}' not in botocore output shape",
-            })
+            issues.append(
+                {
+                    "type": "phantom_key",
+                    "severity": "error",
+                    "key": k,
+                    "message": f"Asserted key '{k}' not in botocore output shape",
+                }
+            )
 
         # ResponseMetadata-only check
         if asserted and not tracker.asserted_non_metadata_key:
             rm_only = asserted <= (BOTO3_INJECTED_KEYS | RESPONSE_METADATA_CHILDREN)
             if rm_only:
-                issues.append({
-                    "type": "metadata_only",
-                    "severity": "warning",
-                    "message": "Test only asserts on ResponseMetadata keys",
-                })
+                issues.append(
+                    {
+                        "type": "metadata_only",
+                        "severity": "warning",
+                        "message": "Test only asserts on ResponseMetadata keys",
+                    }
+                )
 
         # Missing error code check
         if tracker.has_pytest_raises and not tracker.pytest_raises_checks_code:
-            issues.append({
-                "type": "missing_error_code",
-                "severity": "warning",
-                "message": (
-                    "pytest.raises(ClientError) without checking "
-                    "Error.Code"
-                ),
-            })
+            issues.append(
+                {
+                    "type": "missing_error_code",
+                    "severity": "warning",
+                    "message": ("pytest.raises(ClientError) without checking Error.Code"),
+                }
+            )
 
         # Low shape coverage
         if len(shape_key_names) > 3 and coverage < 0.3:
-            issues.append({
-                "type": "low_coverage",
-                "severity": "info",
-                "key_count": len(shape_key_names),
-                "covered": len(shape_key_names & asserted_clean),
-                "message": (
-                    f"Only {len(shape_key_names & asserted_clean)}"
-                    f"/{len(shape_key_names)} output keys asserted"
-                ),
-            })
+            issues.append(
+                {
+                    "type": "low_coverage",
+                    "severity": "info",
+                    "key_count": len(shape_key_names),
+                    "covered": len(shape_key_names & asserted_clean),
+                    "message": (
+                        f"Only {len(shape_key_names & asserted_clean)}"
+                        f"/{len(shape_key_names)} output keys asserted"
+                    ),
+                }
+            )
 
-        results.append({
-            "test": full_name,
-            "operation": op,
-            "asserted_keys": sorted(asserted_clean),
-            "botocore_output_keys": sorted(shape_key_names),
-            "phantom_keys": sorted(phantom),
-            "uncovered_keys": sorted(uncovered),
-            "shape_coverage": round(coverage, 3),
-            "issues": issues,
-        })
+        results.append(
+            {
+                "test": full_name,
+                "operation": op,
+                "asserted_keys": sorted(asserted_clean),
+                "botocore_output_keys": sorted(shape_key_names),
+                "phantom_keys": sorted(phantom),
+                "uncovered_keys": sorted(uncovered),
+                "shape_coverage": round(coverage, 3),
+                "issues": issues,
+            }
+        )
 
     return results
 
@@ -286,13 +289,19 @@ def analyze_file(
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if item.name.startswith("test_"):
                         results = analyze_test_function(
-                            item, current_class, snake_to_pascal, output_shapes,
+                            item,
+                            current_class,
+                            snake_to_pascal,
+                            output_shapes,
                         )
                         all_results.extend(results)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node.name.startswith("test_"):
                 results = analyze_test_function(
-                    node, None, snake_to_pascal, output_shapes,
+                    node,
+                    None,
+                    snake_to_pascal,
+                    output_shapes,
                 )
                 all_results.extend(results)
 
@@ -306,10 +315,13 @@ def main():
     parser.add_argument("--file", help="Analyze a single test file")
     parser.add_argument("--service", help="Analyze tests for one service")
     parser.add_argument("--json", action="store_true", help="JSON output")
-    parser.add_argument("--problems-only", action="store_true",
-                        help="Only show tests with issues")
-    parser.add_argument("--max-phantom-pct", type=float, default=100,
-                        help="CI gate: fail if phantom key %% exceeds this")
+    parser.add_argument("--problems-only", action="store_true", help="Only show tests with issues")
+    parser.add_argument(
+        "--max-phantom-pct",
+        type=float,
+        default=100,
+        help="CI gate: fail if phantom key %% exceeds this",
+    )
     args = parser.parse_args()
 
     all_services = resolve_all_services()
@@ -355,24 +367,16 @@ def main():
     total = len(all_results)
     with_issues = sum(1 for r in all_results if r.get("issues"))
     phantom_count = sum(
-        1 for r in all_results
-        for i in r.get("issues", [])
-        if i["type"] == "phantom_key"
+        1 for r in all_results for i in r.get("issues", []) if i["type"] == "phantom_key"
     )
     metadata_only = sum(
-        1 for r in all_results
-        for i in r.get("issues", [])
-        if i["type"] == "metadata_only"
+        1 for r in all_results for i in r.get("issues", []) if i["type"] == "metadata_only"
     )
     missing_code = sum(
-        1 for r in all_results
-        for i in r.get("issues", [])
-        if i["type"] == "missing_error_code"
+        1 for r in all_results for i in r.get("issues", []) if i["type"] == "missing_error_code"
     )
     low_cov = sum(
-        1 for r in all_results
-        for i in r.get("issues", [])
-        if i["type"] == "low_coverage"
+        1 for r in all_results for i in r.get("issues", []) if i["type"] == "low_coverage"
     )
 
     if args.json:
@@ -404,18 +408,14 @@ def main():
                 svc = r.get("service", "?")
                 for issue in r["issues"]:
                     sev = issue["severity"].upper()
-                    print(
-                        f"  [{sev}] {svc}/{r['operation']} "
-                        f"in {r['test']}: {issue['message']}"
-                    )
+                    print(f"  [{sev}] {svc}/{r['operation']} in {r['test']}: {issue['message']}")
 
     # CI gate
     if total > 0:
         phantom_pct = phantom_count / total * 100
         if phantom_pct > args.max_phantom_pct:
             print(
-                f"\nFAIL: phantom key rate {phantom_pct:.1f}% "
-                f"exceeds max {args.max_phantom_pct}%",
+                f"\nFAIL: phantom key rate {phantom_pct:.1f}% exceeds max {args.max_phantom_pct}%",
                 file=sys.stderr,
             )
             sys.exit(1)
