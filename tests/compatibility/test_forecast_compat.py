@@ -375,3 +375,223 @@ class TestForecastCRUDOps:
             "ResourceNotFoundException",
             "InvalidInputException",
         )
+
+
+class TestForecastCreateOps:
+    """Tests for Create operations that return ARNs."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("forecast")
+
+    def test_create_dataset_import_job_returns_arn(self, client):
+        r = client.create_dataset_import_job(
+            DatasetImportJobName="test-import-job",
+            DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/nonexist",
+            DataSource={
+                "S3Config": {
+                    "Path": "s3://test-bucket/data/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                }
+            },
+        )
+        assert "DatasetImportJobArn" in r
+        assert "test-import-job" in r["DatasetImportJobArn"]
+
+    def test_create_predictor_returns_arn(self, client):
+        r = client.create_predictor(
+            PredictorName="test-predictor-ops",
+            ForecastHorizon=10,
+            InputDataConfig={
+                "DatasetGroupArn": "arn:aws:forecast:us-east-1:123456789012:dataset-group/nonexist"
+            },
+            FeaturizationConfig={"ForecastFrequency": "D"},
+        )
+        assert "PredictorArn" in r
+        assert "test-predictor-ops" in r["PredictorArn"]
+
+    def test_create_forecast_returns_arn(self, client):
+        r = client.create_forecast(
+            ForecastName="test-forecast-ops",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexist",
+        )
+        assert "ForecastArn" in r
+        assert "test-forecast-ops" in r["ForecastArn"]
+
+    def test_create_forecast_export_job_returns_arn(self, client):
+        r = client.create_forecast_export_job(
+            ForecastExportJobName="test-forecast-export",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/nonexist",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/output/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                }
+            },
+        )
+        assert "ForecastExportJobArn" in r
+        assert "test-forecast-export" in r["ForecastExportJobArn"]
+
+    def test_create_explainability_returns_arn(self, client):
+        r = client.create_explainability(
+            ExplainabilityName="test-explainability-ops",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexist",
+            ExplainabilityConfig={
+                "TimeSeriesGranularity": "ALL",
+                "TimePointGranularity": "ALL",
+            },
+        )
+        assert "ExplainabilityArn" in r
+        assert "test-explainability-ops" in r["ExplainabilityArn"]
+
+    def test_create_explainability_export_returns_arn(self, client):
+        r = client.create_explainability_export(
+            ExplainabilityExportName="test-explainability-export",
+            ExplainabilityArn="arn:aws:forecast:us-east-1:123456789012:explainability/nonexist",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/output/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                }
+            },
+        )
+        assert "ExplainabilityExportArn" in r
+        assert "test-explainability-export" in r["ExplainabilityExportArn"]
+
+    def test_create_predictor_backtest_export_job_returns_arn(self, client):
+        r = client.create_predictor_backtest_export_job(
+            PredictorBacktestExportJobName="test-backtest-export",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexist",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/output/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/test-role",
+                }
+            },
+        )
+        assert "PredictorBacktestExportJobArn" in r
+        assert "test-backtest-export" in r["PredictorBacktestExportJobArn"]
+
+    def test_create_what_if_analysis_returns_arn(self, client):
+        r = client.create_what_if_analysis(
+            WhatIfAnalysisName="test-what-if-analysis",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/nonexist",
+        )
+        assert "WhatIfAnalysisArn" in r
+        assert "test-what-if-analysis" in r["WhatIfAnalysisArn"]
+
+    def test_create_what_if_forecast_returns_arn(self, client):
+        r = client.create_what_if_forecast(
+            WhatIfForecastName="test-what-if-forecast",
+            WhatIfAnalysisArn="arn:aws:forecast:us-east-1:123456789012:what-if-analysis/nonexist",
+        )
+        assert "WhatIfForecastArn" in r
+        assert "test-what-if-forecast" in r["WhatIfForecastArn"]
+
+
+class TestForecastDeleteOps:
+    """Tests for Delete operations returning ResourceNotFoundException for nonexistent resources."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("forecast")
+
+    def test_delete_dataset_import_job_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_dataset_import_job(
+                DatasetImportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:dataset-import-job/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_explainability_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_explainability(
+                ExplainabilityArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:explainability/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_explainability_export_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_explainability_export(
+                ExplainabilityExportArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:explainability-export/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_forecast_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_forecast(
+                ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_forecast_export_job_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_forecast_export_job(
+                ForecastExportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:forecast-export-job/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_monitor_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_monitor(
+                MonitorArn="arn:aws:forecast:us-east-1:123456789012:monitor/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_predictor_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_predictor(
+                PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_predictor_backtest_export_job_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_predictor_backtest_export_job(
+                PredictorBacktestExportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:predictor-backtest-export-job/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_resource_tree_nonexistent_is_ok(self, client):
+        """DeleteResourceTree on a nonexistent ARN succeeds silently."""
+        resp = client.delete_resource_tree(
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:dataset-group/nonexistent"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_what_if_analysis_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_what_if_analysis(
+                WhatIfAnalysisArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_what_if_forecast_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_what_if_forecast(
+                WhatIfForecastArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-forecast/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_what_if_forecast_export_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_what_if_forecast_export(
+                WhatIfForecastExportArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-forecast-export/nonexistent"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
