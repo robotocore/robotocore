@@ -1194,3 +1194,37 @@ class TestWorkspacesImagePermissionGapOps:
                 "ResourceNotFoundException",
                 "InternalError",
             )
+
+    def test_import_custom_workspace_image(self, client):
+        """ImportCustomWorkspaceImage returns an ImageId and State."""
+        resp = client.import_custom_workspace_image(
+            ImageName="custom-test-image",
+            ImageDescription="A custom workspace image",
+            ComputeType="VALUE",
+            Protocol="PCOIP",
+            ImageSource={"Ec2ImageId": "ami-12345678"},
+            InfrastructureConfigurationArn=(
+                "arn:aws:imagebuilder:us-east-1:123456789012:infrastructure-configuration/test"
+            ),
+            Platform="AMAZON_LINUX_2",
+            OsVersion="2.0",
+        )
+        assert "ImageId" in resp
+        assert resp["ImageId"].startswith("wsi-")
+        assert "State" in resp
+
+
+class TestWorkspacesDirectoryOps:
+    """Tests for WorkSpaces directory registration operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("workspaces")
+
+    def test_register_workspace_directory_nonexistent(self, client):
+        """RegisterWorkspaceDirectory raises EntityDoesNotExistException for unknown directory."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.register_workspace_directory(DirectoryId="d-9999999999")
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
