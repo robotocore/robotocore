@@ -2858,6 +2858,121 @@ class TestCloudfrontTrustStoreCRUD:
         assert resp2["TrustStore"]["Id"] == ts_id
 
 
+class TestCloudFrontCreateOperations:
+    """Standalone tests for CloudFront Create operations (catalog detection)."""
+
+    def test_create_cloud_front_origin_access_identity(self, cf):
+        ref = str(uuid.uuid4())
+        resp = cf.create_cloud_front_origin_access_identity(
+            CloudFrontOriginAccessIdentityConfig={
+                "CallerReference": ref,
+                "Comment": "catalog-detection-oai",
+            }
+        )
+        assert "CloudFrontOriginAccessIdentity" in resp
+        assert resp["CloudFrontOriginAccessIdentity"]["Id"] is not None
+
+    def test_create_continuous_deployment_policy(self, cf):
+        resp = cf.create_continuous_deployment_policy(
+            ContinuousDeploymentPolicyConfig={
+                "StagingDistributionDnsNames": {
+                    "Quantity": 1,
+                    "Items": [f"staging-{uuid.uuid4().hex[:8]}.example.com"],
+                },
+                "Enabled": True,
+                "TrafficConfig": {
+                    "Type": "SingleWeight",
+                    "SingleWeightConfig": {"Weight": 0.1},
+                },
+            }
+        )
+        assert "ContinuousDeploymentPolicy" in resp
+        assert resp["ContinuousDeploymentPolicy"]["Id"] is not None
+
+    def test_create_field_level_encryption_profile(self, cf):
+        pub_pem = _generate_public_key_pem()
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": _unique("pk"),
+                "EncodedKey": pub_pem,
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+        resp = cf.create_field_level_encryption_profile(
+            FieldLevelEncryptionProfileConfig={
+                "Name": _unique("flep"),
+                "CallerReference": str(uuid.uuid4()),
+                "Comment": "catalog-detection-flep",
+                "EncryptionEntities": {
+                    "Quantity": 1,
+                    "Items": [
+                        {
+                            "PublicKeyId": pk_id,
+                            "ProviderId": "test-provider",
+                            "FieldPatterns": {"Quantity": 1, "Items": ["CreditCard"]},
+                        }
+                    ],
+                },
+            }
+        )
+        assert "FieldLevelEncryptionProfile" in resp
+        assert resp["FieldLevelEncryptionProfile"]["Id"] is not None
+
+    def test_create_field_level_encryption_config(self, cf):
+        pub_pem = _generate_public_key_pem()
+        pk_resp = cf.create_public_key(
+            PublicKeyConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Name": _unique("pk2"),
+                "EncodedKey": pub_pem,
+            }
+        )
+        pk_id = pk_resp["PublicKey"]["Id"]
+        flep_resp = cf.create_field_level_encryption_profile(
+            FieldLevelEncryptionProfileConfig={
+                "Name": _unique("flep2"),
+                "CallerReference": str(uuid.uuid4()),
+                "EncryptionEntities": {
+                    "Quantity": 1,
+                    "Items": [
+                        {
+                            "PublicKeyId": pk_id,
+                            "ProviderId": "test-provider",
+                            "FieldPatterns": {"Quantity": 1, "Items": ["SSN"]},
+                        }
+                    ],
+                },
+            }
+        )
+        flep_id = flep_resp["FieldLevelEncryptionProfile"]["Id"]
+        resp = cf.create_field_level_encryption_config(
+            FieldLevelEncryptionConfig={
+                "CallerReference": str(uuid.uuid4()),
+                "Comment": "catalog-detection-fle",
+                "QueryArgProfileConfig": {
+                    "ForwardWhenQueryArgProfileIsUnknown": True,
+                    "QueryArgProfiles": {"Quantity": 0},
+                },
+                "ContentTypeProfileConfig": {
+                    "ForwardWhenContentTypeIsUnknown": True,
+                    "ContentTypeProfiles": {
+                        "Quantity": 1,
+                        "Items": [
+                            {
+                                "Format": "URLEncoded",
+                                "ProfileId": flep_id,
+                                "ContentType": "application/x-www-form-urlencoded",
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        assert "FieldLevelEncryption" in resp
+        assert resp["FieldLevelEncryption"]["Id"] is not None
+
+
 class TestCloudFrontNewStubOps:
     """Tests for newly-implemented CloudFront stub operations."""
 
