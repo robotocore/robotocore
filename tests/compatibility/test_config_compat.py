@@ -848,8 +848,9 @@ class TestConfigAutoCoverage:
         assert "ComplianceSummariesByResourceType" in resp
 
     def test_get_custom_rule_policy(self, client):
-        """GetCustomRulePolicy returns a response."""
-        client.get_custom_rule_policy()
+        """GetCustomRulePolicy returns a response for a given ConfigRuleName."""
+        resp = client.get_custom_rule_policy(ConfigRuleName="nonexistent-rule")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_discovered_resource_counts(self, client):
         """GetDiscoveredResourceCounts returns a response."""
@@ -858,7 +859,8 @@ class TestConfigAutoCoverage:
 
     def test_list_configuration_recorders(self, client):
         """ListConfigurationRecorders returns a response."""
-        client.list_configuration_recorders()
+        resp = client.list_configuration_recorders()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_resource_evaluations(self, client):
         """ListResourceEvaluations returns a response."""
@@ -867,7 +869,8 @@ class TestConfigAutoCoverage:
 
     def test_start_config_rules_evaluation(self, client):
         """StartConfigRulesEvaluation returns a response."""
-        client.start_config_rules_evaluation()
+        resp = client.start_config_rules_evaluation()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestConfigBatchResourceConfig:

@@ -818,8 +818,8 @@ class TestEventBridgeListRulesFilter:
 
 class TestEventBridgePartnerEvents:
     def test_put_partner_events_source(self, events):
-        """PutPartnerEventsSource is not commonly supported in emulators."""
-        events.put_partner_events(
+        """PutPartnerEvents accepts partner event entries and returns a response."""
+        resp = events.put_partner_events(
             Entries=[
                 {
                     "Source": "aws.partner/example.com/test",
@@ -828,6 +828,7 @@ class TestEventBridgePartnerEvents:
                 }
             ]
         )
+        assert "FailedEntryCount" in resp
 
 
 class TestEventBridgeRuleTagging:
@@ -1581,18 +1582,29 @@ class TestEventsAutoCoverage:
         assert "Replays" in resp
 
     def test_put_permission(self, client):
-        """PutPermission returns a response."""
-        try:
-            client.put_permission()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
+        """PutPermission grants permission and returns a 200 response."""
+        import uuid
+
+        stmt_id = f"test-stmt-{uuid.uuid4().hex[:8]}"
+        resp = client.put_permission(
+            Action="events:PutEvents",
+            Principal="123456789012",
+            StatementId=stmt_id,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_remove_permission(self, client):
-        """RemovePermission returns a response."""
-        try:
-            client.remove_permission()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
+        """RemovePermission removes a previously added statement."""
+        import uuid
+
+        stmt_id = f"test-stmt-{uuid.uuid4().hex[:8]}"
+        client.put_permission(
+            Action="events:PutEvents",
+            Principal="123456789012",
+            StatementId=stmt_id,
+        )
+        resp = client.remove_permission(StatementId=stmt_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_event_bus(self, client):
         """UpdateEventBus returns a response."""
