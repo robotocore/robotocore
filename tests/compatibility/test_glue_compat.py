@@ -5192,3 +5192,9 @@ class TestGlueNewGapOps:
                 },
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_column_statistics_task_runs(self, glue):
+        """ListColumnStatisticsTaskRuns returns a list of task run IDs."""
+        resp = glue.list_column_statistics_task_runs()
+        assert "ColumnStatisticsTaskRunIds" in resp
+        assert isinstance(resp["ColumnStatisticsTaskRunIds"], list)
