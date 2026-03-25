@@ -1,12 +1,14 @@
 #!/bin/bash
 # Overnight headless loop. Run it and go to bed.
 #
-#   ./scripts/overnight.sh
+#   ./scripts/overnight.sh [--category test|strengthen_test|implement] [--service NAME]
 #
+# Uses drive.py (which reads data/operation_catalog.json) to select work.
+# The catalog IS the state — running this script again picks up exactly where it left off.
+#
+# Work priority: fix_test → test → strengthen_test → implement
 # Restarts the server after every commit (code may have changed).
-# Breaks services into small resource-group chunks.
-# Writes one test at a time, runs it, keeps or deletes.
-# Commits per service, pushes, moves on.
+# Commits and pushes per service. Moves on after 3 consecutive zero-result chunks.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,6 +19,20 @@ unset CLAUDECODE 2>/dev/null || true
 
 mkdir -p logs/overnight
 
+# Parse args to pass through to drive.py
+DRIVE_ARGS=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --category|--service|--batch)
+            DRIVE_ARGS="$DRIVE_ARGS $1 $2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
 restart_server() {
     make stop 2>/dev/null || true
     sleep 1
@@ -26,172 +42,108 @@ restart_server() {
 
 restart_server
 
-SERVICES=$(uv run python scripts/next_service.py --all --max-total 300 2>/dev/null \
-    | awk '{print $1}')
+# Get work queue from catalog-aware driver
+# Each line: JSON object with {category, service, ops, chunk_idx, total_chunks, prompt}
+WORK_JSON=$(uv run python scripts/drive.py --json $DRIVE_ARGS 2>/dev/null) || {
+    echo "Nothing to do — catalog shows no remaining work."
+    exit 0
+}
 
-for SERVICE in $SERVICES; do
-    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-    echo ""
-    echo "================================================================"
-    echo "=== $SERVICE at $(date)"
-    echo "================================================================"
-
-    # Probe against live server
-    PROBE_FILE="logs/overnight/${TIMESTAMP}-${SERVICE}-probe.json"
-    uv run python scripts/probe_service.py \
-        --service "$SERVICE" --all --json > "$PROBE_FILE" 2>&1 || true
-
-    # Get chunks with working-untested ops
-    CHUNKS_JSON=$(uv run python scripts/chunk_service.py \
-        --service "$SERVICE" --untested-only --probe-file "$PROBE_FILE" --json 2>/dev/null) || continue
-
-    # Filter to chunks that have something to do
-    CHUNK_LIST=$(echo "$CHUNKS_JSON" | python3 -c "
+ITEM_COUNT=$(echo "$WORK_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+echo ""
+echo "Work queue: $ITEM_COUNT items"
+echo "$WORK_JSON" | python3 -c "
 import json, sys
-chunks = json.load(sys.stdin)
-ready = [c for c in chunks if c.get('working_untested_count', 0) > 0]
-ready.sort(key=lambda c: -c['working_untested_count'])
-for c in ready:
-    print(c['noun'] + '|' + ','.join(c['working_untested']))
-" 2>/dev/null) || continue
+items = json.load(sys.stdin)
+from collections import Counter
+cats = Counter(i['category'] for i in items)
+for cat, n in cats.most_common():
+    print(f'  {cat}: {n} items')
+"
+echo ""
 
-    [ -z "$CHUNK_LIST" ] && { echo "  Nothing to do"; continue; }
+# Process each work item
+echo "$WORK_JSON" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    print(item['category'] + '|' + item['service'] + '|' + str(item['chunk_idx']) + '|' + str(item['total_chunks']) + '|' + item['prompt'].replace('\n', '\\\\n'))
+" | while IFS='|' read -r CAT SERVICE CHUNK_IDX TOTAL_CHUNKS PROMPT_ESCAPED; do
+    PROMPT=$(echo "$PROMPT_ESCAPED" | sed 's/\\n/\n/g')
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    CHUNK_LABEL=""
+    if [ "$TOTAL_CHUNKS" -gt 1 ]; then
+        CHUNK_LABEL="-chunk${CHUNK_IDX}"
+    fi
 
-    BEFORE=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
-        | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['covered'])" 2>/dev/null) || BEFORE=0
+    echo "================================================================"
+    echo "=== $CAT / $SERVICE$CHUNK_LABEL at $(date)"
+    echo "================================================================"
 
-    FAILS=0
+    CHUNK_LOG="logs/overnight/${TIMESTAMP}-${CAT}-${SERVICE}${CHUNK_LABEL}.log"
+    ln -sf "$(basename "$CHUNK_LOG")" logs/overnight/latest.log
 
-    while IFS='|' read -r NOUN OPS_CSV; do
-        [ -z "$OPS_CSV" ] && continue
-        [ "$FAILS" -ge 3 ] && { echo "  3 consecutive failures, moving on"; break; }
+    # Find the service's test file (for commit and lint steps below)
+    TEST_FILE=$(ls tests/compatibility/test_*${SERVICE//-/_}*_compat.py 2>/dev/null | head -1 || true)
 
-        OPS_LIST=$(echo "$OPS_CSV" | tr ',' '\n' | sed 's/^/    - /')
-        CHUNK_LOG="logs/overnight/${TIMESTAMP}-${SERVICE}-${NOUN}.log"
-        echo "  chunk: $SERVICE / $NOUN"
+    BEFORE=0
+    if [ -n "$TEST_FILE" ]; then
+        BEFORE=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['covered'])" 2>/dev/null) || BEFORE=0
+    fi
 
-        # Stream to chunk log and a "latest" symlink for easy tailing
-        ln -sf "$(basename "$CHUNK_LOG")" logs/overnight/latest.log
-        claude --output-format stream-json --verbose --permission-mode bypassPermissions -p "$(cat <<PROMPT
-Write compat tests for the **${NOUN}** operations in **${SERVICE}**. These all work on the server (port 4566).
+    # Run the claude session
+    claude --output-format stream-json --verbose --permission-mode bypassPermissions \
+        -p "$PROMPT" > "$CHUNK_LOG" 2>&1 || true
 
-Operations to test:
-${OPS_LIST}
-
-## Steps
-
-1. Read the test file: find it with \`ls tests/compatibility/test_*${SERVICE//-/_}*_compat.py\`
-   Understand fixtures, imports, client name, class naming.
-
-2. For EACH operation, write ONE test then IMMEDIATELY run it:
-   \`uv run pytest <file> -k "test_<name>" -q --tb=short\`
-
-   Pass → keep. 501/not-implemented → delete. Bad params → fix once, then skip.
-
-3. Test patterns:
-
-   CRUD (needs a resource):
-   \`\`\`python
-   def test_describe_thing(self, client):
-       resp = client.create_thing(Name="test-chunk")
-       thing_id = resp["ThingId"]
-       try:
-           result = client.describe_thing(ThingId=thing_id)
-           assert "ThingId" in result
-       finally:
-           client.delete_thing(ThingId=thing_id)
-   \`\`\`
-
-   Non-existent resource (proves implementation):
-   \`\`\`python
-   def test_describe_nonexistent(self, client):
-       with pytest.raises(ClientError) as exc:
-           client.describe_thing(ThingId="does-not-exist")
-       assert exc.value.response["Error"]["Code"] in (
-           "ResourceNotFoundException", "NotFoundException", "NoSuchEntity")
-   \`\`\`
-
-   List (often needs no setup):
-   \`\`\`python
-   def test_list_things(self, client):
-       result = client.list_things()
-       assert "Things" in result
-   \`\`\`
-
-4. After all ops: run the full file, fix any failures.
-   \`uv run pytest <file> -q --tb=short\`
-
-5. Run quality check:
-   \`uv run python scripts/validate_test_quality.py --file <file>\`
-   Delete any test that doesn't contact the server.
-
-## Rules
-- NEVER catch ParamValidationError
-- NEVER write a test without an assertion
-- Run each test RIGHT AFTER writing it
-- If stuck on params >2 min, skip the op
-- If 501: delete the test, move on
-
-Print exactly this when done: CHUNK_RESULT: added=N failed=M skipped=K
-PROMPT
-)" > "$CHUNK_LOG" 2>&1
-
-        ADDED=$(grep "CHUNK_RESULT:" "$CHUNK_LOG" 2>/dev/null | sed -n 's/.*added=\([0-9]*\).*/\1/p' | tail -1)
-        [ -z "$ADDED" ] && ADDED=0
-        [ -z "$ADDED" ] && ADDED=0
-
-        if [ "$ADDED" = "0" ]; then
-            FAILS=$((FAILS + 1))
-            echo "    nothing added (failures=$FAILS)"
-        else
-            FAILS=0
-            echo "    +$ADDED tests"
-        fi
-    done <<< "$CHUNK_LIST"
+    ADDED=$(grep "CHUNK_RESULT:" "$CHUNK_LOG" 2>/dev/null \
+        | sed -n 's/.*added=\([0-9]*\).*/\1/p' | tail -1 || echo "0")
+    [ -z "$ADDED" ] && ADDED=0
+    echo "  Result: $ADDED items added"
 
     # Check if anything changed
-    if git diff --quiet tests/compatibility/ 2>/dev/null; then
-        echo "  No changes for $SERVICE"
+    if git diff --quiet tests/compatibility/ src/robotocore/ 2>/dev/null; then
+        echo "  No changes — skipping commit"
         continue
     fi
 
-    # Verify tests pass before committing
-    TEST_FILE=$(ls tests/compatibility/test_*${SERVICE//-/_}*_compat.py 2>/dev/null | head -1)
-    if [ -z "$TEST_FILE" ]; then
-        echo "  No test file found"
-        continue
-    fi
+    # Re-find test file (may have been created in this session)
+    TEST_FILE=$(ls tests/compatibility/test_*${SERVICE//-/_}*_compat.py 2>/dev/null | head -1 || true)
 
-    if ! uv run pytest "$TEST_FILE" -q --tb=short 2>&1 | tail -3; then
-        echo "  TESTS FAILED — reverting $TEST_FILE only"
-        git checkout "$TEST_FILE" 2>/dev/null
-        continue
+    # Verify tests pass before committing (only for test-writing categories)
+    if [[ "$CAT" == "test" || "$CAT" == "strengthen_test" || "$CAT" == "fix_test" ]] && [ -n "$TEST_FILE" ]; then
+        if ! uv run pytest "$TEST_FILE" -q --tb=short 2>&1 | tail -3; then
+            echo "  TESTS FAILED — reverting $TEST_FILE only"
+            git checkout "$TEST_FILE" 2>/dev/null || true
+            continue
+        fi
     fi
 
     # Fix lint/format before committing (pre-commit hook requires this)
     uv run ruff check --fix --unsafe-fixes --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
     uv run ruff format --quiet tests/compatibility/ src/robotocore/ 2>/dev/null || true
-    # Fix E741 (ambiguous variable names) which ruff can't auto-fix
-    sed -i '' 's/\[l\[/[lnk[/g; s/ l\[/ lnk[/g; s/for l in/for lnk in/g' "$TEST_FILE" 2>/dev/null || true
+
     # Verify lint passes; if not, revert test file only
-    if ! uv run ruff check "$TEST_FILE" --quiet 2>/dev/null; then
+    if [ -n "$TEST_FILE" ] && ! uv run ruff check "$TEST_FILE" --quiet 2>/dev/null; then
         echo "  LINT FAILED after fixes — reverting $TEST_FILE"
-        git checkout "$TEST_FILE" 2>/dev/null
+        git checkout "$TEST_FILE" 2>/dev/null || true
         continue
     fi
 
-    # Commit, push, restart server (code may have changed)
-    AFTER=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d[0]['covered']}/{d[0]['total_ops']}\")" 2>/dev/null) || AFTER="?"
-
-    # Push any Moto fixes to the fork and update the lockfile
-    if (cd vendor/moto && git diff --quiet jackdanger/master..HEAD 2>/dev/null) || true; then
-        (cd vendor/moto && git push jackdanger HEAD:master 2>/dev/null) || true
-        uv lock 2>/dev/null || true
+    # Compute coverage delta (for commit message)
+    AFTER="?"
+    if [ -n "$TEST_FILE" ]; then
+        AFTER=$(uv run python scripts/compat_coverage.py --service "$SERVICE" --json 2>/dev/null \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d[0]['covered']}/{d[0]['total_ops']}\")" \
+            2>/dev/null) || AFTER="?"
     fi
 
-    # Create prompt log for this service
-    PROMPT_FILE="prompts/$(date -u +%Y%m%d-%H%M%S)-expand-${SERVICE}.md"
+    # Push any Moto fixes to the fork and update the lockfile
+    (cd vendor/moto && git push jackdanger HEAD:master 2>/dev/null) || true
+    uv lock 2>/dev/null || true
+
+    # Create prompt log
+    PROMPT_FILE="prompts/$(date -u +%Y%m%d-%H%M%S)-${CAT}-${SERVICE}${CHUNK_LABEL}.md"
     cat > "$PROMPT_FILE" <<PLOG
 ---
 session: "overnight-$(date -u +%Y%m%d)"
@@ -202,32 +154,37 @@ reconstructed: true
 
 ## Human
 
-Overnight automation: expand compat tests for ${SERVICE}.
+Overnight automation: ${CAT} work for ${SERVICE}${CHUNK_LABEL}.
 
 ## Assistant
 
 ## Key decisions
 
-Probed ${SERVICE}, chunked untested operations, generated compat tests.
-Coverage: ${BEFORE} -> ${AFTER}.
+Category: ${CAT}. Coverage: ${BEFORE} → ${AFTER}.
 PLOG
 
-    # Also pick up any source changes (Claude may fix the server to make tests pass)
-    git add "$TEST_FILE" "$PROMPT_FILE" src/robotocore/ uv.lock
+    # Stage and commit
+    FILES_TO_ADD="$PROMPT_FILE"
+    [ -n "$TEST_FILE" ] && FILES_TO_ADD="$FILES_TO_ADD $TEST_FILE"
+
+    git add $FILES_TO_ADD src/robotocore/ uv.lock 2>/dev/null || true
     git commit -m "$(cat <<EOF
-Expand ${SERVICE} compat tests: ${AFTER} operations covered
+${CAT}: ${SERVICE}${CHUNK_LABEL} — coverage ${AFTER}
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 EOF
-)" 2>/dev/null || { echo "  COMMIT FAILED for $SERVICE"; continue; }
+)" 2>/dev/null || { echo "  COMMIT FAILED for $SERVICE$CHUNK_LABEL"; continue; }
     git push 2>/dev/null || true
 
-    echo "  Committed: $SERVICE $BEFORE → $AFTER"
+    echo "  Committed: $SERVICE$CHUNK_LABEL ($CAT) $BEFORE → $AFTER"
 
-    # Restart server — our code or Moto may have changed
+    # Rebuild catalog so subsequent items see updated coverage
+    uv run python scripts/build_operation_catalog.py --json > data/operation_catalog.json 2>/dev/null || true
+
+    # Restart server — code or Moto may have changed
     restart_server
 done
 
 echo ""
 echo "=== Done ==="
-uv run python scripts/compat_coverage.py 2>&1 | tail -5
+uv run python scripts/drive.py --summary 2>/dev/null || uv run python scripts/compat_coverage.py 2>&1 | tail -5

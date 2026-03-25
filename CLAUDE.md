@@ -219,7 +219,7 @@ When using Claude Code agents on this project:
 - Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
 - Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
 - Run `uv run python scripts/<tool>.py` to analyze, then spawn agents to act on the results
-- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`, `validate_test_quality.py`, `validate_tests_runtime.py`, `lint_project.py`
+- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`, `validate_test_quality.py`, `validate_tests_runtime.py`, `lint_project.py`, `drive.py` (primary progress driver — see below), `build_operation_catalog.py`, `validate_test_semantics.py`, `chunk_service.py`, `next_service.py` (superseded by drive.py)
 
 ### Subagent patterns
 - **Research first**: Use Explore agents (parallel, no worktree) to understand the problem, then code agents to implement
@@ -259,26 +259,44 @@ When we discover a Moto bug or missing feature:
 - **Run `make test-quality` before committing tests.** The `validate_test_quality.py` script catches tests that never contact the server. CI enforces <5% no-contact rate.
 - **Test count is not a metric.** Never report test count as progress without also reporting effective test rate from `validate_test_quality.py`. 100 tests that verify behavior > 10,000 tests that catch exceptions and pass.
 
-### Headless overnight workflow (chunk-based with feedback)
+### Catalog-aware progress driver (`scripts/drive.py`)
 
-The overnight script (`scripts/overnight.sh`) uses a tight feedback loop:
+`drive.py` reads `data/operation_catalog.json` as the single source of truth and generates agent work items in priority order: **fix_test → test → strengthen_test → implement**. The catalog IS the state — running it again always picks up exactly what remains.
 
-**Architecture**: service → probe → chunk by resource noun → per-chunk Claude session → verify → commit
+```bash
+uv run python scripts/drive.py                     # show full work queue (dry-run)
+uv run python scripts/drive.py --summary           # counts per category
+uv run python scripts/drive.py --category test     # filter to one category
+uv run python scripts/drive.py --service cognito-idp  # one service
+uv run python scripts/drive.py --batch 5           # next 5 items
+uv run python scripts/drive.py --json              # machine-readable (used by overnight.sh)
+uv run python scripts/drive.py --run               # execute headlessly via claude CLI
+```
 
-**Chunking**: `scripts/chunk_service.py` breaks any service (even EC2 with 756 ops) into resource-group chunks of 3-8 operations each (e.g., "Vpc", "SecurityGroup", "Instance"). Each chunk is a single Claude session.
+**Category prompts** (generated automatically with full instructions):
+- `test` — Moto implements it but no compat test: probe server → write tests
+- `strengthen_test` — test only asserts on ResponseMetadata: add real assertion
+- `implement` — returns 501: find Moto stub → implement → test
+- `fix_test` — test catches ParamValidationError or has no assertion: repair
 
-**Feedback loop** (runs after every chunk):
+**Self-correcting**: after each service, `drive.py --run` rebuilds the catalog. If something was fixed, it disappears from the queue automatically.
+
+### Headless overnight workflow
+
+```bash
+./scripts/overnight.sh                             # all categories, priority order
+./scripts/overnight.sh --category test             # only write missing tests
+./scripts/overnight.sh --category implement        # only implementations
+./scripts/overnight.sh --service personalize       # one service
+```
+
+The overnight script calls `drive.py --json` to get the work queue, then runs each item via claude CLI, verifies, lint-fixes, and commits. The catalog is rebuilt after each commit so subsequent items see current coverage.
+
+**Feedback loop** (runs after every work item):
 1. Each test is run immediately after being written (pass → keep, fail → fix or delete)
-2. Quality gate after chunk: `validate_test_quality.py` (no junk tests)
-3. Coverage delta after service: did `compat_coverage.py` numbers actually go up?
-4. 3 consecutive failed chunks → move to next service (don't waste time)
-5. Every 5 services: overall progress check
-
-**Tools in the pipeline**:
-- `probe_service.py --all --json` — auto-fills params from botocore, classifies ops as working/not_implemented/500_error/needs_params
-- `chunk_service.py --with-probe --untested-only` — groups untested-but-working ops by resource noun
-- `compat_coverage.py --service X --json` — before/after coverage comparison
-- `validate_test_quality.py --file X` — ensures tests actually contact server
+2. Quality gate: `validate_test_quality.py` (no junk tests)
+3. Lint: ruff format + ruff check (auto-fixed before commit)
+4. Catalog rebuild: ensures next item reflects actual current state
 
 **Three test patterns that work**:
 1. **Create → use → cleanup** (for CRUD ops needing a resource)
@@ -287,11 +305,11 @@ The overnight script (`scripts/overnight.sh`) uses a tight feedback loop:
 
 **Critical rules for headless mode:**
 - NEVER catch ParamValidationError — that's client-side, proves nothing about the server
-- Every test MUST assert on a response field
+- Every test MUST assert on a real response field
 - Run each test RIGHT AFTER writing it — don't batch
 - If stuck on params for >2 minutes, skip the operation
 - If an operation returns 501, DELETE the test and move on
-- The goal is reliable coverage, not speed
+- Print `CHUNK_RESULT: added=N failed=M skipped=K` at the end so overnight.sh can parse it
 
 ### Reviewing pull requests
 
