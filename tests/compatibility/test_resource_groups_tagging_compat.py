@@ -203,5 +203,6 @@ class TestResourcegroupstaggingapiAutoCoverage:
         return make_client("resourcegroupstaggingapi")
 
     def test_list_required_tags(self, client):
-        """ListRequiredTags returns a response."""
-        client.list_required_tags()
+        """ListRequiredTags returns a successful response."""
+        resp = client.list_required_tags()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

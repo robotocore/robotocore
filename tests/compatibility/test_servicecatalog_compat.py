@@ -1056,26 +1056,31 @@ class TestServiceCatalogServiceActionCRUD:
         pa_list = servicecatalog.list_provisioning_artifacts(ProductId=prod_id)
         pa_id = pa_list["ProvisioningArtifactDetails"][0]["Id"]
 
-        sa = servicecatalog.create_service_action(
-            Name="assoc-action",
+        action_name = _uid("assoc-action")
+        servicecatalog.create_service_action(
+            Name=action_name,
             Definition={"Name": "AWS-RestartEC2Instance", "Version": "1"},
             DefinitionType="SSM_AUTOMATION",
             IdempotencyToken=uuid.uuid4().hex,
         )
-        # Extract SA id from the response
-        sa_detail = sa["ServiceActionDetail"]
-        sa_id = sa_detail.get("ServiceActionSummary", sa_detail).get(
-            "Id", sa_detail.get("Definition", {}).get("Name", "")
+        # Get the SA id via list_service_actions since create doesn't return Id
+        actions = servicecatalog.list_service_actions()
+        sa_id = next(
+            (
+                a["Id"]
+                for a in actions.get("ServiceActionSummaries", [])
+                if a["Name"] == action_name
+            ),
+            None,
         )
-        # If no Id, we can still test the association call
+        assert sa_id is not None, "Service action should exist after creation"
         try:
-            servicecatalog.associate_service_action_with_provisioning_artifact(
+            resp = servicecatalog.associate_service_action_with_provisioning_artifact(
                 ProductId=prod_id,
                 ProvisioningArtifactId=pa_id,
-                ServiceActionId=sa_id if sa_id else "fake-sa-id",
+                ServiceActionId=sa_id,
             )
-        except ClientError:
-            pass  # May fail if SA id is wrong format
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             servicecatalog.delete_product(Id=prod_id)
 

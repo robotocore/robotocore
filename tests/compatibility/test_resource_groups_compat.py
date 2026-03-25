@@ -254,8 +254,18 @@ class TestResourceGroupsAutoCoverage:
         return make_client("resource-groups")
 
     def test_list_group_resources(self, client):
-        """ListGroupResources returns a response."""
-        client.list_group_resources()
+        """ListGroupResources returns ResourceIdentifiers for an existing group."""
+        name = f"list-res-{_uid()}"
+        client.create_group(
+            Name=name,
+            Description="List resources group",
+            ResourceQuery=RESOURCE_QUERY,
+        )
+        try:
+            resp = client.list_group_resources(Group=name)
+            assert "ResourceIdentifiers" in resp
+        finally:
+            client.delete_group(GroupName=name)
 
     def test_list_tag_sync_tasks(self, client):
         """ListTagSyncTasks returns a response."""
@@ -263,11 +273,38 @@ class TestResourceGroupsAutoCoverage:
         assert "TagSyncTasks" in resp
 
     def test_put_group_configuration(self, client):
-        """PutGroupConfiguration returns a response."""
+        """PutGroupConfiguration succeeds for a configuration-based group."""
+        name = f"putcfg-{_uid()}"
+        client.create_group(
+            Name=name,
+            Description="Put config group",
+            Configuration=[
+                {
+                    "Type": "AWS::ResourceGroups::Generic",
+                    "Parameters": [
+                        {"Name": "allowed-resource-types", "Values": ["AWS::EC2::Instance"]}
+                    ],
+                }
+            ],
+        )
         try:
-            client.put_group_configuration()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
+            resp = client.put_group_configuration(
+                Group=name,
+                Configuration=[
+                    {
+                        "Type": "AWS::ResourceGroups::Generic",
+                        "Parameters": [
+                            {
+                                "Name": "allowed-resource-types",
+                                "Values": ["AWS::EC2::Instance"],
+                            }
+                        ],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_group(GroupName=name)
 
     def test_update_account_settings(self, client):
         """UpdateAccountSettings returns a response."""
