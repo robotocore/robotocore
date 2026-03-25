@@ -5198,3 +5198,16 @@ class TestGlueNewGapOps:
         resp = glue.list_column_statistics_task_runs()
         assert "ColumnStatisticsTaskRunIds" in resp
         assert isinstance(resp["ColumnStatisticsTaskRunIds"], list)
+
+    def test_delete_integration(self, glue):
+        """DeleteIntegration removes an integration and returns the integration ARN."""
+        name = _unique("integ")
+        create_resp = glue.create_integration(
+            IntegrationName=name,
+            SourceArn="arn:aws:dynamodb:us-east-1:123456789012:table/SourceTable",
+            TargetArn="arn:aws:s3:::target-bucket",
+        )
+        integration_arn = create_resp["IntegrationArn"]
+
+        delete_resp = glue.delete_integration(IntegrationIdentifier=integration_arn)
+        assert delete_resp["IntegrationArn"] == integration_arn
