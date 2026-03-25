@@ -1497,3 +1497,11 @@ class TestCodeCommitMergePROperations:
             assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
         finally:
             codecommit.delete_repository(repositoryName=name)
+
+    def test_get_comment_reactions_nonexistent(self, codecommit):
+        """GetCommentReactions raises CommentDoesNotExistException for a fake commentId."""
+        import botocore.exceptions
+
+        with pytest.raises(botocore.exceptions.ClientError) as exc:
+            codecommit.get_comment_reactions(commentId="fake-comment-id-does-not-exist")
+        assert exc.value.response["Error"]["Code"] == "CommentDoesNotExistException"
