@@ -172,3 +172,45 @@ class TestNetworkFirewallOperations:
         listed_names = {fw["FirewallName"] for fw in resp["Firewalls"]}
         for n in names:
             assert n in listed_names
+
+    def test_describe_logging_configuration(self, nfw):
+        """DescribeLoggingConfiguration returns FirewallArn and LoggingConfiguration."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        resp = nfw.describe_logging_configuration(FirewallArn=arn)
+        assert resp["FirewallArn"] == arn
+        assert "LoggingConfiguration" in resp
+
+    def test_update_logging_configuration(self, nfw):
+        """UpdateLoggingConfiguration persists the log destination config."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        resp = nfw.update_logging_configuration(
+            FirewallArn=arn,
+            LoggingConfiguration={
+                "LogDestinationConfigs": [
+                    {
+                        "LogType": "ALERT",
+                        "LogDestinationType": "CloudWatchLogs",
+                        "LogDestination": {"logGroup": "/aws/network-firewall/alerts"},
+                    }
+                ]
+            },
+        )
+        assert resp["FirewallArn"] == arn
+        assert resp["FirewallName"] == name
+        configs = resp["LoggingConfiguration"]["LogDestinationConfigs"]
+        assert len(configs) == 1
+        assert configs[0]["LogType"] == "ALERT"
