@@ -179,6 +179,16 @@ class TestTaggingExtended:
             sqs.delete_queue(QueueUrl=url)
 
 
+class TestStartReportCreation:
+    @pytest.fixture
+    def tagging(self):
+        return make_client("resourcegroupstaggingapi")
+
+    def test_start_report_creation(self, tagging):
+        resp = tagging.start_report_creation(S3Bucket="test-bucket")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestRGTAGapStubs:
     """Tests for gap operations: describe_report_creation, get_compliance_summary."""
 
