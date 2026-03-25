@@ -5,7 +5,8 @@
         test-iac-pulumi test-iac-serverless test-iac-sam release \
         s3-semantic-audit s3-connectivity-matrix \
         coverage pre-commit-install pre-commit \
-        shape-check error-check
+        shape-check error-check \
+        catalog semantic-check audit
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 DEV := uv run python scripts/dev.py
@@ -147,6 +148,21 @@ s3-semantic-audit: ## Generate the S3 feature-level semantic audit report
 
 s3-connectivity-matrix: s3-semantic-audit ## Regenerate the S3 connectivity matrix
 	@echo "Wrote docs/s3-connectivity-matrix.md"
+
+## ── Operation catalog & semantic checks ─────────────────────────────────────
+
+catalog: ## Build per-operation truth table (data/operation_catalog.json)
+	uv run python scripts/build_operation_catalog.py --json > data/operation_catalog.json
+
+semantic-check: ## Validate test assertions against botocore shapes (no server needed)
+	uv run python scripts/validate_test_semantics.py
+
+audit: test-quality semantic-check catalog ## Full audit: test quality + semantics + catalog
+	@echo ""
+	@echo "══════════════════════════════════════════════════════════════════"
+	@echo "  Operation Catalog Summary"
+	@echo "══════════════════════════════════════════════════════════════════"
+	uv run python scripts/build_operation_catalog.py --summary
 
 ## ── Docker ───────────────────────────────────────────────────────────────────
 
