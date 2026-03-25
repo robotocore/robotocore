@@ -378,3 +378,398 @@ class TestPersonalizeCRUDOps:
         assert arn in arns
 
         client.delete_dataset_group(datasetGroupArn=arn)
+
+
+SCHEMA_JSON = (
+    '{"type":"record","name":"Interactions",'
+    '"namespace":"com.amazonaws.personalize.schema",'
+    '"fields":['
+    '{"name":"USER_ID","type":"string"},'
+    '{"name":"ITEM_ID","type":"string"},'
+    '{"name":"TIMESTAMP","type":"long"}'
+    '],"version":"1.0"}'
+)
+
+ROLE_ARN = "arn:aws:iam::123456789012:role/PersonalizeRole"
+
+
+class TestPersonalizeCreateOps:
+    """Tests for Create operations covering the 28-op required set."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    @pytest.fixture
+    def resources(self, client):
+        """Create shared prerequisites: schema, dataset group, dataset, solution, sv."""
+        sr = client.create_schema(name="test-create-ops-schema", schema=SCHEMA_JSON)
+        schema_arn = sr["schemaArn"]
+
+        dgr = client.create_dataset_group(name="test-create-ops-dg")
+        dg_arn = dgr["datasetGroupArn"]
+
+        dr = client.create_dataset(
+            name="test-create-ops-ds",
+            datasetGroupArn=dg_arn,
+            datasetType="INTERACTIONS",
+            schemaArn=schema_arn,
+        )
+        ds_arn = dr["datasetArn"]
+
+        sol_r = client.create_solution(name="test-create-ops-sol", datasetGroupArn=dg_arn)
+        sol_arn = sol_r["solutionArn"]
+
+        sv_r = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv_r["solutionVersionArn"]
+
+        yield {
+            "schema_arn": schema_arn,
+            "dg_arn": dg_arn,
+            "ds_arn": ds_arn,
+            "sol_arn": sol_arn,
+            "sv_arn": sv_arn,
+        }
+
+        # best-effort cleanup
+        try:
+            client.delete_dataset(datasetArn=ds_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_dataset: %s", exc)
+        try:
+            client.delete_solution(solutionArn=sol_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_solution: %s", exc)
+        try:
+            client.delete_dataset_group(datasetGroupArn=dg_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_dataset_group: %s", exc)
+        try:
+            client.delete_schema(schemaArn=schema_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_schema: %s", exc)
+
+    # --- Create operations ---
+
+    def test_create_dataset(self, client, resources):
+        ds_arn = resources["ds_arn"]
+        assert "dataset" in ds_arn
+        assert "personalize" in ds_arn
+
+    def test_create_solution(self, client, resources):
+        sol_arn = resources["sol_arn"]
+        assert "solution" in sol_arn
+
+    def test_create_solution_version(self, client, resources):
+        sv_arn = resources["sv_arn"]
+        assert "solutionVersion" in sv_arn
+
+    def test_create_campaign(self, client, resources):
+        sv_arn = resources["sv_arn"]
+        r = client.create_campaign(
+            name="test-create-campaign",
+            solutionVersionArn=sv_arn,
+            minProvisionedTPS=1,
+        )
+        campaign_arn = r["campaignArn"]
+        assert "campaign" in campaign_arn
+        try:
+            client.delete_campaign(campaignArn=campaign_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_campaign: %s", exc)
+
+    def test_create_filter(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_filter(
+            name="test-create-filter",
+            datasetGroupArn=dg_arn,
+            filterExpression='INCLUDE ItemID WHERE Items.category = "books"',
+        )
+        filter_arn = r["filterArn"]
+        assert "filter" in filter_arn
+        try:
+            client.delete_filter(filterArn=filter_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_filter: %s", exc)
+
+    def test_create_event_tracker(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_event_tracker(
+            name="test-create-event-tracker",
+            datasetGroupArn=dg_arn,
+        )
+        assert "eventTrackerArn" in r
+        assert "event-tracker" in r["eventTrackerArn"]
+        try:
+            client.delete_event_tracker(eventTrackerArn=r["eventTrackerArn"])
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_event_tracker: %s", exc)
+
+    def test_create_recommender(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_recommender(
+            name="test-create-recommender",
+            datasetGroupArn=dg_arn,
+            recipeArn="arn:aws:personalize:::recipe/aws-ecomm-popular-items-by-views",
+        )
+        assert "recommenderArn" in r
+        assert "recommender" in r["recommenderArn"]
+        try:
+            client.delete_recommender(recommenderArn=r["recommenderArn"])
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_recommender: %s", exc)
+
+    def test_create_metric_attribution(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_metric_attribution(
+            name="test-create-metric-attr",
+            datasetGroupArn=dg_arn,
+            metrics=[
+                {
+                    "eventType": "click",
+                    "expression": "SUM(DatasetType.INTERACTIONS.eventValue)",
+                    "metricName": "clicks_total",
+                }
+            ],
+            metricsOutputConfig={
+                "roleArn": ROLE_ARN,
+                "s3DataDestination": {"path": "s3://my-bucket/metrics/"},
+            },
+        )
+        assert "metricAttributionArn" in r
+        assert "metric-attribution" in r["metricAttributionArn"]
+        try:
+            client.delete_metric_attribution(metricAttributionArn=r["metricAttributionArn"])
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup delete_metric_attribution: %s", exc)
+
+    def test_create_dataset_import_job(self, client, resources):
+        ds_arn = resources["ds_arn"]
+        r = client.create_dataset_import_job(
+            jobName="test-create-import-job",
+            datasetArn=ds_arn,
+            dataSource={"dataLocation": "s3://my-bucket/data/"},
+            roleArn=ROLE_ARN,
+        )
+        assert "datasetImportJobArn" in r
+        assert "dataset-import-job" in r["datasetImportJobArn"]
+
+    def test_create_dataset_export_job(self, client, resources):
+        ds_arn = resources["ds_arn"]
+        r = client.create_dataset_export_job(
+            jobName="test-create-export-job",
+            datasetArn=ds_arn,
+            jobOutput={"s3DataDestination": {"path": "s3://my-bucket/output/"}},
+            roleArn=ROLE_ARN,
+        )
+        assert "datasetExportJobArn" in r
+        assert "dataset-export-job" in r["datasetExportJobArn"]
+
+    def test_create_data_deletion_job(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_data_deletion_job(
+            jobName="test-create-deletion-job",
+            datasetGroupArn=dg_arn,
+            dataSource={"dataLocation": "s3://my-bucket/deletions/"},
+            roleArn=ROLE_ARN,
+        )
+        assert "dataDeletionJobArn" in r
+        assert "data-deletion-job" in r["dataDeletionJobArn"]
+
+    def test_create_batch_inference_job(self, client, resources):
+        sv_arn = resources["sv_arn"]
+        r = client.create_batch_inference_job(
+            jobName="test-create-batch-inf",
+            solutionVersionArn=sv_arn,
+            jobInput={"s3DataSource": {"path": "s3://my-bucket/input/"}},
+            jobOutput={"s3DataDestination": {"path": "s3://my-bucket/output/"}},
+            roleArn=ROLE_ARN,
+        )
+        assert "batchInferenceJobArn" in r
+        assert "batch-inference-job" in r["batchInferenceJobArn"]
+
+    def test_create_batch_segment_job(self, client, resources):
+        sv_arn = resources["sv_arn"]
+        r = client.create_batch_segment_job(
+            jobName="test-create-batch-seg",
+            solutionVersionArn=sv_arn,
+            jobInput={"s3DataSource": {"path": "s3://my-bucket/input/"}},
+            jobOutput={"s3DataDestination": {"path": "s3://my-bucket/output/"}},
+            roleArn=ROLE_ARN,
+        )
+        assert "batchSegmentJobArn" in r
+        assert "batch-segment-job" in r["batchSegmentJobArn"]
+
+    # --- Delete operations ---
+
+    def test_delete_campaign(self, client, resources):
+        sv_arn = resources["sv_arn"]
+        r = client.create_campaign(
+            name="test-del-campaign",
+            solutionVersionArn=sv_arn,
+            minProvisionedTPS=1,
+        )
+        campaign_arn = r["campaignArn"]
+        del_r = client.delete_campaign(campaignArn=campaign_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_dataset(self, client):
+        sr = client.create_schema(name="test-del-ds-schema", schema=SCHEMA_JSON)
+        schema_arn = sr["schemaArn"]
+        dgr = client.create_dataset_group(name="test-del-ds-dg")
+        dg_arn = dgr["datasetGroupArn"]
+        dr = client.create_dataset(
+            name="test-del-ds",
+            datasetGroupArn=dg_arn,
+            datasetType="INTERACTIONS",
+            schemaArn=schema_arn,
+        )
+        ds_arn = dr["datasetArn"]
+        del_r = client.delete_dataset(datasetArn=ds_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            client.delete_dataset_group(datasetGroupArn=dg_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup: %s", exc)
+        try:
+            client.delete_schema(schemaArn=schema_arn)
+        except ClientError as exc:
+            import logging
+
+            logging.debug("cleanup: %s", exc)
+
+    def test_delete_event_tracker(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_event_tracker(name="test-del-et", datasetGroupArn=dg_arn)
+        et_arn = r["eventTrackerArn"]
+        del_r = client.delete_event_tracker(eventTrackerArn=et_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_filter(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_filter(
+            name="test-del-filter",
+            datasetGroupArn=dg_arn,
+            filterExpression='INCLUDE ItemID WHERE Items.category = "toys"',
+        )
+        filter_arn = r["filterArn"]
+        del_r = client.delete_filter(filterArn=filter_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_metric_attribution(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_metric_attribution(
+            name="test-del-metric-attr",
+            datasetGroupArn=dg_arn,
+            metrics=[
+                {
+                    "eventType": "view",
+                    "expression": "SUM(DatasetType.INTERACTIONS.eventValue)",
+                    "metricName": "views_total",
+                }
+            ],
+            metricsOutputConfig={
+                "roleArn": ROLE_ARN,
+                "s3DataDestination": {"path": "s3://my-bucket/metrics/"},
+            },
+        )
+        ma_arn = r["metricAttributionArn"]
+        del_r = client.delete_metric_attribution(metricAttributionArn=ma_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_recommender(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_recommender(
+            name="test-del-recommender",
+            datasetGroupArn=dg_arn,
+            recipeArn="arn:aws:personalize:::recipe/aws-ecomm-popular-items-by-views",
+        )
+        rec_arn = r["recommenderArn"]
+        del_r = client.delete_recommender(recommenderArn=rec_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_solution(self, client, resources):
+        dg_arn = resources["dg_arn"]
+        r = client.create_solution(name="test-del-solution", datasetGroupArn=dg_arn)
+        sol_arn = r["solutionArn"]
+        del_r = client.delete_solution(solutionArn=sol_arn)
+        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # --- List operations ---
+
+    def test_list_dataset_import_jobs(self, client):
+        r = client.list_dataset_import_jobs()
+        assert "datasetImportJobs" in r
+        assert isinstance(r["datasetImportJobs"], list)
+
+    # --- Start / Stop Recommender ---
+
+    def test_start_recommender_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.start_recommender(recommenderArn=f"{self.BASE_ARN}:recommender/nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_stop_recommender_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.stop_recommender(recommenderArn=f"{self.BASE_ARN}:recommender/nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # --- Update operations ---
+
+    def test_update_campaign_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.update_campaign(
+                campaignArn=f"{self.BASE_ARN}:campaign/nonexistent",
+                minProvisionedTPS=5,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_dataset_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.update_dataset(
+                datasetArn=f"{self.BASE_ARN}:dataset/nonexistent",
+                schemaArn=f"{self.BASE_ARN}:schema/fake",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_metric_attribution_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.update_metric_attribution(
+                metricAttributionArn=f"{self.BASE_ARN}:metric-attribution/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_recommender_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.update_recommender(
+                recommenderArn=f"{self.BASE_ARN}:recommender/nonexistent",
+                recommenderConfig={"minRecommendationRequestsPerSecond": 1},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_solution_not_found(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.update_solution(solutionArn=f"{self.BASE_ARN}:solution/nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
