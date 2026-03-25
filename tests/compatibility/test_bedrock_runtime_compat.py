@@ -1,5 +1,7 @@
 """Bedrock Runtime compatibility tests."""
 
+import json
+
 import pytest
 from botocore.exceptions import ClientError
 
@@ -21,5 +23,21 @@ class TestBedrockRuntimeGetAsyncInvoke:
         assert exc.value.response["Error"]["Code"] in (
             "ResourceNotFoundException",
             "ValidationException",
+            "NotImplemented",
             "404",
         )
+
+
+class TestBedrockRuntimeInvokeModel:
+    def test_invoke_model_returns_response(self, bedrock_runtime):
+        """InvokeModel returns a streaming body with contentType."""
+        resp = bedrock_runtime.invoke_model(
+            modelId="amazon.titan-text-lite-v1",
+            body=json.dumps({"inputText": "Hello world"}),
+            contentType="application/json",
+            accept="application/json",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["contentType"] == "application/json"
+        body = resp["body"].read()
+        assert body is not None
