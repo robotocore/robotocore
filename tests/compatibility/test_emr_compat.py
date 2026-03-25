@@ -868,6 +868,36 @@ class TestEMRStudioOperations:
         del_resp = emr.delete_studio(StudioId=studio_id)
         assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+    def test_update_studio(self, emr):
+        """UpdateStudio updates studio name, description, and S3 location."""
+        name = _unique("update-studio")
+        resp = emr.create_studio(
+            Name=name,
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        studio_id = resp["StudioId"]
+        try:
+            updated_name = _unique("renamed-studio")
+            update_resp = emr.update_studio(
+                StudioId=studio_id,
+                Name=updated_name,
+                Description="Updated description",
+                DefaultS3Location="s3://my-bucket/updated/",
+            )
+            assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            desc = emr.describe_studio(StudioId=studio_id)
+            assert desc["Studio"]["Name"] == updated_name
+            assert desc["Studio"]["Description"] == "Updated description"
+            assert desc["Studio"]["DefaultS3Location"] == "s3://my-bucket/updated/"
+        finally:
+            emr.delete_studio(StudioId=studio_id)
+
 
 class TestEMRListSecurityConfigurations:
     """Tests for EMR ListSecurityConfigurations."""
