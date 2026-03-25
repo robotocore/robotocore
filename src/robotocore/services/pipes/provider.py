@@ -178,6 +178,7 @@ def _describe_pipe(name: str, region: str, account_id: str) -> dict:
     return result
 
 
+# UpdatePipe
 def _update_pipe(name: str, params: dict, region: str, account_id: str) -> dict:
     pipes = _get_pipes(region, account_id)
     with _lock:
