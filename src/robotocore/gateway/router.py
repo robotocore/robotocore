@@ -170,6 +170,11 @@ SERVICE_NAME_ALIASES: dict[str, str] = {
     "sso": "ssoadmin",
     "execute-api": "apigatewaymanagementapi",
     "servicequotas": "service-quotas",
+    # mediastore-data uses signing name 'mediastore' like the control plane,
+    # but control plane requests always have X-Amz-Target (caught in step 1).
+    # Data plane requests have no target header, so auth-based routing sees
+    # 'mediastore' and must route to 'mediastore-data'.
+    "mediastore": "mediastore-data",
 }
 
 
