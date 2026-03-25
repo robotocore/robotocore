@@ -29,3 +29,13 @@ class TestEC2InstanceConnect:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert resp["Success"] is True
         assert "RequestId" in resp
+
+    def test_send_serial_console_ssh_public_key(self, ec2ic):
+        resp = ec2ic.send_serial_console_ssh_public_key(
+            InstanceId="i-1234567890abcdef0",
+            SSHPublicKey=_FAKE_SSH_KEY,
+            SerialPort=0,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["Success"] is True
+        assert "RequestId" in resp
