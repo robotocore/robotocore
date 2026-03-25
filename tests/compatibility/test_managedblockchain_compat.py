@@ -653,3 +653,9 @@ class TestManagedBlockchainAccessor:
             assert r4["Tags"].get("NewTag") == "val"
         finally:
             managedblockchain.delete_accessor(AccessorId=aid)
+
+    def test_list_accessors(self, managedblockchain):
+        """ListAccessors returns a list of accessors."""
+        resp = managedblockchain.list_accessors()
+        assert "Accessors" in resp
+        assert isinstance(resp["Accessors"], list)
