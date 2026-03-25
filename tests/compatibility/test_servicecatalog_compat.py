@@ -396,6 +396,66 @@ class TestServiceCatalogListOpsEmpty:
         assert isinstance(resp["ProvisionedProductPlans"], list)
 
 
+class TestServiceCatalogProductPortfolioAssociation:
+    """Tests for associating and disassociating products with portfolios."""
+
+    def _create_product(self, servicecatalog):
+        resp = servicecatalog.create_product(
+            Name=_uid("product"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/template.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        return resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+
+    def _create_portfolio(self, servicecatalog):
+        resp = servicecatalog.create_portfolio(
+            DisplayName=_uid("portfolio"),
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        return resp["PortfolioDetail"]["Id"]
+
+    def test_associate_product_with_portfolio(self, servicecatalog):
+        prod_id = self._create_product(servicecatalog)
+        portfolio_id = self._create_portfolio(servicecatalog)
+        try:
+            resp = servicecatalog.associate_product_with_portfolio(
+                ProductId=prod_id,
+                PortfolioId=portfolio_id,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            servicecatalog.disassociate_product_from_portfolio(
+                ProductId=prod_id,
+                PortfolioId=portfolio_id,
+            )
+            servicecatalog.delete_product(Id=prod_id)
+            servicecatalog.delete_portfolio(Id=portfolio_id)
+
+    def test_disassociate_product_from_portfolio(self, servicecatalog):
+        prod_id = self._create_product(servicecatalog)
+        portfolio_id = self._create_portfolio(servicecatalog)
+        try:
+            servicecatalog.associate_product_with_portfolio(
+                ProductId=prod_id,
+                PortfolioId=portfolio_id,
+            )
+            resp = servicecatalog.disassociate_product_from_portfolio(
+                ProductId=prod_id,
+                PortfolioId=portfolio_id,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+            servicecatalog.delete_portfolio(Id=portfolio_id)
+
+
 class TestServiceCatalogListOpsWithResources:
     """Tests for list operations that need existing resources."""
 
