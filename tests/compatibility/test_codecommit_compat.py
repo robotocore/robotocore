@@ -389,6 +389,28 @@ class TestCodeCommitCommitOperations:
         finally:
             codecommit.delete_repository(repositoryName=name)
 
+    def test_create_commit(self, codecommit):
+        """CreateCommit creates a new commit in a repository branch."""
+        name = _unique("repo")
+        codecommit.create_repository(repositoryName=name)
+        try:
+            resp = codecommit.create_commit(
+                repositoryName=name,
+                branchName="main",
+                putFiles=[{"filePath": "hello.txt", "fileContent": b"Hello World"}],
+                authorName="test-author",
+                email="author@example.com",
+                commitMessage="Add hello.txt",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "commitId" in resp
+            assert "treeId" in resp
+            assert len(resp["commitId"]) > 0
+            assert isinstance(resp.get("filesAdded"), list)
+            assert resp["filesAdded"][0]["absolutePath"] == "hello.txt"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
 
 class TestCodeCommitMergeOperations:
     """Tests for CodeCommit merge operations."""
