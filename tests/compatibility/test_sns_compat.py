@@ -566,6 +566,28 @@ class TestSNSPublishFeatures:
         finally:
             sns.delete_topic(TopicArn=arn)
 
+    def test_confirm_subscription(self, sns):
+        """ConfirmSubscription confirms a pending HTTP/HTTPS subscription."""
+        suffix = uuid.uuid4().hex[:8]
+        arn = sns.create_topic(Name=f"confirm-{suffix}")["TopicArn"]
+        try:
+            # HTTP subscriptions start unconfirmed, enabling ConfirmSubscription
+            sub_response = sns.subscribe(
+                TopicArn=arn,
+                Protocol="http",
+                Endpoint="http://example.com/notify",
+            )
+            sub_arn = sub_response["SubscriptionArn"]
+            # Confirm with any token — our emulator accepts any token for pending subs
+            confirm_response = sns.confirm_subscription(
+                TopicArn=arn,
+                Token="test-confirmation-token",
+            )
+            assert "SubscriptionArn" in confirm_response
+            assert confirm_response["SubscriptionArn"] == sub_arn
+        finally:
+            sns.delete_topic(TopicArn=arn)
+
 
 class TestSNSPlatformApplications:
     def test_create_and_list_platform_application(self, sns):

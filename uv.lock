@@ -1684,6 +1684,7 @@ dev = [
 dev = [
     { name = "freezegun" },
     { name = "pytest-playwright" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -1718,6 +1719,7 @@ provides-extras = ["dev"]
 dev = [
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "pytest-playwright", specifier = ">=0.7.2" },
+    { name = "ruff", specifier = ">=0.15.5" },
 ]
 
 [[package]]

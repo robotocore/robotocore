@@ -5131,3 +5131,120 @@ class TestRDSGapOps:
                 )
             except Exception:  # noqa: BLE001
                 pass  # best-effort cleanup
+
+
+class TestRDSModifyDBProxyAndSnapshot:
+    """Tests for ModifyDBProxy and ModifyDBSnapshot."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    def test_modify_db_proxy_not_found(self, client):
+        """ModifyDBProxy raises DBProxyNotFoundFault for nonexistent proxy."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_proxy(
+                DBProxyName="nonexistent-proxy-xyz123",
+                RequireTLS=True,
+            )
+        assert exc.value.response["Error"]["Code"] == "DBProxyNotFoundFault"
+
+    def test_modify_db_snapshot_not_found(self, client):
+        """ModifyDBSnapshot raises DBSnapshotNotFound for nonexistent snapshot."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_snapshot(
+                DBSnapshotIdentifier="nonexistent-snapshot-xyz123",
+                EngineVersion="8.0.28",
+            )
+        assert exc.value.response["Error"]["Code"] == "DBSnapshotNotFound"
+
+    def test_modify_db_proxy_updates_settings(self, client, ec2_client):
+        """ModifyDBProxy updates proxy settings and returns DBProxy."""
+        vpc = ec2_client.create_vpc(CidrBlock="10.88.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.88.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.88.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        proxy_name = _unique("compat-mprx")
+        client.create_db_proxy(
+            DBProxyName=proxy_name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            VpcSubnetIds=subnet_ids,
+        )
+        try:
+            resp = client.modify_db_proxy(
+                DBProxyName=proxy_name,
+                RequireTLS=True,
+                DebugLogging=True,
+            )
+            assert "DBProxy" in resp
+            assert resp["DBProxy"]["DBProxyName"] == proxy_name
+            assert resp["DBProxy"]["RequireTLS"] is True
+        finally:
+            try:
+                client.delete_db_proxy(DBProxyName=proxy_name)
+            except ClientError:
+                pass  # best-effort cleanup
+            for sid in subnet_ids:
+                try:
+                    ec2_client.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass  # best-effort cleanup
+            try:
+                ec2_client.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_modify_db_snapshot_updates_engine_version(self, client):
+        """ModifyDBSnapshot updates the engine version and returns DBSnapshot."""
+        instance_id = _unique("compat-msi")
+        snapshot_id = _unique("compat-msnap")
+        client.create_db_instance(
+            DBInstanceIdentifier=instance_id,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            client.create_db_snapshot(
+                DBInstanceIdentifier=instance_id,
+                DBSnapshotIdentifier=snapshot_id,
+            )
+            try:
+                resp = client.modify_db_snapshot(
+                    DBSnapshotIdentifier=snapshot_id,
+                    EngineVersion="8.0.28",
+                )
+                assert "DBSnapshot" in resp
+                assert resp["DBSnapshot"]["DBSnapshotIdentifier"] == snapshot_id
+                assert resp["DBSnapshot"]["EngineVersion"] == "8.0.28"
+            finally:
+                try:
+                    client.delete_db_snapshot(DBSnapshotIdentifier=snapshot_id)
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_instance(
+                    DBInstanceIdentifier=instance_id,
+                    SkipFinalSnapshot=True,
+                )
+            except ClientError:
+                pass  # best-effort cleanup
