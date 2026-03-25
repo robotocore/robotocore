@@ -35,6 +35,96 @@ def virtual_cluster(emr_containers):
         pass  # best-effort cleanup
 
 
+@pytest.fixture
+def virtual_cluster_for_jobs(emr_containers):
+    namespace = f"ns-{uuid.uuid4().hex[:12]}"
+    resp = emr_containers.create_virtual_cluster(
+        name=_unique("test-vc-jobs"),
+        containerProvider={
+            "id": "eks-cluster-1",
+            "type": "EKS",
+            "info": {"eksInfo": {"namespace": namespace}},
+        },
+    )
+    vc_id = resp["id"]
+    yield resp
+    try:
+        emr_containers.delete_virtual_cluster(id=vc_id)
+    except Exception:
+        pass  # best-effort cleanup
+
+
+class TestEMRContainersJobRuns:
+    @pytest.fixture
+    def job_run(self, emr_containers, virtual_cluster_for_jobs):
+        vc_id = virtual_cluster_for_jobs["id"]
+        resp = emr_containers.start_job_run(
+            name=_unique("test-job"),
+            virtualClusterId=vc_id,
+            executionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            releaseLabel="emr-6.2.0-latest",
+            jobDriver={
+                "sparkSubmitJobDriver": {
+                    "entryPoint": "s3://bucket/script.py",
+                }
+            },
+        )
+        return {"jobRunId": resp["id"], "virtualClusterId": vc_id}
+
+    def test_start_job_run(self, emr_containers, virtual_cluster_for_jobs):
+        vc_id = virtual_cluster_for_jobs["id"]
+        name = _unique("start-job")
+        resp = emr_containers.start_job_run(
+            name=name,
+            virtualClusterId=vc_id,
+            executionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            releaseLabel="emr-6.2.0-latest",
+            jobDriver={
+                "sparkSubmitJobDriver": {
+                    "entryPoint": "s3://bucket/script.py",
+                }
+            },
+        )
+        assert "id" in resp
+        assert resp["name"] == name
+        assert resp["virtualClusterId"] == vc_id
+
+    def test_list_job_runs(self, emr_containers, virtual_cluster_for_jobs, job_run):
+        vc_id = virtual_cluster_for_jobs["id"]
+        resp = emr_containers.list_job_runs(virtualClusterId=vc_id)
+        assert "jobRuns" in resp
+        run_ids = [r["id"] for r in resp["jobRuns"]]
+        assert job_run["jobRunId"] in run_ids
+
+    def test_describe_job_run(self, emr_containers, virtual_cluster_for_jobs, job_run):
+        vc_id = virtual_cluster_for_jobs["id"]
+        jr_id = job_run["jobRunId"]
+        resp = emr_containers.describe_job_run(virtualClusterId=vc_id, id=jr_id)
+        jr = resp["jobRun"]
+        assert jr["id"] == jr_id
+        assert jr["virtualClusterId"] == vc_id
+        assert "state" in jr
+        assert "arn" in jr
+
+    def test_cancel_job_run(self, emr_containers, virtual_cluster_for_jobs):
+        vc_id = virtual_cluster_for_jobs["id"]
+        start_resp = emr_containers.start_job_run(
+            name=_unique("cancel-job"),
+            virtualClusterId=vc_id,
+            executionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            releaseLabel="emr-6.2.0-latest",
+            jobDriver={
+                "sparkSubmitJobDriver": {
+                    "entryPoint": "s3://bucket/cancel-script.py",
+                }
+            },
+        )
+        jr_id = start_resp["id"]
+        cancel_resp = emr_containers.cancel_job_run(virtualClusterId=vc_id, id=jr_id)
+        assert cancel_resp["id"] == jr_id
+        assert cancel_resp["virtualClusterId"] == vc_id
+
+
 class TestEMRContainersVirtualCluster:
     def test_list_virtual_clusters_empty(self, emr_containers):
         resp = emr_containers.list_virtual_clusters()
