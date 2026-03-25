@@ -219,3 +219,81 @@ class TestScheduledActionOperations:
         resp = appas.describe_scheduled_actions(ServiceNamespace="dynamodb")
         assert "ScheduledActions" in resp
         assert isinstance(resp["ScheduledActions"], list)
+
+    def test_put_scheduled_action(self, appas):
+        table = _unique("table")
+        resource_id = f"table/{table}"
+        appas.register_scalable_target(
+            ServiceNamespace="dynamodb",
+            ResourceId=resource_id,
+            ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            MinCapacity=1,
+            MaxCapacity=100,
+        )
+        try:
+            action_name = _unique("action")
+            resp = appas.put_scheduled_action(
+                ServiceNamespace="dynamodb",
+                ScheduledActionName=action_name,
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+                Schedule="rate(1 minute)",
+                ScalableTargetAction={"MinCapacity": 2, "MaxCapacity": 50},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            actions_resp = appas.describe_scheduled_actions(ServiceNamespace="dynamodb")
+            matching = [
+                a
+                for a in actions_resp["ScheduledActions"]
+                if a["ScheduledActionName"] == action_name
+            ]
+            assert len(matching) == 1
+            assert matching[0]["ResourceId"] == resource_id
+            assert matching[0]["ScalableDimension"] == "dynamodb:table:ReadCapacityUnits"
+        finally:
+            appas.deregister_scalable_target(
+                ServiceNamespace="dynamodb",
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            )
+
+    def test_delete_scheduled_action(self, appas):
+        table = _unique("table")
+        resource_id = f"table/{table}"
+        appas.register_scalable_target(
+            ServiceNamespace="dynamodb",
+            ResourceId=resource_id,
+            ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            MinCapacity=1,
+            MaxCapacity=100,
+        )
+        try:
+            action_name = _unique("action")
+            appas.put_scheduled_action(
+                ServiceNamespace="dynamodb",
+                ScheduledActionName=action_name,
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+                Schedule="rate(1 minute)",
+                ScalableTargetAction={"MinCapacity": 2, "MaxCapacity": 50},
+            )
+            resp = appas.delete_scheduled_action(
+                ServiceNamespace="dynamodb",
+                ScheduledActionName=action_name,
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            actions_resp = appas.describe_scheduled_actions(ServiceNamespace="dynamodb")
+            matching = [
+                a
+                for a in actions_resp["ScheduledActions"]
+                if a["ScheduledActionName"] == action_name
+            ]
+            assert len(matching) == 0
+        finally:
+            appas.deregister_scalable_target(
+                ServiceNamespace="dynamodb",
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            )
