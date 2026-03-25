@@ -157,9 +157,37 @@ class TestManagedBlockchainNetworkOps:
 
     def test_create_network(self, client):
         """CreateNetwork returns network and member IDs."""
-        network_id, member_id = self._create_network(client)
-        assert network_id
-        assert member_id
+        resp = client.create_network(
+            ClientRequestToken=f"token-{uuid.uuid4().hex[:8]}",
+            Name=f"net-{uuid.uuid4().hex[:8]}",
+            Framework="HYPERLEDGER_FABRIC",
+            FrameworkVersion="1.2",
+            FrameworkConfiguration={"Fabric": {"Edition": "STARTER"}},
+            VotingPolicy={
+                "ApprovalThresholdPolicy": {
+                    "ThresholdPercentage": 50,
+                    "ProposalDurationInHours": 24,
+                    "ThresholdComparator": "GREATER_THAN",
+                }
+            },
+            MemberConfiguration={
+                "Name": f"member-{uuid.uuid4().hex[:8]}",
+                "Description": "Test member",
+                "FrameworkConfiguration": {
+                    "Fabric": {
+                        "AdminUsername": "admin",
+                        "AdminPassword": "Password123!",
+                    }
+                },
+                "LogPublishingConfiguration": {
+                    "Fabric": {"CaLogs": {"Cloudwatch": {"Enabled": False}}}
+                },
+            },
+        )
+        assert "NetworkId" in resp
+        assert "MemberId" in resp
+        assert resp["NetworkId"]
+        assert resp["MemberId"]
 
     def test_get_network(self, client):
         """GetNetwork returns network details."""
