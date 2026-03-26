@@ -3923,59 +3923,51 @@ class TestConnectDescribeGetOpsNotImplemented:
             )
         assert exc.value.response["Error"]["Code"] == "NotImplemented"
 
-    def test_get_current_metric_data_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_current_metric_data(
-                InstanceId=instance_id,
-                Filters={"Queues": ["fake-queue-id"]},
-                CurrentMetrics=[{"Name": "AGENTS_ONLINE", "Unit": "COUNT"}],
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_current_metric_data(self, connect, instance_id):
+        resp = connect.get_current_metric_data(
+            InstanceId=instance_id,
+            Filters={"Queues": ["fake-queue-id"]},
+            CurrentMetrics=[{"Name": "AGENTS_ONLINE", "Unit": "COUNT"}],
+        )
+        assert "MetricResults" in resp
 
-    def test_get_current_user_data_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_current_user_data(
-                InstanceId=instance_id,
-                Filters={},
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_current_user_data(self, connect, instance_id):
+        resp = connect.get_current_user_data(
+            InstanceId=instance_id,
+            Filters={},
+        )
+        assert "UserDataList" in resp
 
-    def test_get_effective_hours_of_operations_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_effective_hours_of_operations(
-                InstanceId=instance_id,
-                HoursOfOperationId="fake-hoo-id",
-                FromDate="2024-01-01",
-                ToDate="2024-01-07",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_effective_hours_of_operations(self, connect, instance_id):
+        resp = connect.get_effective_hours_of_operations(
+            InstanceId=instance_id,
+            HoursOfOperationId="fake-hoo-id",
+            FromDate="2024-01-01",
+            ToDate="2024-01-07",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_federation_token_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_federation_token(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_federation_token(self, connect, instance_id):
+        resp = connect.get_federation_token(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_flow_association_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_flow_association(
-                InstanceId=instance_id,
-                ResourceId="fake-resource-id",
-                ResourceType="SMS_PHONE_NUMBER",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_flow_association(self, connect, instance_id):
+        resp = connect.get_flow_association(
+            InstanceId=instance_id,
+            ResourceId="fake-resource-id",
+            ResourceType="SMS_PHONE_NUMBER",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_metric_data_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_metric_data(
-                InstanceId=instance_id,
-                StartTime="2024-01-01T00:00:00Z",
-                EndTime="2024-01-02T00:00:00Z",
-                Filters={"Queues": ["fake-queue-id"]},
-                HistoricalMetrics=[
-                    {"Name": "CONTACTS_QUEUED", "Unit": "COUNT", "Statistic": "SUM"}
-                ],
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_metric_data(self, connect, instance_id):
+        resp = connect.get_metric_data(
+            InstanceId=instance_id,
+            StartTime="2024-01-01T00:00:00Z",
+            EndTime="2024-01-02T00:00:00Z",
+            Filters={"Queues": ["fake-queue-id"]},
+            HistoricalMetrics=[{"Name": "CONTACTS_QUEUED", "Unit": "COUNT", "Statistic": "SUM"}],
+        )
+        assert "MetricResults" in resp
 
     def test_get_metric_data_v2_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3988,24 +3980,23 @@ class TestConnectDescribeGetOpsNotImplemented:
             )
         assert exc.value.response["Error"]["Code"] == "NotImplemented"
 
-    def test_get_prompt_file_not_implemented(self, connect, instance_id):
+    def test_get_prompt_file_resource_not_found(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.get_prompt_file(InstanceId=instance_id, PromptId="fake-prompt-id")
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_get_test_case_execution_summary_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_test_case_execution_summary(
-                InstanceId=instance_id,
-                TestCaseId="fake-tc-id",
-                TestCaseExecutionId="fake-exec-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_get_test_case_execution_summary(self, connect, instance_id):
+        resp = connect.get_test_case_execution_summary(
+            InstanceId=instance_id,
+            TestCaseId="fake-tc-id",
+            TestCaseExecutionId="fake-exec-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_traffic_distribution_not_implemented(self, connect):
+    def test_get_traffic_distribution_resource_not_found(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.get_traffic_distribution(Id="fake-tdg-id")
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectListGapOpsNotImplemented:
@@ -4016,167 +4007,145 @@ class TestConnectListGapOpsNotImplemented:
         iid, _ = _create_instance(connect)
         yield iid
 
-    def test_list_analytics_data_lake_data_sets_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_analytics_data_lake_data_sets(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_analytics_data_lake_data_sets(self, connect, instance_id):
+        resp = connect.list_analytics_data_lake_data_sets(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_associated_contacts_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_associated_contacts(
-                InstanceId=instance_id,
-                ContactId="fake-contact-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_associated_contacts(self, connect, instance_id):
+        resp = connect.list_associated_contacts(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_authentication_profiles_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_authentication_profiles(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_authentication_profiles(self, connect, instance_id):
+        resp = connect.list_authentication_profiles(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_child_hours_of_operations_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_child_hours_of_operations(
-                InstanceId=instance_id,
-                HoursOfOperationId="fake-hoo-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_child_hours_of_operations(self, connect, instance_id):
+        resp = connect.list_child_hours_of_operations(
+            InstanceId=instance_id,
+            HoursOfOperationId="fake-hoo-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_contact_flow_module_versions_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_contact_flow_module_versions(
-                InstanceId=instance_id,
-                ContactFlowModuleId="fake-cfm-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_contact_flow_module_versions(self, connect, instance_id):
+        resp = connect.list_contact_flow_module_versions(
+            InstanceId=instance_id,
+            ContactFlowModuleId="fake-cfm-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_data_table_primary_values_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_data_table_primary_values(
-                InstanceId=instance_id,
-                DataTableId="fake-dt-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_data_table_primary_values(self, connect, instance_id):
+        resp = connect.list_data_table_primary_values(
+            InstanceId=instance_id,
+            DataTableId="fake-dt-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_data_table_values_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_data_table_values(
-                InstanceId=instance_id,
-                DataTableId="fake-dt-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_data_table_values(self, connect, instance_id):
+        resp = connect.list_data_table_values(
+            InstanceId=instance_id,
+            DataTableId="fake-dt-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_entity_security_profiles_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_entity_security_profiles(
-                InstanceId=instance_id,
-                EntityType="ROUTING_PROFILE",
-                EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_entity_security_profiles(self, connect, instance_id):
+        resp = connect.list_entity_security_profiles(
+            InstanceId=instance_id,
+            EntityType="ROUTING_PROFILE",
+            EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_lex_bots_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_lex_bots(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_lex_bots(self, connect, instance_id):
+        resp = connect.list_lex_bots(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_queue_email_addresses_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_queue_email_addresses(
-                InstanceId=instance_id,
-                QueueId="fake-queue-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_queue_email_addresses(self, connect, instance_id):
+        resp = connect.list_queue_email_addresses(
+            InstanceId=instance_id,
+            QueueId="fake-queue-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_realtime_contact_analysis_segments_v2_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_realtime_contact_analysis_segments_v2(
-                InstanceId=instance_id,
-                ContactId="fake-contact-id",
-                OutputType="Raw",
-                SegmentTypes=["Transcript"],
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_realtime_contact_analysis_segments_v2(self, connect, instance_id):
+        resp = connect.list_realtime_contact_analysis_segments_v2(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            OutputType="Raw",
+            SegmentTypes=["Transcript"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_routing_profile_manual_assignment_queues_not_implemented(
-        self, connect, instance_id
-    ):
-        with pytest.raises(ClientError) as exc:
-            connect.list_routing_profile_manual_assignment_queues(
-                InstanceId=instance_id,
-                RoutingProfileId="fake-rp-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_routing_profile_manual_assignment_queues(self, connect, instance_id):
+        resp = connect.list_routing_profile_manual_assignment_queues(
+            InstanceId=instance_id,
+            RoutingProfileId="fake-rp-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_security_profile_flow_modules_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_security_profile_flow_modules(
-                InstanceId=instance_id,
-                SecurityProfileId="fake-sp-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_security_profile_flow_modules(self, connect, instance_id):
+        resp = connect.list_security_profile_flow_modules(
+            InstanceId=instance_id,
+            SecurityProfileId="fake-sp-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_test_case_execution_records_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_test_case_execution_records(
-                InstanceId=instance_id,
-                TestCaseId="fake-tc-id",
-                TestCaseExecutionId="fake-exec-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_test_case_execution_records(self, connect, instance_id):
+        resp = connect.list_test_case_execution_records(
+            InstanceId=instance_id,
+            TestCaseId="fake-tc-id",
+            TestCaseExecutionId="fake-exec-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_test_case_executions_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_test_case_executions(
-                InstanceId=instance_id,
-                TestCaseId="fake-tc-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_test_case_executions(self, connect, instance_id):
+        resp = connect.list_test_case_executions(
+            InstanceId=instance_id,
+            TestCaseId="fake-tc-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_traffic_distribution_group_users_not_implemented(self, connect):
+    def test_list_traffic_distribution_group_users_resource_not_found(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.list_traffic_distribution_group_users(TrafficDistributionGroupId="fake-tdg-id")
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_list_user_notifications_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_user_notifications(
-                InstanceId=instance_id,
-                UserId="fake-user-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_user_notifications(self, connect, instance_id):
+        resp = connect.list_user_notifications(
+            InstanceId=instance_id,
+            UserId="fake-user-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_user_proficiencies_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_user_proficiencies(
-                InstanceId=instance_id,
-                UserId="fake-user-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_user_proficiencies(self, connect, instance_id):
+        resp = connect.list_user_proficiencies(
+            InstanceId=instance_id,
+            UserId="fake-user-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_view_versions_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_view_versions(
-                InstanceId=instance_id,
-                ViewId="fake-view-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_view_versions(self, connect, instance_id):
+        resp = connect.list_view_versions(
+            InstanceId=instance_id,
+            ViewId="fake-view-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_workspace_media_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_workspace_media(
-                InstanceId=instance_id,
-                WorkspaceId="fake-ws-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_workspace_media(self, connect, instance_id):
+        resp = connect.list_workspace_media(
+            InstanceId=instance_id,
+            WorkspaceId="fake-ws-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_list_workspace_pages_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_workspace_pages(
-                InstanceId=instance_id,
-                WorkspaceId="fake-ws-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_list_workspace_pages(self, connect, instance_id):
+        resp = connect.list_workspace_pages(
+            InstanceId=instance_id,
+            WorkspaceId="fake-ws-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestConnectContactOpsNotImplemented:
@@ -4196,14 +4165,13 @@ class TestConnectContactOpsNotImplemented:
             )
         assert exc.value.response["Error"]["Code"] == "NotImplemented"
 
-    def test_monitor_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.monitor_contact(
-                InstanceId=instance_id,
-                ContactId="fake-contact-id",
-                UserId="fake-user-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_monitor_contact(self, connect, instance_id):
+        resp = connect.monitor_contact(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            UserId="fake-user-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_pause_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4735,13 +4703,12 @@ class TestConnectMiscGapOpsNotImplemented:
             )
         assert exc.value.response["Error"]["Code"] == "NotImplemented"
 
-    def test_import_phone_number_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.import_phone_number(
-                InstanceId=instance_id,
-                SourcePhoneNumberArn="arn:aws:connect:us-east-1:123456789012:phone-number/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+    def test_import_phone_number(self, connect, instance_id):
+        resp = connect.import_phone_number(
+            InstanceId=instance_id,
+            SourcePhoneNumberArn="arn:aws:connect:us-east-1:123456789012:phone-number/fake",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_import_workspace_media_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
