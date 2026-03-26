@@ -116,6 +116,7 @@ class TestClouddirectoryAutoCoverage:
         """ListDirectories returns a response."""
         resp = client.list_directories()
         assert "Directories" in resp
+        assert isinstance(resp["Directories"], list)
 
 
 class TestCloudDirectoryDirectoryOps:
@@ -163,6 +164,7 @@ class TestCloudDirectorySchemaOps:
         )
         assert "PublishedSchemaArn" in resp
         assert ":schema/published/" in resp["PublishedSchemaArn"]
+        assert resp["PublishedSchemaArn"].startswith("arn:")
         # cleanup
         clouddirectory_client.delete_schema(SchemaArn=resp["PublishedSchemaArn"])
 
@@ -187,6 +189,7 @@ class TestCloudDirectorySchemaOps:
             )
             assert "AppliedSchemaArn" in resp
             assert "DirectoryArn" in resp
+            assert resp["DirectoryArn"] == directory["DirectoryArn"]
         finally:
             try:
                 clouddirectory_client.delete_schema(SchemaArn=pub_arn2)
@@ -415,6 +418,7 @@ class TestCloudDirectorySchemaQueries:
         )
         assert "Name" in resp
         assert "Document" in resp
+        assert isinstance(resp["Document"], str)
 
     def test_list_applied_schema_arns(self, clouddirectory_client, directory):
         """ListAppliedSchemaArns returns a list for a directory."""
@@ -452,6 +456,7 @@ class TestCloudDirectoryObjectQueries:
             ConsistencyLevel="EVENTUAL",
         )
         assert "ObjectIdentifier" in resp
+        assert len(resp["ObjectIdentifier"]) > 0
 
     def test_list_object_children(self, clouddirectory_client, directory):
         """ListObjectChildren returns children of root object."""
@@ -557,6 +562,7 @@ class TestCloudDirectoryObjectQueries:
             AttributeNames=["attr1"],
         )
         assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
 
     def test_get_object_attributes(self, clouddirectory_client, directory):
         """GetObjectAttributes returns attributes for an object facet."""
@@ -571,6 +577,7 @@ class TestCloudDirectoryObjectQueries:
             AttributeNames=["attr1"],
         )
         assert "Attributes" in resp
+        assert isinstance(resp["Attributes"], list)
 
 
 class TestCloudDirectoryFacetOperations:
@@ -694,6 +701,7 @@ class TestCloudDirectoryObjectCrud:
             SchemaFacets=[],
         )
         assert "ObjectIdentifier" in resp
+        assert len(resp["ObjectIdentifier"]) > 0
 
     def test_lookup_policy(self, clouddirectory_client, directory):
         """LookupPolicy returns PolicyToPathList for root."""
@@ -716,6 +724,7 @@ class TestCloudDirectorySchemaJson:
             Document=json_doc,
         )
         assert "Arn" in resp
+        assert resp["Arn"] == schema["SchemaArn"]
 
     def test_update_schema(self, clouddirectory_client, schema):
         """UpdateSchema changes the schema name."""
@@ -725,6 +734,7 @@ class TestCloudDirectorySchemaJson:
             Name=new_name,
         )
         assert "SchemaArn" in resp
+        assert resp["SchemaArn"].startswith("arn:")
 
     def test_get_applied_schema_version_not_found(self, clouddirectory_client):
         """GetAppliedSchemaVersion for nonexistent raises ResourceNotFoundException."""
@@ -762,6 +772,7 @@ class TestCloudDirectoryTypedLinkFacetOps:
         )
         assert "IdentityAttributeOrder" in resp
         assert "linkattr" in resp["IdentityAttributeOrder"]
+        assert len(resp["IdentityAttributeOrder"]) >= 1
 
     def test_delete_typed_link_facet(self, clouddirectory_client, schema):
         """DeleteTypedLinkFacet removes a typed link facet."""
@@ -873,6 +884,7 @@ class TestCloudDirectoryObjectMutations:
             LinkName=link_name,
         )
         assert "AttachedObjectIdentifier" in attach_resp
+        assert len(attach_resp["AttachedObjectIdentifier"]) > 0
         # cleanup: detach then delete
         clouddirectory_client.detach_object(
             DirectoryArn=directory["DirectoryArn"],
@@ -904,6 +916,7 @@ class TestCloudDirectoryObjectMutations:
             LinkName=link_name,
         )
         assert "DetachedObjectIdentifier" in detach_resp
+        assert len(detach_resp["DetachedObjectIdentifier"]) > 0
         # cleanup
         clouddirectory_client.delete_object(
             DirectoryArn=directory["DirectoryArn"],
@@ -994,6 +1007,7 @@ class TestCloudDirectoryIndexOps:
             IsUnique=False,
         )
         assert "ObjectIdentifier" in resp
+        assert len(resp["ObjectIdentifier"]) > 0
 
     def test_attach_to_index_not_found(self, clouddirectory_client):
         """AttachToIndex with fake directory ARN raises ResourceNotFoundException."""
