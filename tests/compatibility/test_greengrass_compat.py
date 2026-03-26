@@ -286,6 +286,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Cores" in result["Definition"]
+            assert len(result["Definition"]["Cores"]) >= 1
         finally:
             greengrass.delete_core_definition(CoreDefinitionId=resp["Id"])
 
@@ -374,6 +375,7 @@ class TestGreengrassOperations:
                 ],
             )
             assert "Version" in result
+            assert result["Id"] == resp["Id"]
         finally:
             greengrass.delete_device_definition(DeviceDefinitionId=resp["Id"])
 
@@ -389,6 +391,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Devices" in result["Definition"]
+            assert len(result["Definition"]["Devices"]) >= 1
         finally:
             greengrass.delete_device_definition(DeviceDefinitionId=resp["Id"])
 
@@ -477,6 +480,7 @@ class TestGreengrassOperations:
                 ],
             )
             assert "Version" in result
+            assert result["Id"] == resp["Id"]
         finally:
             greengrass.delete_function_definition(FunctionDefinitionId=resp["Id"])
 
@@ -492,6 +496,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Functions" in result["Definition"]
+            assert len(result["Definition"]["Functions"]) >= 1
         finally:
             greengrass.delete_function_definition(FunctionDefinitionId=resp["Id"])
 
@@ -586,6 +591,7 @@ class TestGreengrassOperations:
                 ],
             )
             assert "Version" in result
+            assert result["Id"] == resp["Id"]
         finally:
             greengrass.delete_resource_definition(ResourceDefinitionId=resp["Id"])
 
@@ -601,6 +607,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Resources" in result["Definition"]
+            assert len(result["Definition"]["Resources"]) >= 1
         finally:
             greengrass.delete_resource_definition(ResourceDefinitionId=resp["Id"])
 
@@ -686,6 +693,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Subscriptions" in result["Definition"]
+            assert len(result["Definition"]["Subscriptions"]) >= 1
         finally:
             greengrass.delete_subscription_definition(SubscriptionDefinitionId=resp["Id"])
 
@@ -736,6 +744,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Connectors" in result["Definition"]
+            assert len(result["Definition"]["Connectors"]) >= 1
         finally:
             greengrass.delete_connector_definition(ConnectorDefinitionId=resp["Id"])
 
@@ -784,6 +793,7 @@ class TestGreengrassOperations:
             )
             assert "Definition" in result
             assert "Loggers" in result["Definition"]
+            assert len(result["Definition"]["Loggers"]) >= 1
         finally:
             greengrass.delete_logger_definition(LoggerDefinitionId=resp["Id"])
 
@@ -865,6 +875,7 @@ class TestGreengrassOperations:
                 RoleArn="arn:aws:iam::123456789012:role/TestRole",
             )
             assert "AssociatedAt" in resp
+            assert len(resp["AssociatedAt"]) > 0
         finally:
             greengrass.disassociate_role_from_group(GroupId=group["Id"])
             greengrass.delete_group(GroupId=group["Id"])
@@ -879,7 +890,7 @@ class TestGreengrassOperations:
             )
             result = greengrass.get_associated_role(GroupId=group["Id"])
             assert "RoleArn" in result
-            assert "arn:aws:iam:" in result["RoleArn"]
+            assert result["RoleArn"] == "arn:aws:iam::123456789012:role/TestRole"
         finally:
             greengrass.disassociate_role_from_group(GroupId=group["Id"])
             greengrass.delete_group(GroupId=group["Id"])
@@ -894,6 +905,7 @@ class TestGreengrassOperations:
             )
             resp = greengrass.disassociate_role_from_group(GroupId=group["Id"])
             assert "DisassociatedAt" in resp
+            assert len(resp["DisassociatedAt"]) > 0
         finally:
             greengrass.delete_group(GroupId=group["Id"])
 
@@ -1013,6 +1025,7 @@ class TestGreengrassOperations:
                 ],
             )
             assert "Version" in result
+            assert result["Id"] == resp["Id"]
         finally:
             greengrass.delete_logger_definition(LoggerDefinitionId=resp["Id"])
 
@@ -1049,6 +1062,7 @@ class TestGreengrassOperations:
                 ],
             )
             assert "Version" in result
+            assert result["Id"] == resp["Id"]
         finally:
             greengrass.delete_subscription_definition(SubscriptionDefinitionId=resp["Id"])
 
@@ -1323,12 +1337,17 @@ class TestGreengrassMissingGapOps:
         greengrass.tag_resource(ResourceArn=arn, tags={"env": "test"})
         response = greengrass.list_tags_for_resource(ResourceArn=arn)
         assert "tags" in response
+        assert response["tags"].get("env") == "test"
         greengrass.untag_resource(ResourceArn=arn, TagKeys=["env"])
 
     def test_get_service_role_for_account(self, greengrass):
         """get_service_role_for_account returns RoleArn."""
+        greengrass.associate_service_role_to_account(
+            RoleArn="arn:aws:iam::123456789012:role/GreengrassRole"
+        )
         response = greengrass.get_service_role_for_account()
         assert "RoleArn" in response
+        assert "arn:aws:iam:" in response["RoleArn"]
 
     def test_associate_service_role_to_account(self, greengrass):
         """associate_service_role_to_account succeeds."""
@@ -1336,21 +1355,26 @@ class TestGreengrassMissingGapOps:
             RoleArn="arn:aws:iam::123456789012:role/test"
         )
         assert "AssociatedAt" in response
+        assert isinstance(response["AssociatedAt"], str)
 
     def test_disassociate_service_role_from_account(self, greengrass):
         """disassociate_service_role_from_account succeeds."""
+        greengrass.associate_service_role_to_account(RoleArn="arn:aws:iam::123456789012:role/test")
         response = greengrass.disassociate_service_role_from_account()
         assert "DisassociatedAt" in response
+        assert isinstance(response["DisassociatedAt"], str)
 
     def test_list_bulk_deployments(self, greengrass):
         """list_bulk_deployments returns BulkDeployments key."""
         response = greengrass.list_bulk_deployments()
         assert "BulkDeployments" in response
+        assert isinstance(response["BulkDeployments"], list)
 
     def test_get_connectivity_info(self, greengrass):
         """get_connectivity_info returns ConnectivityInfo for a thing."""
         response = greengrass.get_connectivity_info(ThingName="fake-thing")
         assert "ConnectivityInfo" in response
+        assert isinstance(response["ConnectivityInfo"], list)
 
 
 class TestGreengrassGapOps:
@@ -1367,6 +1391,7 @@ class TestGreengrassGapOps:
             ConnectivityInfo=[],
         )
         assert "Version" in resp
+        assert isinstance(resp["Version"], str)
 
     def test_start_bulk_deployment(self, client):
         """StartBulkDeployment returns 200 with BulkDeploymentId."""
@@ -1375,16 +1400,19 @@ class TestGreengrassGapOps:
             InputFileUri="s3://fake-bucket/input.json",
         )
         assert "BulkDeploymentId" in resp
+        assert isinstance(resp["BulkDeploymentId"], str)
 
     def test_get_bulk_deployment_status(self, client):
         """GetBulkDeploymentStatus returns 200 for any bulk deployment ID."""
         resp = client.get_bulk_deployment_status(BulkDeploymentId="fake-id")
         assert "BulkDeploymentStatus" in resp
+        assert len(resp["BulkDeploymentStatus"]) > 0
 
     def test_list_bulk_deployment_detailed_reports(self, client):
         """ListBulkDeploymentDetailedReports returns list for any deployment ID."""
         resp = client.list_bulk_deployment_detailed_reports(BulkDeploymentId="fake-id")
         assert "Deployments" in resp
+        assert isinstance(resp["Deployments"], list)
 
     def test_get_group_certificate_configuration(self, client):
         """GetGroupCertificateConfiguration returns 200 for any group ID."""
@@ -1395,6 +1423,7 @@ class TestGreengrassGapOps:
         """ListGroupCertificateAuthorities returns 200 for any group ID."""
         resp = client.list_group_certificate_authorities(GroupId="fake-group-id")
         assert "GroupCertificateAuthorities" in resp
+        assert isinstance(resp["GroupCertificateAuthorities"], list)
 
     def test_get_group_certificate_authority(self, client):
         """GetGroupCertificateAuthority returns 200 for any group and CA IDs."""
@@ -1403,6 +1432,7 @@ class TestGreengrassGapOps:
             CertificateAuthorityId="fake-ca-id",
         )
         assert "PemEncodedCertificate" in resp
+        assert isinstance(resp["PemEncodedCertificate"], str)
 
     def test_create_group_certificate_authority(self, client):
         """CreateGroupCertificateAuthority returns 200 for any group ID."""
@@ -1413,6 +1443,7 @@ class TestGreengrassGapOps:
         """GetThingRuntimeConfiguration returns 200 for any thing name."""
         resp = client.get_thing_runtime_configuration(ThingName="fake-thing")
         assert "RuntimeConfiguration" in resp
+        assert isinstance(resp["RuntimeConfiguration"], dict)
 
     def test_create_software_update_job(self, client):
         """CreateSoftwareUpdateJob returns 200 with required params."""
@@ -1425,6 +1456,7 @@ class TestGreengrassGapOps:
             UpdateTargetsOperatingSystem="ubuntu",
         )
         assert "IotJobId" in resp
+        assert isinstance(resp["IotJobId"], str)
 
 
 class TestGreengrassUnimplementedGapOps:
@@ -1453,6 +1485,7 @@ class TestGreengrassUnimplementedGapOps:
     def test_update_group_certificate_configuration_returns_200(self, client):
         resp = client.update_group_certificate_configuration(GroupId="abc-123-group")
         assert "GroupId" in resp
+        assert isinstance(resp["GroupId"], str)
 
     def test_update_thing_runtime_configuration_returns_200(self, client):
         resp = client.update_thing_runtime_configuration(ThingName="myThing")
