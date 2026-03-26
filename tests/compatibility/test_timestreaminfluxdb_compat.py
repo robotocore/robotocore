@@ -191,6 +191,16 @@ class TestUntagResource:
             influxdb.delete_db_instance(identifier=instance_id)
 
 
+class TestListDbParameterGroups:
+    """Tests for ListDbParameterGroups operation."""
+
+    def test_list_db_parameter_groups(self, influxdb):
+        resp = influxdb.list_db_parameter_groups()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+
 class TestListDbClusters:
     """Tests for ListDbClusters operation."""
 

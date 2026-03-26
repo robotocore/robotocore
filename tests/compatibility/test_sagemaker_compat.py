@@ -5813,3 +5813,57 @@ class TestSageMakerProcessingJob:
         )
         assert "ProcessingJobArn" in resp
         assert name in resp["ProcessingJobArn"]
+
+
+class TestEdgeDeploymentPlan:
+    """Tests for Edge Deployment Plan operations."""
+
+    def test_list_edge_deployment_plans_empty(self, sagemaker):
+        resp = sagemaker.list_edge_deployment_plans()
+        assert "EdgeDeploymentPlanSummaries" in resp
+        assert isinstance(resp["EdgeDeploymentPlanSummaries"], list)
+
+    def test_create_and_describe_edge_deployment_plan(self, sagemaker):
+        name = _uid("edge-plan")
+        resp = sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=name,
+            ModelConfigs=[{"ModelHandle": "model1", "EdgePackagingJobName": "job1"}],
+            DeviceFleetName="my-fleet",
+        )
+        assert "EdgeDeploymentPlanArn" in resp
+        assert name in resp["EdgeDeploymentPlanArn"]
+        try:
+            desc = sagemaker.describe_edge_deployment_plan(EdgeDeploymentPlanName=name)
+            assert desc["EdgeDeploymentPlanName"] == name
+            assert "EdgeDeploymentPlanArn" in desc
+            assert "DeviceFleetName" in desc
+        finally:
+            sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=name)
+
+    def test_describe_edge_deployment_plan_not_found(self, sagemaker):
+        with pytest.raises(ClientError) as exc_info:
+            sagemaker.describe_edge_deployment_plan(EdgeDeploymentPlanName="nonexistent-plan-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_delete_edge_deployment_plan(self, sagemaker):
+        name = _uid("del-edge-plan")
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=name,
+            ModelConfigs=[{"ModelHandle": "model1", "EdgePackagingJobName": "job1"}],
+            DeviceFleetName="my-fleet",
+        )
+        resp = sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestInferenceExperiment:
+    """Tests for Inference Experiment operations."""
+
+    def test_describe_inference_experiment_not_found(self, sagemaker):
+        with pytest.raises(ClientError) as exc_info:
+            sagemaker.describe_inference_experiment(Name="nonexistent-exp-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_delete_inference_experiment_not_found(self, sagemaker):
+        resp = sagemaker.delete_inference_experiment(Name="nonexistent-exp-xyz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
