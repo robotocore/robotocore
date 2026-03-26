@@ -210,6 +210,7 @@ class TestBedrockAgentOperations:
         """UpdateAgent returns the updated agent."""
         create_resp = bedrock_agent.create_agent(
             agentName="compat-update-agent",
+            agentResourceRoleArn="arn:aws:iam::123456789012:role/test-agent-role",
             foundationModel="amazon.titan-text-lite-v1",
         )
         agent_id = create_resp["agent"]["agentId"]
@@ -217,6 +218,7 @@ class TestBedrockAgentOperations:
             update_resp = bedrock_agent.update_agent(
                 agentId=agent_id,
                 agentName="compat-updated-agent",
+                agentResourceRoleArn="arn:aws:iam::123456789012:role/test-agent-role",
                 foundationModel="amazon.titan-text-lite-v1",
             )
             assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200

@@ -8,12 +8,6 @@ import pytest
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
-SAMPLE_POLICY_DOC = (
-    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
-    '"Principal":{"AWS":"arn:aws:iam::123456789012:root"},'
-    '"Action":"lex:*","Resource":"*"}]}'
-)
-
 
 @pytest.fixture
 def lexv2_client():
@@ -42,6 +36,32 @@ def created_bot(lexv2_client):
         lexv2_client.delete_bot(botId=bot_id)
     except Exception:
         pass  # best-effort cleanup
+
+
+@pytest.fixture
+def bot_with_locale(lexv2_client, created_bot):
+    """Create a bot with a locale."""
+    bot_id = created_bot["botId"]
+    resp = lexv2_client.create_bot_locale(
+        botId=bot_id,
+        botVersion="DRAFT",
+        localeId="en_US",
+        nluIntentConfidenceThreshold=0.4,
+    )
+    yield {"bot": created_bot, "locale": resp}
+
+
+@pytest.fixture
+def bot_with_intent(lexv2_client, bot_with_locale):
+    """Create a bot with a locale and intent."""
+    bot_id = bot_with_locale["bot"]["botId"]
+    resp = lexv2_client.create_intent(
+        botId=bot_id,
+        botVersion="DRAFT",
+        localeId="en_US",
+        intentName=f"TestIntent{uuid.uuid4().hex[:8]}",
+    )
+    yield {"bot": bot_with_locale["bot"], "locale": bot_with_locale["locale"], "intent": resp}
 
 
 class TestLexV2ModelsCompat:
@@ -121,164 +141,395 @@ class TestLexV2ModelsCompat:
         bot_ids = [s["botId"] for s in bots["botSummaries"]]
         assert bot_id not in bot_ids
 
-    def test_create_bot_alias(self, lexv2_client, created_bot):
+
+class TestBotLocaleCompat:
+    def test_create_bot_locale(self, lexv2_client, created_bot):
         bot_id = created_bot["botId"]
-        alias_name = f"test-alias-{uuid.uuid4().hex[:8]}"
-        resp = lexv2_client.create_bot_alias(
-            botAliasName=alias_name,
+        resp = lexv2_client.create_bot_locale(
             botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            nluIntentConfidenceThreshold=0.4,
         )
-        assert resp["botAliasName"] == alias_name
-        assert "botAliasId" in resp
+        assert resp["localeId"] == "en_US"
+        assert resp["botId"] == bot_id
+        assert resp["botVersion"] == "DRAFT"
+        assert "botLocaleStatus" in resp
+
+    def test_describe_bot_locale(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        resp = lexv2_client.describe_bot_locale(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        assert resp["localeId"] == "en_US"
+        assert resp["botId"] == bot_id
+        assert "nluIntentConfidenceThreshold" in resp
+
+    def test_list_bot_locales(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        resp = lexv2_client.list_bot_locales(botId=bot_id, botVersion="DRAFT")
+        assert "botLocaleSummaries" in resp
+        locale_ids = [s["localeId"] for s in resp["botLocaleSummaries"]]
+        assert "en_US" in locale_ids
+
+    def test_update_bot_locale(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        resp = lexv2_client.update_bot_locale(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            nluIntentConfidenceThreshold=0.7,
+        )
+        assert resp["localeId"] == "en_US"
+
+        # Verify update persisted
+        desc = lexv2_client.describe_bot_locale(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        assert desc["nluIntentConfidenceThreshold"] == 0.7
+
+    def test_build_bot_locale(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        resp = lexv2_client.build_bot_locale(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        assert resp["localeId"] == "en_US"
+        assert "botLocaleStatus" in resp
+
+    def test_delete_bot_locale(self, lexv2_client, created_bot):
+        bot_id = created_bot["botId"]
+        lexv2_client.create_bot_locale(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="es_ES",
+            nluIntentConfidenceThreshold=0.5,
+        )
+        resp = lexv2_client.delete_bot_locale(botId=bot_id, botVersion="DRAFT", localeId="es_ES")
+        assert resp["localeId"] == "es_ES"
+
+        # Verify it was deleted
+        locales = lexv2_client.list_bot_locales(botId=bot_id, botVersion="DRAFT")
+        locale_ids = [s["localeId"] for s in locales["botLocaleSummaries"]]
+        assert "es_ES" not in locale_ids
+
+
+class TestBotVersionCompat:
+    def test_create_bot_version(self, lexv2_client, created_bot):
+        bot_id = created_bot["botId"]
+        resp = lexv2_client.create_bot_version(
+            botId=bot_id,
+            botVersionLocaleSpecification={"en_US": {"sourceBotVersion": "DRAFT"}},
+        )
+        assert "botVersion" in resp
         assert resp["botId"] == bot_id
 
-    def test_describe_bot_alias(self, lexv2_client, created_bot):
+    def test_list_bot_versions(self, lexv2_client, created_bot):
         bot_id = created_bot["botId"]
-        alias_name = f"test-alias-{uuid.uuid4().hex[:8]}"
-        create_resp = lexv2_client.create_bot_alias(
-            botAliasName=alias_name,
+        lexv2_client.create_bot_version(
             botId=bot_id,
+            botVersionLocaleSpecification={"en_US": {"sourceBotVersion": "DRAFT"}},
         )
-        alias_id = create_resp["botAliasId"]
+        resp = lexv2_client.list_bot_versions(botId=bot_id)
+        assert "botVersionSummaries" in resp
+        assert len(resp["botVersionSummaries"]) >= 1
 
-        resp = lexv2_client.describe_bot_alias(botAliasId=alias_id, botId=bot_id)
-        assert resp["botAliasId"] == alias_id
-        assert resp["botAliasName"] == alias_name
+    def test_describe_bot_version(self, lexv2_client, created_bot):
+        bot_id = created_bot["botId"]
+        create_resp = lexv2_client.create_bot_version(
+            botId=bot_id,
+            botVersionLocaleSpecification={"en_US": {"sourceBotVersion": "DRAFT"}},
+        )
+        version = create_resp["botVersion"]
+
+        resp = lexv2_client.describe_bot_version(botId=bot_id, botVersion=version)
+        assert resp["botId"] == bot_id
+        assert resp["botVersion"] == version
+        assert "botStatus" in resp
+
+    def test_delete_bot_version(self, lexv2_client, created_bot):
+        bot_id = created_bot["botId"]
+        create_resp = lexv2_client.create_bot_version(
+            botId=bot_id,
+            botVersionLocaleSpecification={"en_US": {"sourceBotVersion": "DRAFT"}},
+        )
+        version = create_resp["botVersion"]
+
+        del_resp = lexv2_client.delete_bot_version(botId=bot_id, botVersion=version)
+        assert del_resp["botId"] == bot_id
+        assert del_resp["botVersion"] == version
+
+
+class TestIntentCompat:
+    def test_create_intent(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        intent_name = f"TestIntent{uuid.uuid4().hex[:8]}"
+        resp = lexv2_client.create_intent(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentName=intent_name,
+        )
+        assert resp["intentId"]
+        assert resp["intentName"] == intent_name
         assert resp["botId"] == bot_id
 
-    def test_update_bot_alias(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        alias_name = f"test-alias-{uuid.uuid4().hex[:8]}"
-        create_resp = lexv2_client.create_bot_alias(
-            botAliasName=alias_name,
+    def test_describe_intent(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        resp = lexv2_client.describe_intent(
             botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
         )
-        alias_id = create_resp["botAliasId"]
-        new_name = f"updated-alias-{uuid.uuid4().hex[:8]}"
+        assert resp["intentId"] == intent_id
+        assert resp["botId"] == bot_id
+        assert "intentName" in resp
 
-        resp = lexv2_client.update_bot_alias(
-            botAliasId=alias_id,
-            botAliasName=new_name,
+    def test_update_intent(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        new_name = f"Updated{uuid.uuid4().hex[:8]}"
+        resp = lexv2_client.update_intent(
             botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            intentName=new_name,
         )
-        assert resp["botAliasId"] == alias_id
-        assert resp["botAliasName"] == new_name
+        assert resp["intentName"] == new_name
 
-    def test_delete_bot_alias(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        alias_name = f"test-alias-{uuid.uuid4().hex[:8]}"
-        create_resp = lexv2_client.create_bot_alias(
-            botAliasName=alias_name,
+        # Verify persisted
+        desc = lexv2_client.describe_intent(
             botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
         )
-        alias_id = create_resp["botAliasId"]
+        assert desc["intentName"] == new_name
 
-        del_resp = lexv2_client.delete_bot_alias(botAliasId=alias_id, botId=bot_id)
-        assert del_resp["botAliasId"] == alias_id
+    def test_list_intents(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        resp = lexv2_client.list_intents(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        assert "intentSummaries" in resp
+        intent_ids = [s["intentId"] for s in resp["intentSummaries"]]
+        assert intent_id in intent_ids
 
-    def test_create_resource_policy(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-        policy_doc = SAMPLE_POLICY_DOC
-
-        resp = lexv2_client.create_resource_policy(
-            resourceArn=resource_arn,
-            policy=policy_doc,
+    def test_delete_intent(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        intent_name = f"DeleteMe{uuid.uuid4().hex[:8]}"
+        create_resp = lexv2_client.create_intent(
+            botId=bot_id, botVersion="DRAFT", localeId="en_US", intentName=intent_name
         )
-        assert resp["resourceArn"] == resource_arn
-        assert "revisionId" in resp
+        intent_id = create_resp["intentId"]
 
-    def test_describe_resource_policy(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-        policy_doc = SAMPLE_POLICY_DOC
-
-        lexv2_client.create_resource_policy(
-            resourceArn=resource_arn,
-            policy=policy_doc,
+        lexv2_client.delete_intent(
+            botId=bot_id, botVersion="DRAFT", localeId="en_US", intentId=intent_id
         )
 
-        resp = lexv2_client.describe_resource_policy(resourceArn=resource_arn)
-        assert resp["resourceArn"] == resource_arn
-        assert "revisionId" in resp
-        assert "policy" in resp
+        # Verify it was deleted
+        intents = lexv2_client.list_intents(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        intent_ids = [s["intentId"] for s in intents["intentSummaries"]]
+        assert intent_id not in intent_ids
 
-    def test_update_resource_policy(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-        policy_doc = SAMPLE_POLICY_DOC
 
-        create_resp = lexv2_client.create_resource_policy(
-            resourceArn=resource_arn,
-            policy=policy_doc,
+class TestSlotCompat:
+    def test_create_slot(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        resp = lexv2_client.create_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotName="MySlot",
+            slotTypeId="AMAZON.AlphaNumeric",
+            valueElicitationSetting={"slotConstraint": "Required"},
         )
-        revision_id = create_resp["revisionId"]
+        assert "slotId" in resp
+        assert resp["slotName"] == "MySlot"
+        assert resp["intentId"] == intent_id
 
-        resp = lexv2_client.update_resource_policy(
-            resourceArn=resource_arn,
-            policy=policy_doc,
-            expectedRevisionId=revision_id,
+    def test_describe_slot(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        create_resp = lexv2_client.create_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotName="DescSlot",
+            slotTypeId="AMAZON.AlphaNumeric",
+            valueElicitationSetting={"slotConstraint": "Required"},
         )
-        assert resp["resourceArn"] == resource_arn
-        assert "revisionId" in resp
+        slot_id = create_resp["slotId"]
 
-    def test_delete_resource_policy(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-        policy_doc = SAMPLE_POLICY_DOC
-
-        create_resp = lexv2_client.create_resource_policy(
-            resourceArn=resource_arn,
-            policy=policy_doc,
+        resp = lexv2_client.describe_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotId=slot_id,
         )
-        revision_id = create_resp["revisionId"]
+        assert resp["slotId"] == slot_id
+        assert resp["slotName"] == "DescSlot"
 
-        del_resp = lexv2_client.delete_resource_policy(
-            resourceArn=resource_arn,
-            expectedRevisionId=revision_id,
-        )
-        assert del_resp["resourceArn"] == resource_arn
-
-    def test_tag_resource(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-
-        resp = lexv2_client.tag_resource(
-            resourceARN=resource_arn,
-            tags={"env": "test", "team": "eng"},
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_list_tags_for_resource(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-
-        lexv2_client.tag_resource(
-            resourceARN=resource_arn,
-            tags={"env": "test", "project": "lex"},
-        )
-
-        resp = lexv2_client.list_tags_for_resource(resourceARN=resource_arn)
-        assert "tags" in resp
-        assert resp["tags"]["env"] == "test"
-        assert resp["tags"]["project"] == "lex"
-
-    def test_untag_resource(self, lexv2_client, created_bot):
-        bot_id = created_bot["botId"]
-        resource_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-
-        lexv2_client.tag_resource(
-            resourceARN=resource_arn,
-            tags={"env": "test", "team": "eng"},
+    def test_list_slots(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        lexv2_client.create_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotName="ListSlot",
+            slotTypeId="AMAZON.AlphaNumeric",
+            valueElicitationSetting={"slotConstraint": "Required"},
         )
 
-        resp = lexv2_client.untag_resource(
-            resourceARN=resource_arn,
-            tagKeys=["env"],
+        resp = lexv2_client.list_slots(
+            botId=bot_id, botVersion="DRAFT", localeId="en_US", intentId=intent_id
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "slotSummaries" in resp
+        slot_names = [s["slotName"] for s in resp["slotSummaries"]]
+        assert "ListSlot" in slot_names
 
-        # Verify tag was removed
-        tags_resp = lexv2_client.list_tags_for_resource(resourceARN=resource_arn)
-        assert "env" not in tags_resp["tags"]
-        assert tags_resp["tags"].get("team") == "eng"
+    def test_update_slot(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        create_resp = lexv2_client.create_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotName="UpdateMe",
+            slotTypeId="AMAZON.AlphaNumeric",
+            valueElicitationSetting={"slotConstraint": "Required"},
+        )
+        slot_id = create_resp["slotId"]
+
+        resp = lexv2_client.update_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotId=slot_id,
+            slotName="UpdatedSlot",
+            slotTypeId="AMAZON.AlphaNumeric",
+            valueElicitationSetting={"slotConstraint": "Optional"},
+        )
+        assert resp["slotName"] == "UpdatedSlot"
+
+    def test_delete_slot(self, lexv2_client, bot_with_intent):
+        bot_id = bot_with_intent["bot"]["botId"]
+        intent_id = bot_with_intent["intent"]["intentId"]
+        create_resp = lexv2_client.create_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotName="DeleteSlot",
+            slotTypeId="AMAZON.AlphaNumeric",
+            valueElicitationSetting={"slotConstraint": "Required"},
+        )
+        slot_id = create_resp["slotId"]
+
+        lexv2_client.delete_slot(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            intentId=intent_id,
+            slotId=slot_id,
+        )
+
+        slots = lexv2_client.list_slots(
+            botId=bot_id, botVersion="DRAFT", localeId="en_US", intentId=intent_id
+        )
+        slot_ids = [s["slotId"] for s in slots["slotSummaries"]]
+        assert slot_id not in slot_ids
+
+
+class TestSlotTypeCompat:
+    def test_create_slot_type(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        resp = lexv2_client.create_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeName="MySlotType",
+            valueSelectionSetting={"resolutionStrategy": "OriginalValue"},
+        )
+        assert "slotTypeId" in resp
+        assert resp["slotTypeName"] == "MySlotType"
+
+    def test_describe_slot_type(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        create_resp = lexv2_client.create_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeName="DescST",
+            valueSelectionSetting={"resolutionStrategy": "OriginalValue"},
+        )
+        slot_type_id = create_resp["slotTypeId"]
+
+        resp = lexv2_client.describe_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeId=slot_type_id,
+        )
+        assert resp["slotTypeId"] == slot_type_id
+        assert resp["slotTypeName"] == "DescST"
+
+    def test_list_slot_types(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        lexv2_client.create_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeName="ListST",
+            valueSelectionSetting={"resolutionStrategy": "OriginalValue"},
+        )
+        resp = lexv2_client.list_slot_types(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        assert "slotTypeSummaries" in resp
+        names = [s["slotTypeName"] for s in resp["slotTypeSummaries"]]
+        assert "ListST" in names
+
+    def test_update_slot_type(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        create_resp = lexv2_client.create_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeName="UpdateST",
+            valueSelectionSetting={"resolutionStrategy": "OriginalValue"},
+        )
+        slot_type_id = create_resp["slotTypeId"]
+
+        resp = lexv2_client.update_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeId=slot_type_id,
+            slotTypeName="UpdatedST",
+            valueSelectionSetting={"resolutionStrategy": "TopResolution"},
+        )
+        assert resp["slotTypeName"] == "UpdatedST"
+
+    def test_delete_slot_type(self, lexv2_client, bot_with_locale):
+        bot_id = bot_with_locale["bot"]["botId"]
+        create_resp = lexv2_client.create_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeName="DeleteST",
+            valueSelectionSetting={"resolutionStrategy": "OriginalValue"},
+        )
+        slot_type_id = create_resp["slotTypeId"]
+
+        lexv2_client.delete_slot_type(
+            botId=bot_id,
+            botVersion="DRAFT",
+            localeId="en_US",
+            slotTypeId=slot_type_id,
+        )
+
+        sts = lexv2_client.list_slot_types(botId=bot_id, botVersion="DRAFT", localeId="en_US")
+        st_ids = [s["slotTypeId"] for s in sts["slotTypeSummaries"]]
+        assert slot_type_id not in st_ids

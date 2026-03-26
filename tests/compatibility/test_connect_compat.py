@@ -4834,3 +4834,308 @@ class TestConnectMiscGapOpsNotImplemented:
                 EvaluationId="fake-eval-id",
             )
         assert exc.value.response["Error"]["Code"] == "NotImplemented"
+
+
+def _create_full_instance(client):
+    """Create an instance plus routing profile, security profile, and user."""
+    resp = client.create_instance(
+        IdentityManagementType="CONNECT_MANAGED",
+        InboundCallsEnabled=True,
+        OutboundCallsEnabled=True,
+    )
+    instance_id = resp["Id"]
+    rp = client.create_routing_profile(
+        InstanceId=instance_id,
+        Name="DefaultRP",
+        Description="Default",
+        DefaultOutboundQueueId="",
+        MediaConcurrencies=[],
+    )
+    rp_id = rp["RoutingProfileId"]
+    sp = client.create_security_profile(
+        InstanceId=instance_id,
+        SecurityProfileName="DefaultSP",
+    )
+    sp_id = sp["SecurityProfileId"]
+    user = client.create_user(
+        InstanceId=instance_id,
+        Username="testuser",
+        PhoneConfig={
+            "PhoneType": "SOFT_PHONE",
+            "AutoAccept": False,
+            "AfterContactWorkTimeLimit": 0,
+            "DeskPhoneNumber": "",
+        },
+        RoutingProfileId=rp_id,
+        SecurityProfileIds=[sp_id],
+    )
+    user_id = user["UserId"]
+    return instance_id, rp_id, user_id, sp_id
+
+
+class TestConnectSearchOpsNZ:
+    """Tests for Connect search operations N-Z that are now implemented."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_search_contact_evaluations(self, connect, instance_id):
+        resp = connect.search_contact_evaluations(InstanceId=instance_id)
+        assert resp.get("ContactEvaluations", []) is not None
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_contacts(self, connect, instance_id):
+        resp = connect.search_contacts(
+            InstanceId=instance_id,
+            TimeRange={
+                "Type": "INITIATION_TIMESTAMP",
+                "StartTime": "2024-01-01T00:00:00Z",
+                "EndTime": "2024-12-31T00:00:00Z",
+            },
+        )
+        assert "Contacts" in resp
+
+    def test_search_data_tables(self, connect, instance_id):
+        resp = connect.search_data_tables(InstanceId=instance_id)
+        assert "DataTables" in resp
+
+    def test_search_email_addresses(self, connect, instance_id):
+        resp = connect.search_email_addresses(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_evaluation_forms(self, connect, instance_id):
+        resp = connect.search_evaluation_forms(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_hours_of_operation_overrides(self, connect, instance_id):
+        resp = connect.search_hours_of_operation_overrides(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_notifications(self, connect, instance_id):
+        resp = connect.search_notifications(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_resource_tags(self, connect, instance_id):
+        resp = connect.search_resource_tags(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_test_cases(self, connect, instance_id):
+        resp = connect.search_test_cases(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_views(self, connect, instance_id):
+        resp = connect.search_views(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_workspace_associations(self, connect, instance_id):
+        resp = connect.search_workspace_associations(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_search_workspaces(self, connect, instance_id):
+        resp = connect.search_workspaces(InstanceId=instance_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestConnectContactLifecycleNZ:
+    """Tests for Connect contact lifecycle operations N-Z."""
+
+    @pytest.fixture
+    def instance_id(self, connect):
+        iid, _ = _create_instance(connect)
+        yield iid
+
+    def test_start_chat_contact_returns_ids(self, connect, instance_id):
+        resp = connect.start_chat_contact(
+            InstanceId=instance_id,
+            ContactFlowId="fake-flow-id",
+            ParticipantDetails={"DisplayName": "Test Customer"},
+        )
+        assert "ContactId" in resp
+        assert "ParticipantId" in resp
+        assert "ParticipantToken" in resp
+
+    def test_start_outbound_voice_contact_returns_contact_id(self, connect, instance_id):
+        resp = connect.start_outbound_voice_contact(
+            InstanceId=instance_id,
+            ContactFlowId="fake-flow-id",
+            DestinationPhoneNumber="+12125551234",
+        )
+        assert "ContactId" in resp
+
+    def test_start_task_contact_returns_contact_id(self, connect, instance_id):
+        resp = connect.start_task_contact(
+            InstanceId=instance_id,
+            ContactFlowId="fake-flow-id",
+            Name="Test Task",
+        )
+        assert "ContactId" in resp
+
+    def test_start_contact_streaming_returns_streaming_id(self, connect, instance_id):
+        resp = connect.start_contact_streaming(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            ChatStreamingConfiguration={
+                "StreamingEndpointArn": "arn:aws:kinesis:us-east-1:123456789012:stream/test"
+            },
+        )
+        assert "StreamingId" in resp
+
+    def test_replicate_instance_returns_ids(self, connect, instance_id):
+        resp = connect.replicate_instance(
+            InstanceId=instance_id,
+            ReplicaRegion="us-west-2",
+            ReplicaAlias="test-replica",
+        )
+        assert "Id" in resp
+        assert "Arn" in resp
+
+    def test_start_contact_recording_succeeds(self, connect, instance_id):
+        # Should succeed without error (no-op implementation)
+        connect.start_contact_recording(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            InitialContactId="fake-initial-id",
+            VoiceRecordingConfiguration={"VoiceRecordingTrack": "ALL"},
+        )
+
+    def test_stop_contact_recording_succeeds(self, connect, instance_id):
+        connect.stop_contact_recording(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            InitialContactId="fake-initial-id",
+        )
+
+    def test_stop_contact_streaming_succeeds(self, connect, instance_id):
+        connect.stop_contact_streaming(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            StreamingId="fake-stream-id",
+        )
+
+    def test_suspend_contact_recording_succeeds(self, connect, instance_id):
+        connect.suspend_contact_recording(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            InitialContactId="fake-initial-id",
+        )
+
+    def test_resume_contact_recording_succeeds(self, connect, instance_id):
+        connect.resume_contact_recording(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            InitialContactId="fake-initial-id",
+        )
+
+    def test_update_participant_authentication_succeeds(self, connect, instance_id):
+        connect.update_participant_authentication(
+            InstanceId=instance_id,
+            State="test-state",
+        )
+
+
+class TestConnectUpdateOpsNZ:
+    """Tests for Connect update operations N-Z."""
+
+    @pytest.fixture
+    def setup(self, connect):
+        instance_id, rp_id, user_id, sp_id = _create_full_instance(connect)
+        queue = connect.create_queue(
+            InstanceId=instance_id,
+            Name="TestQueue",
+            HoursOfOperationId="",
+        )
+        queue_id = queue["QueueId"]
+        workspace = connect.create_workspace(InstanceId=instance_id, Name="TestWS")
+        ws_id = workspace["WorkspaceId"]
+        email = connect.create_email_address(
+            InstanceId=instance_id, EmailAddress="test@example.com"
+        )
+        email_id = email["EmailAddressId"]
+        contact = connect.create_contact(
+            InstanceId=instance_id, Channel="TASK", InitiationMethod="API"
+        )
+        contact_id = contact["ContactId"]
+        yield {
+            "instance_id": instance_id,
+            "rp_id": rp_id,
+            "user_id": user_id,
+            "queue_id": queue_id,
+            "ws_id": ws_id,
+            "email_id": email_id,
+            "contact_id": contact_id,
+        }
+
+    def test_update_routing_profile_agent_availability_timer(self, connect, setup):
+        connect.update_routing_profile_agent_availability_timer(
+            InstanceId=setup["instance_id"],
+            RoutingProfileId=setup["rp_id"],
+            AgentAvailabilityTimer="TIME_SINCE_LAST_ACTIVITY",
+        )
+
+    def test_update_queue_outbound_email_config(self, connect, setup):
+        connect.update_queue_outbound_email_config(
+            InstanceId=setup["instance_id"],
+            QueueId=setup["queue_id"],
+            OutboundEmailConfig={},
+        )
+
+    def test_update_user_proficiencies(self, connect, setup):
+        connect.update_user_proficiencies(
+            InstanceId=setup["instance_id"],
+            UserId=setup["user_id"],
+            UserProficiencies=[],
+        )
+
+    def test_update_workspace_metadata(self, connect, setup):
+        connect.update_workspace_metadata(
+            InstanceId=setup["instance_id"],
+            WorkspaceId=setup["ws_id"],
+            Name="Updated Name",
+        )
+
+    def test_update_workspace_theme(self, connect, setup):
+        connect.update_workspace_theme(
+            InstanceId=setup["instance_id"],
+            WorkspaceId=setup["ws_id"],
+        )
+
+    def test_update_workspace_visibility(self, connect, setup):
+        connect.update_workspace_visibility(
+            InstanceId=setup["instance_id"],
+            WorkspaceId=setup["ws_id"],
+            Visibility="PRIVATE",
+        )
+
+    def test_update_email_address_metadata(self, connect, setup):
+        connect.update_email_address_metadata(
+            InstanceId=setup["instance_id"],
+            EmailAddressId=setup["email_id"],
+            DisplayName="Updated Email",
+        )
+
+    def test_update_contact_routing_data(self, connect, setup):
+        connect.update_contact_routing_data(
+            InstanceId=setup["instance_id"],
+            ContactId=setup["contact_id"],
+        )
+
+    def test_update_contact_schedule(self, connect, setup):
+        connect.update_contact_schedule(
+            InstanceId=setup["instance_id"],
+            ContactId=setup["contact_id"],
+            ScheduledTime="2024-12-31T00:00:00Z",
+        )
+
+    def test_update_phone_number_metadata(self, connect, setup):
+        instance_arn = f"arn:aws:connect:us-east-1:123456789012:instance/{setup['instance_id']}"
+        phone = connect.claim_phone_number(
+            TargetArn=instance_arn,
+            PhoneNumber="+12125551234",
+        )
+        phone_id = phone["PhoneNumberId"]
+        connect.update_phone_number_metadata(
+            PhoneNumberId=phone_id,
+            PhoneNumberDescription="Updated description",
+        )
