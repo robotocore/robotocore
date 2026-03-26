@@ -179,6 +179,73 @@ class TestEMRServerlessJobRuns:
         assert cancel["jobRunId"] == job_run_id
 
 
+class TestEMRServerlessTagging:
+    """Tests for ListTagsForResource, TagResource, and UntagResource."""
+
+    def test_list_tags_for_resource_empty(self, emr_serverless, application):
+        app = emr_serverless.get_application(applicationId=application)["application"]
+        resource_arn = app["arn"]
+        resp = emr_serverless.list_tags_for_resource(resourceArn=resource_arn)
+        assert "tags" in resp
+        assert isinstance(resp["tags"], dict)
+
+    def test_tag_resource(self, emr_serverless, application):
+        app = emr_serverless.get_application(applicationId=application)["application"]
+        resource_arn = app["arn"]
+        emr_serverless.tag_resource(
+            resourceArn=resource_arn, tags={"env": "test", "team": "data"}
+        )
+        resp = emr_serverless.list_tags_for_resource(resourceArn=resource_arn)
+        assert resp["tags"]["env"] == "test"
+        assert resp["tags"]["team"] == "data"
+
+    def test_untag_resource(self, emr_serverless, application):
+        app = emr_serverless.get_application(applicationId=application)["application"]
+        resource_arn = app["arn"]
+        emr_serverless.tag_resource(
+            resourceArn=resource_arn, tags={"env": "test", "team": "data"}
+        )
+        emr_serverless.untag_resource(resourceArn=resource_arn, tagKeys=["env"])
+        resp = emr_serverless.list_tags_for_resource(resourceArn=resource_arn)
+        assert "env" not in resp["tags"]
+        assert resp["tags"]["team"] == "data"
+
+
+class TestEMRServerlessDashboardAndAttempts:
+    """Tests for GetDashboardForJobRun and ListJobRunAttempts."""
+
+    @pytest.fixture
+    def job_run(self, emr_serverless, application):
+        resp = emr_serverless.start_job_run(
+            applicationId=application,
+            executionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            jobDriver={
+                "sparkSubmit": {
+                    "entryPoint": "s3://bucket/script.py",
+                }
+            },
+        )
+        return resp["jobRunId"]
+
+    def test_get_dashboard_for_job_run(self, emr_serverless, application, job_run):
+        resp = emr_serverless.get_dashboard_for_job_run(
+            applicationId=application, jobRunId=job_run
+        )
+        assert "url" in resp
+        assert len(resp["url"]) > 0
+
+    def test_list_job_run_attempts(self, emr_serverless, application, job_run):
+        resp = emr_serverless.list_job_run_attempts(
+            applicationId=application, jobRunId=job_run
+        )
+        assert "jobRunAttempts" in resp
+        assert len(resp["jobRunAttempts"]) >= 1
+        attempt = resp["jobRunAttempts"][0]
+        assert attempt["applicationId"] == application
+        assert "state" in attempt
+        assert "executionRole" in attempt
+
+
 class TestEMRServerlessApplicationLifecycle:
     def test_start_application(self, emr_serverless):
         """StartApplication transitions a stopped app to STARTED."""
