@@ -1830,6 +1830,7 @@ class TestDescribeEndpointsAndLimits:
         assert "AccountMaxWriteCapacityUnits" in response
         assert "TableMaxReadCapacityUnits" in response
         assert "TableMaxWriteCapacityUnits" in response
+        assert isinstance(response["AccountMaxReadCapacityUnits"], int)
 
 
 class TestDynamoDBExtendedOperations:
@@ -2655,6 +2656,7 @@ class TestDynamoDBGapStubs:
     def test_list_exports(self, dynamodb):
         resp = dynamodb.list_exports()
         assert "ExportSummaries" in resp
+        assert isinstance(resp["ExportSummaries"], list)
 
 
 class TestDynamodbAutoCoverage:
@@ -2668,11 +2670,13 @@ class TestDynamodbAutoCoverage:
         """ListContributorInsights returns a response."""
         resp = client.list_contributor_insights()
         assert "ContributorInsightsSummaries" in resp
+        assert isinstance(resp["ContributorInsightsSummaries"], list)
 
     def test_list_imports(self, client):
         """ListImports returns a response."""
         resp = client.list_imports()
         assert "ImportSummaryList" in resp
+        assert isinstance(resp["ImportSummaryList"], list)
 
 
 class TestDynamoDBResourcePolicy:
@@ -3233,6 +3237,7 @@ class TestDynamoDBExportImport:
         """ListImports returns ImportSummaryList."""
         resp = dynamodb.list_imports()
         assert "ImportSummaryList" in resp
+        assert isinstance(resp["ImportSummaryList"], list)
 
 
 class TestDynamoDBKinesisStreaming:
@@ -3306,6 +3311,7 @@ class TestDynamoDBContributorInsights:
         """ListContributorInsights returns a list."""
         resp = dynamodb.list_contributor_insights()
         assert "ContributorInsightsSummaries" in resp
+        assert isinstance(resp["ContributorInsightsSummaries"], list)
 
     def test_describe_contributor_insights_nonexistent(self, dynamodb):
         """DescribeContributorInsights for nonexistent table raises ResourceNotFoundException."""
@@ -3385,6 +3391,7 @@ class TestDynamoDBKinesisStreamingGapOps:
             TableName=table_name, StreamArn=stream_arn
         )
         assert "DestinationStatus" in resp
+        assert isinstance(resp["DestinationStatus"], str)
 
     def test_update_kinesis_streaming_destination(self, dynamodb, table_name):
         """UpdateKinesisStreamingDestination modifies precision."""
@@ -3398,6 +3405,7 @@ class TestDynamoDBKinesisStreamingGapOps:
             },
         )
         assert "TableName" in resp
+        assert isinstance(resp["TableName"], str)
 
     def test_update_contributor_insights(self, dynamodb, table_name):
         """UpdateContributorInsights enables insights on a table."""
@@ -3415,3 +3423,4 @@ class TestDynamoDBKinesisStreamingGapOps:
         """UpdateTableReplicaAutoScaling returns table description."""
         resp = dynamodb.update_table_replica_auto_scaling(TableName=table_name)
         assert "TableAutoScalingDescription" in resp
+        assert isinstance(resp["TableAutoScalingDescription"], dict)
