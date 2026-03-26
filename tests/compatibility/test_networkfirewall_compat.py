@@ -526,6 +526,193 @@ class TestTaggingOperations:
         assert "team" in keys
 
 
+class TestFirewallModificationOperations:
+    def test_delete_firewall(self, nfw):
+        """DeleteFirewall removes the firewall and returns Firewall + FirewallStatus."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+            DeleteProtection=False,
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        resp = nfw.delete_firewall(FirewallArn=arn)
+        assert "Firewall" in resp
+        assert "FirewallStatus" in resp
+        assert resp["Firewall"]["FirewallName"] == name
+
+    def test_associate_firewall_policy(self, nfw):
+        """AssociateFirewallPolicy returns FirewallName and UpdateToken."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+            FirewallPolicyChangeProtection=False,
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        resp = nfw.associate_firewall_policy(
+            FirewallArn=arn, FirewallPolicyArn=POLICY_ARN, UpdateToken=token
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallName"] == name
+        assert "UpdateToken" in resp
+
+    def test_associate_and_disassociate_subnets(self, nfw):
+        """AssociateSubnets adds a subnet; DisassociateSubnets removes it."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        assoc_resp = nfw.associate_subnets(
+            FirewallArn=arn,
+            SubnetMappings=[{"SubnetId": "subnet-99999"}],
+            UpdateToken=token,
+        )
+        assert assoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert assoc_resp["FirewallArn"] == arn
+        assert "UpdateToken" in assoc_resp
+
+        new_token = assoc_resp["UpdateToken"]
+        disassoc_resp = nfw.disassociate_subnets(
+            FirewallArn=arn, SubnetIds=["subnet-99999"], UpdateToken=new_token
+        )
+        assert disassoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert disassoc_resp["FirewallArn"] == arn
+
+    def test_describe_firewall_metadata(self, nfw):
+        """DescribeFirewallMetadata returns FirewallArn, FirewallPolicyArn, Status."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        resp = nfw.describe_firewall_metadata(FirewallArn=arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallArn"] == arn
+        assert "FirewallPolicyArn" in resp
+        assert "Status" in resp
+
+    def test_update_firewall_delete_protection(self, nfw):
+        """UpdateFirewallDeleteProtection updates delete protection flag."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        resp = nfw.update_firewall_delete_protection(
+            FirewallArn=arn, DeleteProtection=False, UpdateToken=token
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallArn"] == arn
+        assert resp["DeleteProtection"] is False
+        assert "UpdateToken" in resp
+
+    def test_update_firewall_description(self, nfw):
+        """UpdateFirewallDescription sets description on a firewall."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        resp = nfw.update_firewall_description(
+            FirewallArn=arn, Description="compat-test-desc", UpdateToken=token
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallArn"] == arn
+        assert resp["Description"] == "compat-test-desc"
+
+    def test_update_firewall_policy_change_protection(self, nfw):
+        """UpdateFirewallPolicyChangeProtection toggles the policy change protection flag."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        resp = nfw.update_firewall_policy_change_protection(
+            FirewallArn=arn, FirewallPolicyChangeProtection=False, UpdateToken=token
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallArn"] == arn
+        assert resp["FirewallPolicyChangeProtection"] is False
+
+    def test_update_subnet_change_protection(self, nfw):
+        """UpdateSubnetChangeProtection toggles the subnet change protection flag."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        resp = nfw.update_subnet_change_protection(
+            FirewallArn=arn, SubnetChangeProtection=False, UpdateToken=token
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallArn"] == arn
+        assert resp["SubnetChangeProtection"] is False
+
+    def test_update_firewall_encryption_configuration(self, nfw):
+        """UpdateFirewallEncryptionConfiguration sets encryption config on a firewall."""
+        name = _unique_name()
+        create_resp = nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=POLICY_ARN,
+            SubnetMappings=[{"SubnetId": "subnet-12345"}],
+            VpcId="vpc-12345",
+        )
+        arn = create_resp["Firewall"]["FirewallArn"]
+        desc = nfw.describe_firewall(FirewallArn=arn)
+        token = desc["UpdateToken"]
+
+        resp = nfw.update_firewall_encryption_configuration(
+            FirewallArn=arn,
+            EncryptionConfiguration={"Type": "AWS_OWNED_KMS_KEY"},
+            UpdateToken=token,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["FirewallArn"] == arn
+        assert "EncryptionConfiguration" in resp
+
+
 class TestResourcePolicyOperations:
     def test_put_and_describe_resource_policy(self, nfw):
         """PutResourcePolicy stores policy, DescribeResourcePolicy retrieves it."""
