@@ -1611,3 +1611,192 @@ class TestCognitoAuthExtended:
                 assert "AuthenticationResult" in auth
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoNewOps:
+    """Tests for AdminRespondToAuthChallenge, Terms, MFA token, and resource server list ops."""
+
+    def test_admin_respond_to_auth_challenge(self, cognito):
+        """AdminRespondToAuthChallenge returns ResourceNotFoundException for unknown session."""
+        from botocore.exceptions import ClientError
+
+        # Verify the operation is implemented by calling with a fake session —
+        # a real 501 would return NotImplementedError, but we get ResourceNotFoundException.
+        with pytest.raises(ClientError) as exc_info:
+            cognito.admin_respond_to_auth_challenge(
+                UserPoolId="us-east-1_fakepool123",
+                ClientId="fakeclientid123456789012",
+                ChallengeName="NEW_PASSWORD_REQUIRED",
+                Session="a" * 100,
+                ChallengeResponses={
+                    "USERNAME": "testuser",
+                    "NEW_PASSWORD": "NewPerm@12345678",
+                },
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_resource_servers(self, cognito):
+        """ListResourceServers returns list of resource servers for a user pool."""
+        pool = cognito.create_user_pool(PoolName=_unique("lrs-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+                Name="test-api",
+            )
+            resp = cognito.list_resource_servers(UserPoolId=pool_id)
+            assert "ResourceServers" in resp
+            identifiers = [rs["Identifier"] for rs in resp["ResourceServers"]]
+            assert "https://api.example.com" in identifiers
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_create_terms(self, cognito):
+        """CreateTerms creates terms for a user pool client."""
+        pool = cognito.create_user_pool(PoolName=_unique("cterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="cterms-client",
+            )["UserPoolClient"]["ClientId"]
+            resp = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+                Links={"en": "https://example.com/terms"},
+            )
+            terms = resp["Terms"]
+            assert "TermsId" in terms
+            assert terms["TermsName"] == "terms-of-use"
+            assert terms["UserPoolId"] == pool_id
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_describe_terms(self, cognito):
+        """DescribeTerms returns terms details by ID."""
+        pool = cognito.create_user_pool(PoolName=_unique("dterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="dterms-client",
+            )["UserPoolClient"]["ClientId"]
+            terms_id = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="privacy-policy",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )["Terms"]["TermsId"]
+            resp = cognito.describe_terms(TermsId=terms_id, UserPoolId=pool_id)
+            assert resp["Terms"]["TermsId"] == terms_id
+            assert resp["Terms"]["TermsName"] == "privacy-policy"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_list_terms(self, cognito):
+        """ListTerms returns all terms for a user pool."""
+        pool = cognito.create_user_pool(PoolName=_unique("lterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="lterms-client",
+            )["UserPoolClient"]["ClientId"]
+            cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )
+            resp = cognito.list_terms(UserPoolId=pool_id)
+            assert "Terms" in resp
+            assert len(resp["Terms"]) >= 1
+            names = [t["TermsName"] for t in resp["Terms"]]
+            assert "terms-of-use" in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_terms(self, cognito):
+        """UpdateTerms updates an existing terms record."""
+        pool = cognito.create_user_pool(PoolName=_unique("uterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="uterms-client",
+            )["UserPoolClient"]["ClientId"]
+            terms_id = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )["Terms"]["TermsId"]
+            resp = cognito.update_terms(
+                TermsId=terms_id,
+                UserPoolId=pool_id,
+                Links={"en": "https://example.com/updated-terms"},
+            )
+            assert resp["Terms"]["TermsId"] == terms_id
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_terms(self, cognito):
+        """DeleteTerms removes a terms record from a user pool."""
+        pool = cognito.create_user_pool(PoolName=_unique("xterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="xterms-client",
+            )["UserPoolClient"]["ClientId"]
+            terms_id = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )["Terms"]["TermsId"]
+            resp = cognito.delete_terms(TermsId=terms_id, UserPoolId=pool_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            list_resp = cognito.list_terms(UserPoolId=pool_id)
+            term_ids = [t["TermsId"] for t in list_resp["Terms"]]
+            assert terms_id not in term_ids
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_set_user_mfa_preference(self, cognito):
+        """SetUserMFAPreference is implemented (NotAuthorizedException for invalid token)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.set_user_mfa_preference(
+                AccessToken="invalid-access-token-value",
+                SoftwareTokenMfaSettings={"Enabled": False, "PreferredMfa": False},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotAuthorizedException"
+
+    def test_associate_software_token(self, cognito):
+        """AssociateSoftwareToken is implemented (NotAuthorizedException for invalid token)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.associate_software_token(AccessToken="invalid-access-token-value")
+        assert exc_info.value.response["Error"]["Code"] == "NotAuthorizedException"
+
+    def test_verify_software_token(self, cognito):
+        """VerifySoftwareToken is implemented (NotAuthorizedException for invalid token)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.verify_software_token(
+                AccessToken="invalid-access-token-value",
+                UserCode="123456",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotAuthorizedException"
