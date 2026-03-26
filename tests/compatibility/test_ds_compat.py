@@ -1423,7 +1423,7 @@ class TestDsADAssessment:
         assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
 
     def test_start_describe_delete_ad_assessment(self, ds, msad_directory):
-        """StartADAssessment returns an ID, DescribeADAssessment returns it, DeleteADAssessment removes it."""
+        """StartADAssessment returns an ID, DescribeADAssessment returns it, DeleteADAssessment removes it."""  # noqa: E501
         # Start an assessment
         start_resp = ds.start_ad_assessment(DirectoryId=msad_directory)
         assert "AssessmentId" in start_resp

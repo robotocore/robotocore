@@ -612,6 +612,7 @@ class TestResiliencehubAutoCoverage:
         """ListAppAssessments returns a response."""
         resp = client.list_app_assessments()
         assert "assessmentSummaries" in resp
+        assert isinstance(resp["assessmentSummaries"], list)
 
 
 class TestResilienceHubSuggestedPolicies:
@@ -809,12 +810,14 @@ class TestResilienceHubMetricsAndGrouping:
         resp = resiliencehub.describe_metrics_export(metricsExportId="fake-export-id")
         assert "metricsExportId" in resp
         assert "status" in resp
+        assert resp["metricsExportId"] == "fake-export-id"
 
     def test_describe_resource_grouping_recommendation_task(self, resiliencehub):
         """DescribeResourceGroupingRecommendationTask returns task status."""
         app_arn = resiliencehub.create_app(name=_unique_name())["app"]["appArn"]
         resp = resiliencehub.describe_resource_grouping_recommendation_task(appArn=app_arn)
         assert "status" in resp
+        assert resp["status"] in ("Pending", "InProgress", "Failed", "Success")
 
     def test_list_resource_grouping_recommendations(self, resiliencehub):
         """ListResourceGroupingRecommendations returns grouping recommendations."""
@@ -1058,6 +1061,7 @@ class TestResilienceHubAssessmentAndExport:
         )
         assert "metricsExportId" in resp
         assert "status" in resp
+        assert isinstance(resp["metricsExportId"], str)
 
     def test_start_resource_grouping_recommendation_task(self, resiliencehub):
         """StartResourceGroupingRecommendationTask starts grouping task."""

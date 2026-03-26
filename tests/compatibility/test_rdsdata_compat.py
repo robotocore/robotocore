@@ -20,16 +20,19 @@ def rds_cluster_module():
     """Create an RDS cluster shared across all tests in this module."""
     rds = make_client("rds")
     cluster_id = "rdsdata-compat-test"
+    # Delete any leftover cluster first to ensure the native SQLite engine
+    # is freshly registered (the engine is in-memory and lost on server restart).
     try:
-        rds.create_db_cluster(
-            DBClusterIdentifier=cluster_id,
-            Engine="aurora-mysql",
-            MasterUsername="admin",
-            MasterUserPassword="password123",
-            EnableHttpEndpoint=True,
-        )
+        rds.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
     except Exception:
-        pass  # already exists from prior run is fine — engine still attached
+        pass  # does not exist, that is fine
+    rds.create_db_cluster(
+        DBClusterIdentifier=cluster_id,
+        Engine="aurora-mysql",
+        MasterUsername="admin",
+        MasterUserPassword="password123",
+        EnableHttpEndpoint=True,
+    )
     yield cluster_id
     try:
         rds.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)

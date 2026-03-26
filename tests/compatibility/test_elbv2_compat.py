@@ -1355,8 +1355,8 @@ class TestELBV2GapOpsV2:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_modify_ip_pools(self, client):
-        """ModifyIpPools returns 200 for any load balancer ARN."""
+        """ModifyIpPools returns IpamPools for any load balancer ARN."""
         resp = client.modify_ip_pools(
             LoadBalancerArn="arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/test/abc123"
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IpamPools" in resp

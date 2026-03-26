@@ -66,7 +66,9 @@ class TestTranscribeOperations:
         transcribe.delete_transcription_job(TranscriptionJobName=name)
         # Verify it's gone from the list
         list_resp = transcribe.list_transcription_jobs()
-        job_names = [j["TranscriptionJobName"] for j in list_resp.get("TranscriptionJobSummaries", [])]
+        job_names = [
+            j["TranscriptionJobName"] for j in list_resp.get("TranscriptionJobSummaries", [])
+        ]
         assert name not in job_names
 
     def test_create_vocabulary(self, transcribe):
@@ -348,8 +350,14 @@ class TestTranscribeMedicalJobs:
             Specialty="PRIMARYCARE",
             Type="CONVERSATION",
         )
-        resp = transcribe.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        transcribe.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+        # Verify it's gone from the list
+        list_resp = transcribe.list_medical_transcription_jobs()
+        job_names = [
+            j["MedicalTranscriptionJobName"]
+            for j in list_resp.get("MedicalTranscriptionJobSummaries", [])
+        ]
+        assert name not in job_names
 
 
 class TestTranscribeMedicalVocabularies:
@@ -408,8 +416,11 @@ class TestTranscribeMedicalVocabularies:
             LanguageCode="en-US",
             VocabularyFileUri="s3://my-bucket/vocab.txt",
         )
-        resp = transcribe.delete_medical_vocabulary(VocabularyName=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        transcribe.delete_medical_vocabulary(VocabularyName=name)
+        # Verify it's gone from the list
+        list_resp = transcribe.list_medical_vocabularies()
+        vocab_names = [v["VocabularyName"] for v in list_resp.get("Vocabularies", [])]
+        assert name not in vocab_names
 
 
 class TestTranscribeGapStubs:

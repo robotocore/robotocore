@@ -193,7 +193,7 @@ class TestS3VectorsBucketOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
         get_resp = client.get_vector_bucket_policy(vectorBucketName=name)
-        assert "policy" in get_resp
+        assert isinstance(get_resp["policy"], str)
         client.delete_vector_bucket(vectorBucketName=name)
 
 
@@ -289,6 +289,10 @@ class TestS3VectorsVectorOperations:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify vector was stored
+        get_resp = client.get_vectors(vectorBucketName=bucket, indexName=index, keys=["vec1"])
+        stored_keys = [v["key"] for v in get_resp["vectors"]]
+        assert "vec1" in stored_keys
 
     def test_put_vectors_multiple(self, client, vector_bucket_with_index):
         """PutVectors can store multiple vectors at once."""
@@ -302,6 +306,10 @@ class TestS3VectorsVectorOperations:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify both vectors were stored
+        get_resp = client.get_vectors(vectorBucketName=bucket, indexName=index, keys=["mv1", "mv2"])
+        stored_keys = {v["key"] for v in get_resp["vectors"]}
+        assert "mv1" in stored_keys
 
     def test_get_vectors(self, client, vector_bucket_with_index):
         """GetVectors retrieves stored vectors by key."""
@@ -349,6 +357,10 @@ class TestS3VectorsVectorOperations:
             keys=["dv1"],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify vector is gone
+        get_resp = client.get_vectors(vectorBucketName=bucket, indexName=index, keys=["dv1"])
+        remaining_keys = [v["key"] for v in get_resp["vectors"]]
+        assert "dv1" not in remaining_keys
 
     def test_delete_vectors_then_get(self, client, vector_bucket_with_index):
         """After DeleteVectors, GetVectors should not return the deleted vector."""
@@ -411,6 +423,9 @@ class TestS3VectorsTagOperations:
         _, arn = tagged_bucket
         resp = s3vectors.tag_resource(resourceArn=arn, tags={"env": "test", "team": "devs"})
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify tags were applied
+        tags_resp = s3vectors.list_tags_for_resource(resourceArn=arn)
+        assert tags_resp["tags"]["env"] == "test"
 
     def test_list_tags_for_resource(self, s3vectors, tagged_bucket):
         _, arn = tagged_bucket

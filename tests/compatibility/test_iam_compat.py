@@ -2388,14 +2388,14 @@ class TestIamAutoCoverage:
         assert "OrganizationId" in resp
 
     def test_enable_outbound_web_identity_federation(self, client):
-        """EnableOutboundWebIdentityFederation returns a response."""
+        """EnableOutboundWebIdentityFederation returns IssuerIdentifier."""
         resp = client.enable_outbound_web_identity_federation()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IssuerIdentifier" in resp
 
     def test_get_outbound_web_identity_federation_info(self, client):
-        """GetOutboundWebIdentityFederationInfo returns a response."""
+        """GetOutboundWebIdentityFederationInfo returns IssuerIdentifier."""
         resp = client.get_outbound_web_identity_federation_info()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IssuerIdentifier" in resp
 
     def test_list_delegation_requests(self, client):
         """ListDelegationRequests returns a response."""
@@ -5728,9 +5728,9 @@ class TestIAMNewStubOps:
         assert "DelegationRequest" in resp
 
     def test_reset_service_specific_credential(self, iam):
-        """ResetServiceSpecificCredential stub returns 200."""
+        """ResetServiceSpecificCredential stub returns ServiceSpecificCredential."""
         resp = iam.reset_service_specific_credential(ServiceSpecificCredentialId="a" * 32)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ServiceSpecificCredential" in resp
 
     def test_update_service_specific_credential(self, iam):
         """UpdateServiceSpecificCredential stub returns 200."""

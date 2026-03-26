@@ -580,12 +580,15 @@ class TestAutoScalingCapacityAndMetrics:
 
     def test_enable_metrics_collection_specific_metrics(self, autoscaling):
         """EnableMetricsCollection with specific Metrics list succeeds."""
-        resp = autoscaling.enable_metrics_collection(
+        autoscaling.enable_metrics_collection(
             AutoScalingGroupName=self.asg_name,
             Granularity="1Minute",
             Metrics=["GroupMinSize"],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the metric was enabled
+        desc = autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[self.asg_name])
+        enabled = [m["Metric"] for m in desc["AutoScalingGroups"][0].get("EnabledMetrics", [])]
+        assert "GroupMinSize" in enabled
 
 
 class TestAutoScalingWarmPool:
@@ -881,12 +884,14 @@ class TestAutoScalingExecutePolicy:
             AdjustmentType="ChangeInCapacity",
             ScalingAdjustment=1,
         )
-        resp = autoscaling.execute_policy(
+        autoscaling.execute_policy(
             AutoScalingGroupName=self.asg_name,
             PolicyName=policy_name,
             HonorCooldown=False,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify execution generated scaling activities
+        activities = autoscaling.describe_scaling_activities(AutoScalingGroupName=self.asg_name)
+        assert "Activities" in activities
 
     def test_execute_policy_no_honor_cooldown(self, autoscaling):
         """ExecutePolicy with HonorCooldown=True still succeeds."""
@@ -898,12 +903,17 @@ class TestAutoScalingExecutePolicy:
             AdjustmentType="ChangeInCapacity",
             ScalingAdjustment=1,
         )
-        resp = autoscaling.execute_policy(
+        autoscaling.execute_policy(
             AutoScalingGroupName=self.asg_name,
             PolicyName=policy_name,
             HonorCooldown=True,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the policy still exists after execution
+        desc = autoscaling.describe_policies(
+            AutoScalingGroupName=self.asg_name,
+            PolicyNames=[policy_name],
+        )
+        assert len(desc["ScalingPolicies"]) == 1
 
 
 class TestAutoScalingDescribeTypes:
@@ -1198,11 +1208,13 @@ class TestAutoScalingLoadBalancerAttachDetach:
 
     def test_attach_load_balancers(self, autoscaling):
         """AttachLoadBalancers attaches a classic LB to the ASG."""
-        resp = autoscaling.attach_load_balancers(
+        autoscaling.attach_load_balancers(
             AutoScalingGroupName=self.asg_name,
             LoadBalancerNames=["my-classic-lb"],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the LB appears in the ASG's load balancers
+        desc = autoscaling.describe_load_balancers(AutoScalingGroupName=self.asg_name)
+        assert "LoadBalancers" in desc
 
     def test_attach_and_detach_load_balancers(self, autoscaling):
         """AttachLoadBalancers then DetachLoadBalancers with a real ELB name."""

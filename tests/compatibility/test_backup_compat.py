@@ -2476,21 +2476,21 @@ class TestBackupMPAAndRestoreAccessOps:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_recovery_point_index_details(self, backup):
-        """GetRecoveryPointIndexDetails returns 200 with index status."""
+        """GetRecoveryPointIndexDetails returns RecoveryPointArn."""
         resp = backup.get_recovery_point_index_details(
             BackupVaultName="test-vault",
             RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:test-rp",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RecoveryPointArn" in resp
 
     def test_update_recovery_point_index_settings(self, backup):
-        """UpdateRecoveryPointIndexSettings returns 200."""
+        """UpdateRecoveryPointIndexSettings returns BackupVaultName."""
         resp = backup.update_recovery_point_index_settings(
             BackupVaultName="test-vault",
             RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:test-rp",
             Index="ENABLED",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "BackupVaultName" in resp
 
     def test_create_backup_selection_fake_plan_raises(self, backup):
         """CreateBackupSelection with fake plan ID raises ResourceNotFoundException."""

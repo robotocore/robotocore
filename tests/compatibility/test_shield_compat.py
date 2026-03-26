@@ -26,6 +26,9 @@ class TestShieldSubscription:
     def test_create_subscription(self, shield):
         resp = shield.create_subscription()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify subscription is active
+        state = shield.get_subscription_state()
+        assert state["SubscriptionState"] == "ACTIVE"
 
     def test_describe_subscription(self, shield):
         shield.create_subscription()
@@ -142,6 +145,9 @@ class TestShieldProtectionGroup:
             Pattern="ALL",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify group was created
+        desc = shield.describe_protection_group(ProtectionGroupId=gid)
+        assert desc["ProtectionGroup"]["ProtectionGroupId"] == gid
         shield.delete_protection_group(ProtectionGroupId=gid)
 
     def test_describe_protection_group(self, shield):
@@ -184,6 +190,10 @@ class TestShieldProtectionGroup:
         )
         resp = shield.delete_protection_group(ProtectionGroupId=gid)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify group is gone
+        list_resp = shield.list_protection_groups()
+        ids = [pg["ProtectionGroupId"] for pg in list_resp["ProtectionGroups"]]
+        assert gid not in ids
 
     def test_update_protection_group(self, shield):
         gid = _unique("pg")
@@ -242,6 +252,7 @@ class TestShieldSubscriptionAdvanced:
         shield.create_subscription()
         resp = shield.describe_drt_access()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["LogBucketList"], list)
 
     def test_describe_emergency_contact_settings(self, shield):
         shield.create_subscription()
@@ -283,11 +294,17 @@ class TestShieldSubscriptionAdvanced:
         shield.create_subscription()
         resp = shield.delete_subscription()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify subscription is inactive
+        state = shield.get_subscription_state()
+        assert state["SubscriptionState"] == "INACTIVE"
 
     def test_update_subscription(self, shield):
         shield.create_subscription()
         resp = shield.update_subscription(AutoRenew="ENABLED")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify update took effect
+        desc = shield.describe_subscription()
+        assert desc["Subscription"]["AutoRenew"] == "ENABLED"
 
 
 class TestShieldDRTAndProactive:
@@ -297,18 +314,27 @@ class TestShieldDRTAndProactive:
         shield.create_subscription()
         resp = shield.associate_drt_role(RoleArn="arn:aws:iam::123456789012:role/ShieldDRT")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify role was associated
+        drt = shield.describe_drt_access()
+        assert drt["RoleArn"] == "arn:aws:iam::123456789012:role/ShieldDRT"
 
     def test_disassociate_drt_role(self, shield):
         shield.create_subscription()
         shield.associate_drt_role(RoleArn="arn:aws:iam::123456789012:role/ShieldDRT")
         resp = shield.disassociate_drt_role()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify role was removed
+        drt = shield.describe_drt_access()
+        assert drt.get("RoleArn", "") == ""
 
     def test_associate_drt_log_bucket(self, shield):
         shield.create_subscription()
         shield.associate_drt_role(RoleArn="arn:aws:iam::123456789012:role/ShieldDRT")
         resp = shield.associate_drt_log_bucket(LogBucket="my-shield-logs-bucket")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify bucket was associated
+        drt = shield.describe_drt_access()
+        assert "my-shield-logs-bucket" in drt["LogBucketList"]
 
     def test_disassociate_drt_log_bucket(self, shield):
         shield.create_subscription()
@@ -316,6 +342,9 @@ class TestShieldDRTAndProactive:
         shield.associate_drt_log_bucket(LogBucket="my-shield-logs-bucket")
         resp = shield.disassociate_drt_log_bucket(LogBucket="my-shield-logs-bucket")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify bucket was removed
+        drt = shield.describe_drt_access()
+        assert "my-shield-logs-bucket" not in drt["LogBucketList"]
 
     def test_associate_proactive_engagement_details(self, shield):
         shield.create_subscription()

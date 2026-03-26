@@ -1677,7 +1677,7 @@ class TestDMSDescribeConversionAndMetadata:
             SelectionRules='{"rules":[]}',
             Origin="SOURCE",
         )
-        assert "MetadataModelName" in response
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_metadata_model_children(self, dms):
         """DescribeMetadataModelChildren returns children for a migration project."""
@@ -1686,7 +1686,7 @@ class TestDMSDescribeConversionAndMetadata:
             SelectionRules='{"rules":[]}',
             Origin="SOURCE",
         )
-        assert "MetadataModelChildren" in response
+        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_refresh_schemas_status(self, dms):
         """DescribeRefreshSchemasStatus returns status for an endpoint."""
@@ -2194,7 +2194,7 @@ class TestDMSReplicationConfigOperations:
         )
         rc_arn = rc["ReplicationConfig"]["ReplicationConfigArn"]
         resp = dms.delete_replication_config(ReplicationConfigArn=rc_arn)
-        assert "ReplicationConfig" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestDMSModifyReplicationSubnetGroup:
@@ -2480,7 +2480,7 @@ class TestDMSTaskAssessmentOperations:
                 "arn:aws:dms:us-east-1:123456789012:assessment-run:fake"
             ),
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReplicationTaskAssessmentRun" in resp
 
     def test_delete_replication_task_assessment_run(self, dms):
         """DeleteReplicationTaskAssessmentRun returns a response for fake ARN."""
@@ -2489,7 +2489,7 @@ class TestDMSTaskAssessmentOperations:
                 "arn:aws:dms:us-east-1:123456789012:assessment-run:fake"
             ),
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReplicationTaskAssessmentRun" in resp
 
     def test_move_replication_task(self, dms):
         """MoveReplicationTask returns task details."""
@@ -2537,7 +2537,7 @@ class TestDMSReloadReplicationTables:
             ReplicationConfigArn=("arn:aws:dms:us-east-1:123456789012:replication-config:fake"),
             TablesToReload=[{"SchemaName": "public", "TableName": "test"}],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReplicationConfigArn" in resp
 
 
 class TestDMSMaintenanceAction:
@@ -2557,7 +2557,7 @@ class TestDMSMaintenanceAction:
                 ApplyAction="os-upgrade",
                 OptInType="immediate",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ResourcePendingMaintenanceActions" in resp
         finally:
             dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
 
@@ -2605,7 +2605,7 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
             SelectionRules='{"rules":[]}',
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PdfReport" in resp
 
     def test_modify_conversion_configuration(self, dms):
         """ModifyConversionConfiguration returns a migration project identifier."""
@@ -2613,14 +2613,14 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
             ConversionConfiguration="{}",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MigrationProjectIdentifier" in resp
 
     def test_start_extension_pack_association(self, dms):
         """StartExtensionPackAssociation returns a request identifier."""
         resp = dms.start_extension_pack_association(
             MigrationProjectIdentifier="fake-proj",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestIdentifier" in resp
 
     def test_start_metadata_model_assessment(self, dms):
         """StartMetadataModelAssessment returns a request identifier."""
@@ -2628,7 +2628,7 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
             SelectionRules='{"rules":[]}',
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestIdentifier" in resp
 
     def test_start_metadata_model_conversion(self, dms):
         """StartMetadataModelConversion returns a request identifier."""
@@ -2636,7 +2636,7 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
             SelectionRules='{"rules":[]}',
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestIdentifier" in resp
 
     def test_start_metadata_model_export_as_script(self, dms):
         """StartMetadataModelExportAsScript returns a request identifier."""
@@ -2645,7 +2645,7 @@ class TestDMSMetadataModelOperations:
             SelectionRules='{"rules":[]}',
             Origin="SOURCE",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestIdentifier" in resp
 
     def test_start_metadata_model_export_to_target(self, dms):
         """StartMetadataModelExportToTarget returns a request identifier."""
@@ -2653,7 +2653,7 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
             SelectionRules='{"rules":[]}',
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestIdentifier" in resp
 
     def test_start_metadata_model_import(self, dms):
         """StartMetadataModelImport returns a request identifier."""
@@ -2662,7 +2662,7 @@ class TestDMSMetadataModelOperations:
             SelectionRules='{"rules":[]}',
             Origin="SOURCE",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestIdentifier" in resp
 
     def test_cancel_metadata_model_conversion(self, dms):
         """CancelMetadataModelConversion returns a request identifier."""

@@ -2974,6 +2974,7 @@ class TestLambdaListFunctionsByCodeSigningConfig:
         try:
             list_resp = lam.list_functions_by_code_signing_config(CodeSigningConfigArn=csc_arn)
             assert "FunctionArns" in list_resp
+            assert isinstance(list_resp["FunctionArns"], list)
         finally:
             lam.delete_code_signing_config(CodeSigningConfigArn=csc_arn)
 
@@ -3039,6 +3040,7 @@ class TestLambdaCapacityProviderCRUD:
             get_resp = lam.get_capacity_provider(CapacityProviderName="test-cp-get")
             assert "CapacityProvider" in get_resp
             assert "CapacityProviderArn" in get_resp["CapacityProvider"]
+            assert "test-cp-get" in get_resp["CapacityProvider"]["CapacityProviderArn"]
         finally:
             lam.delete_capacity_provider(CapacityProviderName="test-cp-get")
 
@@ -3062,6 +3064,7 @@ class TestLambdaCapacityProviderCRUD:
         try:
             upd_resp = lam.update_capacity_provider(CapacityProviderName="test-cp-upd")
             assert "CapacityProvider" in upd_resp
+            assert "CapacityProviderArn" in upd_resp["CapacityProvider"]
         finally:
             lam.delete_capacity_provider(CapacityProviderName="test-cp-upd")
 
@@ -3098,6 +3101,7 @@ class TestLambdaDurableExecutionStubs:
         resp = lam.get_durable_execution(DurableExecutionArn=_FAKE_EXEC_ARN)
         assert "DurableExecutionArn" in resp
         assert "Status" in resp
+        assert resp["DurableExecutionArn"] == _FAKE_EXEC_ARN
 
     def test_get_durable_execution_history(self, lam):
         """GetDurableExecutionHistory returns Events list."""

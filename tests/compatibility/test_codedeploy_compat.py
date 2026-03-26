@@ -635,5 +635,3 @@ class TestCodedeployAutoCoverage:
                 deploymentId="d-XXXXXXXXX",
                 instanceId="i-fake",
             )
-
-

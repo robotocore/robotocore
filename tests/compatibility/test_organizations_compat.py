@@ -499,6 +499,7 @@ class TestOrganizationsDelegatedAdmin:
         assert "DelegatedServices" in resp
         principals = [s["ServicePrincipal"] for s in resp["DelegatedServices"]]
         assert "ssm.amazonaws.com" in principals
+        assert len(resp["DelegatedServices"]) >= 1
 
 
 class TestOrganizationsOUCRUD:
@@ -1107,11 +1108,13 @@ class TestOrganizationsNewStubOps:
         """ListInboundResponsibilityTransfers returns empty list."""
         resp = client.list_inbound_responsibility_transfers(Type="BILLING")
         assert "ResponsibilityTransfers" in resp
+        assert isinstance(resp["ResponsibilityTransfers"], list)
 
     def test_list_outbound_responsibility_transfers(self, client):
         """ListOutboundResponsibilityTransfers returns empty list."""
         resp = client.list_outbound_responsibility_transfers(Type="BILLING")
         assert "ResponsibilityTransfers" in resp
+        assert isinstance(resp["ResponsibilityTransfers"], list)
 
     def test_list_effective_policy_validation_errors(self, client):
         """ListEffectivePolicyValidationErrors returns empty validation errors list."""
@@ -1119,6 +1122,7 @@ class TestOrganizationsNewStubOps:
             AccountId="123456789012", PolicyType="AISERVICES_OPT_OUT_POLICY"
         )
         assert "EffectivePolicyValidationErrors" in resp
+        assert isinstance(resp["EffectivePolicyValidationErrors"], list)
 
 
 class TestOrganizationsResponsibilityTransfer:

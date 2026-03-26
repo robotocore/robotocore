@@ -694,9 +694,9 @@ class TestMSKClusterPolicyOperations:
                 ],
             }
         )
-        kafka.put_cluster_policy(ClusterArn=cluster_arn, Policy=policy)
-        resp = kafka.delete_cluster_policy(ClusterArn=cluster_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        put_resp = kafka.put_cluster_policy(ClusterArn=cluster_arn, Policy=policy)
+        assert "CurrentVersion" in put_resp
+        kafka.delete_cluster_policy(ClusterArn=cluster_arn)
 
 
 class TestMSKClusterUpdateOperations:

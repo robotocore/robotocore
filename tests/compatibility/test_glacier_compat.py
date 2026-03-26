@@ -238,6 +238,7 @@ class TestGlacierDataRetrievalPolicy:
         """get_data_retrieval_policy returns a policy."""
         resp = glacier.get_data_retrieval_policy(accountId="-")
         assert "Policy" in resp
+        assert isinstance(resp["Policy"], dict)
 
     def test_set_data_retrieval_policy(self, glacier):
         """set_data_retrieval_policy sets retrieval rules."""
@@ -306,6 +307,9 @@ class TestGlacierVaultAccessPolicy:
             resp = glacier.get_vault_access_policy(accountId="-", vaultName=name)
             assert "policy" in resp
             assert "Policy" in resp["policy"]
+            assert "Version" in resp["policy"]["Policy"] or isinstance(
+                resp["policy"]["Policy"], str
+            )
         finally:
             glacier.delete_vault(accountId="-", vaultName=name)
 
@@ -378,6 +382,10 @@ class TestGlacierVaultNotifications:
             assert "vaultNotificationConfig" in resp
             assert "SNSTopic" in resp["vaultNotificationConfig"]
             assert "Events" in resp["vaultNotificationConfig"]
+            assert (
+                resp["vaultNotificationConfig"]["SNSTopic"]
+                == "arn:aws:sns:us-east-1:123456789012:glacier-notif"
+            )
         finally:
             glacier.delete_vault(accountId="-", vaultName=name)
 
@@ -460,6 +468,7 @@ class TestGlacierVaultLock:
             resp = glacier.get_vault_lock(accountId="-", vaultName=name)
             assert "Policy" in resp
             assert "State" in resp
+            assert resp["State"] in ("InProgress", "Locked")
         finally:
             glacier.delete_vault(accountId="-", vaultName=name)
 

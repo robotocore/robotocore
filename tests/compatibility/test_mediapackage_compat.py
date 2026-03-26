@@ -258,6 +258,7 @@ class TestMediaPackageNewOps:
         try:
             resp = mp.rotate_channel_credentials(Id=channel_id)
             assert "Id" in resp
+            assert resp["Id"] == channel_id
         finally:
             mp.delete_channel(Id=channel_id)
 

@@ -927,7 +927,7 @@ class TestMediaLiveInputSecurityGroups:
                 InputSecurityGroupId=sg_id,
                 WhitelistRules=[{"Cidr": "192.168.0.0/16"}],
             )
-            assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "SecurityGroup" in update_resp
         finally:
             medialive.delete_input_security_group(InputSecurityGroupId=sg_id)
 
@@ -1480,7 +1480,7 @@ class TestMediaLiveClusterOperations:
             resp = self._make_cluster(medialive, net_id)
             cluster_id = resp["Id"]
             del_resp = medialive.delete_cluster(ClusterId=cluster_id)
-            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Id" in del_resp
         finally:
             medialive.delete_network(NetworkId=net_id)
 
@@ -1621,7 +1621,7 @@ class TestMediaLiveNetworkOperations:
         )
         net_id = resp["Id"]
         del_resp = medialive.delete_network(NetworkId=net_id)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Id" in del_resp
 
     def test_list_networks_after_create(self, medialive):
         resp = medialive.create_network(
@@ -1875,7 +1875,7 @@ class TestMediaLiveSdiSources:
             Name=_uid("sdi"),
             Type="SINGLE",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SdiSource" in resp
 
     def test_update_sdi_source_not_found(self, medialive):
         with pytest.raises(ClientError) as exc:
