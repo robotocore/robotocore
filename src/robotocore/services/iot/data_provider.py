@@ -39,7 +39,22 @@ async def _publish(request: Request, topic: str, region: str, account_id: str) -
     """Publish a message to an MQTT topic and evaluate rules."""
     body = await request.body()
 
-    # Parse payload
+    # Parse query parameters
+    query_params = dict(request.query_params)
+    retain = query_params.get("retain", "false").lower() == "true"
+    try:
+        qos = int(query_params.get("qos", "0"))
+    except (ValueError, TypeError):
+        qos = 0
+
+    # Store retained message in Moto backend if retain=True
+    if retain:
+        from moto.iotdata.models import iotdata_backends
+
+        iotdata_backend = iotdata_backends[account_id][region]
+        iotdata_backend.publish(topic=topic, payload=body, qos=qos, retain=True)
+
+    # Parse payload for rule evaluation
     try:
         payload = json.loads(body) if body else {}
     except (json.JSONDecodeError, UnicodeDecodeError):
