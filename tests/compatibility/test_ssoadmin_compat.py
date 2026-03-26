@@ -554,8 +554,7 @@ class TestSSOAdminInstanceCRUD:
         assert instance_arn.startswith("arn:")
 
         desc = ssoadmin.describe_instance(InstanceArn=instance_arn)
-        meta = desc["InstanceMetadata"]
-        assert meta["InstanceArn"] == instance_arn
+        assert desc["InstanceArn"] == instance_arn
 
         ssoadmin.delete_instance(InstanceArn=instance_arn)
 
@@ -738,10 +737,10 @@ class TestSSOAdminApplications:
 
         ssoadmin.put_application_session_configuration(
             ApplicationArn=app_arn,
-            SessionConfiguration={"SessionDuration": "PT1H"},
+            UserBackgroundSessionApplicationStatus="ENABLED",
         )
         config = ssoadmin.get_application_session_configuration(ApplicationArn=app_arn)
-        assert config["SessionDuration"] == "PT1H"
+        assert config["UserBackgroundSessionApplicationStatus"] == "ENABLED"
         ssoadmin.delete_application(ApplicationArn=app_arn)
 
 

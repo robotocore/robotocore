@@ -75,7 +75,7 @@ TARGET_PREFIX_MAP: dict[str, str] = {
     "Route53AutoNaming_v20170314": "servicediscovery",
     "Route53Domains_v20140515": "route53domains",
     "SWBExternalService": "ssoadmin",
-    "ServiceQuotasV20190624": "servicequotas",
+    "ServiceQuotasV20190624": "service-quotas",
     "Textract": "textract",
     # Note: Timestream query and write share the same target prefix.
     # We route to timestreamwrite by default; query ops are handled below.

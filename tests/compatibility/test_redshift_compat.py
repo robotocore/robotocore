@@ -2382,7 +2382,6 @@ class TestRedshiftResourcePolicyOps:
             ResourceArn=resource_arn,
             Policy=policy,
         )
-        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "ResourcePolicy" in put_resp
 
         del_resp = redshift.delete_resource_policy(ResourceArn=resource_arn)
@@ -2815,7 +2814,7 @@ class TestRedshiftNewOps:
                 ),
                 ClusterIdentifier=cid,
             )
-            assert "CustomDomainName" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "CustomDomainName" in resp
         except ClientError as exc:
             # ClusterNotFound is the expected error
             assert exc.response["Error"]["Code"] is not None
@@ -2842,7 +2841,7 @@ class TestRedshiftNewOps:
                 ),
                 ClusterIdentifier=cid,
             )
-            assert "CustomDomainName" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "CustomDomainName" in resp
         except ClientError as exc:
             assert exc.response["Error"]["Code"] is not None
 

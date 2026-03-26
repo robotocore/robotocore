@@ -1877,10 +1877,10 @@ def _admin_update_auth_event_feedback(
 def _update_auth_event_feedback(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
-    access_token = params.get("AccessToken", "")
-    if not access_token:
-        raise CognitoError("NotAuthorizedException", "Missing access token.")
-    _user_from_token(store, access_token)
+    pool_id = params.get("UserPoolId", "")
+    username = params.get("Username", "")
+    _require_pool(store, pool_id)
+    _require_user(store, pool_id, username)
     return {}
 
 
