@@ -11709,3 +11709,143 @@ class TestEC2Batch0CreateTransitGatewayPolicyTable:
         resp = ec2.create_transit_gateway_policy_table(TransitGatewayId="tgw-12345678")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "TransitGatewayPolicyTable" in resp
+
+
+class TestEC2GetOperations:
+    """Tests for EC2 Get* operations that were previously unimplemented."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_get_spot_placement_scores(self, ec2):
+        """GetSpotPlacementScores returns empty result set."""
+        resp = ec2.get_spot_placement_scores(
+            TargetCapacity=1,
+            SingleAvailabilityZone=False,
+            InstanceRequirementsWithMetadata={
+                "ArchitectureTypes": ["x86_64"],
+                "VirtualizationTypes": ["hvm"],
+                "InstanceRequirements": {
+                    "VCpuCount": {"Min": 1},
+                    "MemoryMiB": {"Min": 512},
+                },
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SpotPlacementScores" in resp
+
+    def test_get_transit_gateway_policy_table_entries(self, ec2):
+        """GetTransitGatewayPolicyTableEntries returns empty result."""
+        resp = ec2.get_transit_gateway_policy_table_entries(
+            TransitGatewayPolicyTableId="tgw-ptbl-12345678"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TransitGatewayPolicyTableEntries" in resp
+
+    def test_get_transit_gateway_policy_table_associations(self, ec2):
+        """GetTransitGatewayPolicyTableAssociations returns empty result."""
+        resp = ec2.get_transit_gateway_policy_table_associations(
+            TransitGatewayPolicyTableId="tgw-ptbl-12345678"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Associations" in resp
+
+    def test_get_transit_gateway_multicast_domain_associations(self, ec2):
+        """GetTransitGatewayMulticastDomainAssociations returns empty result."""
+        resp = ec2.get_transit_gateway_multicast_domain_associations(
+            TransitGatewayMulticastDomainId="tgw-mcast-domain-12345678"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MulticastDomainAssociations" in resp
+
+    def test_get_verified_access_endpoint_policy(self, ec2):
+        """GetVerifiedAccessEndpointPolicy returns policy state."""
+        resp = ec2.get_verified_access_endpoint_policy(VerifiedAccessEndpointId="vae-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PolicyEnabled" in resp
+
+    def test_get_verified_access_group_policy(self, ec2):
+        """GetVerifiedAccessGroupPolicy returns policy state."""
+        resp = ec2.get_verified_access_group_policy(VerifiedAccessGroupId="vagr-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PolicyEnabled" in resp
+
+    def test_get_reserved_instances_exchange_quote(self, ec2):
+        """GetReservedInstancesExchangeQuote returns exchange validity."""
+        resp = ec2.get_reserved_instances_exchange_quote(ReservedInstanceIds=["ri-12345678"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IsValidExchange" in resp
+
+    def test_get_default_credit_specification(self, ec2):
+        """GetDefaultCreditSpecification returns credit spec."""
+        resp = ec2.get_default_credit_specification(InstanceFamily="t2")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InstanceFamilyCreditSpecification" in resp
+
+    def test_get_groups_for_capacity_reservation(self, ec2):
+        """GetGroupsForCapacityReservation returns empty group set."""
+        resp = ec2.get_groups_for_capacity_reservation(CapacityReservationId="cr-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CapacityReservationGroups" in resp
+
+    def test_get_ipam_pool_allocations_for_nonexistent_pool(self, ec2):
+        """GetIpamPoolAllocations raises error for nonexistent pool."""
+        with pytest.raises(ec2.exceptions.ClientError) as exc_info:
+            ec2.get_ipam_pool_allocations(IpamPoolId="ipam-pool-nonexistent1234")
+        assert exc_info.value.response["Error"]["Code"] == "InvalidIpamPoolId.NotFound"
+
+    def test_get_ipam_pool_cidrs_for_nonexistent_pool(self, ec2):
+        """GetIpamPoolCidrs raises error for nonexistent pool."""
+        with pytest.raises(ec2.exceptions.ClientError) as exc_info:
+            ec2.get_ipam_pool_cidrs(IpamPoolId="ipam-pool-nonexistent1234")
+        assert exc_info.value.response["Error"]["Code"] == "InvalidIpamPoolId.NotFound"
+
+    def test_get_ipam_pool_allocations_works(self, ec2):
+        """GetIpamPoolAllocations returns allocations for valid pool."""
+        ipam = ec2.create_ipam()
+        scope_id = ipam["Ipam"]["PublicDefaultScopeId"]
+        pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+        pool_id = pool["IpamPool"]["IpamPoolId"]
+
+        resp = ec2.get_ipam_pool_allocations(IpamPoolId=pool_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IpamPoolAllocations" in resp
+
+    def test_get_ipam_pool_cidrs_works(self, ec2):
+        """GetIpamPoolCidrs returns CIDRs for valid pool."""
+        ipam = ec2.create_ipam()
+        scope_id = ipam["Ipam"]["PublicDefaultScopeId"]
+        pool = ec2.create_ipam_pool(IpamScopeId=scope_id, AddressFamily="ipv4")
+        pool_id = pool["IpamPool"]["IpamPoolId"]
+
+        resp = ec2.get_ipam_pool_cidrs(IpamPoolId=pool_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IpamPoolCidrs" in resp
+
+    def test_get_associated_ipv6_pool_cidrs(self, ec2):
+        """GetAssociatedIpv6PoolCidrs returns empty result."""
+        resp = ec2.get_associated_ipv6_pool_cidrs(PoolId="ipv6pool-ec2-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Ipv6CidrAssociations" in resp
+
+    def test_get_capacity_reservation_usage(self, ec2):
+        """GetCapacityReservationUsage returns usage data."""
+        resp = ec2.get_capacity_reservation_usage(CapacityReservationId="cr-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TotalInstanceCount" in resp
+
+    def test_describe_capacity_block_extension_offerings(self, ec2):
+        """DescribeCapacityBlockExtensionOfferings returns empty list."""
+        resp = ec2.describe_capacity_block_extension_offerings(
+            CapacityBlockExtensionDurationHours=24,
+            CapacityReservationId="cr-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CapacityBlockExtensionOfferings" in resp
+
+    def test_describe_capacity_reservation_billing_requests(self, ec2):
+        """DescribeCapacityReservationBillingRequests returns empty list."""
+        resp = ec2.describe_capacity_reservation_billing_requests(Role="odcr-owner")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CapacityReservationBillingRequests" in resp
