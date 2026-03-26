@@ -348,6 +348,7 @@ class TestECSExtended:
             desc = ecs.describe_clusters(clusters=[name], include=["SETTINGS"])
             cluster = desc["clusters"][0]
             assert "FARGATE" in cluster.get("capacityProviders", [])
+            assert len(cluster["capacityProviders"]) > 0
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -641,6 +642,7 @@ class TestEcsAutoCoverage:
         """DiscoverPollEndpoint returns a response."""
         resp = client.discover_poll_endpoint()
         assert "endpoint" in resp
+        assert resp["endpoint"]  # non-empty string
 
     def test_list_account_settings(self, client):
         """ListAccountSettings returns a response."""
@@ -651,11 +653,13 @@ class TestEcsAutoCoverage:
         """ListContainerInstances returns a response."""
         resp = client.list_container_instances()
         assert "containerInstanceArns" in resp
+        assert isinstance(resp["containerInstanceArns"], list)
 
     def test_list_tasks(self, client):
         """ListTasks returns a response."""
         resp = client.list_tasks()
         assert "taskArns" in resp
+        assert isinstance(resp["taskArns"], list)
 
 
 class TestCapacityProviderOperations:
@@ -1178,6 +1182,7 @@ class TestECSAdditionalOperations:
         try:
             resp = ecs.submit_container_state_change(cluster=name, status="RUNNING")
             assert "acknowledgment" in resp
+            assert resp["acknowledgment"]  # non-empty acknowledgment string
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -1187,6 +1192,7 @@ class TestECSAdditionalOperations:
         try:
             resp = ecs.submit_task_state_change(cluster=name, status="RUNNING")
             assert "acknowledgment" in resp
+            assert resp["acknowledgment"]  # non-empty acknowledgment string
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -1351,6 +1357,7 @@ class TestECSMissingGapOps:
             ],
         )
         assert "acknowledgment" in resp
+        assert resp["acknowledgment"]  # non-empty acknowledgment string
 
 
 class TestECSExpressGatewayService:
