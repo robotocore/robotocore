@@ -181,6 +181,8 @@ async def handle_rdsdata_request(request: Request, region: str, account_id: str)
         return await _commit_transaction(request, region, account_id)
     elif method == "POST" and path.endswith("/RollbackTransaction"):
         return await _rollback_transaction(request, region, account_id)
+    elif method == "POST" and path.endswith("/ExecuteSql"):
+        return await _execute_sql(request, region, account_id)
 
     # Fall back to Moto for anything else
     return await forward_to_moto(request, "rds-data", account_id=account_id)
@@ -383,3 +385,117 @@ async def _rollback_transaction(request: Request, region: str, account_id: str) 
         return _error_response("BadRequestException", f"Transaction error: {e}")
 
     return _json_response({"transactionStatus": "Transaction Rolledback"})
+
+
+def _python_to_rds_legacy_value(value: Any) -> dict:
+    """Convert a Python value to a legacy ExecuteSql Value (uses bigIntValue/intValue).
+
+    The legacy ExecuteSql API uses the Value shape which differs from the newer
+    Field shape used by ExecuteStatement. Key differences:
+    - int → bigIntValue (not longValue)
+    - bool → bitValue (not booleanValue)
+    - float → doubleValue (same)
+    """
+    if value is None:
+        return {"isNull": True}
+    if isinstance(value, bool):
+        return {"bitValue": value}
+    if isinstance(value, int):
+        return {"bigIntValue": value}
+    if isinstance(value, float):
+        return {"doubleValue": value}
+    if isinstance(value, bytes):
+        import base64
+
+        return {"blobValue": base64.b64encode(value).decode()}
+    return {"stringValue": str(value)}
+
+
+def _rows_to_execute_sql_records(rows: list[dict]) -> list[dict]:
+    """Convert result rows to ExecuteSql's Record format (uses 'values' list).
+
+    ExecuteSql uses a different record format than ExecuteStatement.
+    Each record has a 'values' field containing a list of Value objects
+    (the legacy Value shape, not the newer Field shape).
+    """
+    records = []
+    for row in rows:
+        if list(row.keys()) == ["rowsAffected"]:
+            continue
+        values = [_python_to_rds_legacy_value(v) for v in row.values()]
+        records.append({"values": values})
+    return records
+
+
+async def _execute_sql(request: Request, region: str, account_id: str) -> Response:
+    """Handle ExecuteSql — deprecated but still supported batch SQL execution.
+
+    ExecuteSql uses different field names than ExecuteStatement:
+    - dbClusterOrInstanceArn (not resourceArn)
+    - awsSecretStoreArn (not secretArn)
+    - sqlStatements (not sql, may contain multiple statements separated by semicolons)
+
+    The response format also differs: records use a 'values' list structure
+    (the legacy ResultFrame format) rather than ExecuteStatement's record format.
+    """
+    body = await request.body()
+    try:
+        data = json.loads(body) if body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _error_response("BadRequestException", "Invalid JSON in request body")
+
+    resource_arn = data.get("dbClusterOrInstanceArn", "")
+    sql_statements = data.get("sqlStatements", "")
+
+    if not resource_arn:
+        return _error_response("BadRequestException", "dbClusterOrInstanceArn is required")
+    if not sql_statements:
+        return _error_response("BadRequestException", "sqlStatements is required")
+
+    db_identifier = _extract_db_identifier_from_arn(resource_arn)
+    arn_region = _extract_region_from_arn(resource_arn) or region
+    arn_account = _extract_account_from_arn(resource_arn) or account_id
+
+    if not db_identifier:
+        return _error_response("BadRequestException", "Invalid dbClusterOrInstanceArn format")
+
+    engine = get_engine(arn_account, arn_region, db_identifier)
+    if engine is None:
+        return _error_response(
+            "BadRequestException",
+            f"Database {db_identifier} not found. Create it with RDS first.",
+        )
+
+    # ExecuteSql supports multiple semicolon-separated statements
+    statements = [s.strip() for s in sql_statements.split(";") if s.strip()]
+    sql_statement_results = []
+
+    try:
+        for stmt in statements:
+            rows = engine.execute_sql(stmt, None)
+            if rows and list(rows[0].keys()) == ["rowsAffected"]:
+                num_updated = rows[0]["rowsAffected"]
+                result_frame = {
+                    "resultSetMetadata": {"columnCount": 0, "columnMetadata": []},
+                    "records": [],
+                }
+                sql_statement_results.append(
+                    {"resultFrame": result_frame, "numberOfRecordsUpdated": num_updated}
+                )
+            else:
+                column_metadata = _build_column_metadata(rows)
+                records = _rows_to_execute_sql_records(rows)
+                result_frame = {
+                    "resultSetMetadata": {
+                        "columnCount": len(column_metadata),
+                        "columnMetadata": column_metadata,
+                    },
+                    "records": records,
+                }
+                sql_statement_results.append(
+                    {"resultFrame": result_frame, "numberOfRecordsUpdated": 0}
+                )
+    except Exception as e:  # noqa: BLE001
+        return _error_response("BadRequestException", f"SQL error: {e}")
+
+    return _json_response({"sqlStatementResults": sql_statement_results})
