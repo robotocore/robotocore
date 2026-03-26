@@ -920,13 +920,13 @@ class TestSageMakerDescribeOperations:
         """DescribeModelPackage returns error for fake package."""
         with pytest.raises(ClientError) as exc:
             client.describe_model_package(ModelPackageName="fake-pkg-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_model_package_group_not_found(self, client):
         """DescribeModelPackageGroup returns error for fake group."""
         with pytest.raises(ClientError) as exc:
             client.describe_model_package_group(ModelPackageGroupName="fake-group-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_model_quality_job_definition_not_found(self, client):
         """DescribeModelQualityJobDefinition returns ResourceNotFound."""

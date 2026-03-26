@@ -1287,6 +1287,7 @@ class TestElastiCacheNewStubOps:
             TargetServerlessCacheSnapshotName=tgt,
         )
         assert "ServerlessCacheSnapshot" in resp
+        assert "ServerlessCacheSnapshotName" in resp["ServerlessCacheSnapshot"]
 
     def test_purchase_reserved_cache_nodes_offering(self, client):
         """PurchaseReservedCacheNodesOffering returns ReservedCacheNode."""
@@ -1294,6 +1295,7 @@ class TestElastiCacheNewStubOps:
             ReservedCacheNodesOfferingId="fake-offering-id-xyz",
         )
         assert "ReservedCacheNode" in resp
+        assert "ReservedCacheNodesOfferingId" in resp["ReservedCacheNode"]
 
 
 class TestElastiCacheNewStubOps2:

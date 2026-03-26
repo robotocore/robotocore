@@ -228,6 +228,7 @@ class TestXRayTraceOperations:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_put_multiple_trace_segments(self, xray):
         """PutTraceSegments with multiple segments in one call."""
