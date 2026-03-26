@@ -244,6 +244,7 @@ class TestSESOperations:
         response = ses.get_identity_dkim_attributes(Identities=["dkim@example.com"])
         assert "DkimAttributes" in response
         assert "dkim@example.com" in response["DkimAttributes"]
+        assert isinstance(response["DkimAttributes"]["dkim@example.com"], dict)
 
     def test_list_identities_pagination(self, ses):
         """Verify list identities supports MaxItems."""
@@ -501,6 +502,7 @@ class TestSESv2Operations:
                 TemplateData='{"name": "World"}',
             )
             assert "MessageId" in response
+            assert response["MessageId"]  # non-empty message ID
         finally:
             ses.delete_template(TemplateName=template_name)
 
@@ -540,6 +542,7 @@ class TestSESExtendedOperations:
         ses.verify_email_identity(EmailAddress="notif-attrs@example.com")
         resp = ses.get_identity_notification_attributes(Identities=["notif-attrs@example.com"])
         assert "NotificationAttributes" in resp
+        assert isinstance(resp["NotificationAttributes"], dict)
 
     def test_set_identity_dkim_enabled(self, ses):
         ses.verify_email_identity(EmailAddress="dkim@example.com")
@@ -550,6 +553,7 @@ class TestSESExtendedOperations:
         ses.verify_email_identity(EmailAddress="dkim-attrs@example.com")
         resp = ses.get_identity_dkim_attributes(Identities=["dkim-attrs@example.com"])
         assert "DkimAttributes" in resp
+        assert isinstance(resp["DkimAttributes"], dict)
 
     def test_set_identity_feedback_forwarding_enabled(self, ses):
         ses.verify_email_identity(EmailAddress="feedback@example.com")
@@ -562,6 +566,7 @@ class TestSESExtendedOperations:
         ses.verify_email_identity(EmailAddress="mailfrom@example.com")
         resp = ses.get_identity_mail_from_domain_attributes(Identities=["mailfrom@example.com"])
         assert "MailFromDomainAttributes" in resp
+        assert isinstance(resp["MailFromDomainAttributes"], dict)
 
     def test_send_raw_email(self, ses):
         ses.verify_email_identity(EmailAddress="raw-sender@example.com")
@@ -905,6 +910,7 @@ class TestSesAutoCoverage:
                 TemplateData='{"name": "World"}',
             )
             assert "RenderedTemplate" in resp
+            assert resp["RenderedTemplate"]  # non-empty rendered output
         finally:
             client.delete_template(TemplateName=template_name)
 
@@ -1403,6 +1409,7 @@ class TestIdentityPolicies:
         resp = ses.get_identity_policies(Identity=email, PolicyNames=["FetchPolicy"])
         assert "Policies" in resp
         assert "FetchPolicy" in resp["Policies"]
+        assert resp["Policies"]["FetchPolicy"]  # non-empty policy document
 
     def test_delete_identity_policy(self, ses):
         """DeleteIdentityPolicy removes a sending authorization policy."""
