@@ -2095,7 +2095,7 @@ def _add_user_pool_client_secret(
             "Status": "ACTIVE",
         }
         client.setdefault("ClientSecrets", []).append(secret)
-    return {"ClientSecret": secret}
+    return {"ClientSecretDescriptor": secret}
 
 
 def _delete_user_pool_client_secret(
