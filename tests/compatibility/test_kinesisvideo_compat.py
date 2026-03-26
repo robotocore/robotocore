@@ -181,6 +181,11 @@ class TestKinesisVideoTagging:
             Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "dev"}],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify tags were applied
+        tags_resp = kinesisvideo_client.list_tags_for_resource(
+            ResourceARN=created_stream["StreamARN"]
+        )
+        assert tags_resp["Tags"].get("env") == "test"
 
     def test_list_tags_for_resource(self, kinesisvideo_client, created_stream):
         kinesisvideo_client.tag_resource(
@@ -287,6 +292,7 @@ class TestKinesisVideoNewOps:
             resp = kinesisvideo_client.list_tags_for_stream(StreamName=name)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "Tags" in resp
+            assert isinstance(resp["Tags"], dict)
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
@@ -303,6 +309,9 @@ class TestKinesisVideoNewOps:
                 DataRetentionChangeInHours=2,
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify retention was updated
+            desc = kinesisvideo_client.describe_stream(StreamName=name)
+            assert desc["StreamInfo"]["DataRetentionInHours"] == 3
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
@@ -313,6 +322,7 @@ class TestKinesisVideoNewOps:
         try:
             resp = kinesisvideo_client.describe_image_generation_configuration(StreamName=name)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ImageGenerationConfiguration" in resp
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
@@ -323,6 +333,7 @@ class TestKinesisVideoNewOps:
         try:
             resp = kinesisvideo_client.describe_notification_configuration(StreamName=name)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "NotificationConfiguration" in resp
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
@@ -350,6 +361,7 @@ class TestKinesisVideoNewOps:
         try:
             resp = kinesisvideo_client.describe_stream_storage_configuration(StreamName=name)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "StreamStorageConfiguration" in resp
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
@@ -438,7 +450,12 @@ class TestKinesisVideoEdgeConfigOps:
     def test_describe_edge_configuration(self, kv):
         """DescribeEdgeConfiguration returns edge config (stub)."""
         resp = kv.describe_edge_configuration(StreamName="nonexistent-stream")
-        assert "EdgeConfig" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert (
+            "EdgeConfig" in resp
+            or "SyncStatus" in resp
+            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        )
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_list_edge_agent_configurations(self, kv):
         """ListEdgeAgentConfigurations returns empty list."""
@@ -451,6 +468,7 @@ class TestKinesisVideoEdgeConfigOps:
         """DeleteEdgeConfiguration succeeds (stub)."""
         resp = kv.delete_edge_configuration(StreamName="nonexistent-stream")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_update_media_storage_configuration(self, kv):
         """UpdateMediaStorageConfiguration succeeds (stub)."""
@@ -459,6 +477,7 @@ class TestKinesisVideoEdgeConfigOps:
             MediaStorageConfiguration={"Status": "DISABLED"},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_update_stream_storage_configuration(self, kv):
         """UpdateStreamStorageConfiguration succeeds (stub)."""

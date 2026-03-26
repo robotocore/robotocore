@@ -2178,3 +2178,84 @@ class TestSESv2MissingGapOps:
     def test_get_message_insights(self, sesv2):
         resp = sesv2.get_message_insights(MessageId="test-message-id-12345")
         assert resp["MessageId"] == "test-message-id-12345"
+
+
+class TestSESv2DedicatedIpOperations:
+    """Tests for dedicated IP operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sesv2")
+
+    def test_put_deliverability_dashboard_option(self, client):
+        """PutDeliverabilityDashboardOption returns 200."""
+        resp = client.put_deliverability_dashboard_option(DashboardEnabled=True)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_deliverability_dashboard_option_disabled(self, client):
+        """PutDeliverabilityDashboardOption with disabled returns 200."""
+        resp = client.put_deliverability_dashboard_option(DashboardEnabled=False)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_dedicated_ip_warmup_attributes(self, client):
+        """PutDedicatedIpWarmupAttributes returns 200."""
+        resp = client.put_dedicated_ip_warmup_attributes(Ip="192.0.2.1", WarmupPercentage=75)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_dedicated_ip_in_pool(self, client):
+        """PutDedicatedIpInPool returns 200."""
+        resp = client.put_dedicated_ip_in_pool(Ip="192.0.2.1", DestinationPoolName="my-pool")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_dedicated_ip_not_found(self, client):
+        """GetDedicatedIp raises NotFoundException for an IP that doesn't exist."""
+        with pytest.raises(ClientError) as exc:
+            client.get_dedicated_ip(Ip="192.0.2.99")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestSESv2TenantOperations:
+    """Tests for tenant-related operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sesv2")
+
+    def test_delete_tenant(self, client):
+        """DeleteTenant returns 200."""
+        resp = client.delete_tenant(TenantName=_uid("tenant"))
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_tenant_resource_association(self, client):
+        """DeleteTenantResourceAssociation returns 200."""
+        resp = client.delete_tenant_resource_association(
+            TenantName=_uid("tenant"),
+            ResourceArn="arn:aws:ses:us-east-1:123456789012:identity/example.com",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSESv2ReputationEntityOperations:
+    """Tests for reputation entity operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sesv2")
+
+    def test_update_reputation_entity_customer_managed_status(self, client):
+        """UpdateReputationEntityCustomerManagedStatus returns 200."""
+        resp = client.update_reputation_entity_customer_managed_status(
+            ReputationEntityType="EMAIL_IDENTITY",
+            ReputationEntityReference="test@example.com",
+            SendingStatus="ENABLED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_reputation_entity_policy(self, client):
+        """UpdateReputationEntityPolicy returns 200."""
+        resp = client.update_reputation_entity_policy(
+            ReputationEntityType="EMAIL_IDENTITY",
+            ReputationEntityReference="test@example.com",
+            ReputationEntityPolicy="{}",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

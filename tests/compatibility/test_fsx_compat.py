@@ -110,7 +110,7 @@ class TestFSxFileSystemOperations:
         )
         fs_id = resp["FileSystem"]["FileSystemId"]
         del_resp = fsx.delete_file_system(FileSystemId=fs_id)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "FileSystemId" in del_resp
 
     def test_create_file_system_with_tags(self, fsx):
         """create_file_system with Tags stores them."""
@@ -820,9 +820,9 @@ class TestFSxGapOps:
         assert err in ("FileSystemNotFound", "ResourceNotFoundException")
 
     def test_start_misconfigured_state_recovery(self, client):
-        """StartMisconfiguredStateRecovery returns 200 for any filesystem ID."""
+        """StartMisconfiguredStateRecovery returns FileSystem for any filesystem ID."""
         resp = client.start_misconfigured_state_recovery(FileSystemId="fs-0123456789abcdef0")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "FileSystem" in resp
 
 
 class TestFSxNewStubOps:
@@ -852,9 +852,9 @@ class TestFSxNewStubOps:
         assert "VolumeId" in resp
 
     def test_create_and_attach_s3_access_point(self, client):
-        """CreateAndAttachS3AccessPoint returns HTTP 200."""
+        """CreateAndAttachS3AccessPoint returns S3AccessPointAttachment."""
         resp = client.create_and_attach_s3_access_point(Name="test-ap-stub", Type="OPENZFS")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "S3AccessPointAttachment" in resp
 
     def test_create_data_repository_task(self, client):
         """CreateDataRepositoryTask returns a DataRepositoryTask object."""

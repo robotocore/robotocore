@@ -123,6 +123,9 @@ class TestMQBrokerReboot:
     def test_reboot_broker(self, mq, broker):
         resp = mq.reboot_broker(BrokerId=broker["BrokerId"])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify broker still accessible after reboot request
+        desc = mq.describe_broker(BrokerId=broker["BrokerId"])
+        assert desc["BrokerId"] == broker["BrokerId"]
 
 
 class TestMQConfigurationOperations:
@@ -182,6 +185,9 @@ class TestMQUserOperations:
             Password="TestPass123!",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify user was created
+        desc = mq.describe_user(BrokerId=broker["BrokerId"], Username="testuser")
+        assert desc["Username"] == "testuser"
 
     def test_describe_user(self, mq, broker):
         mq.create_user(
@@ -214,6 +220,7 @@ class TestMQUserOperations:
             BrokerId=broker["BrokerId"],
             Username="upduser",
         )
+        assert desc["Username"] == "upduser"
         assert "admins" in desc.get("Groups", [])
 
     def test_delete_user(self, mq, broker):
@@ -227,6 +234,10 @@ class TestMQUserOperations:
             Username="deluser",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify user is gone
+        users_resp = mq.list_users(BrokerId=broker["BrokerId"])
+        usernames = [u["Username"] for u in users_resp["Users"]]
+        assert "deluser" not in usernames
 
     def test_list_users(self, mq, broker):
         resp = mq.list_users(BrokerId=broker["BrokerId"])
@@ -295,7 +306,7 @@ class TestMQNewOps:
     def test_describe_broker_instance_options(self, mq):
         resp = mq.describe_broker_instance_options()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "BrokerInstanceOptions" in resp
+        assert isinstance(resp["BrokerInstanceOptions"], list)
 
     def test_delete_configuration_not_found(self, mq):
         from botocore.exceptions import ClientError

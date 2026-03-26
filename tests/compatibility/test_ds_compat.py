@@ -182,6 +182,7 @@ class TestDsAutoCoverage:
         """GetDirectoryLimits returns a response."""
         resp = client.get_directory_limits()
         assert "DirectoryLimits" in resp
+        assert isinstance(resp["DirectoryLimits"], dict)
 
     def test_list_log_subscriptions(self, client):
         """ListLogSubscriptions returns a response."""
@@ -1901,6 +1902,7 @@ class TestDSNewStubOps:
         """UpdateTrust returns TrustId."""
         resp = ds.update_trust(TrustId="t-fake12345678")
         assert "TrustId" in resp
+        assert resp["TrustId"] == "t-fake12345678"
 
 
 class TestDSHybridADAndRegionOps:
@@ -1969,6 +1971,7 @@ class TestDSHybridADAndRegionOps:
             AssessmentId="a-1234567890",
         )
         assert "DirectoryId" in resp
+        assert resp["DirectoryId"].startswith("d-")
 
     def test_describe_hybrid_ad_update(self, client):
         """DescribeHybridADUpdate stub returns 200."""

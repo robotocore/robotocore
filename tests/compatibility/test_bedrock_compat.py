@@ -584,6 +584,7 @@ class TestBedrockFoundationModels:
         r = bedrock.get_foundation_model_availability(modelId="anthropic.claude-v2")
         assert "modelId" in r
         assert "agreementAvailability" in r
+        assert r["modelId"] == "anthropic.claude-v2"
 
     def test_list_foundation_model_agreement_offers(self, bedrock):
         """ListFoundationModelAgreementOffers returns offers list."""
@@ -829,6 +830,7 @@ class TestBedrockModelCopyJobOps:
         assert "jobArn" in r
         assert "arn:aws:bedrock:" in r["jobArn"]
         assert "model-copy-job" in r["jobArn"]
+        assert name in r["jobArn"]
 
 
 class TestBedrockDeleteOpsWithFakeIds:
@@ -1247,6 +1249,8 @@ class TestBedrockEvaluationJobCRUD:
         r = bedrock.batch_delete_evaluation_job(jobIdentifiers=[job_arn])
         assert "errors" in r
         assert "evaluationJobs" in r
+        assert isinstance(r["errors"], list)
+        assert isinstance(r["evaluationJobs"], list)
 
 
 TITAN_MODEL_ARN = "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"

@@ -1607,6 +1607,7 @@ class TestCognitoAuthExtended:
                     },
                 )
                 assert "AuthenticationResult" in resp
+                assert "AccessToken" in resp["AuthenticationResult"]
             else:
                 assert "AuthenticationResult" in auth
         finally:

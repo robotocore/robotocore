@@ -1330,7 +1330,7 @@ class TestELBV2GapOpsV2:
     def test_add_trust_store_revocations(self, client, trust_store):
         """AddTrustStoreRevocations succeeds with empty list."""
         resp = client.add_trust_store_revocations(TrustStoreArn=trust_store, RevocationContents=[])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TrustStoreRevocations" in resp
 
     def test_remove_trust_store_revocations(self, client, trust_store):
         """RemoveTrustStoreRevocations succeeds with nonexistent revocation ID."""

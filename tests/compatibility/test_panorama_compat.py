@@ -353,6 +353,7 @@ class TestPanoramaMissingGapOps:
             Tags={"env": "test"},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_list_devices_jobs(self, panorama):
         device_id = "device-" + uuid.uuid4().hex[:8]

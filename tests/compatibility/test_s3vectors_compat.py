@@ -14,7 +14,7 @@ class TestS3VectorsOperations:
     def test_list_vector_buckets(self, s3vectors):
         response = s3vectors.list_vector_buckets()
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "vectorBuckets" in response
+        assert isinstance(response["vectorBuckets"], list)
 
 
 class TestS3VectorsIndexOperations:
@@ -51,6 +51,7 @@ class TestS3VectorsIndexOperations:
             distanceMetric="euclidean",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["indexArn"].startswith("arn:")
 
     def test_get_index(self, client, vector_bucket):
         """GetIndex returns index details."""
@@ -86,6 +87,10 @@ class TestS3VectorsIndexOperations:
         )
         resp = client.delete_index(vectorBucketName=vector_bucket, indexName="test-del-idx")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify index is gone
+        list_resp = client.list_indexes(vectorBucketName=vector_bucket)
+        names = [i["indexName"] for i in list_resp["indexes"]]
+        assert "test-del-idx" not in names
 
     def test_list_indexes(self, client, vector_bucket):
         """ListIndexes returns indexes in a bucket."""
@@ -114,6 +119,7 @@ class TestS3VectorsBucketOperations:
         name = "test-create-vb"
         resp = client.create_vector_bucket(vectorBucketName=name)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["vectorBucketArn"].startswith("arn:")
         # cleanup
         client.delete_vector_bucket(vectorBucketName=name)
 
@@ -123,6 +129,10 @@ class TestS3VectorsBucketOperations:
         client.create_vector_bucket(vectorBucketName=name)
         resp = client.delete_vector_bucket(vectorBucketName=name)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify bucket is gone from list
+        list_resp = client.list_vector_buckets()
+        names = [b["vectorBucketName"] for b in list_resp["vectorBuckets"]]
+        assert name not in names
 
     def test_get_vector_bucket(self, client):
         """GetVectorBucket returns bucket details."""

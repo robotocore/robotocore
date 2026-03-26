@@ -192,9 +192,7 @@ class TestEMRServerlessTagging:
     def test_tag_resource(self, emr_serverless, application):
         app = emr_serverless.get_application(applicationId=application)["application"]
         resource_arn = app["arn"]
-        emr_serverless.tag_resource(
-            resourceArn=resource_arn, tags={"env": "test", "team": "data"}
-        )
+        emr_serverless.tag_resource(resourceArn=resource_arn, tags={"env": "test", "team": "data"})
         resp = emr_serverless.list_tags_for_resource(resourceArn=resource_arn)
         assert resp["tags"]["env"] == "test"
         assert resp["tags"]["team"] == "data"
@@ -202,9 +200,7 @@ class TestEMRServerlessTagging:
     def test_untag_resource(self, emr_serverless, application):
         app = emr_serverless.get_application(applicationId=application)["application"]
         resource_arn = app["arn"]
-        emr_serverless.tag_resource(
-            resourceArn=resource_arn, tags={"env": "test", "team": "data"}
-        )
+        emr_serverless.tag_resource(resourceArn=resource_arn, tags={"env": "test", "team": "data"})
         emr_serverless.untag_resource(resourceArn=resource_arn, tagKeys=["env"])
         resp = emr_serverless.list_tags_for_resource(resourceArn=resource_arn)
         assert "env" not in resp["tags"]
@@ -228,16 +224,12 @@ class TestEMRServerlessDashboardAndAttempts:
         return resp["jobRunId"]
 
     def test_get_dashboard_for_job_run(self, emr_serverless, application, job_run):
-        resp = emr_serverless.get_dashboard_for_job_run(
-            applicationId=application, jobRunId=job_run
-        )
+        resp = emr_serverless.get_dashboard_for_job_run(applicationId=application, jobRunId=job_run)
         assert "url" in resp
         assert len(resp["url"]) > 0
 
     def test_list_job_run_attempts(self, emr_serverless, application, job_run):
-        resp = emr_serverless.list_job_run_attempts(
-            applicationId=application, jobRunId=job_run
-        )
+        resp = emr_serverless.list_job_run_attempts(applicationId=application, jobRunId=job_run)
         assert "jobRunAttempts" in resp
         assert len(resp["jobRunAttempts"]) >= 1
         attempt = resp["jobRunAttempts"][0]

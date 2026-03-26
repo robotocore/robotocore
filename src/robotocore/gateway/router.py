@@ -126,6 +126,7 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Bedrock Runtime paths (signing name is 'bedrock', but runtime uses /model/)
     (re.compile(r"^/model/"), "bedrock-runtime"),
     (re.compile(r"^/async-invoke"), "bedrock-runtime"),
+    (re.compile(r"^/guardrail/"), "bedrock-runtime"),
     # SageMaker Runtime paths (signing name is 'sagemaker', runtime uses /endpoints/.../invocations)
     (re.compile(r"^/endpoints/[^/]+/(?:async-)?invocations"), "sagemaker-runtime"),
     # kinesis-video-archived-media paths (signing name is 'kinesisvideo', but these paths

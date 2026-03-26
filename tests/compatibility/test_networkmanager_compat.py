@@ -545,7 +545,7 @@ class TestNetworkManagerGetWithGlobalNetwork:
         """GetResourcePolicy returns a response (possibly empty)."""
         gn_arn = global_network["GlobalNetworkArn"]
         resp = nm.get_resource_policy(ResourceArn=gn_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PolicyDocument" in resp
 
 
 class TestNetworkManagerGetWithCoreNetwork:
@@ -885,7 +885,7 @@ class TestNetworkManagerCoreNetworkPolicyOps:
         )
         nm.put_core_network_policy(CoreNetworkId=cn_id, PolicyDocument=policy)
         resp = nm.delete_core_network_policy_version(CoreNetworkId=cn_id, PolicyVersionId=1)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CoreNetworkPolicy" in resp
 
     def test_execute_core_network_change_set_not_found(self, nm, core_network):
         """ExecuteCoreNetworkChangeSet raises NotFoundException for missing policy."""
@@ -1230,7 +1230,7 @@ class TestNetworkManagerSpecialAttachmentOps:
             PrefixListArn="arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-fake",
             PrefixListAlias="test-alias",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CoreNetworkId" in resp
 
     def test_update_direct_connect_gateway_attachment_not_found(self, nm):
         """UpdateDirectConnectGatewayAttachment with fake ID returns NotFoundException."""

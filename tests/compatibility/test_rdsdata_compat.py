@@ -242,7 +242,6 @@ class TestExecuteSql:
         assert "records" in rf
         assert rf["records"] == [{"values": [{"bigIntValue": 1}]}]
 
-
     def test_execute_sql_dml(self, rds_data, cluster_arn):
         rds_data.execute_sql(
             awsSecretStoreArn=SECRET_ARN,

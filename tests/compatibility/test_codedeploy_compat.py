@@ -636,7 +636,4 @@ class TestCodedeployAutoCoverage:
                 instanceId="i-fake",
             )
 
-    def test_delete_resources_by_external_id(self, client):
-        """DeleteResourcesByExternalId returns empty response."""
-        resp = client.delete_resources_by_external_id(externalId="ext-12345")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+

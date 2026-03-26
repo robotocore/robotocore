@@ -2536,7 +2536,7 @@ class TestSSMDocumentVersions:
                 DocumentVersion="1",
                 Metadata="DocumentReviews",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Name" in resp
         finally:
             ssm.delete_document(Name=doc_name)
 

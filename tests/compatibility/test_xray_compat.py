@@ -563,37 +563,32 @@ class TestXRayTraceRetrieval:
         assert isinstance(resp["Traces"], list)
 
 
-class TestXRayInsightOperations:
-    """Tests for insight operations with nonexistent IDs."""
+class TestXRayInsightStubOperations:
+    """Tests for insight stub operations (return empty results for any insight ID)."""
 
-    def test_get_insight_nonexistent(self, xray):
-        """GetInsight with nonexistent InsightId raises InvalidRequestException."""
-        from botocore.exceptions import ClientError
+    def test_get_insight_returns_stub(self, xray):
+        """GetInsight returns a stub insight structure."""
+        resp = xray.get_insight(InsightId="fake-insight-id-00000000")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Insight" in resp
 
-        with pytest.raises(ClientError) as exc:
-            xray.get_insight(InsightId="fake-insight-id-00000000")
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+    def test_get_insight_events_returns_list(self, xray):
+        """GetInsightEvents returns an InsightEvents list."""
+        resp = xray.get_insight_events(InsightId="fake-insight-id-00000000")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InsightEvents" in resp
+        assert isinstance(resp["InsightEvents"], list)
 
-    def test_get_insight_events_nonexistent(self, xray):
-        """GetInsightEvents with nonexistent InsightId raises InvalidRequestException."""
-        from botocore.exceptions import ClientError
-
-        with pytest.raises(ClientError) as exc:
-            xray.get_insight_events(InsightId="fake-insight-id-00000000")
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
-
-    def test_get_insight_impact_graph_nonexistent(self, xray):
-        """GetInsightImpactGraph with nonexistent InsightId raises InvalidRequestException."""
-        from botocore.exceptions import ClientError
-
+    def test_get_insight_impact_graph_returns_structure(self, xray):
+        """GetInsightImpactGraph returns expected fields."""
         now = time.time()
-        with pytest.raises(ClientError) as exc:
-            xray.get_insight_impact_graph(
-                InsightId="fake-insight-id-00000000",
-                StartTime=now - 3600,
-                EndTime=now,
-            )
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
+        resp = xray.get_insight_impact_graph(
+            InsightId="fake-insight-id-00000000",
+            StartTime=now - 3600,
+            EndTime=now,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Services" in resp
 
 
 class TestXRayTraceSegmentDestination:
@@ -679,3 +674,63 @@ class TestXRayGapOps:
             Rule={"Probabilistic": {"DesiredSamplingPercentage": 5.0}},
         )
         assert "IndexingRule" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestXRayNewInsightOperations:
+    """Tests for GetInsight, GetInsightEvents, GetInsightImpactGraph, BatchGetTraces, etc."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("xray")
+
+    def test_get_insight_returns_stub(self, client):
+        """GetInsight returns a stub insight structure."""
+        resp = client.get_insight(InsightId="test-insight-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Insight" in resp
+        assert resp["Insight"]["InsightId"] == "test-insight-id"
+
+    def test_get_insight_events_returns_list(self, client):
+        """GetInsightEvents returns an InsightEvents list."""
+        resp = client.get_insight_events(InsightId="test-insight-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InsightEvents" in resp
+        assert isinstance(resp["InsightEvents"], list)
+
+    def test_get_insight_impact_graph_returns_structure(self, client):
+        """GetInsightImpactGraph returns expected fields."""
+        now = time.time()
+        resp = client.get_insight_impact_graph(
+            InsightId="test-insight-id",
+            StartTime=now - 3600,
+            EndTime=now,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Services" in resp
+        assert isinstance(resp["Services"], list)
+
+    def test_batch_get_traces_returns_structure(self, client):
+        """BatchGetTraces returns Traces and UnprocessedTraceIds."""
+        resp = client.batch_get_traces(TraceIds=["1-5759e988-bd862e3fe1be46a994272793"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Traces" in resp
+        assert "UnprocessedTraceIds" in resp
+
+    def test_get_service_graph_returns_structure(self, client):
+        """GetServiceGraph returns Services, StartTime, EndTime."""
+        now = time.time()
+        resp = client.get_service_graph(StartTime=now - 3600, EndTime=now)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Services" in resp
+        assert isinstance(resp["Services"], list)
+
+    def test_get_trace_graph_returns_structure(self, client):
+        """GetTraceGraph returns Services list."""
+        resp = client.get_trace_graph(TraceIds=["1-5759e988-bd862e3fe1be46a994272793"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Services" in resp
+
+    def test_put_telemetry_records_succeeds(self, client):
+        """PutTelemetryRecords returns 200."""
+        resp = client.put_telemetry_records(TelemetryRecords=[])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

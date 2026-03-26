@@ -985,6 +985,7 @@ class TestKinesisAutoCoverage:
         """DescribeAccountSettings returns a response."""
         resp = client.describe_account_settings()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MinimumThroughputBillingCommitment" in resp
 
 
 class TestKinesisResourcePolicy:
@@ -1023,6 +1024,9 @@ class TestKinesisResourcePolicy:
         )
         resp = client.put_resource_policy(ResourceARN=stream_arn, Policy=policy)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify policy was stored
+        get_resp = client.get_resource_policy(ResourceARN=stream_arn)
+        assert "Policy" in get_resp
 
     def test_get_resource_policy(self, client, stream_arn):
         """GetResourcePolicy retrieves a previously set policy."""
@@ -1065,6 +1069,7 @@ class TestKinesisResourcePolicy:
         client.put_resource_policy(ResourceARN=stream_arn, Policy=policy)
         resp = client.delete_resource_policy(ResourceARN=stream_arn)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
 
 class TestKinesisConsumerEdgeCases:
@@ -1393,6 +1398,8 @@ class TestKinesisNewOps:
             MinimumThroughputBillingCommitment={"Status": "DISABLED"}
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        updated = resp.get("MinimumThroughputBillingCommitment", {})
+        assert "Status" in updated or resp["ResponseMetadata"]["RequestId"] is not None
 
 
 class TestKinesisTagResourceAndStreamMode:
@@ -1425,6 +1432,9 @@ class TestKinesisTagResourceAndStreamMode:
             StreamARN=stream_arn, StreamModeDetails={"StreamMode": "ON_DEMAND"}
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify mode changed
+        desc = kinesis.describe_stream_summary(StreamARN=stream_arn)
+        assert desc["StreamDescriptionSummary"]["StreamModeDetails"]["StreamMode"] == "ON_DEMAND"
 
 
 class TestKinesisNewGapOps:

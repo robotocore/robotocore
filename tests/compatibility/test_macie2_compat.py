@@ -25,7 +25,7 @@ class TestMacie2Operations:
     def test_get_administrator_account(self, macie2):
         response = macie2.get_administrator_account()
         # Response may have an empty administrator field or none at all
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "administrator" in response
 
     def test_list_invitations(self, macie2):
         response = macie2.list_invitations()
@@ -120,9 +120,9 @@ class TestMacie2Lifecycle:
         assert "createdAt" in resp
 
     def test_get_administrator_account_response_structure(self, client):
-        """GetAdministratorAccount returns 200 with expected structure."""
+        """GetAdministratorAccount returns response with administrator field."""
         resp = client.get_administrator_account()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "administrator" in resp
 
     def test_list_organization_admin_accounts_returns_list(self, client):
         """ListOrganizationAdminAccounts returns adminAccounts list."""
@@ -259,9 +259,9 @@ class TestMacie2Configuration:
         assert resp["status"] in ("ENABLED", "DISABLED")
 
     def test_get_classification_export_configuration(self, client):
-        """GetClassificationExportConfiguration returns 200."""
+        """GetClassificationExportConfiguration returns configuration."""
         resp = client.get_classification_export_configuration()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "configuration" in resp
 
     def test_get_findings_publication_configuration(self, client):
         """GetFindingsPublicationConfiguration returns securityHubConfiguration."""
@@ -479,9 +479,9 @@ class TestMacie2Invitations:
         assert isinstance(resp["invitationsCount"], int)
 
     def test_get_master_account(self, client):
-        """GetMasterAccount returns a 200 response."""
+        """GetMasterAccount returns master field."""
         resp = client.get_master_account()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "master" in resp
 
     def test_get_member_nonexistent(self, client):
         """GetMember raises error for nonexistent member."""

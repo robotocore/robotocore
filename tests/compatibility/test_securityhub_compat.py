@@ -59,7 +59,7 @@ class TestSecurityhubAutoCoverage:
     def test_get_master_account(self, client):
         """GetMasterAccount returns a 200 response."""
         resp = client.get_master_account()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Master" in resp
 
     def test_describe_organization_configuration(self, client):
         """DescribeOrganizationConfiguration requires org admin access."""
@@ -1050,12 +1050,12 @@ class TestSecurityHubV2Crud:
     def test_batch_update_findings_v2(self, client):
         """BatchUpdateFindingsV2 returns response with ProcessedFindings."""
         resp = client.batch_update_findings_v2()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ProcessedFindings" in resp
 
     def test_create_aggregator_v2(self, client):
         """CreateAggregatorV2 creates and returns an aggregator."""
         resp = client.create_aggregator_v2(RegionLinkingMode="ALL_REGIONS")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AggregatorV2Arn" in resp
 
     def test_create_ticket_v2(self, client):
         """CreateTicketV2 returns a response."""
@@ -1063,7 +1063,7 @@ class TestSecurityHubV2Crud:
             ConnectorId="fake-connector-id",
             FindingMetadataUid="fake-finding-uid",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TicketId" in resp
 
     def test_delete_aggregator_v2_nonexistent(self, client):
         """DeleteAggregatorV2 raises ResourceNotFoundException for fake ARN."""
@@ -1087,7 +1087,7 @@ class TestSecurityHubV2Crud:
     def test_enable_disable_security_hub_v2(self, client):
         """EnableSecurityHubV2 and DisableSecurityHubV2 work."""
         enable_resp = client.enable_security_hub_v2()
-        assert enable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "HubV2Arn" in enable_resp
         disable_resp = client.disable_security_hub_v2()
         assert disable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -1097,7 +1097,7 @@ class TestSecurityHubV2Crud:
             AuthCode="fake-auth-code",
             AuthState="fake-auth-state",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ConnectorArn" in resp
 
     def test_update_aggregator_v2_nonexistent(self, client):
         """UpdateAggregatorV2 raises ResourceNotFoundException for fake ARN."""

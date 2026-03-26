@@ -245,6 +245,7 @@ class TestConnectCampaignsUpdateOps:
             )
             desc = connectcampaigns.describe_campaign(id=campaign_id)
             assert "dialerConfig" in desc["campaign"]
+            assert "predictiveDialerConfig" in desc["campaign"]["dialerConfig"]
         finally:
             connectcampaigns.delete_campaign(id=campaign_id)
 
@@ -301,6 +302,7 @@ class TestConnectCampaignsNewStubs:
         """GetInstanceOnboardingJobStatus returns connectInstanceOnboardingJobStatus."""
         result = client.get_instance_onboarding_job_status(connectInstanceId="instance-001")
         assert "connectInstanceOnboardingJobStatus" in result
+        assert "connectInstanceId" in result["connectInstanceOnboardingJobStatus"]
 
     def test_put_dial_request_batch(self, client):
         """PutDialRequestBatch returns successfulRequests and failedRequests."""
@@ -319,6 +321,8 @@ class TestConnectCampaignsNewStubs:
         )
         assert "successfulRequests" in result
         assert "failedRequests" in result
+        assert isinstance(result["successfulRequests"], list)
+        assert isinstance(result["failedRequests"], list)
 
 
 class TestCreateCampaign:

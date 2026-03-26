@@ -57,9 +57,7 @@ class TestSageMakerRuntimeInvokeEndpointAsync:
 
 
 class TestSageMakerRuntimeInvokeEndpointWithResponseStream:
-    def test_invoke_endpoint_with_response_stream_returns_event_stream(
-        self, sagemaker_runtime
-    ):
+    def test_invoke_endpoint_with_response_stream_returns_event_stream(self, sagemaker_runtime):
         """InvokeEndpointWithResponseStream returns an EventStream body."""
         resp = sagemaker_runtime.invoke_endpoint_with_response_stream(
             EndpointName="stream-endpoint",
@@ -72,9 +70,7 @@ class TestSageMakerRuntimeInvokeEndpointWithResponseStream:
         assert len(events) >= 1
         assert "PayloadPart" in events[0]
 
-    def test_invoke_endpoint_with_response_stream_payload_bytes(
-        self, sagemaker_runtime
-    ):
+    def test_invoke_endpoint_with_response_stream_payload_bytes(self, sagemaker_runtime):
         """InvokeEndpointWithResponseStream PayloadPart contains bytes."""
         resp = sagemaker_runtime.invoke_endpoint_with_response_stream(
             EndpointName="stream-endpoint-2",

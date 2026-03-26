@@ -164,6 +164,7 @@ class TestAMPOperations:
         """GetDefaultScraperConfiguration returns a configuration blob."""
         resp = amp.get_default_scraper_configuration()
         assert "configuration" in resp
+        assert isinstance(resp["configuration"], bytes)
 
     def test_list_scrapers(self, amp):
         """ListScrapers returns a scrapers list."""
@@ -283,6 +284,14 @@ class TestAMPAlertManagerDefinition:
         amd = resp["alertManagerDefinition"]
         assert "data" in amd
         assert "status" in amd
+        assert amd["status"]["statusCode"] in (
+            "CREATING",
+            "ACTIVE",
+            "UPDATING",
+            "DELETING",
+            "CREATION_FAILED",
+            "UPDATE_FAILED",
+        )
 
     def test_put_alert_manager_definition(self, amp, workspace):
         """PutAlertManagerDefinition updates the definition."""
@@ -501,6 +510,7 @@ class TestAMPResourcePolicy:
         desc_resp = amp.describe_resource_policy(workspaceId=ws_id)
         assert "policyDocument" in desc_resp
         assert "revisionId" in desc_resp
+        assert isinstance(desc_resp["policyDocument"], str)
 
     def test_delete_resource_policy(self, amp, workspace):
         """DeleteResourcePolicy removes the policy from the workspace."""

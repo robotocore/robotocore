@@ -572,17 +572,17 @@ class TestDMSDescribeOperations:
     def test_describe_endpoints_has_response_metadata(self, dms):
         """DescribeEndpoints returns proper ResponseMetadata."""
         response = dms.describe_endpoints()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Endpoints" in response
 
     def test_describe_replication_instances_has_response_metadata(self, dms):
         """DescribeReplicationInstances returns proper ResponseMetadata."""
         response = dms.describe_replication_instances()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReplicationInstances" in response
 
     def test_describe_connections_has_response_metadata(self, dms):
         """DescribeConnections returns proper ResponseMetadata."""
         response = dms.describe_connections()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Connections" in response
 
 
 class TestDMSReplicationInstanceAdvanced:
@@ -1454,9 +1454,7 @@ class TestDMSDescribeOperationsExpanded:
         )
         collector_id = create_resp["CollectorReferencedId"]
         assert collector_id
-        resp = dms.delete_fleet_advisor_collector(
-            CollectorReferencedId=collector_id
-        )
+        resp = dms.delete_fleet_advisor_collector(CollectorReferencedId=collector_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_start_recommendations(self, dms):
@@ -1679,7 +1677,7 @@ class TestDMSDescribeConversionAndMetadata:
             SelectionRules='{"rules":[]}',
             Origin="SOURCE",
         )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MetadataModelName" in response
 
     def test_describe_metadata_model_children(self, dms):
         """DescribeMetadataModelChildren returns children for a migration project."""
@@ -1688,7 +1686,7 @@ class TestDMSDescribeConversionAndMetadata:
             SelectionRules='{"rules":[]}',
             Origin="SOURCE",
         )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MetadataModelChildren" in response
 
     def test_describe_refresh_schemas_status(self, dms):
         """DescribeRefreshSchemasStatus returns status for an endpoint."""
@@ -2196,7 +2194,7 @@ class TestDMSReplicationConfigOperations:
         )
         rc_arn = rc["ReplicationConfig"]["ReplicationConfigArn"]
         resp = dms.delete_replication_config(ReplicationConfigArn=rc_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReplicationConfig" in resp
 
 
 class TestDMSModifyReplicationSubnetGroup:
@@ -2345,7 +2343,7 @@ class TestDMSFleetAdvisorOperations:
     def test_run_fleet_advisor_lsa_analysis(self, dms):
         """RunFleetAdvisorLsaAnalysis returns a response."""
         resp = dms.run_fleet_advisor_lsa_analysis()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "LsaAnalysisId" in resp
 
     def test_create_fleet_advisor_collector(self, dms):
         """CreateFleetAdvisorCollector returns collector reference id."""
@@ -2354,17 +2352,17 @@ class TestDMSFleetAdvisorOperations:
             ServiceAccessRoleArn="arn:aws:iam::123456789012:role/test",
             S3BucketName="test-bucket",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CollectorReferencedId" in resp
 
     def test_delete_fleet_advisor_databases(self, dms):
         """DeleteFleetAdvisorDatabases accepts database IDs."""
         resp = dms.delete_fleet_advisor_databases(DatabaseIds=["fake-db-id"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DatabaseIds" in resp
 
     def test_batch_start_recommendations(self, dms):
         """BatchStartRecommendations with empty data returns 200."""
         resp = dms.batch_start_recommendations(Data=[])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ErrorEntries" in resp
 
     def test_start_recommendations(self, dms):
         """StartRecommendations accepts database ID and settings."""

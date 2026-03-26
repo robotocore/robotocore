@@ -57,13 +57,17 @@ class TestTranscribeOperations:
         transcribe.delete_transcription_job(TranscriptionJobName="list-job")
 
     def test_delete_transcription_job(self, transcribe):
+        name = f"delete-job-{_uid()}"
         transcribe.start_transcription_job(
-            TranscriptionJobName="delete-job",
+            TranscriptionJobName=name,
             LanguageCode="en-US",
             Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
         )
-        response = transcribe.delete_transcription_job(TranscriptionJobName="delete-job")
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        transcribe.delete_transcription_job(TranscriptionJobName=name)
+        # Verify it's gone from the list
+        list_resp = transcribe.list_transcription_jobs()
+        job_names = [j["TranscriptionJobName"] for j in list_resp.get("TranscriptionJobSummaries", [])]
+        assert name not in job_names
 
     def test_create_vocabulary(self, transcribe):
         response = transcribe.create_vocabulary(
@@ -92,8 +96,11 @@ class TestTranscribeOperations:
     def test_delete_vocabulary(self, transcribe):
         name = f"del-vocab-{_uid()}"
         transcribe.create_vocabulary(VocabularyName=name, LanguageCode="en-US", Phrases=["hello"])
-        response = transcribe.delete_vocabulary(VocabularyName=name)
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        transcribe.delete_vocabulary(VocabularyName=name)
+        # Verify it's gone from the list
+        list_resp = transcribe.list_vocabularies()
+        vocab_names = [v["VocabularyName"] for v in list_resp.get("Vocabularies", [])]
+        assert name not in vocab_names
 
     def test_start_job_with_settings(self, transcribe):
         name = f"settings-job-{_uid()}"

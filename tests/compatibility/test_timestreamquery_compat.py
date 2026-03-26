@@ -177,3 +177,82 @@ class TestTimestreamQueryTagging:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "Tags" in resp
         assert isinstance(resp["Tags"], list)
+
+
+class TestTimestreamQueryMissingOps:
+    """Tests for previously-missing operations: ListScheduledQueries, DescribeAccountSettings,
+    PrepareQuery, CancelQuery, ExecuteScheduledQuery."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("timestream-query")
+
+    @pytest.fixture
+    def scheduled_query_arn(self, client):
+        """Create a scheduled query and return its ARN."""
+        resp = client.create_scheduled_query(
+            Name="test-missing-ops-sq",
+            QueryString="SELECT 1",
+            ScheduleConfiguration={"ScheduleExpression": "rate(1 hour)"},
+            NotificationConfiguration={
+                "SnsConfiguration": {
+                    "TopicArn": "arn:aws:sns:us-east-1:123456789012:test-missing-topic"
+                }
+            },
+            ScheduledQueryExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            ErrorReportConfiguration={
+                "S3Configuration": {
+                    "BucketName": "test-bucket",
+                    "EncryptionOption": "SSE_S3",
+                }
+            },
+        )
+        arn = resp["Arn"]
+        yield arn
+        try:
+            client.delete_scheduled_query(ScheduledQueryArn=arn)
+        except Exception:
+            pass
+
+    def test_list_scheduled_queries(self, client):
+        """ListScheduledQueries returns ScheduledQueries list."""
+        resp = client.list_scheduled_queries()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ScheduledQueries" in resp
+        assert isinstance(resp["ScheduledQueries"], list)
+
+    def test_list_scheduled_queries_shows_created(self, client, scheduled_query_arn):
+        """ListScheduledQueries returns the created scheduled query."""
+        resp = client.list_scheduled_queries()
+        arns = [sq["Arn"] for sq in resp["ScheduledQueries"]]
+        assert scheduled_query_arn in arns
+
+    def test_describe_account_settings(self, client):
+        """DescribeAccountSettings returns MaxQueryTCU and QueryPricingModel."""
+        resp = client.describe_account_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MaxQueryTCU" in resp
+        assert "QueryPricingModel" in resp
+
+    def test_prepare_query(self, client):
+        """PrepareQuery returns QueryString, Columns, and Parameters."""
+        resp = client.prepare_query(QueryString="SELECT 1")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "QueryString" in resp
+        assert "Columns" in resp
+        assert "Parameters" in resp
+        assert resp["QueryString"] == "SELECT 1"
+
+    def test_cancel_query(self, client):
+        """CancelQuery returns CancellationMessage."""
+        resp = client.cancel_query(QueryId="test-query-id-12345")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CancellationMessage" in resp
+
+    def test_execute_scheduled_query(self, client, scheduled_query_arn):
+        """ExecuteScheduledQuery returns 200."""
+        resp = client.execute_scheduled_query(
+            ScheduledQueryArn=scheduled_query_arn,
+            InvocationTime="2024-01-01T00:00:00Z",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

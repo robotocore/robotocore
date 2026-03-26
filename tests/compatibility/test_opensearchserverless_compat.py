@@ -32,9 +32,9 @@ class TestOpenSearchServerlessOperations:
         assert "collectionSummaries" in response
 
     def test_list_collections_status_code(self, opensearchserverless):
-        """ListCollections returns HTTP 200."""
+        """ListCollections returns collectionSummaries list."""
         response = opensearchserverless.list_collections()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "collectionSummaries" in response
 
 
 class TestOpensearchserverlessAutoCoverage:

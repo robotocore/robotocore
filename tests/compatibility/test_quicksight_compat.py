@@ -2826,7 +2826,7 @@ class TestQuickSightGapOps:
             AwsAccountId=ACCOUNT_ID,
             ResourceArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/nonexistent",
         )
-        assert "Folders" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Folders" in resp
 
 
 class TestQuickSightRemainingGapOps:
@@ -2881,4 +2881,4 @@ class TestQuickSightRemainingGapOps:
                 "UserArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:user/default/testuser"
             },
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RequestId" in resp

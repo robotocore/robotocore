@@ -1340,7 +1340,7 @@ class TestGreengrassMissingGapOps:
     def test_disassociate_service_role_from_account(self, greengrass):
         """disassociate_service_role_from_account succeeds."""
         response = greengrass.disassociate_service_role_from_account()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DisassociatedAt" in response
 
     def test_list_bulk_deployments(self, greengrass):
         """list_bulk_deployments returns BulkDeployments key."""
@@ -1366,7 +1366,7 @@ class TestGreengrassGapOps:
             ThingName="fake-thing",
             ConnectivityInfo=[],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Version" in resp
 
     def test_start_bulk_deployment(self, client):
         """StartBulkDeployment returns 200 with BulkDeploymentId."""
@@ -1374,17 +1374,17 @@ class TestGreengrassGapOps:
             ExecutionRoleArn="arn:aws:iam::123456789012:role/fake",
             InputFileUri="s3://fake-bucket/input.json",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "BulkDeploymentId" in resp
 
     def test_get_bulk_deployment_status(self, client):
         """GetBulkDeploymentStatus returns 200 for any bulk deployment ID."""
         resp = client.get_bulk_deployment_status(BulkDeploymentId="fake-id")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "BulkDeploymentStatus" in resp
 
     def test_list_bulk_deployment_detailed_reports(self, client):
         """ListBulkDeploymentDetailedReports returns list for any deployment ID."""
         resp = client.list_bulk_deployment_detailed_reports(BulkDeploymentId="fake-id")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Deployments" in resp
 
     def test_get_group_certificate_configuration(self, client):
         """GetGroupCertificateConfiguration returns 200 for any group ID."""
@@ -1394,7 +1394,7 @@ class TestGreengrassGapOps:
     def test_list_group_certificate_authorities(self, client):
         """ListGroupCertificateAuthorities returns 200 for any group ID."""
         resp = client.list_group_certificate_authorities(GroupId="fake-group-id")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "GroupCertificateAuthorities" in resp
 
     def test_get_group_certificate_authority(self, client):
         """GetGroupCertificateAuthority returns 200 for any group and CA IDs."""
@@ -1402,7 +1402,7 @@ class TestGreengrassGapOps:
             GroupId="fake-group-id",
             CertificateAuthorityId="fake-ca-id",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PemEncodedCertificate" in resp
 
     def test_create_group_certificate_authority(self, client):
         """CreateGroupCertificateAuthority returns 200 for any group ID."""
@@ -1412,7 +1412,7 @@ class TestGreengrassGapOps:
     def test_get_thing_runtime_configuration(self, client):
         """GetThingRuntimeConfiguration returns 200 for any thing name."""
         resp = client.get_thing_runtime_configuration(ThingName="fake-thing")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RuntimeConfiguration" in resp
 
     def test_create_software_update_job(self, client):
         """CreateSoftwareUpdateJob returns 200 with required params."""
@@ -1424,7 +1424,7 @@ class TestGreengrassGapOps:
             UpdateTargetsArchitecture="x86_64",
             UpdateTargetsOperatingSystem="ubuntu",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IotJobId" in resp
 
 
 class TestGreengrassUnimplementedGapOps:
@@ -1452,7 +1452,7 @@ class TestGreengrassUnimplementedGapOps:
 
     def test_update_group_certificate_configuration_returns_200(self, client):
         resp = client.update_group_certificate_configuration(GroupId="abc-123-group")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "GroupId" in resp
 
     def test_update_thing_runtime_configuration_returns_200(self, client):
         resp = client.update_thing_runtime_configuration(ThingName="myThing")

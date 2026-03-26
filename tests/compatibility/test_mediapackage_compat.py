@@ -223,6 +223,7 @@ class TestMediaPackageNewOps:
         try:
             resp = mp.configure_logs(Id=channel_id)
             assert "Id" in resp
+            assert resp["Id"] == channel_id
         finally:
             mp.delete_channel(Id=channel_id)
 
@@ -245,6 +246,7 @@ class TestMediaPackageNewOps:
                 },
             )
             assert "Id" in resp
+            assert "OriginEndpointId" in resp
         finally:
             mp.delete_origin_endpoint(Id=ep_id)
             mp.delete_channel(Id=channel_id)

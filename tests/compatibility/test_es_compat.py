@@ -203,11 +203,13 @@ class TestEsAutoCoverage:
         """DescribeReservedElasticsearchInstanceOfferings returns a response."""
         resp = client.describe_reserved_elasticsearch_instance_offerings()
         assert "ReservedElasticsearchInstanceOfferings" in resp
+        assert isinstance(resp["ReservedElasticsearchInstanceOfferings"], list)
 
     def test_describe_reserved_elasticsearch_instances(self, client):
         """DescribeReservedElasticsearchInstances returns a response."""
         resp = client.describe_reserved_elasticsearch_instances()
         assert "ReservedElasticsearchInstances" in resp
+        assert isinstance(resp["ReservedElasticsearchInstances"], list)
 
     def test_list_elasticsearch_versions(self, client):
         """ListElasticsearchVersions returns a response."""
@@ -218,6 +220,7 @@ class TestEsAutoCoverage:
         """ListVpcEndpoints returns a response."""
         resp = client.list_vpc_endpoints()
         assert "VpcEndpointSummaryList" in resp
+        assert isinstance(resp["VpcEndpointSummaryList"], list)
 
     def test_describe_domain_nonexistent(self, client):
         """DescribeElasticsearchDomain with fake domain raises ResourceNotFoundException."""

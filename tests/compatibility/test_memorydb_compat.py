@@ -42,19 +42,19 @@ class TestMemoryDBOperations:
         assert isinstance(response["SubnetGroups"], list)
 
     def test_describe_clusters_status_code(self, memorydb):
-        """DescribeClusters returns HTTP 200."""
+        """DescribeClusters returns cluster list."""
         response = memorydb.describe_clusters()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Clusters" in response
 
     def test_describe_snapshots_status_code(self, memorydb):
-        """DescribeSnapshots returns HTTP 200."""
+        """DescribeSnapshots returns snapshot list."""
         response = memorydb.describe_snapshots()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Snapshots" in response
 
     def test_describe_subnet_groups_status_code(self, memorydb):
-        """DescribeSubnetGroups returns HTTP 200."""
+        """DescribeSubnetGroups returns subnet group list."""
         response = memorydb.describe_subnet_groups()
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SubnetGroups" in response
 
 
 class TestMemoryDBCluster:
