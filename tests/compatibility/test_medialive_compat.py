@@ -851,6 +851,7 @@ class TestMediaLiveChannelAdvanced:
             resp = medialive.batch_start(ChannelIds=[ch_id])
             assert "Successful" in resp
             assert "Failed" in resp
+            assert isinstance(resp["Successful"], list)
         finally:
             medialive.delete_channel(ChannelId=ch_id)
             medialive.delete_input(InputId=inp_id)
@@ -863,6 +864,7 @@ class TestMediaLiveChannelAdvanced:
             resp = medialive.batch_stop(ChannelIds=[ch_id])
             assert "Successful" in resp
             assert "Failed" in resp
+            assert isinstance(resp["Successful"], list)
         finally:
             medialive.delete_channel(ChannelId=ch_id)
             medialive.delete_input(InputId=inp_id)
@@ -874,6 +876,7 @@ class TestMediaLiveChannelAdvanced:
             resp = medialive.batch_delete(ChannelIds=[ch_id])
             assert "Successful" in resp
             assert "Failed" in resp
+            assert isinstance(resp["Successful"], list)
         finally:
             try:
                 medialive.delete_channel(ChannelId=ch_id)
@@ -928,6 +931,7 @@ class TestMediaLiveInputSecurityGroups:
                 WhitelistRules=[{"Cidr": "192.168.0.0/16"}],
             )
             assert "SecurityGroup" in update_resp
+            assert isinstance(update_resp["SecurityGroup"], dict)
         finally:
             medialive.delete_input_security_group(InputSecurityGroupId=sg_id)
 
@@ -1080,6 +1084,7 @@ class TestMediaLiveMultiplexCRUD:
         try:
             start = medialive.start_multiplex(MultiplexId=mux_id)
             assert "State" in start
+            assert isinstance(start["State"], str)
         finally:
             medialive.delete_multiplex(MultiplexId=mux_id)
 
@@ -1090,6 +1095,7 @@ class TestMediaLiveMultiplexCRUD:
             medialive.start_multiplex(MultiplexId=mux_id)
             stop = medialive.stop_multiplex(MultiplexId=mux_id)
             assert "State" in stop
+            assert isinstance(stop["State"], str)
         finally:
             medialive.delete_multiplex(MultiplexId=mux_id)
 
@@ -1174,6 +1180,7 @@ class TestMediaLiveMultiplexPrograms:
                 },
             )
             assert "MultiplexProgram" in upd
+            assert isinstance(upd["MultiplexProgram"], dict)
             medialive.delete_multiplex_program(MultiplexId=mux_id, ProgramName=prog_name)
         finally:
             medialive.delete_multiplex(MultiplexId=mux_id)
@@ -1185,12 +1192,14 @@ class TestMediaLiveAccountConfiguration:
     def test_describe_account_configuration(self, medialive):
         resp = medialive.describe_account_configuration()
         assert "AccountConfiguration" in resp
+        assert isinstance(resp["AccountConfiguration"], dict)
 
     def test_update_account_configuration(self, medialive):
         resp = medialive.update_account_configuration(
             AccountConfiguration={"KmsKeyId": "alias/test-key"},
         )
         assert "AccountConfiguration" in resp
+        assert isinstance(resp["AccountConfiguration"], dict)
 
 
 class TestMediaLiveInputDevices:
@@ -1276,6 +1285,7 @@ class TestMediaLiveCloudWatchAlarmTemplates:
     def test_list_alarm_template_groups(self, medialive):
         resp = medialive.list_cloud_watch_alarm_template_groups()
         assert "CloudWatchAlarmTemplateGroups" in resp
+        assert isinstance(resp["CloudWatchAlarmTemplateGroups"], list)
 
     def test_delete_alarm_template_group(self, medialive):
         resp = self._make_group(medialive)
@@ -1313,6 +1323,7 @@ class TestMediaLiveCloudWatchAlarmTemplates:
     def test_list_alarm_templates(self, medialive):
         resp = medialive.list_cloud_watch_alarm_templates()
         assert "CloudWatchAlarmTemplates" in resp
+        assert isinstance(resp["CloudWatchAlarmTemplates"], list)
 
     def test_update_alarm_template(self, medialive):
         grp_resp = self._make_group(medialive)
@@ -1363,6 +1374,7 @@ class TestMediaLiveEventBridgeRuleTemplates:
     def test_list_rule_template_groups(self, medialive):
         resp = medialive.list_event_bridge_rule_template_groups()
         assert "EventBridgeRuleTemplateGroups" in resp
+        assert isinstance(resp["EventBridgeRuleTemplateGroups"], list)
 
     def test_delete_rule_template_group(self, medialive):
         resp = self._make_group(medialive)
@@ -1393,6 +1405,7 @@ class TestMediaLiveEventBridgeRuleTemplates:
     def test_list_rule_templates(self, medialive):
         resp = medialive.list_event_bridge_rule_templates()
         assert "EventBridgeRuleTemplates" in resp
+        assert isinstance(resp["EventBridgeRuleTemplates"], list)
 
     def test_update_rule_template(self, medialive):
         grp_resp = self._make_group(medialive)
@@ -1700,6 +1713,7 @@ class TestMediaLiveSignalMapMonitor:
             mon = medialive.start_monitor_deployment(Identifier=sig_id)
             assert "Id" in mon
             assert "MonitorDeployment" in mon
+            assert isinstance(mon["Id"], str)
         finally:
             medialive.delete_signal_map(Identifier=sig_id)
 
@@ -1714,6 +1728,7 @@ class TestMediaLiveSignalMapMonitor:
             del_mon = medialive.start_delete_monitor_deployment(Identifier=sig_id)
             assert "Id" in del_mon
             assert "MonitorDeployment" in del_mon
+            assert isinstance(del_mon["Id"], str)
         finally:
             medialive.delete_signal_map(Identifier=sig_id)
 
