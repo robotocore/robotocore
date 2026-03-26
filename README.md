@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://robotocore.github.io/robotocore/coverage.html">
-    <img src="docs/coverage.svg" alt="AWS service coverage — 147 services, 84% of operations implemented" width="640">
+    <img src="docs/coverage.svg" alt="AWS service coverage — 158 services, 88% of operations implemented" width="640">
   </a>
 </p>
 
@@ -16,7 +16,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="#what-is-robotocore">What is robotocore?</a> ·
-  <a href="#supported-services">147 Services</a> ·
+  <a href="#supported-services">158 Services</a> ·
   <a href="#accounts--regions">Accounts & Regions</a> ·
   <a href="#for-ai-agents">For AI Agents</a> ·
   <a href="#architecture">Architecture</a> ·
@@ -124,7 +124,7 @@ jobs:
 
 robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
-- **147 AWS services, 6,400+ operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 140 more (70% of all AWS API operations covered)
+- **158 AWS services, 10,200+ operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 151 more (88% of all AWS API operations covered)
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
 - **Multi-account** — unlimited isolated AWS accounts, all in one container
 - **Single container** — one `docker run` command, no config, no cloud
@@ -136,13 +136,13 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 
 ## Supported Services
 
-**147 services** are available at two levels of fidelity:
+**158 services** are available at two levels of fidelity:
 
-- **Native providers** (38 services) — robotocore intercepts the request and handles it directly, adding behavior that Moto doesn't provide: real Lambda execution, SQS visibility timeouts, SigV4 authentication, IAM policy evaluation, CloudFormation resource orchestration, etc. These services are where robotocore goes beyond what any mock library can do.
+- **Native providers** (46 services) — robotocore intercepts the request and handles it directly, adding behavior that Moto doesn't provide: real Lambda execution, SQS visibility timeouts, SigV4 authentication, IAM policy evaluation, CloudFormation resource orchestration, etc. These services are where robotocore goes beyond what any mock library can do.
 
-- **Moto-backed services** (109 services) — requests are forwarded to [Moto](https://github.com/getmoto/moto)'s backend. Moto stores and retrieves resources in memory with correct AWS response formats. While building robotocore we also [automatically implemented](prompts/20260309-020000-moto-implementation-wave1.md) over 450 new operations in Moto across 30+ services — those fixes will be sent upstream.
+- **Moto-backed services** (112 services) — requests are forwarded to [Moto](https://github.com/getmoto/moto)'s backend. Moto stores and retrieves resources in memory with correct AWS response formats. While building robotocore we also [automatically implemented](prompts/20260309-020000-moto-implementation-wave1.md) over 450 new operations in Moto across 30+ services — those fixes will be sent upstream.
 
-### Native providers (38)
+### Native providers (46)
 
 | Service | Notes |
 |---------|-------|
@@ -185,7 +185,7 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 | Support | Trusted Advisor |
 | X-Ray | Trace management |
 
-### Moto-backed services (109)
+### Moto-backed services (112)
 
 <details>
 <summary>Click to expand full list</summary>
@@ -204,7 +204,7 @@ robotocore replaces these open-source AWS emulators — each link has a step-by-
 - **[moto standalone server](src/robotocore/services/README.md)** — same Moto backends with behavioral fidelity, snapshots, chaos engineering
 - **[kinesalite](src/robotocore/services/kinesis/README.md)** — all 17 ops plus Enhanced Fan-Out, encryption, UpdateShardCount
 - **[dynalite](src/robotocore/services/dynamodb/README.md)** / **[DynamoDB Local](src/robotocore/services/dynamodb/README.md)** — transactions, streams, PartiQL, no JVM
-- **[ElasticMQ](src/robotocore/services/sqs/README.md)** — real visibility timeouts, DLQ, FIFO, plus 146 other services
+- **[ElasticMQ](src/robotocore/services/sqs/README.md)** — real visibility timeouts, DLQ, FIFO, plus 157 other services
 - **[goaws](src/robotocore/services/sqs/README.md)** — SQS + [SNS](src/robotocore/services/sns/README.md) with message filtering, Lambda targets, FIFO topics
 - **[s3rver](src/robotocore/services/s3/README.md)** / **[Adobe S3Mock](src/robotocore/services/s3/README.md)** — versioning, multipart, lifecycle, presigned URLs
 
@@ -401,7 +401,7 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 │  │   │                         │               │  │
 │  │   ▼                         ▼               │  │
 │  │  Native Providers         Moto Bridge        │  │
-│  │  (38 services —           (~109 services —  │  │
+│  │  (46 services —           (~112 services —  │  │
 │  │   full fidelity)           Moto backends)   │  │
 │  │                                             │  │
 │  │  In-Memory State (per-account, per-region)  │  │
@@ -445,9 +445,9 @@ uv run python -m robotocore.main
 ### Tests
 
 ```bash
-uv run pytest tests/unit/           # 5,546 unit tests
-uv run pytest tests/compatibility/  # 11,037 compatibility tests (requires running server)
-uv run pytest tests/integration/    # 58 integration tests (requires Docker)
+uv run pytest tests/unit/           # 7,736 unit tests
+uv run pytest tests/compatibility/  # 14,140 compatibility tests (requires running server)
+uv run pytest tests/integration/    # 44 integration tests (requires Docker)
 ```
 
 ### Useful scripts
