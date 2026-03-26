@@ -2243,7 +2243,11 @@ class TestCognitoDeviceAndImportOps:
             UserPoolId=pool_id,
             ProviderName="Google",
             ProviderType="Google",
-            ProviderDetails={"client_id": "test", "client_secret": "test", "authorize_scopes": "openid"},
+            ProviderDetails={
+                "client_id": "test",
+                "client_secret": "test",
+                "authorize_scopes": "openid",
+            },
         )
         resp = cognito.admin_link_provider_for_user(
             UserPoolId=pool_id,
@@ -2346,3 +2350,94 @@ class TestCognitoDeviceAndImportOps:
                 "NotAuthorizedException",
                 "InvalidParameterException",
             )
+
+
+class TestCognitoMissingOps:
+    """Tests for operations not previously covered."""
+
+    def test_admin_get_device_not_found(self, cognito):
+        """AdminGetDevice raises ResourceNotFoundException for unknown device."""
+        from botocore.exceptions import ClientError
+
+        pool_id = cognito.create_user_pool(PoolName=_unique("device-pool"))["UserPool"]["Id"]
+        try:
+            cognito.admin_create_user(UserPoolId=pool_id, Username="testuser")
+            with pytest.raises(ClientError) as exc:
+                cognito.admin_get_device(
+                    DeviceKey="fake-device-key-1234",
+                    UserPoolId=pool_id,
+                    Username="testuser",
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_resource_server(self, cognito):
+        """DeleteResourceServer removes a resource server from a user pool."""
+        pool_id = cognito.create_user_pool(PoolName=_unique("rs-pool"))["UserPool"]["Id"]
+        try:
+            cognito.create_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+                Name="test-rs",
+                Scopes=[{"ScopeName": "read", "ScopeDescription": "Read"}],
+            )
+            resp = cognito.delete_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_resource_server(self, cognito):
+        """UpdateResourceServer modifies scopes on an existing resource server."""
+        pool_id = cognito.create_user_pool(PoolName=_unique("rs-update-pool"))["UserPool"]["Id"]
+        try:
+            cognito.create_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+                Name="original-rs",
+                Scopes=[{"ScopeName": "read", "ScopeDescription": "Read"}],
+            )
+            resp = cognito.update_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+                Name="updated-rs",
+                Scopes=[{"ScopeName": "write", "ScopeDescription": "Write"}],
+            )
+            assert resp["ResourceServer"]["Name"] == "updated-rs"
+            assert resp["ResourceServer"]["Identifier"] == "https://api.example.com"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_auth_event_feedback(self, cognito):
+        """UpdateAuthEventFeedback accepts feedback for an auth event."""
+        pool_id = cognito.create_user_pool(PoolName=_unique("feedback-pool"))["UserPool"]["Id"]
+        try:
+            cognito.admin_create_user(UserPoolId=pool_id, Username="feedbackuser")
+            resp = cognito.update_auth_event_feedback(
+                UserPoolId=pool_id,
+                Username="feedbackuser",
+                EventId="fake-event-id-1234",
+                FeedbackToken="fake-feedback-token",
+                FeedbackValue="Valid",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_get_identity_provider_by_identifier_not_found(self, cognito):
+        """GetIdentityProviderByIdentifier raises ResourceNotFoundException for unknown id."""
+        from botocore.exceptions import ClientError
+
+        pool_id = cognito.create_user_pool(PoolName=_unique("idp-pool"))["UserPool"]["Id"]
+        try:
+            with pytest.raises(ClientError) as exc:
+                cognito.get_identity_provider_by_identifier(
+                    UserPoolId=pool_id,
+                    IdpIdentifier="nonexistent-idp",
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)

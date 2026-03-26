@@ -122,3 +122,13 @@ class TestBedrockRuntimeInvokeModelWithResponseStream:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "body" in resp
         assert "contentType" in resp
+
+
+class TestBedrockRuntimeCountTokens:
+    def test_count_tokens_returns_200(self, bedrock_runtime):
+        """CountTokens accepts a converse input and returns 200."""
+        resp = bedrock_runtime.count_tokens(
+            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            input={"converse": {"messages": [{"role": "user", "content": [{"text": "Hello"}]}]}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

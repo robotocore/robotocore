@@ -5862,3 +5862,154 @@ class TestInferenceExperiment:
     def test_delete_inference_experiment_not_found(self, sagemaker):
         resp = sagemaker.delete_inference_experiment(Name="nonexistent-exp-xyz")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_inference_experiment(self, sagemaker):
+        """CreateInferenceExperiment creates a shadow-mode experiment."""
+        name = _uid("inf-exp")
+        resp = sagemaker.create_inference_experiment(
+            Name=name,
+            Type="ShadowMode",
+            RoleArn="arn:aws:iam::123456789012:role/sagemaker-role",
+            EndpointName="test-endpoint",
+            ModelVariants=[
+                {
+                    "ModelName": "prod-model",
+                    "VariantName": "production",
+                    "InfrastructureConfig": {
+                        "InfrastructureType": "RealTimeInference",
+                        "RealTimeInferenceConfig": {
+                            "InstanceType": "ml.m5.xlarge",
+                            "InstanceCount": 1,
+                        },
+                    },
+                },
+                {
+                    "ModelName": "shadow-model",
+                    "VariantName": "shadow",
+                    "InfrastructureConfig": {
+                        "InfrastructureType": "RealTimeInference",
+                        "RealTimeInferenceConfig": {
+                            "InstanceType": "ml.m5.xlarge",
+                            "InstanceCount": 1,
+                        },
+                    },
+                },
+            ],
+            ShadowModeConfig={
+                "SourceModelVariantName": "production",
+                "ShadowModelVariants": [
+                    {"ShadowModelVariantName": "shadow", "SamplingPercentage": 50}
+                ],
+            },
+        )
+        assert "InferenceExperimentArn" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerMissingOps:
+    """Tests for operations not previously covered."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    def test_create_algorithm(self, client):
+        """CreateAlgorithm registers a custom algorithm."""
+        name = _uid("algo")
+        resp = client.create_algorithm(
+            AlgorithmName=name,
+            TrainingSpecification={
+                "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-algo:latest",
+                "SupportedTrainingInstanceTypes": ["ml.m5.xlarge"],
+                "TrainingChannels": [
+                    {
+                        "Name": "train",
+                        "SupportedContentTypes": ["text/csv"],
+                        "SupportedCompressionTypes": ["None"],
+                        "SupportedInputModes": ["File"],
+                    }
+                ],
+            },
+        )
+        assert "AlgorithmArn" in resp
+        assert name in resp["AlgorithmArn"]
+
+    def test_create_auto_ml_job(self, client):
+        """CreateAutoMLJob starts an AutoML training job."""
+        name = _uid("automl")
+        resp = client.create_auto_ml_job(
+            AutoMLJobName=name,
+            InputDataConfig=[
+                {
+                    "DataSource": {
+                        "S3DataSource": {
+                            "S3DataType": "S3Prefix",
+                            "S3Uri": "s3://mybucket/data/",
+                        }
+                    },
+                    "TargetAttributeName": "target",
+                }
+            ],
+            OutputDataConfig={"S3OutputPath": "s3://mybucket/output/"},
+            RoleArn="arn:aws:iam::123456789012:role/sagemaker-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_labeling_job(self, client):
+        """CreateLabelingJob creates a human labeling job."""
+        name = _uid("label-job")
+        resp = client.create_labeling_job(
+            LabelingJobName=name,
+            LabelAttributeName="label",
+            InputConfig={
+                "DataSource": {"S3DataSource": {"ManifestS3Uri": "s3://mybucket/manifest.json"}},
+                "DataAttributes": {},
+            },
+            OutputConfig={"S3OutputPath": "s3://mybucket/output/"},
+            RoleArn="arn:aws:iam::123456789012:role/sagemaker-role",
+            HumanTaskConfig={
+                "WorkteamArn": (
+                    "arn:aws:sagemaker:us-east-1:123456789012:"
+                    "workteam/private-crowd/my-workteam"
+                ),
+                "UiConfig": {"UiTemplateS3Uri": "s3://mybucket/template.html"},
+                "PreHumanTaskLambdaArn": (
+                    "arn:aws:lambda:us-east-1:432418664414:function:PRE-BoundingBox"
+                ),
+                "TaskTitle": "Test",
+                "TaskDescription": "Test labeling",
+                "NumberOfHumanWorkersPerDataObject": 1,
+                "TaskTimeLimitInSeconds": 3600,
+                "AnnotationConsolidationConfig": {
+                    "AnnotationConsolidationLambdaArn": (
+                        "arn:aws:lambda:us-east-1:432418664414:function:ACS-BoundingBox"
+                    )
+                },
+            },
+        )
+        assert "LabelingJobArn" in resp
+        assert name in resp["LabelingJobArn"]
+
+    def test_create_workteam(self, client):
+        """CreateWorkteam creates a private workforce team."""
+        name = _uid("workteam")
+        resp = client.create_workteam(
+            WorkteamName=name,
+            Description="Test workteam",
+            MemberDefinitions=[
+                {
+                    "CognitoMemberDefinition": {
+                        "UserPool": "us-east-1_abc123",
+                        "UserGroup": "test-group",
+                        "ClientId": "test-client-id",
+                    }
+                }
+            ],
+        )
+        assert "WorkteamArn" in resp
+        assert name in resp["WorkteamArn"]
+
+    def test_search_returns_results_key(self, client):
+        """Search returns a Results key for any supported resource."""
+        resp = client.search(Resource="TrainingJob")
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)

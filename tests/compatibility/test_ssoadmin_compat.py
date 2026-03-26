@@ -812,7 +812,6 @@ class TestSSOAdminTrustedTokenIssuers:
 
     def test_describe_application_provider(self, ssoadmin):
         """DescribeApplicationProvider returns provider details."""
-        from botocore.exceptions import ClientError
 
         # Get a real provider ARN first
         providers = ssoadmin.list_application_providers()["ApplicationProviders"]
@@ -967,3 +966,96 @@ class TestSSOAdminTrustedTokenIssuers:
                 Name="updated-name",
             )
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestSSOAdminRegions:
+    """Tests for region management operations."""
+
+    def test_add_and_list_and_remove_region(self, ssoadmin, instance_arn):
+        """AddRegion, ListRegions, DescribeRegion, and RemoveRegion round-trip."""
+        add_resp = ssoadmin.add_region(InstanceArn=instance_arn, RegionName="eu-west-1")
+        assert add_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            regions_resp = ssoadmin.list_regions(InstanceArn=instance_arn)
+            assert "Regions" in regions_resp
+            assert len(regions_resp["Regions"]) >= 1
+
+            desc_resp = ssoadmin.describe_region(InstanceArn=instance_arn, RegionName="eu-west-1")
+            assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ssoadmin.remove_region(InstanceArn=instance_arn, RegionName="eu-west-1")
+
+    def test_list_regions_empty(self, ssoadmin, instance_arn):
+        """ListRegions returns a list (possibly empty) for a new instance."""
+        resp = ssoadmin.list_regions(InstanceArn=instance_arn)
+        assert "Regions" in resp
+        assert isinstance(resp["Regions"], list)
+
+
+class TestSSOAdminCreateTrustedTokenIssuer:
+    """Tests for trusted token issuer creation."""
+
+    def test_create_trusted_token_issuer(self, ssoadmin, instance_arn):
+        """CreateTrustedTokenIssuer creates an OIDC JWT token issuer."""
+        name = _unique("tti")
+        resp = ssoadmin.create_trusted_token_issuer(
+            InstanceArn=instance_arn,
+            Name=name,
+            TrustedTokenIssuerType="OIDC_JWT",
+            TrustedTokenIssuerConfiguration={
+                "OidcJwtConfiguration": {
+                    "IssuerUrl": "https://example.com",
+                    "ClaimAttributePath": "email",
+                    "IdentityStoreAttributePath": "emails.value",
+                    "JwksRetrievalOption": "OPEN_ID_DISCOVERY",
+                }
+            },
+        )
+        assert "TrustedTokenIssuerArn" in resp
+        assert (
+            name in resp["TrustedTokenIssuerArn"]
+            or "trustedTokenIssuer" in resp["TrustedTokenIssuerArn"]
+        )
+
+
+class TestSSOAdminApplicationMethods:
+    """Tests for application authentication methods and grants."""
+
+    @pytest.fixture
+    def app_arn(self, ssoadmin, instance_arn):
+        app = ssoadmin.create_application(
+            InstanceArn=instance_arn,
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            Name=_unique("methods-app"),
+        )
+        arn = app["ApplicationArn"]
+        yield arn
+        try:
+            ssoadmin.delete_application(ApplicationArn=arn)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_put_application_authentication_method(self, ssoadmin, app_arn):
+        """PutApplicationAuthenticationMethod sets an IAM authentication method."""
+        resp = ssoadmin.put_application_authentication_method(
+            ApplicationArn=app_arn,
+            AuthenticationMethodType="IAM",
+            AuthenticationMethod={
+                "Iam": {
+                    "ActorPolicy": {
+                        "Version": "2012-10-17",
+                        "Statement": [],
+                    }
+                }
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_application_grant(self, ssoadmin, app_arn):
+        """PutApplicationGrant sets an authorization_code grant on the application."""
+        resp = ssoadmin.put_application_grant(
+            ApplicationArn=app_arn,
+            GrantType="authorization_code",
+            Grant={"AuthorizationCode": {"RedirectUris": ["https://example.com/callback"]}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

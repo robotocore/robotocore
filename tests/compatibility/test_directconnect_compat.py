@@ -699,3 +699,40 @@ def test_untag_resource(dc, connection):
     # Untag
     result = dc.untag_resource(resourceArn=connection, tagKeys=["env"])
     assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+def test_accept_direct_connect_gateway_association_proposal(dc, gateway):
+    proposal = dc.create_direct_connect_gateway_association_proposal(
+        directConnectGatewayId=gateway,
+        directConnectGatewayOwnerAccount="123456789012",
+        gatewayId="vgw-accept-test",
+        addAllowedPrefixesToDirectConnectGateway=[{"cidr": "10.0.0.0/8"}],
+    )
+    proposal_id = proposal["directConnectGatewayAssociationProposal"]["proposalId"]
+    result = dc.accept_direct_connect_gateway_association_proposal(
+        directConnectGatewayId=gateway,
+        proposalId=proposal_id,
+        associatedGatewayOwnerAccount="123456789012",
+    )
+    assoc = result["directConnectGatewayAssociation"]
+    assert assoc["associationState"] == "associated"
+    assert assoc["directConnectGatewayId"] == gateway
+
+
+def test_update_direct_connect_gateway_association(dc, gateway):
+    assoc = dc.create_direct_connect_gateway_association(
+        directConnectGatewayId=gateway,
+        gatewayId="vgw-update-test",
+        addAllowedPrefixesToDirectConnectGateway=[{"cidr": "10.0.0.0/8"}],
+    )
+    assoc_id = assoc["directConnectGatewayAssociation"]["associationId"]
+    try:
+        result = dc.update_direct_connect_gateway_association(
+            associationId=assoc_id,
+            addAllowedPrefixesToDirectConnectGateway=[{"cidr": "172.16.0.0/12"}],
+        )
+        updated = result["directConnectGatewayAssociation"]
+        assert updated["associationId"] == assoc_id
+        assert updated["associationState"] == "associated"
+    finally:
+        dc.delete_direct_connect_gateway_association(associationId=assoc_id)
