@@ -450,7 +450,7 @@ class TestKinesisVideoEdgeConfigOps:
         kv.describe_edge_configuration(StreamName="nonexistent-stream")
         # Verify server still responds
         streams = kv.list_streams()
-        assert isinstance(streams["StreamNames"], list)
+        assert isinstance(streams["StreamInfoList"], list)
 
     def test_list_edge_agent_configurations(self, kv):
         """ListEdgeAgentConfigurations returns empty list."""
@@ -463,7 +463,7 @@ class TestKinesisVideoEdgeConfigOps:
         """DeleteEdgeConfiguration succeeds (stub)."""
         kv.delete_edge_configuration(StreamName="nonexistent-stream")
         streams = kv.list_streams()
-        assert isinstance(streams["StreamNames"], list)
+        assert isinstance(streams["StreamInfoList"], list)
 
     def test_update_media_storage_configuration(self, kv):
         """UpdateMediaStorageConfiguration succeeds (stub)."""
@@ -472,7 +472,7 @@ class TestKinesisVideoEdgeConfigOps:
             MediaStorageConfiguration={"Status": "DISABLED"},
         )
         streams = kv.list_streams()
-        assert isinstance(streams["StreamNames"], list)
+        assert isinstance(streams["StreamInfoList"], list)
 
     def test_update_stream_storage_configuration(self, kv):
         """UpdateStreamStorageConfiguration succeeds (stub)."""
@@ -482,7 +482,7 @@ class TestKinesisVideoEdgeConfigOps:
             StreamStorageConfiguration={"DefaultStorageTier": "ARCHIVE"},
         )
         streams = kv.list_streams()
-        assert isinstance(streams["StreamNames"], list)
+        assert isinstance(streams["StreamInfoList"], list)
 
 
 class TestKinesisVideoStartEdgeConfigUpdate:
