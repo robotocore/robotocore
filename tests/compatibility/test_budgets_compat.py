@@ -296,6 +296,7 @@ class TestBudgetPerformanceHistory:
                 AccountId=ACCOUNT_ID, BudgetName=name
             )
             assert "BudgetPerformanceHistory" in resp
+            assert resp["BudgetPerformanceHistory"]["BudgetName"] == name
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 
@@ -471,6 +472,7 @@ class TestBudgetSubscriberOperations:
             )
             addresses = [s["Address"] for s in subs["Subscribers"]]
             assert "new@example.com" in addresses
+            assert len(addresses) == 2  # orig + new
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 
@@ -605,6 +607,7 @@ class TestBudgetNotificationUpdateOperations:
             )
             addresses = [s["Address"] for s in subs["Subscribers"]]
             assert "new@example.com" in addresses
+            assert "old@example.com" not in addresses
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 
