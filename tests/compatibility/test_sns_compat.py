@@ -1386,6 +1386,7 @@ class TestSNSOptInPhoneNumber:
         """OptInPhoneNumber returns successfully."""
         resp = sns.opt_in_phone_number(phoneNumber="+15555550100")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
 
 class TestSNSErrorHandling:
@@ -1399,6 +1400,7 @@ class TestSNSErrorHandling:
         """DeleteTopic on nonexistent topic returns 200 (idempotent)."""
         resp = sns.delete_topic(TopicArn="arn:aws:sns:us-east-1:123456789012:nonexistent-topic")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_get_topic_attributes_nonexistent(self, sns):
         """GetTopicAttributes on nonexistent topic raises NotFound."""
@@ -1530,6 +1532,10 @@ class TestSNSSMSSandbox:
         phone = "+15555551234"
         resp = sns.create_sms_sandbox_phone_number(PhoneNumber=phone)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify number was added
+        list_resp = sns.list_sms_sandbox_phone_numbers()
+        numbers = [n["PhoneNumber"] for n in list_resp["PhoneNumbers"]]
+        assert phone in numbers
         del_resp = sns.delete_sms_sandbox_phone_number(PhoneNumber=phone)
         assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 

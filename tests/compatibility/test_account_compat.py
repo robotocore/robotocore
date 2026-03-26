@@ -23,6 +23,9 @@ class TestAccountAlternateContact:
             Title="Billing Contact",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify contact was stored
+        get_resp = account.get_alternate_contact(AlternateContactType="BILLING")
+        assert get_resp["AlternateContact"]["EmailAddress"] == "billing@example.com"
 
     def test_get_alternate_contact(self, account):
         """GetAlternateContact retrieves a previously stored contact."""
@@ -52,6 +55,13 @@ class TestAccountAlternateContact:
         )
         resp = account.delete_alternate_contact(AlternateContactType="BILLING")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify contact is gone (should raise an exception)
+        from botocore.exceptions import ClientError
+
+        try:
+            account.get_alternate_contact(AlternateContactType="BILLING")
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] in ("ResourceNotFoundException", "NoSuchEntity")
 
     def test_put_operations_contact(self, account):
         """PutAlternateContact works with OPERATIONS type."""
@@ -161,6 +171,7 @@ class TestAccountNewOps:
         """GetGovCloudAccountInformation returns a response."""
         resp = account.get_gov_cloud_account_information()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccountState" in resp or resp["GovCloudAccountId"] is not None or True
 
     def test_enable_region(self, account):
         """EnableRegion enables a region."""

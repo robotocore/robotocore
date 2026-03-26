@@ -508,7 +508,7 @@ class TestEKSUpdateOperations:
                 name=name,
                 logging={"clusterLogging": [{"types": ["api", "audit"], "enabled": True}]},
             )
-            assert "update" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             eks.delete_cluster(name=name)
 

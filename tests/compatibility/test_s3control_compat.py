@@ -1633,6 +1633,7 @@ class TestS3ControlAccessGrantsCRUD:
             resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
             assert "AccessGrantsInstanceArn" in resp
             assert "AccessGrantsInstanceId" in resp
+            assert ACCOUNT_ID in resp["AccessGrantsInstanceArn"]
         finally:
             try:
                 s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
@@ -1848,6 +1849,7 @@ class TestS3ControlAccessGrantsDeepLifecycle:
         )
         assert "AccessGrantsInstanceArn" in resp
         assert "AccessGrantsInstanceId" in resp
+        assert ACCOUNT_ID in resp["AccessGrantsInstanceArn"]
 
 
 class TestS3ControlStorageLensDeepLifecycle:
@@ -3156,6 +3158,7 @@ class TestS3ControlAccessPointForObjectLambda:
             )
             assert "PolicyStatus" in resp
             assert "IsPublic" in resp["PolicyStatus"]
+            assert isinstance(resp["PolicyStatus"]["IsPublic"], bool)
         finally:
             try:
                 s3control.delete_access_point_policy_for_object_lambda(
@@ -3751,6 +3754,7 @@ class TestS3ControlIdentityCenterAndNewStubs:
         """ListCallerAccessGrants returns CallerAccessGrantsList."""
         resp = client.list_caller_access_grants(AccountId=self.ACCOUNT_ID)
         assert "CallerAccessGrantsList" in resp
+        assert isinstance(resp["CallerAccessGrantsList"], list)
 
 
 class TestS3ControlOutpostsBucket:

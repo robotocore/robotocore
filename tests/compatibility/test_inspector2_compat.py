@@ -558,14 +558,14 @@ class TestInspector2CisScanReports:
         resp = client.get_code_security_integration(
             integrationArn="arn:aws:inspector2:us-east-1:123456789012:code-security-integration/fake"
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "integrationArn" in resp
 
     def test_get_code_security_scan_configuration(self, client):
         """GetCodeSecurityScanConfiguration returns 200 for non-existent config."""
         resp = client.get_code_security_scan_configuration(
             scanConfigurationArn="arn:aws:inspector2:us-east-1:123456789012:code-security-scan-config/fake"
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "scanConfigurationArn" in resp
 
     def test_list_cis_scan_results_aggregated_by_checks(self, client):
         """ListCisScanResultsAggregatedByChecks returns check aggregations."""
@@ -846,7 +846,7 @@ class TestInspector2CodeSecurityOps:
         resp = client.delete_code_security_scan_configuration(
             scanConfigurationArn=fake_arn,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "scanConfigurationArn" in resp
 
 
 class TestInspector2FilterUpdateOp:
