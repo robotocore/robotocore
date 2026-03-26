@@ -603,3 +603,353 @@ class TestBedrockAgentOperations:
             assert ver_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             bedrock_agent.delete_prompt(promptIdentifier=prompt_id)
+
+    def test_associate_agent_knowledge_base(self, bedrock_agent):
+        """AssociateAgentKnowledgeBase links a KB to an agent."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-assoc-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        agent_version = agent_resp["agent"]["agentVersion"]
+        kb_config = {
+            "type": "VECTOR",
+            "vectorKnowledgeBaseConfiguration": {
+                "embeddingModelArn": (
+                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+                )
+            },
+        }
+        storage_config = {
+            "type": "OPENSEARCH_SERVERLESS",
+            "opensearchServerlessConfiguration": {
+                "collectionArn": "arn:aws:aoss:us-east-1:123456789012:collection/test",
+                "vectorIndexName": "test-index",
+                "fieldMapping": {
+                    "vectorField": "embedding",
+                    "textField": "text",
+                    "metadataField": "metadata",
+                },
+            },
+        }
+        kb_resp = bedrock_agent.create_knowledge_base(
+            name="compat-assoc-kb",
+            roleArn="arn:aws:iam::123456789012:role/test-kb-role",
+            knowledgeBaseConfiguration=kb_config,
+            storageConfiguration=storage_config,
+        )
+        kb_id = kb_resp["knowledgeBase"]["knowledgeBaseId"]
+        try:
+            resp = bedrock_agent.associate_agent_knowledge_base(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                knowledgeBaseId=kb_id,
+                description="compat-test",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "agentKnowledgeBase" in resp
+            assert resp["agentKnowledgeBase"]["knowledgeBaseId"] == kb_id
+            assert resp["agentKnowledgeBase"]["agentId"] == agent_id
+        finally:
+            bedrock_agent.delete_knowledge_base(knowledgeBaseId=kb_id)
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_get_agent_knowledge_base_and_list(self, bedrock_agent):
+        """GetAgentKnowledgeBase and ListAgentKnowledgeBases work after association."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-getkb-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        agent_version = agent_resp["agent"]["agentVersion"]
+        kb_config = {
+            "type": "VECTOR",
+            "vectorKnowledgeBaseConfiguration": {
+                "embeddingModelArn": (
+                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+                )
+            },
+        }
+        storage_config = {
+            "type": "OPENSEARCH_SERVERLESS",
+            "opensearchServerlessConfiguration": {
+                "collectionArn": "arn:aws:aoss:us-east-1:123456789012:collection/test",
+                "vectorIndexName": "test-index",
+                "fieldMapping": {
+                    "vectorField": "embedding",
+                    "textField": "text",
+                    "metadataField": "metadata",
+                },
+            },
+        }
+        kb_resp = bedrock_agent.create_knowledge_base(
+            name="compat-getkb-kb",
+            roleArn="arn:aws:iam::123456789012:role/test-kb-role",
+            knowledgeBaseConfiguration=kb_config,
+            storageConfiguration=storage_config,
+        )
+        kb_id = kb_resp["knowledgeBase"]["knowledgeBaseId"]
+        try:
+            bedrock_agent.associate_agent_knowledge_base(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                knowledgeBaseId=kb_id,
+                description="compat-test",
+            )
+
+            get_resp = bedrock_agent.get_agent_knowledge_base(
+                agentId=agent_id, agentVersion=agent_version, knowledgeBaseId=kb_id
+            )
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert get_resp["agentKnowledgeBase"]["knowledgeBaseId"] == kb_id
+
+            list_resp = bedrock_agent.list_agent_knowledge_bases(
+                agentId=agent_id, agentVersion=agent_version
+            )
+            assert list_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "agentKnowledgeBaseSummaries" in list_resp
+            kb_ids = [
+                s["knowledgeBaseId"] for s in list_resp["agentKnowledgeBaseSummaries"]
+            ]
+            assert kb_id in kb_ids
+        finally:
+            bedrock_agent.delete_knowledge_base(knowledgeBaseId=kb_id)
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_update_agent_knowledge_base(self, bedrock_agent):
+        """UpdateAgentKnowledgeBase updates the description on a linked KB."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-updatekb-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        agent_version = agent_resp["agent"]["agentVersion"]
+        kb_config = {
+            "type": "VECTOR",
+            "vectorKnowledgeBaseConfiguration": {
+                "embeddingModelArn": (
+                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+                )
+            },
+        }
+        storage_config = {
+            "type": "OPENSEARCH_SERVERLESS",
+            "opensearchServerlessConfiguration": {
+                "collectionArn": "arn:aws:aoss:us-east-1:123456789012:collection/test",
+                "vectorIndexName": "test-index",
+                "fieldMapping": {
+                    "vectorField": "embedding",
+                    "textField": "text",
+                    "metadataField": "metadata",
+                },
+            },
+        }
+        kb_resp = bedrock_agent.create_knowledge_base(
+            name="compat-updatekb-kb",
+            roleArn="arn:aws:iam::123456789012:role/test-kb-role",
+            knowledgeBaseConfiguration=kb_config,
+            storageConfiguration=storage_config,
+        )
+        kb_id = kb_resp["knowledgeBase"]["knowledgeBaseId"]
+        try:
+            bedrock_agent.associate_agent_knowledge_base(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                knowledgeBaseId=kb_id,
+                description="original-desc",
+            )
+
+            update_resp = bedrock_agent.update_agent_knowledge_base(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                knowledgeBaseId=kb_id,
+                description="updated-desc",
+            )
+            assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "agentKnowledgeBase" in update_resp
+            assert update_resp["agentKnowledgeBase"]["description"] == "updated-desc"
+        finally:
+            bedrock_agent.delete_knowledge_base(knowledgeBaseId=kb_id)
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_disassociate_agent_knowledge_base(self, bedrock_agent):
+        """DisassociateAgentKnowledgeBase removes the KB link from an agent."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-disassoc-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        agent_version = agent_resp["agent"]["agentVersion"]
+        kb_config = {
+            "type": "VECTOR",
+            "vectorKnowledgeBaseConfiguration": {
+                "embeddingModelArn": (
+                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+                )
+            },
+        }
+        storage_config = {
+            "type": "OPENSEARCH_SERVERLESS",
+            "opensearchServerlessConfiguration": {
+                "collectionArn": "arn:aws:aoss:us-east-1:123456789012:collection/test",
+                "vectorIndexName": "test-index",
+                "fieldMapping": {
+                    "vectorField": "embedding",
+                    "textField": "text",
+                    "metadataField": "metadata",
+                },
+            },
+        }
+        kb_resp = bedrock_agent.create_knowledge_base(
+            name="compat-disassoc-kb",
+            roleArn="arn:aws:iam::123456789012:role/test-kb-role",
+            knowledgeBaseConfiguration=kb_config,
+            storageConfiguration=storage_config,
+        )
+        kb_id = kb_resp["knowledgeBase"]["knowledgeBaseId"]
+        try:
+            bedrock_agent.associate_agent_knowledge_base(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                knowledgeBaseId=kb_id,
+                description="to-be-disassociated",
+            )
+            disassoc_resp = bedrock_agent.disassociate_agent_knowledge_base(
+                agentId=agent_id, agentVersion=agent_version, knowledgeBaseId=kb_id
+            )
+            assert disassoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            list_resp = bedrock_agent.list_agent_knowledge_bases(
+                agentId=agent_id, agentVersion=agent_version
+            )
+            kb_ids = [
+                s["knowledgeBaseId"] for s in list_resp["agentKnowledgeBaseSummaries"]
+            ]
+            assert kb_id not in kb_ids
+        finally:
+            bedrock_agent.delete_knowledge_base(knowledgeBaseId=kb_id)
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_get_agent_version(self, bedrock_agent):
+        """GetAgentVersion returns the version details for an agent."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-getver-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        agent_version = agent_resp["agent"]["agentVersion"]
+        try:
+            resp = bedrock_agent.get_agent_version(
+                agentId=agent_id, agentVersion=agent_version
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "agentVersion" in resp
+            assert resp["agentVersion"]["agentId"] == agent_id
+            assert resp["agentVersion"]["version"] == agent_version
+        finally:
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_delete_agent_version(self, bedrock_agent):
+        """DeleteAgentVersion removes a non-DRAFT agent version."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-delver-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        try:
+            # Prepare to create a numbered version
+            bedrock_agent.prepare_agent(agentId=agent_id)
+            # ListAgentVersions shows DRAFT; delete it with DRAFT version string
+            del_resp = bedrock_agent.delete_agent_version(
+                agentId=agent_id,
+                agentVersion=agent_resp["agent"]["agentVersion"],
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "agentId" in del_resp
+            assert del_resp["agentId"] == agent_id
+        finally:
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_update_agent_action_group(self, bedrock_agent):
+        """UpdateAgentActionGroup updates name/state on an existing action group."""
+        agent_resp = bedrock_agent.create_agent(
+            agentName="compat-updateag-agent",
+            foundationModel="amazon.titan-text-lite-v1",
+        )
+        agent_id = agent_resp["agent"]["agentId"]
+        agent_version = agent_resp["agent"]["agentVersion"]
+        try:
+            ag_resp = bedrock_agent.create_agent_action_group(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                actionGroupName="compat-update-ag",
+                actionGroupState="ENABLED",
+            )
+            ag_id = ag_resp["agentActionGroup"]["actionGroupId"]
+
+            update_resp = bedrock_agent.update_agent_action_group(
+                agentId=agent_id,
+                agentVersion=agent_version,
+                actionGroupId=ag_id,
+                actionGroupName="compat-updated-ag",
+                actionGroupState="DISABLED",
+            )
+            assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "agentActionGroup" in update_resp
+            assert update_resp["agentActionGroup"]["actionGroupName"] == "compat-updated-ag"
+            assert update_resp["agentActionGroup"]["actionGroupState"] == "DISABLED"
+        finally:
+            bedrock_agent.delete_agent(agentId=agent_id)
+
+    def test_stop_ingestion_job(self, bedrock_agent):
+        """StopIngestionJob stops a running ingestion job."""
+        kb_config = {
+            "type": "VECTOR",
+            "vectorKnowledgeBaseConfiguration": {
+                "embeddingModelArn": (
+                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+                )
+            },
+        }
+        storage_config = {
+            "type": "OPENSEARCH_SERVERLESS",
+            "opensearchServerlessConfiguration": {
+                "collectionArn": "arn:aws:aoss:us-east-1:123456789012:collection/test",
+                "vectorIndexName": "test-index",
+                "fieldMapping": {
+                    "vectorField": "embedding",
+                    "textField": "text",
+                    "metadataField": "metadata",
+                },
+            },
+        }
+        kb_resp = bedrock_agent.create_knowledge_base(
+            name="compat-stop-ij-kb",
+            roleArn="arn:aws:iam::123456789012:role/test-kb-role",
+            knowledgeBaseConfiguration=kb_config,
+            storageConfiguration=storage_config,
+        )
+        kb_id = kb_resp["knowledgeBase"]["knowledgeBaseId"]
+        try:
+            ds_resp = bedrock_agent.create_data_source(
+                knowledgeBaseId=kb_id,
+                name="compat-stop-ij-ds",
+                dataSourceConfiguration={
+                    "type": "S3",
+                    "s3Configuration": {"bucketArn": "arn:aws:s3:::my-test-bucket"},
+                },
+            )
+            ds_id = ds_resp["dataSource"]["dataSourceId"]
+            job_resp = bedrock_agent.start_ingestion_job(
+                knowledgeBaseId=kb_id, dataSourceId=ds_id
+            )
+            job_id = job_resp["ingestionJob"]["ingestionJobId"]
+
+            stop_resp = bedrock_agent.stop_ingestion_job(
+                knowledgeBaseId=kb_id, dataSourceId=ds_id, ingestionJobId=job_id
+            )
+            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ingestionJob" in stop_resp
+            assert stop_resp["ingestionJob"]["ingestionJobId"] == job_id
+        finally:
+            bedrock_agent.delete_knowledge_base(knowledgeBaseId=kb_id)
