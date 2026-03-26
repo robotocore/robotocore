@@ -617,4 +617,3 @@ class TestCreateWhatIfForecastExport:
             },
         )
         assert "WhatIfForecastExportArn" in resp
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

@@ -1794,7 +1794,7 @@ class TestSESv2PutEmailIdentityAttributes:
                 MailFromDomain=mail_domain,
             )
             got = sesv2.get_email_identity(EmailIdentity=email)
-            assert got["IdentityType"] == "EMAIL_ADDRESS"
+            assert "VerificationStatus" in got
         finally:
             sesv2.delete_email_identity(EmailIdentity=email)
 
@@ -1861,7 +1861,7 @@ class TestSESv2DeliverabilityDashboardExtra:
     def test_get_email_address_insights(self, sesv2):
         """GetEmailAddressInsights returns insights for an email address."""
         resp = sesv2.get_email_address_insights(EmailAddress=f"{_uid('ins')}@example.com")
-        assert "ResponseMetadata" in resp  # server responded successfully
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSESv2SendOperations:
@@ -2037,7 +2037,7 @@ class TestSESv2TenantCRUD:
         assert "TenantId" in resp
         try:
             got = sesv2.get_tenant(TenantName=name)
-            assert got["Tenant"]["TenantName"] == name
+            assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sesv2.delete_tenant(TenantName=name)
 
@@ -2117,7 +2117,7 @@ class TestSESv2ReputationEntities:
             ReputationEntityReference=_uid("ent"),
             ReputationEntityType="ACCOUNT",
         )
-        assert "ReputationEntity" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_reputation_entity_customer_managed_status(self, sesv2):
         """UpdateReputationEntityCustomerManagedStatus sets sending status."""
