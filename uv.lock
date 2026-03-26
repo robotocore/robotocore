@@ -904,7 +904,7 @@ wheels = [
 [[package]]
 name = "moto"
 version = "5.1.23.dev0"
-source = { git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes#12e5f494abb19d64b505ac288411f1a4d30ba578" }
+source = { git = "https://github.com/JackDanger/moto.git?branch=robotocore%2Fall-fixes#1e78bae1c2fce0530c93413e224b651950efbcef" }
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },
@@ -1684,6 +1684,7 @@ dev = [
 dev = [
     { name = "freezegun" },
     { name = "pytest-playwright" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -1718,6 +1719,7 @@ provides-extras = ["dev"]
 dev = [
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "pytest-playwright", specifier = ">=0.7.2" },
+    { name = "ruff", specifier = ">=0.15.5" },
 ]
 
 [[package]]
