@@ -230,7 +230,7 @@ class TestTimestreamWriteWriteRecords:
 
 
 class TestTimestreamWriteBatchLoadTask:
-    """Tests for CreateBatchLoadTask, DescribeBatchLoadTask, ListBatchLoadTasks, ResumeBatchLoadTask."""
+    """Tests for CreateBatchLoadTask, DescribeBatchLoadTask, ListBatchLoadTasks, ResumeBatchLoadTask."""  # noqa: E501
 
     def _batch_load_params(self, db_name: str, table_name: str) -> dict:
         return {
@@ -265,9 +265,7 @@ class TestTimestreamWriteBatchLoadTask:
 
     def test_create_batch_load_task(self, timestream_write, tsw_db, tsw_table):
         """CreateBatchLoadTask returns a TaskId."""
-        resp = timestream_write.create_batch_load_task(
-            **self._batch_load_params(tsw_db, tsw_table)
-        )
+        resp = timestream_write.create_batch_load_task(**self._batch_load_params(tsw_db, tsw_table))
         assert "TaskId" in resp
         assert resp["TaskId"]
 
@@ -287,9 +285,7 @@ class TestTimestreamWriteBatchLoadTask:
 
     def test_list_batch_load_tasks(self, timestream_write, tsw_db, tsw_table):
         """ListBatchLoadTasks returns a list of tasks."""
-        timestream_write.create_batch_load_task(
-            **self._batch_load_params(tsw_db, tsw_table)
-        )
+        timestream_write.create_batch_load_task(**self._batch_load_params(tsw_db, tsw_table))
         resp = timestream_write.list_batch_load_tasks()
         assert "BatchLoadTasks" in resp
         assert isinstance(resp["BatchLoadTasks"], list)

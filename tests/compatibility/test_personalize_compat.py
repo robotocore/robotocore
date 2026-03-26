@@ -630,8 +630,10 @@ class TestPersonalizeCreateOps:
             minProvisionedTPS=1,
         )
         campaign_arn = r["campaignArn"]
-        del_r = client.delete_campaign(campaignArn=campaign_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_campaign(campaignArn=campaign_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_campaign(campaignArn=campaign_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_dataset(self, client):
         sr = client.create_schema(name="test-del-ds-schema", schema=SCHEMA_JSON)
@@ -645,8 +647,10 @@ class TestPersonalizeCreateOps:
             schemaArn=schema_arn,
         )
         ds_arn = dr["datasetArn"]
-        del_r = client.delete_dataset(datasetArn=ds_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_dataset(datasetArn=ds_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset(datasetArn=ds_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
         try:
             client.delete_dataset_group(datasetGroupArn=dg_arn)
         except ClientError as exc:
@@ -664,8 +668,10 @@ class TestPersonalizeCreateOps:
         dg_arn = resources["dg_arn"]
         r = client.create_event_tracker(name="test-del-et", datasetGroupArn=dg_arn)
         et_arn = r["eventTrackerArn"]
-        del_r = client.delete_event_tracker(eventTrackerArn=et_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_event_tracker(eventTrackerArn=et_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_event_tracker(eventTrackerArn=et_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_filter(self, client, resources):
         dg_arn = resources["dg_arn"]
@@ -675,8 +681,10 @@ class TestPersonalizeCreateOps:
             filterExpression='INCLUDE ItemID WHERE Items.category = "toys"',
         )
         filter_arn = r["filterArn"]
-        del_r = client.delete_filter(filterArn=filter_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_filter(filterArn=filter_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_filter(filterArn=filter_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_metric_attribution(self, client, resources):
         dg_arn = resources["dg_arn"]
@@ -696,8 +704,10 @@ class TestPersonalizeCreateOps:
             },
         )
         ma_arn = r["metricAttributionArn"]
-        del_r = client.delete_metric_attribution(metricAttributionArn=ma_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_metric_attribution(metricAttributionArn=ma_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_metric_attribution(metricAttributionArn=ma_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_recommender(self, client, resources):
         dg_arn = resources["dg_arn"]
@@ -707,15 +717,19 @@ class TestPersonalizeCreateOps:
             recipeArn="arn:aws:personalize:::recipe/aws-ecomm-popular-items-by-views",
         )
         rec_arn = r["recommenderArn"]
-        del_r = client.delete_recommender(recommenderArn=rec_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_recommender(recommenderArn=rec_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_recommender(recommenderArn=rec_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_solution(self, client, resources):
         dg_arn = resources["dg_arn"]
         r = client.create_solution(name="test-del-solution", datasetGroupArn=dg_arn)
         sol_arn = r["solutionArn"]
-        del_r = client.delete_solution(solutionArn=sol_arn)
-        assert del_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_solution(solutionArn=sol_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution(solutionArn=sol_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     # --- List operations ---
 

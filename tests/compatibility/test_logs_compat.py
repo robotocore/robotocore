@@ -1104,7 +1104,7 @@ class TestLogsExtended:
             )
             query_id = start_resp["queryId"]
             stop_resp = logs.stop_query(queryId=query_id)
-            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "success" in stop_resp
         finally:
             logs.delete_log_group(logGroupName=name)
 

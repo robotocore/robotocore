@@ -822,6 +822,9 @@ class TestDataSyncTagAndUpdateOps:
         try:
             resp = datasync.update_location_s3(LocationArn=arn)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify location still accessible after update
+            desc = datasync.describe_location_s3(LocationArn=arn)
+            assert desc["LocationArn"] == arn
         finally:
             datasync.delete_location(LocationArn=arn)
 
@@ -924,3 +927,4 @@ class TestDataSyncUpdateLocationGapOps:
             Options={},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None

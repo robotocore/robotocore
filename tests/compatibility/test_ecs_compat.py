@@ -1337,7 +1337,7 @@ class TestECSMissingGapOps:
         """StopServiceDeployment returns 200."""
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-deployment/test/fake-deployment"
         resp = ecs.stop_service_deployment(serviceDeploymentArn=fake_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "serviceDeploymentArn" in resp
 
     def test_submit_attachment_state_changes(self, ecs):
         """SubmitAttachmentStateChanges returns an acknowledgment."""
@@ -1364,22 +1364,22 @@ class TestECSExpressGatewayService:
             infrastructureRoleArn="arn:aws:iam::123456789012:role/infra-role",
             primaryContainer={"image": "nginx:latest", "containerPort": 80},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "service" in resp
 
     def test_describe_express_gateway_service(self, ecs):
         """DescribeExpressGatewayService with fake ARN returns 200."""
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:express-gateway-service/fake"
         resp = ecs.describe_express_gateway_service(serviceArn=fake_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "service" in resp
 
     def test_update_express_gateway_service(self, ecs):
         """UpdateExpressGatewayService with fake ARN returns 200."""
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:express-gateway-service/fake"
         resp = ecs.update_express_gateway_service(serviceArn=fake_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "service" in resp
 
     def test_delete_express_gateway_service(self, ecs):
         """DeleteExpressGatewayService with fake ARN returns 200."""
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:express-gateway-service/fake"
         resp = ecs.delete_express_gateway_service(serviceArn=fake_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "service" in resp

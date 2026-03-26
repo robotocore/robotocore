@@ -331,7 +331,8 @@ Operations ({len(ops)} total):
    cd vendor/moto
    git add moto/{moto_dir}/
    git commit -m "feat: implement {svc} OperationName"
-   git push jackdanger HEAD:master
+   git push origin HEAD:master
+   git push origin HEAD:robotocore/all-fixes
    cd ../..
    uv lock
    git add uv.lock

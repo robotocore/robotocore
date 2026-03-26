@@ -28,6 +28,7 @@ class TestDataPipelineOperations:
         """ListPipelines returns HTTP 200."""
         response = datapipeline.list_pipelines()
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "hasMoreResults" in response
 
     def test_create_pipeline(self, datapipeline):
         """CreatePipeline returns a pipelineId."""
@@ -139,6 +140,9 @@ class TestDataPipelineDefinition:
             )
             resp = datapipeline.activate_pipeline(pipelineId=pipeline_id)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify pipeline is now active
+            desc = datapipeline.describe_pipelines(pipelineIds=[pipeline_id])
+            assert desc["pipelineDescriptionList"][0]["pipelineId"] == pipeline_id
         finally:
             datapipeline.delete_pipeline(pipelineId=pipeline_id)
 
@@ -185,6 +189,7 @@ class TestDataPipelineTaskOperations:
         )
         assert "taskObject" in resp
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["taskObject"], dict)
 
     def test_report_task_runner_heartbeat(self, datapipeline):
         """ReportTaskRunnerHeartbeat returns a terminate flag."""
@@ -193,6 +198,7 @@ class TestDataPipelineTaskOperations:
         )
         assert "terminate" in resp
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["terminate"], bool)
 
     def test_report_task_progress(self, datapipeline):
         """ReportTaskProgress returns canceled flag."""
@@ -201,6 +207,7 @@ class TestDataPipelineTaskOperations:
         )
         assert "canceled" in resp
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["canceled"], bool)
 
     def test_set_task_status(self, datapipeline):
         """SetTaskStatus sets a task's status."""
@@ -209,6 +216,7 @@ class TestDataPipelineTaskOperations:
             taskStatus="FINISHED",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
 
 class TestDataPipelineMissingOps:
@@ -240,6 +248,9 @@ class TestDataPipelineMissingOps:
             datapipeline.activate_pipeline(pipelineId=pipeline_id)
             resp = datapipeline.deactivate_pipeline(pipelineId=pipeline_id)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify still accessible after deactivation
+            desc = datapipeline.describe_pipelines(pipelineIds=[pipeline_id])
+            assert desc["pipelineDescriptionList"][0]["pipelineId"] == pipeline_id
         finally:
             datapipeline.delete_pipeline(pipelineId=pipeline_id)
 
@@ -266,6 +277,9 @@ class TestDataPipelineMissingOps:
                 status="FINISHED",
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Pipeline still accessible after set_status
+            desc = datapipeline.describe_pipelines(pipelineIds=[pipeline_id])
+            assert desc["pipelineDescriptionList"][0]["pipelineId"] == pipeline_id
         finally:
             datapipeline.delete_pipeline(pipelineId=pipeline_id)
 
@@ -278,6 +292,11 @@ class TestDataPipelineMissingOps:
                 tags=[{"key": "env", "value": "test"}],
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify tag appears in pipeline description
+            desc = datapipeline.describe_pipelines(pipelineIds=[pipeline_id])
+            tags = desc["pipelineDescriptionList"][0].get("tags", [])
+            tag_keys = [t["key"] for t in tags]
+            assert "env" in tag_keys
         finally:
             datapipeline.delete_pipeline(pipelineId=pipeline_id)
 

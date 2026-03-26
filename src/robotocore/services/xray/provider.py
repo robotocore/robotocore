@@ -340,6 +340,43 @@ def _delete_resource_policy(params: dict, region: str, account_id: str) -> dict:
     return {}
 
 
+def _get_insight(params: dict, region: str, account_id: str) -> dict:
+    insight_id = params.get("InsightId", "")
+    # Return a stub insight — in local dev there are no real insights
+    return {
+        "Insight": {
+            "InsightId": insight_id,
+            "GroupARN": "",
+            "GroupName": "",
+            "RootCauseServiceId": {},
+            "Categories": [],
+            "State": "CLOSED",
+            "StartTime": 0.0,
+            "EndTime": 0.0,
+            "Summary": "",
+            "ClientRequestImpactStatistics": {},
+            "RootCauseServiceRequestImpactStatistics": {},
+            "TopAnomalousServices": [],
+        }
+    }
+
+
+def _get_insight_events(params: dict, region: str, account_id: str) -> dict:
+    return {"InsightEvents": [], "NextToken": None}
+
+
+def _get_insight_impact_graph(params: dict, region: str, account_id: str) -> dict:
+    insight_id = params.get("InsightId", "")
+    start_time = params.get("StartTime", 0)
+    end_time = params.get("EndTime", 0)
+    return {
+        "InsightId": insight_id,
+        "StartTime": start_time,
+        "EndTime": end_time,
+        "Services": [],
+    }
+
+
 def _get_insight_summaries(params: dict, region: str, account_id: str) -> dict:
     start_time = params.get("StartTime", 0)
     end_time = params.get("EndTime", 0)
@@ -435,6 +472,9 @@ _PATH_MAP = {
     "/ListResourcePolicies": _list_resource_policies,
     "/DeleteResourcePolicy": _delete_resource_policy,
     "/InsightSummaries": _get_insight_summaries,
+    "/Insight": _get_insight,
+    "/InsightEvents": _get_insight_events,
+    "/InsightImpactGraph": _get_insight_impact_graph,
     "/SamplingTargets": _get_sampling_targets,
     "/TimeSeriesServiceStatistics": _get_time_series_service_statistics,
     "/TraceSummaries": _get_trace_summaries,

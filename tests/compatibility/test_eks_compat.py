@@ -508,7 +508,7 @@ class TestEKSUpdateOperations:
                 name=name,
                 logging={"clusterLogging": [{"types": ["api", "audit"], "enabled": True}]},
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "update" in resp
         finally:
             eks.delete_cluster(name=name)
 
@@ -537,7 +537,7 @@ class TestEKSUpdateOperations:
                 nodegroupName=ng_name,
                 scalingConfig={"minSize": 1, "maxSize": 5, "desiredSize": 3},
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "update" in resp
         finally:
             try:
                 eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)
@@ -569,7 +569,7 @@ class TestEKSUpdateOperations:
                 nodegroupName=ng_name,
                 labels={"addOrUpdateLabels": {"env": "test"}},
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "update" in resp
         finally:
             try:
                 eks.delete_nodegroup(clusterName=cluster_name, nodegroupName=ng_name)

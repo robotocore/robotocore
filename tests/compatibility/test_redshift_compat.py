@@ -2468,7 +2468,7 @@ class TestRedshiftMiscOperations:
             ReservedNodeId="nonexistent-node",
             TargetReservedNodeOfferingId="nonexistent-offering",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ExchangedReservedNode" in resp
 
 
 class TestRedshiftSnapshotScheduleLifecycle:

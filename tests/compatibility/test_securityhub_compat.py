@@ -49,7 +49,7 @@ class TestSecurityhubAutoCoverage:
     def test_get_administrator_account(self, client):
         """GetAdministratorAccount returns a 200 response."""
         resp = client.get_administrator_account()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Administrator" in resp
 
     def test_get_findings(self, client):
         """GetFindings returns a response."""

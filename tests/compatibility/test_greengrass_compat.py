@@ -864,7 +864,7 @@ class TestGreengrassOperations:
                 GroupId=group["Id"],
                 RoleArn="arn:aws:iam::123456789012:role/TestRole",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "AssociatedAt" in resp
         finally:
             greengrass.disassociate_role_from_group(GroupId=group["Id"])
             greengrass.delete_group(GroupId=group["Id"])
@@ -893,7 +893,7 @@ class TestGreengrassOperations:
                 RoleArn="arn:aws:iam::123456789012:role/TestRole",
             )
             resp = greengrass.disassociate_role_from_group(GroupId=group["Id"])
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "DisassociatedAt" in resp
         finally:
             greengrass.delete_group(GroupId=group["Id"])
 
@@ -1335,7 +1335,7 @@ class TestGreengrassMissingGapOps:
         response = greengrass.associate_service_role_to_account(
             RoleArn="arn:aws:iam::123456789012:role/test"
         )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AssociatedAt" in response
 
     def test_disassociate_service_role_from_account(self, greengrass):
         """disassociate_service_role_from_account succeeds."""

@@ -63,6 +63,29 @@ def _python_to_rds_field(value: Any) -> dict:
     return {"stringValue": str(value)}
 
 
+def _python_to_legacy_rds_field(value: Any) -> dict:
+    """Convert a Python value to an RDS legacy (ExecuteSql) typed field.
+
+    The legacy API uses different field names than ExecuteStatement:
+    - bigIntValue instead of longValue
+    - intValue for integers
+    - realValue for floats
+    """
+    if value is None:
+        return {"isNull": True}
+    if isinstance(value, bool):
+        return {"bitValue": value}
+    if isinstance(value, int):
+        return {"bigIntValue": value}
+    if isinstance(value, float):
+        return {"doubleValue": value}
+    if isinstance(value, bytes):
+        import base64
+
+        return {"blobValue": base64.b64encode(value).decode()}
+    return {"stringValue": str(value)}
+
+
 def _rds_param_to_python(param: dict) -> Any:
     """Convert an RDS Data API parameter to a Python value."""
     value = param.get("value", {})
@@ -181,6 +204,8 @@ async def handle_rdsdata_request(request: Request, region: str, account_id: str)
         return await _commit_transaction(request, region, account_id)
     elif method == "POST" and path.endswith("/RollbackTransaction"):
         return await _rollback_transaction(request, region, account_id)
+    elif method == "POST" and path.endswith("/ExecuteSql"):
+        return await _execute_sql(request, region, account_id)
 
     # Fall back to Moto for anything else
     return await forward_to_moto(request, "rds-data", account_id=account_id)
@@ -383,3 +408,79 @@ async def _rollback_transaction(request: Request, region: str, account_id: str) 
         return _error_response("BadRequestException", f"Transaction error: {e}")
 
     return _json_response({"transactionStatus": "Transaction Rolledback"})
+
+
+async def _execute_sql(request: Request, region: str, account_id: str) -> Response:
+    """Handle ExecuteSql — deprecated legacy API for executing SQL statements.
+
+    Parameters differ from ExecuteStatement: uses dbClusterOrInstanceArn and
+    awsSecretStoreArn instead of resourceArn and secretArn.
+    """
+    body = await request.body()
+    try:
+        data = json.loads(body) if body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _error_response("BadRequestException", "Invalid JSON in request body")
+
+    resource_arn = data.get("dbClusterOrInstanceArn", "")
+    sql_statements = data.get("sqlStatements", "")
+
+    if not resource_arn:
+        return _error_response("BadRequestException", "dbClusterOrInstanceArn is required")
+    if not sql_statements:
+        return _error_response("BadRequestException", "sqlStatements is required")
+
+    db_identifier = _extract_db_identifier_from_arn(resource_arn)
+    arn_region = _extract_region_from_arn(resource_arn) or region
+    arn_account = _extract_account_from_arn(resource_arn) or account_id
+
+    if not db_identifier:
+        return _error_response("BadRequestException", "Invalid dbClusterOrInstanceArn format")
+
+    engine = get_engine(arn_account, arn_region, db_identifier)
+    if engine is None:
+        return _error_response(
+            "BadRequestException",
+            f"Database {db_identifier} not found. Create it with RDS CreateDBInstance first.",
+        )
+
+    try:
+        rows = engine.execute_sql(sql_statements, None)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("ExecuteSql error: %s", e)
+        return _error_response("BadRequestException", f"SQL execution error: {e}")
+
+    # ExecuteSql uses a different record format than ExecuteStatement.
+    # records is list of {values: [...]}, where each value is a discriminated union.
+    number_of_records_updated = 0
+    legacy_records = []
+    legacy_column_metadata = _build_column_metadata(rows)
+
+    if rows and list(rows[0].keys()) == ["rowsAffected"]:
+        number_of_records_updated = rows[0]["rowsAffected"]
+        legacy_column_metadata = []
+    else:
+        for row in rows:
+            if list(row.keys()) == ["rowsAffected"]:
+                continue
+            values = []
+            for v in row.values():
+                values.append(_python_to_legacy_rds_field(v))
+            legacy_records.append({"values": values})
+
+    return _json_response(
+        {
+            "sqlStatementResults": [
+                {
+                    "resultFrame": {
+                        "records": legacy_records,
+                        "resultSetMetadata": {
+                            "columnCount": len(legacy_column_metadata),
+                            "columnMetadata": legacy_column_metadata,
+                        },
+                    },
+                    "numberOfRecordsUpdated": number_of_records_updated,
+                }
+            ]
+        }
+    )

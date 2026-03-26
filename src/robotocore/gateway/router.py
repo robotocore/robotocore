@@ -128,6 +128,15 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/async-invoke"), "bedrock-runtime"),
     # SageMaker Runtime paths (signing name is 'sagemaker', runtime uses /endpoints/.../invocations)
     (re.compile(r"^/endpoints/[^/]+/(?:async-)?invocations"), "sagemaker-runtime"),
+    # kinesis-video-archived-media paths (signing name is 'kinesisvideo', but these paths
+    # are exclusive to the archived-media plane, not the kinesisvideo control plane)
+    (
+        re.compile(
+            r"^/(?:getImages|getMediaForFragmentList|listFragments"
+            r"|getClip|getHLSStreamingSessionURL|getDASHStreamingSessionURL)$"
+        ),
+        "kinesisvideoarchivedmedia",
+    ),
     # Endpoint strategy path-style routes
     (re.compile(r"^/queue/[a-z0-9-]+/\d+/"), "sqs"),
     (re.compile(r"^/opensearch/[a-z0-9-]+/[A-Za-z0-9-]+"), "opensearch"),

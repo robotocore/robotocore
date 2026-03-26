@@ -4435,7 +4435,7 @@ class TestRDSInstanceLifecycle:
     def test_delete_automated_backup(self, client):
         """DeleteDBInstanceAutomatedBackup with fake resource ID."""
         resp = client.delete_db_instance_automated_backup(DbiResourceId="dbi-fake-resource-id")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "DBInstanceAutomatedBackup" in resp
 
 
 class TestRDSRestoreOperations2:
