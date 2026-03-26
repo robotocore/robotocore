@@ -637,8 +637,7 @@ class TestAthenaBatchOperations:
     def test_batch_get_named_query_nonexistent(self, athena):
         """BatchGetNamedQuery with fake ID returns it in UnprocessedNamedQueryIds."""
         resp = athena.batch_get_named_query(NamedQueryIds=["00000000-0000-0000-0000-000000000000"])
-        assert len(resp.get("UnprocessedNamedQueryIds", [])) >= 0
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedNamedQueryIds" in resp
 
     def test_batch_get_query_execution(self, athena):
         """BatchGetQueryExecution returns execution details."""
@@ -658,7 +657,7 @@ class TestAthenaBatchOperations:
         resp = athena.batch_get_query_execution(
             QueryExecutionIds=["00000000-0000-0000-0000-000000000000"]
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedQueryExecutionIds" in resp
 
 
 class TestAthenaTaggingOperations:

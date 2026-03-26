@@ -1527,14 +1527,18 @@ class TestGuardDutyArchiveFindings:
     """Tests for ArchiveFindings and UnarchiveFindings."""
 
     def test_archive_findings(self, guardduty, detector):
-        """ArchiveFindings returns 200 even with fake finding IDs."""
-        resp = guardduty.archive_findings(DetectorId=detector, FindingIds=["fake-finding-id-1"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """ArchiveFindings runs without error on fake IDs."""
+        guardduty.archive_findings(DetectorId=detector, FindingIds=["fake-finding-id-1"])
+        # Verify the detector still exists (side-effect check)
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Status"], str)
 
     def test_unarchive_findings(self, guardduty, detector):
-        """UnarchiveFindings returns 200 even with fake finding IDs."""
-        resp = guardduty.unarchive_findings(DetectorId=detector, FindingIds=["fake-finding-id-1"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """UnarchiveFindings runs without error on fake IDs."""
+        guardduty.unarchive_findings(DetectorId=detector, FindingIds=["fake-finding-id-1"])
+        # Verify the detector still exists (side-effect check)
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Status"], str)
 
     def test_archive_then_unarchive_findings(self, guardduty, detector):
         """Create sample findings, archive them, then unarchive."""
@@ -1591,19 +1595,17 @@ class TestGuardDutyInviteMembers:
     """Tests for InviteMembers."""
 
     def test_invite_members(self, guardduty, detector):
-        """InviteMembers returns 200 with UnprocessedAccounts."""
+        """InviteMembers returns UnprocessedAccounts list."""
         resp = guardduty.invite_members(DetectorId=detector, AccountIds=["111122223333"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_invite_multiple_members(self, guardduty, detector):
-        """InviteMembers with multiple accounts."""
+        """InviteMembers with multiple accounts returns UnprocessedAccounts list."""
         resp = guardduty.invite_members(
             DetectorId=detector,
             AccountIds=["111122223333", "444455556666"],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
 
 class TestGuardDutyInvitationOps:
@@ -1617,16 +1619,14 @@ class TestGuardDutyInvitationOps:
         assert isinstance(resp["InvitationsCount"], int)
 
     def test_decline_invitations(self, guardduty):
-        """DeclineInvitations returns 200."""
+        """DeclineInvitations returns UnprocessedAccounts list."""
         resp = guardduty.decline_invitations(AccountIds=["111122223333"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_delete_invitations(self, guardduty):
-        """DeleteInvitations returns 200."""
+        """DeleteInvitations returns UnprocessedAccounts list."""
         resp = guardduty.delete_invitations(AccountIds=["111122223333"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
 
 class TestGuardDutyDisassociate:
