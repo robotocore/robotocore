@@ -182,7 +182,7 @@ class TestQuickSightDataSources:
     def test_delete_nonexistent_data_source_raises(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId="nonexistent-ds")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightDataSets:
@@ -587,104 +587,104 @@ class TestQuickSightDescribeWithFakeIds:
     def test_describe_analysis_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent-analysis")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_analysis_definition_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_analysis_definition(
                 AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent-analysis"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_analysis_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_analysis_permissions(
                 AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent-analysis"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_dashboard_definition_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_dashboard_definition(
                 AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent-dash"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_dashboard_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_dashboard_permissions(
                 AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent-dash"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_data_set_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_data_set(AwsAccountId=ACCOUNT_ID, DataSetId="nonexistent-dataset")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_data_set_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_data_set_permissions(
                 AwsAccountId=ACCOUNT_ID, DataSetId="nonexistent-dataset"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_data_source_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_data_source_permissions(
                 AwsAccountId=ACCOUNT_ID, DataSourceId="nonexistent-ds"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_folder_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_folder(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent-folder")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_folder_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_folder_permissions(
                 AwsAccountId=ACCOUNT_ID, FolderId="nonexistent-folder"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_template_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_template(AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent-template")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_template_definition_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_template_definition(
                 AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent-template"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_template_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_template_permissions(
                 AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent-template"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_theme_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_theme(AwsAccountId=ACCOUNT_ID, ThemeId="nonexistent-theme")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_theme_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_theme_permissions(
                 AwsAccountId=ACCOUNT_ID, ThemeId="nonexistent-theme"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_vpc_connection_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_vpc_connection(
                 AwsAccountId=ACCOUNT_ID, VPCConnectionId="nonexistent-vpc"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightAccountDescribe:
@@ -703,7 +703,7 @@ class TestQuickSightAccountDescribe:
     def test_describe_namespace_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_namespace(AwsAccountId=ACCOUNT_ID, Namespace="nonexistent-ns")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightTemplateOperations:
@@ -1254,7 +1254,7 @@ class TestQuickSightDescribeMoreNotFound:
                 TemplateId="nonexistent-tmpl",
                 AliasName="nonexistent-alias",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_theme_alias_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -1263,7 +1263,7 @@ class TestQuickSightDescribeMoreNotFound:
                 ThemeId="nonexistent-theme",
                 AliasName="nonexistent-alias",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_ingestion_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -1272,7 +1272,7 @@ class TestQuickSightDescribeMoreNotFound:
                 DataSetId="nonexistent-dset",
                 IngestionId="nonexistent-ing",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_group_membership_not_found(self, quicksight):
         group_name = _unique("grp")
@@ -1285,7 +1285,7 @@ class TestQuickSightDescribeMoreNotFound:
                     GroupName=group_name,
                     MemberName="nonexistent-user",
                 )
-            assert "ResourceNotFoundException" in str(exc_info.value)
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
         finally:
             quicksight.delete_group(
                 AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
@@ -1333,7 +1333,7 @@ class TestQuickSightAccountCustomization:
     def test_describe_account_customization_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.describe_account_customization(AwsAccountId=ACCOUNT_ID)
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightTopicOperations:
@@ -1365,6 +1365,7 @@ class TestQuickSightListOpsExtended:
     def test_list_brands(self, quicksight):
         resp = quicksight.list_brands(AwsAccountId=ACCOUNT_ID)
         assert "Brands" in resp
+        assert isinstance(resp["Brands"], list)
 
     def test_list_custom_permissions(self, quicksight):
         resp = quicksight.list_custom_permissions(AwsAccountId=ACCOUNT_ID)
@@ -1401,12 +1402,12 @@ class TestQuickSightListOpsExtended:
     def test_list_topic_refresh_schedules_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.list_topic_refresh_schedules(AwsAccountId=ACCOUNT_ID, TopicId="fake")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_topic_reviewed_answers_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.list_topic_reviewed_answers(AwsAccountId=ACCOUNT_ID, TopicId="fake")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightDescribeOpsExtended:
@@ -1448,14 +1449,17 @@ class TestQuickSightDescribeOpsExtended:
     def test_describe_brand(self, quicksight):
         resp = quicksight.describe_brand(AwsAccountId=ACCOUNT_ID, BrandId="fake")
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_describe_brand_assignment(self, quicksight):
         resp = quicksight.describe_brand_assignment(AwsAccountId=ACCOUNT_ID)
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_describe_brand_published_version(self, quicksight):
         resp = quicksight.describe_brand_published_version(AwsAccountId=ACCOUNT_ID, BrandId="fake")
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_describe_custom_permissions(self, quicksight):
         resp = quicksight.describe_custom_permissions(
@@ -1508,7 +1512,7 @@ class TestQuickSightDescribeOpsExtended:
             quicksight.describe_refresh_schedule(
                 AwsAccountId=ACCOUNT_ID, DataSetId="fake", ScheduleId="fake"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_role_custom_permission(self, quicksight):
         resp = quicksight.describe_role_custom_permission(
@@ -1536,7 +1540,7 @@ class TestQuickSightDescribeOpsExtended:
             quicksight.describe_topic_refresh_schedule(
                 AwsAccountId=ACCOUNT_ID, TopicId="fake", DatasetId="fake"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightGetOps:
@@ -1583,7 +1587,7 @@ class TestQuickSightAccountCustomizationCRUD:
                 AwsAccountId=ACCOUNT_ID,
                 AccountCustomization={"DefaultTheme": "arn:aws:quicksight::aws:theme/MIDNIGHT"},
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_account_customization(self, quicksight):
         quicksight.create_account_customization(
@@ -1657,24 +1661,24 @@ class TestQuickSightAnalysisCRUD:
                     }
                 },
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_analysis_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_analysis_permissions(
                 AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_analysis_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_restore_analysis_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.restore_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_and_delete_analysis(self, quicksight):
         aid = _unique("analysis")
@@ -1709,6 +1713,7 @@ class TestQuickSightBrandCRUD:
             BrandDefinition={"BrandName": "TestBrand"},
         )
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_update_brand(self, quicksight):
         resp = quicksight.update_brand(
@@ -1717,14 +1722,17 @@ class TestQuickSightBrandCRUD:
             BrandDefinition={"BrandName": "Updated"},
         )
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_delete_brand(self, quicksight):
         resp = quicksight.delete_brand(AwsAccountId=ACCOUNT_ID, BrandId="fake")
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_delete_brand_assignment(self, quicksight):
         resp = quicksight.delete_brand_assignment(AwsAccountId=ACCOUNT_ID)
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_update_brand_assignment(self, quicksight):
         resp = quicksight.update_brand_assignment(
@@ -1732,12 +1740,14 @@ class TestQuickSightBrandCRUD:
             BrandArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:brand/fake",
         )
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_update_brand_published_version(self, quicksight):
         resp = quicksight.update_brand_published_version(
             AwsAccountId=ACCOUNT_ID, BrandId="fake", VersionId="1"
         )
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
 
 class TestQuickSightCustomPermissionsCRUD:
@@ -1790,33 +1800,33 @@ class TestQuickSightDashboardMutations:
                     }
                 },
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_dashboard_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_dashboard(AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_dashboard_links_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_dashboard_links(
                 AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent", LinkEntities=[]
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_dashboard_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_dashboard_permissions(
                 AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_dashboard_published_version_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_dashboard_published_version(
                 AwsAccountId=ACCOUNT_ID, DashboardId="nonexistent", VersionNumber=1
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_dashboards_qa_configuration(self, quicksight):
         resp = quicksight.update_dashboards_qa_configuration(
@@ -1846,17 +1856,17 @@ class TestQuickSightDataSetMutations:
                 },
                 ImportMode="SPICE",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_data_set_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_data_set_permissions(AwsAccountId=ACCOUNT_ID, DataSetId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_data_set_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_data_set(AwsAccountId=ACCOUNT_ID, DataSetId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_data_set_refresh_properties(self, quicksight):
         resp = quicksight.delete_data_set_refresh_properties(
@@ -1891,7 +1901,7 @@ class TestQuickSightDataSourceMutations:
             quicksight.update_data_source_permissions(
                 AwsAccountId=ACCOUNT_ID, DataSourceId="nonexistent"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightFolderMutations:
@@ -1917,17 +1927,17 @@ class TestQuickSightFolderMutations:
     def test_update_folder_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_folder(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent", Name="X")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_folder_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_folder_permissions(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_folder_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_folder(AwsAccountId=ACCOUNT_ID, FolderId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_folder_membership_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -1937,7 +1947,7 @@ class TestQuickSightFolderMutations:
                 MemberId="fake",
                 MemberType="DASHBOARD",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightIAMPolicyAssignmentCRUD:
@@ -1962,7 +1972,7 @@ class TestQuickSightIAMPolicyAssignmentCRUD:
                 AssignmentName="nonexistent",
                 AssignmentStatus="ENABLED",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_iam_policy_assignment_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -1971,7 +1981,7 @@ class TestQuickSightIAMPolicyAssignmentCRUD:
                 Namespace=NAMESPACE,
                 AssignmentName="nonexistent",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightTemplateMutations:
@@ -1996,7 +2006,7 @@ class TestQuickSightTemplateMutations:
                     }
                 },
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_template_alias_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2006,19 +2016,19 @@ class TestQuickSightTemplateMutations:
                 AliasName="fake",
                 TemplateVersionNumber=1,
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_template_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_template_permissions(
                 AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_template_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_template(AwsAccountId=ACCOUNT_ID, TemplateId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_template_alias_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2027,7 +2037,7 @@ class TestQuickSightTemplateMutations:
                 TemplateId="nonexistent",
                 AliasName="fake",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightThemeMutations:
@@ -2040,7 +2050,7 @@ class TestQuickSightThemeMutations:
                 ThemeId="nonexistent",
                 BaseThemeId="CLASSIC",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_theme_alias_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2050,17 +2060,17 @@ class TestQuickSightThemeMutations:
                 AliasName="fake",
                 ThemeVersionNumber=1,
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_theme_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_theme_permissions(AwsAccountId=ACCOUNT_ID, ThemeId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_theme_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_theme(AwsAccountId=ACCOUNT_ID, ThemeId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_theme_alias_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2069,7 +2079,7 @@ class TestQuickSightThemeMutations:
                 ThemeId="nonexistent",
                 AliasName="fake",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightTopicCRUD:
@@ -2108,12 +2118,12 @@ class TestQuickSightTopicCRUD:
                     ],
                 },
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_topic_permissions_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.update_topic_permissions(AwsAccountId=ACCOUNT_ID, TopicId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_batch_create_topic_reviewed_answer_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2129,14 +2139,14 @@ class TestQuickSightTopicCRUD:
                     }
                 ],
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_batch_delete_topic_reviewed_answer_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.batch_delete_topic_reviewed_answer(
                 AwsAccountId=ACCOUNT_ID, TopicId="nonexistent", AnswerIds=["a1"]
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightTopicRefreshSchedule:
@@ -2150,7 +2160,7 @@ class TestQuickSightTopicRefreshSchedule:
                 DatasetArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
                 RefreshSchedule={"IsEnabled": True, "BasedOnSpiceSchedule": True},
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_topic_refresh_schedule_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2160,14 +2170,14 @@ class TestQuickSightTopicRefreshSchedule:
                 DatasetId="fake",
                 RefreshSchedule={"IsEnabled": True, "BasedOnSpiceSchedule": True},
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_topic_refresh_schedule_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_topic_refresh_schedule(
                 AwsAccountId=ACCOUNT_ID, TopicId="nonexistent", DatasetId="fake"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightRefreshScheduleCRUD:
@@ -2197,7 +2207,7 @@ class TestQuickSightRefreshScheduleCRUD:
                     "RefreshType": "FULL_REFRESH",
                 },
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_refresh_schedule(self, quicksight):
         resp = quicksight.delete_refresh_schedule(
@@ -2254,7 +2264,7 @@ class TestQuickSightGroupMembershipMutations:
                 GroupName="nonexistent",
                 MemberName="fake",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightNamespaceMutations:
@@ -2263,7 +2273,7 @@ class TestQuickSightNamespaceMutations:
     def test_delete_namespace_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_namespace(AwsAccountId=ACCOUNT_ID, Namespace="nonexistent-ns")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightVPCConnectionMutations:
@@ -2272,7 +2282,7 @@ class TestQuickSightVPCConnectionMutations:
     def test_delete_vpc_connection_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_vpc_connection(AwsAccountId=ACCOUNT_ID, VPCConnectionId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightIngestionMutations:
@@ -2283,7 +2293,7 @@ class TestQuickSightIngestionMutations:
             quicksight.cancel_ingestion(
                 AwsAccountId=ACCOUNT_ID, DataSetId="fake", IngestionId="fake"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightUserMutations:
@@ -2300,7 +2310,7 @@ class TestQuickSightUserMutations:
             quicksight.delete_user_custom_permission(
                 AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName="nonexistent"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_user_custom_permission_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
@@ -2310,7 +2320,7 @@ class TestQuickSightUserMutations:
                 UserName="nonexistent",
                 CustomPermissionsName="perm",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightEmbedUrls:
@@ -2440,6 +2450,7 @@ class TestQuickSightMiscMutations:
     def test_update_key_registration(self, quicksight):
         resp = quicksight.update_key_registration(AwsAccountId=ACCOUNT_ID, KeyRegistration=[])
         assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
 
     def test_update_q_personalization_configuration(self, quicksight):
         resp = quicksight.update_q_personalization_configuration(
@@ -2810,7 +2821,7 @@ class TestQuickSightDeleteTopic:
     def test_delete_topic_not_found(self, quicksight):
         with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
             quicksight.delete_topic(AwsAccountId=ACCOUNT_ID, TopicId="nonexistent")
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestQuickSightGapOps:
@@ -2827,6 +2838,7 @@ class TestQuickSightGapOps:
             ResourceArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/nonexistent",
         )
         assert "Folders" in resp
+        assert resp["Status"] == 200
 
 
 class TestQuickSightRemainingGapOps:
@@ -2882,3 +2894,4 @@ class TestQuickSightRemainingGapOps:
             },
         )
         assert "RequestId" in resp
+        assert resp["Status"] == 200
