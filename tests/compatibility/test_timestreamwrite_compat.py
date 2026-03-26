@@ -227,3 +227,81 @@ class TestTimestreamWriteWriteRecords:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestTimestreamWriteBatchLoadTask:
+    """Tests for CreateBatchLoadTask, DescribeBatchLoadTask, ListBatchLoadTasks, ResumeBatchLoadTask."""
+
+    def _batch_load_params(self, db_name: str, table_name: str) -> dict:
+        return {
+            "TargetDatabaseName": db_name,
+            "TargetTableName": table_name,
+            "DataModelConfiguration": {
+                "DataModel": {
+                    "TimeColumn": "timestamp",
+                    "TimeUnit": "SECONDS",
+                    "DimensionMappings": [
+                        {"SourceColumn": "region", "DestinationColumn": "region"}
+                    ],
+                    "MultiMeasureMappings": {
+                        "TargetMultiMeasureName": "metrics",
+                        "MultiMeasureAttributeMappings": [
+                            {"SourceColumn": "value", "MeasureValueType": "DOUBLE"}
+                        ],
+                    },
+                }
+            },
+            "DataSourceConfiguration": {
+                "DataSourceS3Configuration": {"BucketName": "my-data-bucket"},
+                "DataFormat": "CSV",
+            },
+            "ReportConfiguration": {
+                "ReportS3Configuration": {
+                    "BucketName": "my-report-bucket",
+                    "EncryptionOption": "SSE_S3",
+                }
+            },
+        }
+
+    def test_create_batch_load_task(self, timestream_write, tsw_db, tsw_table):
+        """CreateBatchLoadTask returns a TaskId."""
+        resp = timestream_write.create_batch_load_task(
+            **self._batch_load_params(tsw_db, tsw_table)
+        )
+        assert "TaskId" in resp
+        assert resp["TaskId"]
+
+    def test_describe_batch_load_task(self, timestream_write, tsw_db, tsw_table):
+        """DescribeBatchLoadTask returns task details including status."""
+        create_resp = timestream_write.create_batch_load_task(
+            **self._batch_load_params(tsw_db, tsw_table)
+        )
+        task_id = create_resp["TaskId"]
+        desc_resp = timestream_write.describe_batch_load_task(TaskId=task_id)
+        assert "BatchLoadTaskDescription" in desc_resp
+        task = desc_resp["BatchLoadTaskDescription"]
+        assert task["TaskId"] == task_id
+        assert "TaskStatus" in task
+        assert task["TargetDatabaseName"] == tsw_db
+        assert task["TargetTableName"] == tsw_table
+
+    def test_list_batch_load_tasks(self, timestream_write, tsw_db, tsw_table):
+        """ListBatchLoadTasks returns a list of tasks."""
+        timestream_write.create_batch_load_task(
+            **self._batch_load_params(tsw_db, tsw_table)
+        )
+        resp = timestream_write.list_batch_load_tasks()
+        assert "BatchLoadTasks" in resp
+        assert isinstance(resp["BatchLoadTasks"], list)
+        assert len(resp["BatchLoadTasks"]) >= 1
+
+    def test_resume_batch_load_task(self, timestream_write, tsw_db, tsw_table):
+        """ResumeBatchLoadTask changes task status to IN_PROGRESS."""
+        create_resp = timestream_write.create_batch_load_task(
+            **self._batch_load_params(tsw_db, tsw_table)
+        )
+        task_id = create_resp["TaskId"]
+        resp = timestream_write.resume_batch_load_task(TaskId=task_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        desc_resp = timestream_write.describe_batch_load_task(TaskId=task_id)
+        assert desc_resp["BatchLoadTaskDescription"]["TaskStatus"] == "IN_PROGRESS"
