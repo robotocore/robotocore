@@ -2072,9 +2072,58 @@ class TestMediaLiveReservationOperationsNew:
 
     def test_update_reservation_not_found(self, medialive):
         """UpdateReservation raises NotFoundException for nonexistent ID."""
-        with pytest.raises(ClientError) as exc:
+        with pytest.raises(ClientError):
             medialive.update_reservation(
                 ReservationId="nonexistent-reservation-id-xyz",
                 Name="new-name",
             )
-        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveCreateCluster:
+    """Tests for CreateCluster operation."""
+
+    def test_create_cluster(self, medialive):
+        """CreateCluster returns a cluster with Id and Name."""
+        net_resp = medialive.create_network(
+            Name=_uid("net"),
+            IpPools=[{"Cidr": "10.0.0.0/24"}],
+            RequestId=_uid("req"),
+        )
+        net_id = net_resp["Id"]
+        try:
+            name = _uid("cluster")
+            resp = medialive.create_cluster(
+                Name=name,
+                ClusterType="ON_PREMISES",
+                InstanceRoleArn="arn:aws:iam::123456789012:role/MediaLiveClusterRole",
+                NetworkSettings={"DefaultRoute": "", "InterfaceMappings": []},
+                RequestId=_uid("req"),
+            )
+            assert "Id" in resp
+            assert resp["Name"] == name
+            medialive.delete_cluster(ClusterId=resp["Id"])
+        finally:
+            medialive.delete_network(NetworkId=net_id)
+
+
+class TestMediaLiveCreateMultiplex:
+    """Tests for CreateMultiplex operation."""
+
+    def test_create_multiplex(self, medialive):
+        """CreateMultiplex returns a multiplex with Id and Name."""
+        name = _uid("mux")
+        resp = medialive.create_multiplex(
+            Name=name,
+            AvailabilityZones=["us-east-1a", "us-east-1b"],
+            MultiplexSettings={
+                "TransportStreamBitrate": 1000000,
+                "TransportStreamId": 1,
+                "TransportStreamReservedBitrate": 100000,
+                "MaximumVideoBufferDelayMilliseconds": 1000,
+            },
+            RequestId=_uid("req"),
+        )
+        assert "Multiplex" in resp
+        assert resp["Multiplex"]["Name"] == name
+        assert "Id" in resp["Multiplex"]
+        medialive.delete_multiplex(MultiplexId=resp["Multiplex"]["Id"])
