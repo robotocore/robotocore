@@ -527,6 +527,7 @@ class TestPinpointTemplateOperations:
         resp = pinpoint.list_templates()
         assert "TemplatesResponse" in resp
         assert "Item" in resp["TemplatesResponse"]
+        assert isinstance(resp["TemplatesResponse"]["Item"], list)
 
 
 class TestPinpointCampaignOperations:
@@ -534,6 +535,7 @@ class TestPinpointCampaignOperations:
         resp = pinpoint.get_campaigns(ApplicationId=app_id)
         assert "CampaignsResponse" in resp
         assert "Item" in resp["CampaignsResponse"]
+        assert isinstance(resp["CampaignsResponse"]["Item"], list)
 
     def test_get_campaign_not_found(self, pinpoint, app_id):
         with pytest.raises(ClientError) as exc:
@@ -558,6 +560,7 @@ class TestPinpointSegmentOperations:
         resp = pinpoint.get_segments(ApplicationId=app_id)
         assert "SegmentsResponse" in resp
         assert "Item" in resp["SegmentsResponse"]
+        assert isinstance(resp["SegmentsResponse"]["Item"], list)
 
     def test_get_segment(self, pinpoint, app_id, segment_id):
         resp = pinpoint.get_segment(ApplicationId=app_id, SegmentId=segment_id)
@@ -579,11 +582,13 @@ class TestPinpointSegmentOperations:
         resp = pinpoint.get_segment_export_jobs(ApplicationId=app_id, SegmentId=segment_id)
         assert "ExportJobsResponse" in resp
         assert "Item" in resp["ExportJobsResponse"]
+        assert isinstance(resp["ExportJobsResponse"]["Item"], list)
 
     def test_get_segment_import_jobs(self, pinpoint, app_id, segment_id):
         resp = pinpoint.get_segment_import_jobs(ApplicationId=app_id, SegmentId=segment_id)
         assert "ImportJobsResponse" in resp
         assert "Item" in resp["ImportJobsResponse"]
+        assert isinstance(resp["ImportJobsResponse"]["Item"], list)
 
 
 class TestPinpointJobOperations:
@@ -591,11 +596,13 @@ class TestPinpointJobOperations:
         resp = pinpoint.get_export_jobs(ApplicationId=app_id)
         assert "ExportJobsResponse" in resp
         assert "Item" in resp["ExportJobsResponse"]
+        assert isinstance(resp["ExportJobsResponse"]["Item"], list)
 
     def test_get_import_jobs(self, pinpoint, app_id):
         resp = pinpoint.get_import_jobs(ApplicationId=app_id)
         assert "ImportJobsResponse" in resp
         assert "Item" in resp["ImportJobsResponse"]
+        assert isinstance(resp["ImportJobsResponse"]["Item"], list)
 
     def test_get_export_job_not_found(self, pinpoint, app_id):
         with pytest.raises(ClientError) as exc:
@@ -618,11 +625,13 @@ class TestPinpointEndpointOperations:
         resp = pinpoint.get_user_endpoints(ApplicationId=app_id, UserId="nonexistent-user")
         assert "EndpointsResponse" in resp
         assert "Item" in resp["EndpointsResponse"]
+        assert isinstance(resp["EndpointsResponse"]["Item"], list)
 
     def test_get_in_app_messages(self, pinpoint, app_id):
         resp = pinpoint.get_in_app_messages(ApplicationId=app_id, EndpointId="fake-endpoint")
         assert "InAppMessagesResponse" in resp
         assert "InAppMessageCampaigns" in resp["InAppMessagesResponse"]
+        assert isinstance(resp["InAppMessagesResponse"]["InAppMessageCampaigns"], list)
 
 
 class TestPinpointJourneyOperations:
@@ -630,6 +639,7 @@ class TestPinpointJourneyOperations:
         resp = pinpoint.list_journeys(ApplicationId=app_id)
         assert "JourneysResponse" in resp
         assert "Item" in resp["JourneysResponse"]
+        assert isinstance(resp["JourneysResponse"]["Item"], list)
 
     def test_get_journey_not_found(self, pinpoint, app_id):
         with pytest.raises(ClientError) as exc:
@@ -642,6 +652,7 @@ class TestPinpointRecommenderOperations:
         resp = pinpoint.get_recommender_configurations()
         assert "ListRecommenderConfigurationsResponse" in resp
         assert "Item" in resp["ListRecommenderConfigurationsResponse"]
+        assert isinstance(resp["ListRecommenderConfigurationsResponse"]["Item"], list)
 
     def test_get_recommender_configuration_not_found(self, pinpoint):
         with pytest.raises(ClientError) as exc:
@@ -752,6 +763,8 @@ class TestPinpointTemplateCRUD:
             TemplateName=name, EmailTemplateRequest={"Subject": "New"}
         )
         assert "MessageBody" in resp
+        get_resp = pinpoint.get_email_template(TemplateName=name)
+        assert get_resp["EmailTemplateResponse"]["Subject"] == "New"
         pinpoint.delete_email_template(TemplateName=name)
 
     def test_delete_email_template(self, pinpoint):
@@ -777,6 +790,8 @@ class TestPinpointTemplateCRUD:
         pinpoint.create_sms_template(TemplateName=name, SMSTemplateRequest={"Body": "Old"})
         resp = pinpoint.update_sms_template(TemplateName=name, SMSTemplateRequest={"Body": "New"})
         assert "MessageBody" in resp
+        get_resp = pinpoint.get_sms_template(TemplateName=name)
+        assert get_resp["SMSTemplateResponse"]["Body"] == "New"
         pinpoint.delete_sms_template(TemplateName=name)
 
     def test_delete_sms_template(self, pinpoint):
@@ -802,6 +817,8 @@ class TestPinpointTemplateCRUD:
             TemplateName=name, PushNotificationTemplateRequest={"Default": {"Body": "Updated"}}
         )
         assert "MessageBody" in resp
+        get_resp = pinpoint.get_push_template(TemplateName=name)
+        assert get_resp["PushNotificationTemplateResponse"]["TemplateName"] == name
         pinpoint.delete_push_template(TemplateName=name)
 
     def test_delete_push_template(self, pinpoint):
@@ -827,6 +844,8 @@ class TestPinpointTemplateCRUD:
             TemplateName=name, VoiceTemplateRequest={"Body": "New"}
         )
         assert "MessageBody" in resp
+        get_resp = pinpoint.get_voice_template(TemplateName=name)
+        assert get_resp["VoiceTemplateResponse"]["Body"] == "New"
         pinpoint.delete_voice_template(TemplateName=name)
 
     def test_delete_voice_template(self, pinpoint):
@@ -848,6 +867,8 @@ class TestPinpointTemplateCRUD:
         pinpoint.create_in_app_template(TemplateName=name, InAppTemplateRequest={})
         resp = pinpoint.update_in_app_template(TemplateName=name, InAppTemplateRequest={})
         assert "MessageBody" in resp
+        get_resp = pinpoint.get_in_app_template(TemplateName=name)
+        assert get_resp["InAppTemplateResponse"]["TemplateName"] == name
         pinpoint.delete_in_app_template(TemplateName=name)
 
     def test_delete_in_app_template(self, pinpoint):
@@ -866,6 +887,8 @@ class TestPinpointTemplateCRUD:
                 TemplateActiveVersionRequest={"Version": "1"},
             )
             assert "MessageBody" in resp
+            get_resp = pinpoint.get_email_template(TemplateName=name)
+            assert get_resp["EmailTemplateResponse"]["TemplateName"] == name
         finally:
             pinpoint.delete_email_template(TemplateName=name)
 
@@ -1159,6 +1182,8 @@ class TestPinpointEndpointCRUD:
             },
         )
         assert "MessageBody" in resp
+        get_resp = pinpoint.get_endpoint(ApplicationId=app_id, EndpointId="batch-ep-1")
+        assert get_resp["EndpointResponse"]["Address"] == "a@b.com"
 
     def test_delete_endpoint(self, pinpoint, app_id):
         # Create endpoint first
@@ -1183,6 +1208,7 @@ class TestPinpointEndpointCRUD:
         )
         resp = pinpoint.delete_user_endpoints(ApplicationId=app_id, UserId="test-user-123")
         assert "EndpointsResponse" in resp
+        assert isinstance(resp["EndpointsResponse"]["Item"], list)
 
 
 class TestPinpointJourneyCRUD:
@@ -1289,6 +1315,7 @@ class TestPinpointRecommenderCRUD:
             },
         )
         assert "RecommenderConfigurationResponse" in upd
+        assert upd["RecommenderConfigurationResponse"]["Id"] == rec_id
         pinpoint.delete_recommender_configuration(RecommenderId=rec_id)
 
     def test_delete_recommender_configuration(self, pinpoint):
@@ -1303,6 +1330,7 @@ class TestPinpointRecommenderCRUD:
         rec_id = resp["RecommenderConfigurationResponse"]["Id"]
         del_resp = pinpoint.delete_recommender_configuration(RecommenderId=rec_id)
         assert "RecommenderConfigurationResponse" in del_resp
+        assert del_resp["RecommenderConfigurationResponse"]["Id"] == rec_id
 
 
 class TestPinpointJobCRUD:
@@ -1356,6 +1384,7 @@ class TestPinpointMessaging:
         )
         assert "EventsResponse" in resp
         assert "Results" in resp["EventsResponse"]
+        assert isinstance(resp["EventsResponse"]["Results"], dict)
 
     def test_send_messages(self, pinpoint, app_id):
         resp = pinpoint.send_messages(
@@ -1382,6 +1411,7 @@ class TestPinpointMessaging:
     def test_phone_number_validate(self, pinpoint):
         resp = pinpoint.phone_number_validate(NumberValidateRequest={"PhoneNumber": "+12065551234"})
         assert "NumberValidateResponse" in resp
+        assert resp["NumberValidateResponse"]["OriginalPhoneNumber"] == "+12065551234"
 
     def test_remove_attributes(self, pinpoint, app_id):
         resp = pinpoint.remove_attributes(
@@ -1390,6 +1420,7 @@ class TestPinpointMessaging:
             UpdateAttributesRequest={"Blacklist": ["attr1"]},
         )
         assert "AttributesResource" in resp
+        assert resp["AttributesResource"]["ApplicationId"] == app_id
 
 
 class TestPinpointOTPGapOps:
