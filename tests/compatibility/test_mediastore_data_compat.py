@@ -71,3 +71,30 @@ class TestMediaStoreDataOperations:
         items = client.list_items()["Items"]
         names = [item["Name"] for item in items]
         assert "delete-test-obj" not in names
+
+    def test_describe_object(self, client):
+        """DescribeObject returns metadata headers for an existing object."""
+        client.put_object(
+            Body=b"describe-body",
+            Path="describe-test-obj",
+            ContentType="text/plain",
+        )
+        try:
+            resp = client.describe_object(Path="describe-test-obj")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "ETag" in resp
+            assert "ContentType" in resp
+            assert "ContentLength" in resp
+            assert "LastModified" in resp
+            assert resp["ContentLength"] == len(b"describe-body")
+        finally:
+            client.delete_object(Path="describe-test-obj")
+
+    def test_describe_object_not_found(self, client):
+        """DescribeObject raises ObjectNotFoundException for a nonexistent path."""
+        import pytest
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            client.describe_object(Path="nonexistent-path-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ObjectNotFoundException"
