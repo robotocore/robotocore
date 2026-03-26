@@ -66,6 +66,7 @@ class TestNetworkManagerGlobalNetworks:
         resp = nm.describe_global_networks(GlobalNetworkIds=[gn_id])
         gn = resp["GlobalNetworks"][0]
         assert "GlobalNetworkId" in gn
+        assert gn["GlobalNetworkId"] == gn_id
         assert "GlobalNetworkArn" in gn
         assert "State" in gn
 
@@ -95,6 +96,7 @@ class TestNetworkManagerSites:
         )
         site = resp["Site"]
         assert "SiteId" in site
+        assert site["GlobalNetworkId"] == gn_id
 
     def test_get_sites(self, nm, global_network):
         gn_id = global_network["GlobalNetworkId"]
@@ -1145,6 +1147,8 @@ class TestNetworkManagerTransitGatewayOps:
             DeviceId=dev["DeviceId"],
         )
         assert "TransitGatewayConnectPeerAssociation" in resp
+        assoc = resp["TransitGatewayConnectPeerAssociation"]
+        assert assoc["GlobalNetworkId"] == gn_id
 
     def test_deregister_transit_gateway_not_found(self, nm, global_network):
         """DeregisterTransitGateway with unregistered ARN returns NotFoundException."""
