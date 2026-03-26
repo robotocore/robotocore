@@ -1251,6 +1251,7 @@ class TestEMRMissingGapOps:
         """ListStudioSessionMappings returns session mappings list."""
         resp = emr.list_studio_session_mappings()
         assert "SessionMappings" in resp
+        assert isinstance(resp["SessionMappings"], list)
 
     def test_set_keep_job_flow_alive_when_no_steps(self, emr):
         """SetKeepJobFlowAliveWhenNoSteps returns 200 (no-op for fake cluster ID)."""
@@ -1276,6 +1277,7 @@ class TestEMRMissingGapOps:
         )
         assert "Credentials" in resp
         assert "ExpiresAt" in resp
+        assert isinstance(resp["Credentials"], dict)
 
 
 class TestEMRPersistentAppUI:

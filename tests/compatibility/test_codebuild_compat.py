@@ -667,7 +667,7 @@ class TestCodeBuildSourceCredentialOperations:
         )
         arn = imp["arn"]
         resp = codebuild.delete_source_credentials(arn=arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["arn"] == arn
 
 
 class TestCodeBuildWebhookOperations:
