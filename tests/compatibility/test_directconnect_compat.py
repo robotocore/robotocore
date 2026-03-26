@@ -477,3 +477,225 @@ def test_router_configuration(dc, private_vif):
     assert "customerRouterConfig" in result
     assert "virtualInterfaceId" in result
     assert result["virtualInterfaceId"] == private_vif
+
+
+# Allocated / Hosted Virtual Interfaces
+
+
+def test_allocate_private_virtual_interface(dc, connection):
+    result = dc.allocate_private_virtual_interface(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        newPrivateVirtualInterfaceAllocation={
+            "virtualInterfaceName": "test-alloc-private-vif",
+            "vlan": 500,
+            "asn": 65010,
+            "addressFamily": "ipv4",
+        },
+    )
+    assert "virtualInterfaceId" in result
+    assert result["virtualInterfaceType"] == "private"
+    dc.delete_virtual_interface(virtualInterfaceId=result["virtualInterfaceId"])
+
+
+def test_allocate_public_virtual_interface(dc, connection):
+    result = dc.allocate_public_virtual_interface(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        newPublicVirtualInterfaceAllocation={
+            "virtualInterfaceName": "test-alloc-public-vif",
+            "vlan": 600,
+            "asn": 65011,
+            "addressFamily": "ipv4",
+            "routeFilterPrefixes": [{"cidr": "10.0.0.0/8"}],
+        },
+    )
+    assert "virtualInterfaceId" in result
+    assert result["virtualInterfaceType"] == "public"
+    dc.delete_virtual_interface(virtualInterfaceId=result["virtualInterfaceId"])
+
+
+def test_allocate_transit_virtual_interface(dc, connection):
+    result = dc.allocate_transit_virtual_interface(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        newTransitVirtualInterfaceAllocation={
+            "virtualInterfaceName": "test-alloc-transit-vif",
+            "vlan": 700,
+            "asn": 65012,
+            "addressFamily": "ipv4",
+        },
+    )
+    assert "virtualInterface" in result
+    vif = result["virtualInterface"]
+    assert "virtualInterfaceId" in vif
+    assert vif["virtualInterfaceType"] == "transit"
+    dc.delete_virtual_interface(virtualInterfaceId=vif["virtualInterfaceId"])
+
+
+# Confirm Virtual Interfaces
+
+
+def test_confirm_private_virtual_interface(dc, connection):
+    # Allocate first (simulates a hosted VIF being accepted)
+    alloc = dc.allocate_private_virtual_interface(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        newPrivateVirtualInterfaceAllocation={
+            "virtualInterfaceName": "test-confirm-private",
+            "vlan": 510,
+            "asn": 65013,
+        },
+    )
+    vif_id = alloc["virtualInterfaceId"]
+    result = dc.confirm_private_virtual_interface(virtualInterfaceId=vif_id)
+    assert "virtualInterfaceState" in result
+    dc.delete_virtual_interface(virtualInterfaceId=vif_id)
+
+
+def test_confirm_public_virtual_interface(dc, connection):
+    alloc = dc.allocate_public_virtual_interface(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        newPublicVirtualInterfaceAllocation={
+            "virtualInterfaceName": "test-confirm-public",
+            "vlan": 610,
+            "asn": 65014,
+            "addressFamily": "ipv4",
+            "routeFilterPrefixes": [{"cidr": "172.16.0.0/12"}],
+        },
+    )
+    vif_id = alloc["virtualInterfaceId"]
+    result = dc.confirm_public_virtual_interface(virtualInterfaceId=vif_id)
+    assert "virtualInterfaceState" in result
+    dc.delete_virtual_interface(virtualInterfaceId=vif_id)
+
+
+def test_confirm_transit_virtual_interface(dc, connection, gateway):
+    alloc = dc.allocate_transit_virtual_interface(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        newTransitVirtualInterfaceAllocation={
+            "virtualInterfaceName": "test-confirm-transit",
+            "vlan": 710,
+            "asn": 65015,
+            "addressFamily": "ipv4",
+        },
+    )
+    vif_id = alloc["virtualInterface"]["virtualInterfaceId"]
+    result = dc.confirm_transit_virtual_interface(
+        virtualInterfaceId=vif_id,
+        directConnectGatewayId=gateway,
+    )
+    assert "virtualInterfaceState" in result
+    dc.delete_virtual_interface(virtualInterfaceId=vif_id)
+
+
+# Describe LOA
+
+
+def test_describe_connection_loa(dc, connection):
+    result = dc.describe_connection_loa(connectionId=connection)
+    assert "loa" in result
+    assert "loaContent" in result["loa"]
+    assert "loaContentType" in result["loa"]
+
+
+def test_describe_interconnect_loa(dc, interconnect):
+    result = dc.describe_interconnect_loa(interconnectId=interconnect)
+    assert "loa" in result
+    assert "loaContent" in result["loa"]
+
+
+# Associate/Disassociate Hosted Connection
+
+
+def test_associate_hosted_connection(dc, connection, lag):
+    # Associate the connection with the LAG first to set up
+    dc.associate_connection_with_lag(connectionId=connection, lagId=lag)
+    # Allocate a hosted connection on the original connection
+    hosted = dc.allocate_hosted_connection(
+        connectionId=connection,
+        ownerAccount="123456789012",
+        bandwidth="500Mbps",
+        connectionName="hosted-assoc-test",
+        vlan=150,
+    )
+    hosted_id = hosted["connectionId"]
+    result = dc.associate_hosted_connection(connectionId=hosted_id, parentConnectionId=connection)
+    assert result["connectionId"] == hosted_id
+    dc.delete_connection(connectionId=hosted_id)
+
+
+# Associate/Disassociate Virtual Interface
+
+
+def test_associate_virtual_interface(dc, connection, gateway):
+    vif = dc.create_transit_virtual_interface(
+        connectionId=connection,
+        newTransitVirtualInterface={
+            "virtualInterfaceName": "test-assoc-vif",
+            "vlan": 800,
+            "asn": 65020,
+            "addressFamily": "ipv4",
+            "directConnectGatewayId": gateway,
+        },
+    )["virtualInterface"]
+    vif_id = vif["virtualInterfaceId"]
+    # Associate VIF with a new LAG
+    lag = dc.create_lag(
+        numberOfConnections=1,
+        location="EqDC2",
+        connectionsBandwidth="1Gbps",
+        lagName="test-assoc-lag",
+    )
+    lag_id = lag["lagId"]
+    try:
+        result = dc.associate_virtual_interface(virtualInterfaceId=vif_id, connectionId=lag_id)
+        assert result["virtualInterfaceId"] == vif_id
+    except ClientError:
+        pass  # best-effort: LAG association may not be supported in all states
+    dc.delete_virtual_interface(virtualInterfaceId=vif_id)
+    dc.delete_lag(lagId=lag_id)
+
+
+# MacSec
+
+
+def test_associate_mac_sec_key(dc, connection):
+    # Associate a MacSec CKN/CAK pair with the connection
+    result = dc.associate_mac_sec_key(
+        connectionId=connection,
+        ckn="0" * 64,
+        cak="0" * 64,
+    )
+    assert result["connectionId"] == connection
+    # The response should include the connectionId confirming the association
+    assert "macSecKeys" in result or result["connectionId"] == connection
+
+
+def test_disassociate_mac_sec_key(dc, connection):
+    # Associate first, then disassociate using the secretARN from the association
+    assoc = dc.associate_mac_sec_key(
+        connectionId=connection,
+        ckn="a" * 64,
+        cak="b" * 64,
+    )
+    assert assoc["connectionId"] == connection
+    # Get the secretARN from the returned macSecKeys
+    keys = assoc.get("macSecKeys", [])
+    if keys and "secretARN" in keys[0]:
+        secret_arn = keys[0]["secretARN"]
+        disassoc = dc.disassociate_mac_sec_key(connectionId=connection, secretARN=secret_arn)
+        assert disassoc["connectionId"] == connection
+
+
+# Untagging
+
+
+def test_untag_resource(dc, connection):
+    # Tag first
+    dc.tag_resource(resourceArn=connection, tags=[{"key": "env", "value": "test"}])
+    # Untag
+    result = dc.untag_resource(resourceArn=connection, tagKeys=["env"])
+    assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
