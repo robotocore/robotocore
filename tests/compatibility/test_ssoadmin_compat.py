@@ -801,3 +801,169 @@ class TestSSOAdminStatusLists:
         resp = ssoadmin.list_permission_set_provisioning_status(InstanceArn=instance_arn)
         statuses = resp["PermissionSetsProvisioningStatus"]
         assert isinstance(statuses, list)
+
+
+class TestSSOAdminTrustedTokenIssuers:
+    def test_list_trusted_token_issuers(self, ssoadmin, instance_arn):
+        """ListTrustedTokenIssuers returns empty list (no issuers configured)."""
+        resp = ssoadmin.list_trusted_token_issuers(InstanceArn=instance_arn)
+        assert "TrustedTokenIssuers" in resp
+        assert isinstance(resp["TrustedTokenIssuers"], list)
+
+    def test_describe_application_provider(self, ssoadmin):
+        """DescribeApplicationProvider returns provider details."""
+        from botocore.exceptions import ClientError
+
+        # Get a real provider ARN first
+        providers = ssoadmin.list_application_providers()["ApplicationProviders"]
+        assert len(providers) >= 1
+        provider_arn = providers[0]["ApplicationProviderArn"]
+        resp = ssoadmin.describe_application_provider(ApplicationProviderArn=provider_arn)
+        assert resp["ApplicationProviderArn"] == provider_arn
+
+    def test_list_application_authentication_methods(self, ssoadmin, instance_arn):
+        """ListApplicationAuthenticationMethods returns empty list for new app."""
+        app = ssoadmin.create_application(
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            InstanceArn=instance_arn,
+            Name=_unique("app"),
+            Status="ENABLED",
+        )
+        app_arn = app["ApplicationArn"]
+        try:
+            resp = ssoadmin.list_application_authentication_methods(ApplicationArn=app_arn)
+            assert "AuthenticationMethods" in resp
+            assert isinstance(resp["AuthenticationMethods"], list)
+        finally:
+            ssoadmin.delete_application(ApplicationArn=app_arn)
+
+    def test_list_application_grants(self, ssoadmin, instance_arn):
+        """ListApplicationGrants returns empty list for new app."""
+        app = ssoadmin.create_application(
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            InstanceArn=instance_arn,
+            Name=_unique("app"),
+            Status="ENABLED",
+        )
+        app_arn = app["ApplicationArn"]
+        try:
+            resp = ssoadmin.list_application_grants(ApplicationArn=app_arn)
+            assert "Grants" in resp
+            assert isinstance(resp["Grants"], list)
+        finally:
+            ssoadmin.delete_application(ApplicationArn=app_arn)
+
+    def test_delete_application_authentication_method_not_found(self, ssoadmin, instance_arn):
+        """DeleteApplicationAuthenticationMethod returns error for non-existent app."""
+        from botocore.exceptions import ClientError
+
+        app = ssoadmin.create_application(
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            InstanceArn=instance_arn,
+            Name=_unique("app"),
+            Status="ENABLED",
+        )
+        app_arn = app["ApplicationArn"]
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ssoadmin.delete_application_authentication_method(
+                    ApplicationArn=app_arn,
+                    AuthenticationMethodType="IAM",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ssoadmin.delete_application(ApplicationArn=app_arn)
+
+    def test_delete_application_grant_not_found(self, ssoadmin, instance_arn):
+        """DeleteApplicationGrant returns error for non-existent grant."""
+        from botocore.exceptions import ClientError
+
+        app = ssoadmin.create_application(
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            InstanceArn=instance_arn,
+            Name=_unique("app"),
+            Status="ENABLED",
+        )
+        app_arn = app["ApplicationArn"]
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ssoadmin.delete_application_grant(
+                    ApplicationArn=app_arn,
+                    GrantType="authorization_code",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ssoadmin.delete_application(ApplicationArn=app_arn)
+
+    def test_get_application_authentication_method_not_found(self, ssoadmin, instance_arn):
+        """GetApplicationAuthenticationMethod returns error for non-existent method."""
+        from botocore.exceptions import ClientError
+
+        app = ssoadmin.create_application(
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            InstanceArn=instance_arn,
+            Name=_unique("app"),
+            Status="ENABLED",
+        )
+        app_arn = app["ApplicationArn"]
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ssoadmin.get_application_authentication_method(
+                    ApplicationArn=app_arn,
+                    AuthenticationMethodType="IAM",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ssoadmin.delete_application(ApplicationArn=app_arn)
+
+    def test_get_application_grant_not_found(self, ssoadmin, instance_arn):
+        """GetApplicationGrant returns error for non-existent grant."""
+        from botocore.exceptions import ClientError
+
+        app = ssoadmin.create_application(
+            ApplicationProviderArn="arn:aws:sso::aws:applicationProvider/custom",
+            InstanceArn=instance_arn,
+            Name=_unique("app"),
+            Status="ENABLED",
+        )
+        app_arn = app["ApplicationArn"]
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                ssoadmin.get_application_grant(
+                    ApplicationArn=app_arn,
+                    GrantType="authorization_code",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ssoadmin.delete_application(ApplicationArn=app_arn)
+
+    def test_delete_trusted_token_issuer_not_found(self, ssoadmin):
+        """DeleteTrustedTokenIssuer returns ResourceNotFoundException for unknown ARN."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            ssoadmin.delete_trusted_token_issuer(
+                TrustedTokenIssuerArn="arn:aws:sso::123456789012:trustedTokenIssuer/fake-issuer"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_trusted_token_issuer_not_found(self, ssoadmin):
+        """DescribeTrustedTokenIssuer returns ResourceNotFoundException for unknown ARN."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            ssoadmin.describe_trusted_token_issuer(
+                TrustedTokenIssuerArn="arn:aws:sso::123456789012:trustedTokenIssuer/fake-issuer"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_trusted_token_issuer_not_found(self, ssoadmin):
+        """UpdateTrustedTokenIssuer returns ResourceNotFoundException for unknown ARN."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            ssoadmin.update_trusted_token_issuer(
+                TrustedTokenIssuerArn="arn:aws:sso::123456789012:trustedTokenIssuer/fake-issuer",
+                Name="updated-name",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
