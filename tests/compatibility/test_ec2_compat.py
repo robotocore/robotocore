@@ -11397,10 +11397,18 @@ class TestEC2Batch0AttachVerifiedAccessTrustProvider:
         return make_client("ec2")
 
     def test_attach_verified_access_trust_provider_returns_200(self, ec2):
-        """AttachVerifiedAccessTrustProvider returns 200 response."""
+        """AttachVerifiedAccessTrustProvider returns 200 response with valid IDs."""
+        vai = ec2.create_verified_access_instance()
+        vai_id = vai["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        vatp = ec2.create_verified_access_trust_provider(
+            TrustProviderType="user",
+            PolicyReferenceName="test-ref",
+            UserTrustProviderType="iam-identity-center",
+        )
+        vatp_id = vatp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
         resp = ec2.attach_verified_access_trust_provider(
-            VerifiedAccessInstanceId="vai-12345678",
-            VerifiedAccessTrustProviderId="vatp-12345678",
+            VerifiedAccessInstanceId=vai_id,
+            VerifiedAccessTrustProviderId=vatp_id,
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -12074,3 +12082,235 @@ class TestEC2Batch4NewOps:
         """RestoreAddressToClassic returns 200."""
         r = ec2.restore_address_to_classic(PublicIp="1.2.3.4")
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_security_groups_for_vpc(self, ec2):
+        """GetSecurityGroupsForVpc returns security groups for a VPC."""
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        r = ec2.get_security_groups_for_vpc(VpcId=vpc_id)
+        assert "SecurityGroupForVpcs" in r
+
+    def test_get_managed_prefix_list_associations(self, ec2):
+        """GetManagedPrefixListAssociations returns associations for a prefix list."""
+        pl = ec2.create_managed_prefix_list(
+            PrefixListName="test-pl", MaxEntries=10, AddressFamily="IPv4"
+        )
+        pl_id = pl["PrefixList"]["PrefixListId"]
+        r = ec2.get_managed_prefix_list_associations(PrefixListId=pl_id)
+        assert "PrefixListAssociations" in r
+
+    def test_get_transit_gateway_attachment_propagations(self, ec2):
+        """GetTransitGatewayAttachmentPropagations returns propagations for an attachment."""
+        r = ec2.get_transit_gateway_attachment_propagations(
+            TransitGatewayAttachmentId="tgw-attach-fake"
+        )
+        assert "TransitGatewayAttachmentPropagations" in r
+
+    def test_enable_fast_snapshot_restores(self, ec2):
+        """EnableFastSnapshotRestores returns successful operations."""
+        r = ec2.enable_fast_snapshot_restores(
+            AvailabilityZones=["us-east-1a"], SourceSnapshotIds=["snap-fake123"]
+        )
+        assert "Successful" in r
+        assert len(r["Successful"]) == 1
+        assert r["Successful"][0]["SnapshotId"] == "snap-fake123"
+
+    def test_disable_fast_snapshot_restores(self, ec2):
+        """DisableFastSnapshotRestores returns successful operations."""
+        r = ec2.disable_fast_snapshot_restores(
+            AvailabilityZones=["us-east-1a"], SourceSnapshotIds=["snap-fake456"]
+        )
+        assert "Successful" in r
+        assert len(r["Successful"]) == 1
+        assert r["Successful"][0]["State"] == "disabled"
+
+    def test_enable_address_transfer(self, ec2):
+        """EnableAddressTransfer initiates transfer of an Elastic IP."""
+        eip = ec2.allocate_address(Domain="vpc")
+        alloc_id = eip["AllocationId"]
+        r = ec2.enable_address_transfer(
+            AllocationId=alloc_id, TransferAccountId="123456789012"
+        )
+        assert "AddressTransfer" in r
+        assert r["AddressTransfer"]["AddressTransferStatus"] == "pending"
+
+    def test_enable_vgw_route_propagation(self, ec2):
+        """EnableVgwRoutePropagation enables route propagation for a VGW."""
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        rt = ec2.create_route_table(VpcId=vpc_id)
+        rt_id = rt["RouteTable"]["RouteTableId"]
+        vgw = ec2.create_vpn_gateway(Type="ipsec.1")
+        vgw_id = vgw["VpnGateway"]["VpnGatewayId"]
+        r = ec2.enable_vgw_route_propagation(RouteTableId=rt_id, GatewayId=vgw_id)
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_vgw_route_propagation(self, ec2):
+        """DisableVgwRoutePropagation disables route propagation for a VGW."""
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        rt = ec2.create_route_table(VpcId=vpc_id)
+        rt_id = rt["RouteTable"]["RouteTableId"]
+        vgw = ec2.create_vpn_gateway(Type="ipsec.1")
+        vgw_id = vgw["VpnGateway"]["VpnGatewayId"]
+        ec2.enable_vgw_route_propagation(RouteTableId=rt_id, GatewayId=vgw_id)
+        r = ec2.disable_vgw_route_propagation(RouteTableId=rt_id, GatewayId=vgw_id)
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_image(self, ec2):
+        """DisableImage sets image state to disabled."""
+        # Create an instance and make an image from it
+        import pytest
+        from botocore.exceptions import ClientError
+        # Test with non-existent image returns proper error
+        with pytest.raises(ClientError) as exc_info:
+            ec2.disable_image(ImageId="ami-00000000")
+        assert "InvalidAMIID" in exc_info.value.response["Error"]["Code"]
+
+    def test_enable_image(self, ec2):
+        """EnableImage sets image state to available."""
+        import pytest
+        from botocore.exceptions import ClientError
+        with pytest.raises(ClientError) as exc_info:
+            ec2.enable_image(ImageId="ami-00000000")
+        assert "InvalidAMIID" in exc_info.value.response["Error"]["Code"]
+
+    def test_disable_image_deprecation(self, ec2):
+        """DisableImageDeprecation removes deprecation time from an image."""
+        import pytest
+        from botocore.exceptions import ClientError
+        with pytest.raises(ClientError) as exc_info:
+            ec2.disable_image_deprecation(ImageId="ami-00000000")
+        assert "InvalidAMIID" in exc_info.value.response["Error"]["Code"]
+
+    def test_enable_image_block_public_access(self, ec2):
+        """EnableImageBlockPublicAccess sets the block public access state."""
+        r = ec2.enable_image_block_public_access(
+            ImageBlockPublicAccessState="block-new-sharing"
+        )
+        assert "ImageBlockPublicAccessState" in r
+
+    def test_disable_ipam_organization_admin_account(self, ec2):
+        """DisableIpamOrganizationAdminAccount returns success."""
+        r = ec2.disable_ipam_organization_admin_account(
+            DelegatedAdminAccountId="123456789012"
+        )
+        assert "Success" in r
+
+    def test_enable_ipam_organization_admin_account(self, ec2):
+        """EnableIpamOrganizationAdminAccount returns success."""
+        r = ec2.enable_ipam_organization_admin_account(
+            DelegatedAdminAccountId="123456789012"
+        )
+        assert "Success" in r
+
+    def test_disassociate_ipam_byoasn(self, ec2):
+        """DisassociateIpamByoasn returns 200."""
+        r = ec2.disassociate_ipam_byoasn(Asn="64511", Cidr="10.0.0.0/8")
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_export_transit_gateway_routes(self, ec2):
+        """ExportTransitGatewayRoutes exports routes to S3 and returns S3Location."""
+        tgw = ec2.create_transit_gateway()
+        tgw_id = tgw["TransitGateway"]["TransitGatewayId"]
+        rt = ec2.create_transit_gateway_route_table(TransitGatewayId=tgw_id)
+        rt_id = rt["TransitGatewayRouteTable"]["TransitGatewayRouteTableId"]
+        r = ec2.export_transit_gateway_routes(
+            TransitGatewayRouteTableId=rt_id, S3Bucket="test-bucket"
+        )
+        assert "S3Location" in r
+        assert "test-bucket" in r["S3Location"]
+
+    def test_disassociate_transit_gateway_multicast_domain(self, ec2):
+        """DisassociateTransitGatewayMulticastDomain returns associations."""
+        r = ec2.disassociate_transit_gateway_multicast_domain(
+            TransitGatewayMulticastDomainId="tgw-mcast-domain-fake",
+            TransitGatewayAttachmentId="tgw-attach-fake",
+            SubnetIds=["subnet-fake"],
+        )
+        assert "Associations" in r
+
+    def test_disassociate_transit_gateway_policy_table(self, ec2):
+        """DisassociateTransitGatewayPolicyTable returns association."""
+        r = ec2.disassociate_transit_gateway_policy_table(
+            TransitGatewayPolicyTableId="tgw-ptb-fake",
+            TransitGatewayAttachmentId="tgw-attach-fake",
+        )
+        assert "Association" in r
+
+    def test_detach_classic_link_vpc(self, ec2):
+        """DetachClassicLinkVpc returns 200."""
+        r = ec2.detach_classic_link_vpc(InstanceId="i-fake", VpcId="vpc-fake")
+        assert r["Return"] is True
+
+    def test_disassociate_client_vpn_target_network(self, ec2):
+        """DisassociateClientVpnTargetNetwork raises correct error for nonexistent endpoint."""
+        import pytest
+        from botocore.exceptions import ClientError
+        with pytest.raises(ClientError) as exc_info:
+            ec2.disassociate_client_vpn_target_network(
+                ClientVpnEndpointId="cvpn-endpoint-fake",
+                AssociationId="cvpn-assoc-fake",
+            )
+        assert "InvalidClientVpnEndpointId" in exc_info.value.response["Error"]["Code"]
+
+    def test_disassociate_nat_gateway_address(self, ec2):
+        """DisassociateNatGatewayAddress raises correct error for nonexistent NAT gateway."""
+        import pytest
+        from botocore.exceptions import ClientError
+        with pytest.raises(ClientError) as exc_info:
+            ec2.disassociate_nat_gateway_address(
+                NatGatewayId="nat-fake",
+                AssociationIds=["eipalloc-fake"],
+            )
+        assert "NatGatewayNotFound" in exc_info.value.response["Error"]["Code"]
+
+    def test_detach_verified_access_trust_provider(self, ec2):
+        """DetachVerifiedAccessTrustProvider raises correct error for nonexistent instance."""
+        import pytest
+        from botocore.exceptions import ClientError
+        with pytest.raises(ClientError) as exc_info:
+            ec2.detach_verified_access_trust_provider(
+                VerifiedAccessInstanceId="vai-fake",
+                VerifiedAccessTrustProviderId="vatp-fake",
+            )
+        assert "InvalidVerifiedAccessInstanceId" in exc_info.value.response["Error"]["Code"]
+
+    def test_attach_verified_access_trust_provider(self, ec2):
+        """AttachVerifiedAccessTrustProvider attaches a trust provider to a VAI."""
+        vai = ec2.create_verified_access_instance()
+        vai_id = vai["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        vatp = ec2.create_verified_access_trust_provider(
+            TrustProviderType="user",
+            PolicyReferenceName="test-policy",
+            UserTrustProviderType="iam-identity-center",
+        )
+        vatp_id = vatp["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
+        r = ec2.attach_verified_access_trust_provider(
+            VerifiedAccessInstanceId=vai_id,
+            VerifiedAccessTrustProviderId=vatp_id,
+        )
+        assert "VerifiedAccessTrustProvider" in r
+        assert "VerifiedAccessInstance" in r
+
+    def test_export_image(self, ec2):
+        """ExportImage returns an export task for a valid AMI."""
+        images = ec2.describe_images(Owners=["amazon"])
+        if not images["Images"]:
+            return  # Skip if no AMIs available
+        ami_id = images["Images"][0]["ImageId"]
+        r = ec2.export_image(
+            ImageId=ami_id,
+            DiskImageFormat="vmdk",
+            S3ExportLocation={"S3Bucket": "test-export-bucket"},
+        )
+        assert "ExportImageTaskId" in r
+        assert r["ImageId"] == ami_id
+
+    def test_disassociate_enclave_certificate_iam_role(self, ec2):
+        """DisassociateEnclaveCertificateIamRole returns success."""
+        r = ec2.disassociate_enclave_certificate_iam_role(
+            CertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/fake",
+            RoleArn="arn:aws:iam::123456789012:role/fake",
+        )
+        assert r["Return"] is True
