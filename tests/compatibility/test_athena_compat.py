@@ -214,6 +214,7 @@ class TestAthenaPreparedStatementOperations:
         )
         assert "PreparedStatements" in resp
         assert "UnprocessedPreparedStatementNames" in resp
+        assert isinstance(resp["PreparedStatements"], list)
 
 
 class TestAthenaQueryLifecycle:
@@ -243,6 +244,7 @@ class TestAthenaQueryResultsOperations:
         qe_id = start_resp["QueryExecutionId"]
         resp = athena.get_query_results(QueryExecutionId=qe_id)
         assert "ResultSet" in resp
+        assert isinstance(resp["ResultSet"], dict)
 
     def test_get_query_runtime_statistics(self, athena):
         start_resp = athena.start_query_execution(
@@ -253,6 +255,7 @@ class TestAthenaQueryResultsOperations:
         qe_id = start_resp["QueryExecutionId"]
         resp = athena.get_query_runtime_statistics(QueryExecutionId=qe_id)
         assert "QueryRuntimeStatistics" in resp
+        assert isinstance(resp["QueryRuntimeStatistics"], dict)
 
 
 class TestAthenaTagOperations:
@@ -279,6 +282,7 @@ class TestAthenaListOperations:
     def test_list_capacity_reservations(self, athena):
         resp = athena.list_capacity_reservations()
         assert "CapacityReservations" in resp
+        assert isinstance(resp["CapacityReservations"], list)
 
 
 class TestAthenaWorkGroupAdvanced:
@@ -1063,6 +1067,7 @@ class TestAthenaNotebookOperations:
         resp = athena.create_presigned_notebook_url(SessionId=session_id)
         assert "NotebookUrl" in resp
         assert "AuthToken" in resp
+        assert isinstance(resp["NotebookUrl"], str)
 
     def test_delete_notebook(self, athena):
         """DeleteNotebook removes a notebook."""
@@ -1091,6 +1096,7 @@ class TestAthenaNotebookOperations:
             Type="IPYNB",
         )
         assert "NotebookId" in resp
+        assert isinstance(resp["NotebookId"], str)
 
     def test_update_notebook(self, athena):
         """UpdateNotebook modifies notebook content."""
@@ -1335,6 +1341,7 @@ class TestAthenaGetCapacityAssignmentConfig:
         )
         assert "CapacityAssignmentConfiguration" in resp
         assert "CapacityReservationName" in resp["CapacityAssignmentConfiguration"]
+        assert isinstance(resp["CapacityAssignmentConfiguration"], dict)
 
 
 class TestAthenaCreateCapacityReservation:
