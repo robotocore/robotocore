@@ -1093,3 +1093,33 @@ class TestTranscribeRemainingGapOps:
                 VocabularyFileUri="s3://test-bucket/vocab.txt",
             )
         assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_update_vocabulary_not_found(self, client):
+        """UpdateVocabulary raises BadRequestException for nonexistent vocabulary."""
+        from botocore.exceptions import ClientError  # noqa: PLC0415
+
+        with pytest.raises(ClientError) as exc:
+            client.update_vocabulary(
+                VocabularyName="nonexistent-vocab-xyz",
+                LanguageCode="en-US",
+                Phrases=["hello"],
+            )
+        assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_update_vocabulary_lifecycle(self, client):
+        """UpdateVocabulary updates an existing vocabulary and returns updated fields."""
+        vocab_name = "test-update-vocab-lifecycle"
+        client.create_vocabulary(
+            VocabularyName=vocab_name,
+            LanguageCode="en-US",
+            Phrases=["original"],
+        )
+        resp = client.update_vocabulary(
+            VocabularyName=vocab_name,
+            LanguageCode="en-US",
+            Phrases=["updated"],
+        )
+        assert resp["VocabularyName"] == vocab_name
+        assert resp["LanguageCode"] == "en-US"
+        assert "VocabularyState" in resp
+        client.delete_vocabulary(VocabularyName=vocab_name)
