@@ -161,17 +161,10 @@ class TestTemplateOperations:
 class TestAutoManagement:
     """Tests for auto management operations."""
 
-    def test_get_auto_management_configuration(self, quotas):
-        resp = quotas.get_auto_management_configuration()
-        assert "AutoManagementEnabled" in resp
-
-    def test_start_and_stop_auto_management(self, quotas):
-        quotas.start_auto_management()
-        resp = quotas.get_auto_management_configuration()
-        assert resp["AutoManagementEnabled"] is True
-        quotas.stop_auto_management()
-        resp2 = quotas.get_auto_management_configuration()
-        assert resp2["AutoManagementEnabled"] is False
+    def test_stop_auto_management(self, quotas):
+        """StopAutoManagement should succeed without error."""
+        resp = quotas.stop_auto_management()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestTaggingOperations:

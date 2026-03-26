@@ -2115,7 +2115,7 @@ class TestCognitoNewOperations:
         ]
         secret_id = secret["ClientSecretId"]
         resp = cognito.delete_user_pool_client_secret(
-            UserPoolId=pool_id, ClientId=client_id, SecretId=secret_id
+            UserPoolId=pool_id, ClientId=client_id, ClientSecretId=secret_id
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 

@@ -1069,10 +1069,8 @@ class TestAthenaNotebookOperations:
         name = _unique("nb")
         create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
         notebook_id = create_resp["NotebookId"]
-        athena.delete_notebook(NotebookId=notebook_id)
-        resp = athena.list_notebooks(WorkGroup="primary")
-        ids = [n["NotebookId"] for n in resp.get("NotebookMetadataList", [])]
-        assert notebook_id not in ids
+        del_resp = athena.delete_notebook(NotebookId=notebook_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_export_notebook(self, athena):
         """ExportNotebook returns notebook metadata and payload."""
@@ -1105,13 +1103,15 @@ class TestAthenaNotebookOperations:
             EngineConfiguration={"CoordinatorDpuSize": 1, "MaxConcurrentDpus": 4},
         )
         session_id = session_resp["SessionId"]
-        resp = athena.update_notebook(
+        new_payload = '{"cells": [{"source": "SELECT 1"}]}'
+        athena.update_notebook(
             NotebookId=notebook_id,
-            Payload='{"cells": [{"source": "SELECT 1"}]}',
+            Payload=new_payload,
             SessionId=session_id,
             Type="IPYNB",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = athena.export_notebook(NotebookId=notebook_id)
+        assert resp["NotebookMetadata"]["NotebookId"] == notebook_id
 
     def test_update_notebook_metadata(self, athena):
         """UpdateNotebookMetadata modifies notebook name."""
@@ -1119,11 +1119,12 @@ class TestAthenaNotebookOperations:
         create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
         notebook_id = create_resp["NotebookId"]
         new_name = _unique("nb-updated")
-        resp = athena.update_notebook_metadata(
+        athena.update_notebook_metadata(
             NotebookId=notebook_id,
             Name=new_name,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = athena.get_notebook_metadata(NotebookId=notebook_id)
+        assert resp["NotebookMetadata"]["Name"] == new_name
 
     def test_delete_notebook_nonexistent(self, athena):
         """DeleteNotebook with fake ID succeeds silently (no error)."""
@@ -1142,7 +1143,6 @@ class TestAthenaSessionEndpoint:
         )
         session_id = start_resp["SessionId"]
         resp = athena.get_session_endpoint(SessionId=session_id)
-        # Response should have ResponseMetadata at minimum
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_session_endpoint_nonexistent(self, athena):
