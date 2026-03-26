@@ -1544,19 +1544,16 @@ class TestStepFunctionsAliasGapOps:
         sfn.delete_state_machine(stateMachineArn=sm_arn)
 
 
-class TestStepFunctionsTestStateGapOp:
-    """Test TestState — uses sync- host prefix and returns 501."""
+class TestStepFunctionsTestState:
+    """Tests for TestState — executes a state machine definition without persisting state."""
 
     @pytest.fixture
-    def client(self):
-        return make_client("stepfunctions")
-
-    def test_test_state_not_implemented(self, client):
+    def sfn(self):
+        """Create a client with inject_host_prefix=False to bypass the sync- host prefix."""
         import boto3
         from botocore.config import Config
-        from botocore.exceptions import ClientError
 
-        no_prefix_client = boto3.client(
+        return boto3.client(
             "stepfunctions",
             endpoint_url="http://localhost:4566",
             region_name="us-east-1",
@@ -1564,10 +1561,39 @@ class TestStepFunctionsTestStateGapOp:
             aws_secret_access_key="test",
             config=Config(inject_host_prefix=False),
         )
-        with pytest.raises(ClientError) as exc:
-            no_prefix_client.test_state(definition='{"Comment": "Test"}')
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "InvalidDefinition",
-            "StateMachineDoesNotExist",
+
+    def test_test_state_pass_succeeds(self, sfn):
+        """TestState with a Pass state returns SUCCEEDED and the output."""
+        resp = sfn.test_state(
+            definition='{"StartAt":"Pass","States":{"Pass":{"Type":"Pass","Result":{"x":42},"End":true}}}',
+            input="{}",
+            roleArn="arn:aws:iam::123456789012:role/test-role",
         )
+        assert resp["status"] == "SUCCEEDED"
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        output = json.loads(resp["output"])
+        assert output == {"x": 42}
+
+    def test_test_state_fail_returns_failed_status(self, sfn):
+        """TestState with a Fail state returns FAILED with error and cause."""
+        fail_state = {"Type": "Fail", "Error": "MyError", "Cause": "test cause"}
+        fail_def = json.dumps({"StartAt": "Fail", "States": {"Fail": fail_state}})
+        resp = sfn.test_state(
+            definition=fail_def,
+            input="{}",
+            roleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert resp["status"] == "FAILED"
+        assert resp["error"] == "MyError"
+        assert resp["cause"] == "test cause"
+
+    def test_test_state_input_passthrough(self, sfn):
+        """TestState with a Pass state passes input through when no Result is set."""
+        resp = sfn.test_state(
+            definition='{"StartAt":"Pass","States":{"Pass":{"Type":"Pass","End":true}}}',
+            input='{"key": "value"}',
+            roleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert resp["status"] == "SUCCEEDED"
+        output = json.loads(resp["output"])
+        assert output == {"key": "value"}

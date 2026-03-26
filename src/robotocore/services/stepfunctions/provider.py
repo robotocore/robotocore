@@ -623,6 +623,73 @@ def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
 _versions: dict[str, list[dict]] = {}
 
 
+def _test_state(params: dict, region: str, account_id: str) -> dict:
+    """TestState — test a single state or a full state machine definition.
+
+    Executes the definition synchronously and returns the result status,
+    output, and optional inspection data without creating a persistent
+    execution record.
+    """
+    definition_str = params.get("definition", "{}")
+    input_str = params.get("input", "{}")
+    state_name = params.get("stateName")  # Optional: start from a specific state
+
+    try:
+        definition = json.loads(definition_str)
+    except json.JSONDecodeError as exc:
+        raise SfnError(
+            "InvalidDefinition",
+            f"Invalid state machine definition: {exc}",
+        )
+
+    # If a specific state name is requested, build a minimal definition
+    # that just runs that one state.
+    if state_name:
+        states = definition.get("States", {})
+        if state_name not in states:
+            raise SfnError(
+                "InvalidDefinition",
+                f"State '{state_name}' not found in definition",
+            )
+        # Run only the single requested state by making it the StartAt
+        test_definition = {
+            "StartAt": state_name,
+            "States": {state_name: states[state_name]},
+        }
+    else:
+        test_definition = definition
+
+    input_data = json.loads(input_str) if isinstance(input_str, str) else input_str
+
+    exec_arn = f"arn:aws:states:{region}:{account_id}:execution:_test_state:{uuid.uuid4()}"
+
+    try:
+        executor = ASLExecutor(
+            test_definition,
+            region,
+            account_id,
+            execution_arn=exec_arn,
+        )
+        output = executor.execute(input_data)
+        return {
+            "status": "SUCCEEDED",
+            "output": json.dumps(output) if output is not None else "{}",
+        }
+    except ASLExecutionError as e:
+        return {
+            "status": "FAILED",
+            "error": e.error,
+            "cause": e.cause,
+        }
+    except Exception as e:
+        logger.debug("_test_state unexpected error: %s", e)
+        return {
+            "status": "FAILED",
+            "error": type(e).__name__,
+            "cause": str(e),
+        }
+
+
 def _validate_state_machine_definition(params: dict, region: str, account_id: str) -> dict:
     """ValidateStateMachineDefinition — validate ASL JSON."""
     definition = params.get("definition", "")
@@ -876,6 +943,7 @@ _ACTION_MAP = {
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tags_for_resource,
     "DescribeStateMachineForExecution": _describe_state_machine_for_execution,
+    "TestState": _test_state,
     "ValidateStateMachineDefinition": _validate_state_machine_definition,
     "PublishStateMachineVersion": _publish_state_machine_version,
     "ListStateMachineVersions": _list_state_machine_versions,
