@@ -488,6 +488,7 @@ class TestEFSAccountPreferences:
     def test_describe_account_preferences(self, efs):
         resp = efs.describe_account_preferences()
         assert "ResourceIdPreference" in resp
+        assert "ResourceIdType" in resp["ResourceIdPreference"]
 
 
 class TestEFSNewOperations:
@@ -542,6 +543,7 @@ class TestEFSReplicationConfigurations:
     def test_describe_replication_configurations(self, efs):
         resp = efs.describe_replication_configurations()
         assert "Replications" in resp
+        assert isinstance(resp["Replications"], list)
 
 
 class TestEFSDescribeTags:
