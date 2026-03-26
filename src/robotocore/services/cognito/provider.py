@@ -2087,15 +2087,23 @@ def _add_user_pool_client_secret(
                 "ResourceNotFoundException", f"Client {client_id} does not exist.", 404
             )
         secret_id = _new_id().replace("-", "")[:32]
+        now = time.time()
         secret = {
+            "ClientSecretId": secret_id,
+            "ClientSecretValue": _new_id(),
+            "ClientSecretCreateDate": now,
+            # Internal fields for management
             "SecretId": secret_id,
-            "ClientSecret": _new_id(),
-            "CreationDate": time.time(),
-            "LastModifiedDate": time.time(),
             "Status": "ACTIVE",
         }
         client.setdefault("ClientSecrets", []).append(secret)
-    return {"ClientSecretDescriptor": secret}
+    return {
+        "ClientSecretDescriptor": {
+            "ClientSecretId": secret["ClientSecretId"],
+            "ClientSecretValue": secret["ClientSecretValue"],
+            "ClientSecretCreateDate": secret["ClientSecretCreateDate"],
+        }
+    }
 
 
 def _delete_user_pool_client_secret(

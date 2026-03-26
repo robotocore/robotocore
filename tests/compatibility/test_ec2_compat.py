@@ -11168,3 +11168,544 @@ class TestEC2GapDescribeSpotFleetRequestHistory:
         )
         assert "HistoryRecords" in resp
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AcceptAddressTransfer:
+    """Tests for AcceptAddressTransfer operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_accept_address_transfer_returns_200(self, ec2):
+        """AcceptAddressTransfer returns 200 response."""
+        resp = ec2.accept_address_transfer(Address="1.2.3.4")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AcceptCapacityReservationBillingOwnership:
+    """Tests for AcceptCapacityReservationBillingOwnership operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_accept_capacity_reservation_billing_ownership_returns_200(self, ec2):
+        """AcceptCapacityReservationBillingOwnership returns 200 response."""
+        resp = ec2.accept_capacity_reservation_billing_ownership(
+            CapacityReservationId="cr-12345678"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AcceptReservedInstancesExchangeQuote:
+    """Tests for AcceptReservedInstancesExchangeQuote operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_accept_reserved_instances_exchange_quote_returns_200(self, ec2):
+        """AcceptReservedInstancesExchangeQuote returns 200 response."""
+        resp = ec2.accept_reserved_instances_exchange_quote(
+            ReservedInstanceIds=["ri-12345678"],
+            TargetConfigurations=[{"OfferingId": "o-12345678"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AcceptTransitGatewayVpcAttachment:
+    """Tests for AcceptTransitGatewayVpcAttachment operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_accept_transit_gateway_vpc_attachment_returns_200(self, ec2):
+        """AcceptTransitGatewayVpcAttachment returns 200 response."""
+        resp = ec2.accept_transit_gateway_vpc_attachment(
+            TransitGatewayAttachmentId="tgw-attach-12345678"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AdvertiseByoipCidr:
+    """Tests for AdvertiseByoipCidr operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_advertise_byoip_cidr_returns_200(self, ec2):
+        """AdvertiseByoipCidr returns 200 response."""
+        resp = ec2.advertise_byoip_cidr(Cidr="1.2.3.0/24")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ByoipCidr" in resp
+
+
+class TestEC2Batch0ApplySecurityGroupsToClientVpn:
+    """Tests for ApplySecurityGroupsToClientVpnTargetNetwork operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_apply_security_groups_to_client_vpn_returns_200(self, ec2):
+        """ApplySecurityGroupsToClientVpnTargetNetwork returns 200."""
+        resp = ec2.apply_security_groups_to_client_vpn_target_network(
+            ClientVpnEndpointId="cvpn-endpoint-12345678",
+            VpcId="vpc-12345678",
+            SecurityGroupIds=["sg-12345678"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AssignPrivateNatGatewayAddress:
+    """Tests for AssignPrivateNatGatewayAddress operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_assign_private_nat_gateway_address_returns_200(self, ec2):
+        """AssignPrivateNatGatewayAddress returns 200 response."""
+        resp = ec2.assign_private_nat_gateway_address(NatGatewayId="nat-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AssociateClientVpnTargetNetwork:
+    """Tests for AssociateClientVpnTargetNetwork operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_client_vpn_target_network_returns_200(self, ec2):
+        """AssociateClientVpnTargetNetwork returns 200 response."""
+        resp = ec2.associate_client_vpn_target_network(
+            ClientVpnEndpointId="cvpn-endpoint-12345678",
+            SubnetId="subnet-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AssociationId" in resp
+
+
+class TestEC2Batch0AssociateEnclaveCertificateIamRole:
+    """Tests for AssociateEnclaveCertificateIamRole operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_enclave_certificate_iam_role_returns_200(self, ec2):
+        """AssociateEnclaveCertificateIamRole returns 200 response."""
+        resp = ec2.associate_enclave_certificate_iam_role(
+            CertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/12345678",
+            RoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AssociateIpamResourceDiscovery:
+    """Tests for AssociateIpamResourceDiscovery operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_ipam_resource_discovery_returns_200(self, ec2):
+        """AssociateIpamResourceDiscovery returns 200 response."""
+        resp = ec2.associate_ipam_resource_discovery(
+            IpamId="ipam-12345678",
+            IpamResourceDiscoveryId="ipam-res-disc-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AssociateNatGatewayAddress:
+    """Tests for AssociateNatGatewayAddress operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_nat_gateway_address_returns_200(self, ec2):
+        """AssociateNatGatewayAddress returns 200 response."""
+        resp = ec2.associate_nat_gateway_address(
+            NatGatewayId="nat-12345678",
+            AllocationIds=["eipalloc-12345678"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AssociateTransitGatewayMulticastDomain:
+    """Tests for AssociateTransitGatewayMulticastDomain operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_transit_gateway_multicast_domain_returns_200(self, ec2):
+        """AssociateTransitGatewayMulticastDomain returns 200."""
+        resp = ec2.associate_transit_gateway_multicast_domain(
+            TransitGatewayMulticastDomainId="tgw-mcast-domain-12345678",
+            TransitGatewayAttachmentId="tgw-attach-12345678",
+            SubnetIds=["subnet-12345678"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AssociateTransitGatewayPolicyTable:
+    """Tests for AssociateTransitGatewayPolicyTable operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_associate_transit_gateway_policy_table_returns_200(self, ec2):
+        """AssociateTransitGatewayPolicyTable returns 200 response."""
+        resp = ec2.associate_transit_gateway_policy_table(
+            TransitGatewayPolicyTableId="tgw-policy-tbl-12345678",
+            TransitGatewayAttachmentId="tgw-attach-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Association" in resp
+
+
+class TestEC2Batch0AttachClassicLinkVpc:
+    """Tests for AttachClassicLinkVpc operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_attach_classic_link_vpc_returns_200(self, ec2):
+        """AttachClassicLinkVpc returns 200 response."""
+        resp = ec2.attach_classic_link_vpc(
+            InstanceId="i-12345678",
+            VpcId="vpc-12345678",
+            Groups=["sg-12345678"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0AttachVerifiedAccessTrustProvider:
+    """Tests for AttachVerifiedAccessTrustProvider operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_attach_verified_access_trust_provider_returns_200(self, ec2):
+        """AttachVerifiedAccessTrustProvider returns 200 response."""
+        resp = ec2.attach_verified_access_trust_provider(
+            VerifiedAccessInstanceId="vai-12345678",
+            VerifiedAccessTrustProviderId="vatp-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0BundleInstance:
+    """Tests for BundleInstance operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_bundle_instance_returns_200(self, ec2):
+        """BundleInstance returns 200 response."""
+        resp = ec2.bundle_instance(
+            InstanceId="i-12345678",
+            Storage={
+                "S3": {
+                    "AWSAccessKeyId": "test",
+                    "Bucket": "test-bucket",
+                    "Prefix": "test/",
+                }
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "BundleTask" in resp
+
+
+class TestEC2Batch0CancelBundleTask:
+    """Tests for CancelBundleTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_cancel_bundle_task_returns_200(self, ec2):
+        """CancelBundleTask returns 200 response."""
+        resp = ec2.cancel_bundle_task(BundleId="bun-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "BundleTask" in resp
+
+
+class TestEC2Batch0CancelConversionTask:
+    """Tests for CancelConversionTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_cancel_conversion_task_returns_200(self, ec2):
+        """CancelConversionTask returns 200 response."""
+        resp = ec2.cancel_conversion_task(ConversionTaskId="conv-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0CancelExportTask:
+    """Tests for CancelExportTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_cancel_export_task_returns_200(self, ec2):
+        """CancelExportTask returns 200 response."""
+        resp = ec2.cancel_export_task(ExportTaskId="export-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0CancelImageLaunchPermission:
+    """Tests for CancelImageLaunchPermission operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_cancel_image_launch_permission_returns_200(self, ec2):
+        """CancelImageLaunchPermission returns 200 response."""
+        resp = ec2.cancel_image_launch_permission(ImageId="ami-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0CancelReservedInstancesListing:
+    """Tests for CancelReservedInstancesListing operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_cancel_reserved_instances_listing_returns_200(self, ec2):
+        """CancelReservedInstancesListing returns 200 response."""
+        resp = ec2.cancel_reserved_instances_listing(ReservedInstancesListingId="ril-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReservedInstancesListings" in resp
+
+
+class TestEC2Batch0CopyFpgaImage:
+    """Tests for CopyFpgaImage operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_copy_fpga_image_returns_200(self, ec2):
+        """CopyFpgaImage returns 200 response with FpgaImageId."""
+        resp = ec2.copy_fpga_image(
+            SourceFpgaImageId="afi-12345678",
+            SourceRegion="us-east-1",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "FpgaImageId" in resp
+
+
+class TestEC2Batch0CreateCapacityReservationBySplitting:
+    """Tests for CreateCapacityReservationBySplitting operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_capacity_reservation_by_splitting_returns_200(self, ec2):
+        """CreateCapacityReservationBySplitting returns 200 response."""
+        resp = ec2.create_capacity_reservation_by_splitting(
+            SourceCapacityReservationId="cr-12345678",
+            InstanceCount=1,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2Batch0CreateClientVpnRoute:
+    """Tests for CreateClientVpnRoute operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_client_vpn_route_returns_200(self, ec2):
+        """CreateClientVpnRoute returns 200 response with status."""
+        resp = ec2.create_client_vpn_route(
+            ClientVpnEndpointId="cvpn-endpoint-12345678",
+            DestinationCidrBlock="0.0.0.0/0",
+            TargetVpcSubnetId="subnet-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Status" in resp
+
+
+class TestEC2Batch0CreateFpgaImage:
+    """Tests for CreateFpgaImage operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_fpga_image_returns_200(self, ec2):
+        """CreateFpgaImage returns 200 response with image IDs."""
+        resp = ec2.create_fpga_image(
+            InputStorageLocation={"Bucket": "test-bucket", "Key": "test-key"}
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "FpgaImageId" in resp
+
+
+class TestEC2Batch0CreateInstanceExportTask:
+    """Tests for CreateInstanceExportTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_instance_export_task_returns_200(self, ec2):
+        """CreateInstanceExportTask returns 200 response with export task."""
+        resp = ec2.create_instance_export_task(
+            InstanceId="i-12345678",
+            TargetEnvironment="vmware",
+            ExportToS3Task={"S3Bucket": "test-bucket"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ExportTask" in resp
+
+
+class TestEC2Batch0CreateIpamExternalResourceVerificationToken:
+    """Tests for CreateIpamExternalResourceVerificationToken operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_ipam_external_resource_verification_token_returns_200(self, ec2):
+        """CreateIpamExternalResourceVerificationToken returns 200."""
+        resp = ec2.create_ipam_external_resource_verification_token(IpamId="ipam-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "IpamExternalResourceVerificationToken" in resp
+
+
+class TestEC2Batch0CreateLocalGatewayRouteTableVifGroupAssociation:
+    """Tests for CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_local_gateway_route_table_vif_group_assoc_returns_200(self, ec2):
+        """CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation returns 200."""
+        resp = ec2.create_local_gateway_route_table_virtual_interface_group_association(
+            LocalGatewayRouteTableId="lgw-rtb-12345678",
+            LocalGatewayVirtualInterfaceGroupId="lgw-vif-grp-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "LocalGatewayRouteTableVirtualInterfaceGroupAssociation" in resp
+
+
+class TestEC2Batch0CreateLocalGatewayRouteTableVpcAssociation:
+    """Tests for CreateLocalGatewayRouteTableVpcAssociation operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_local_gateway_route_table_vpc_association_returns_200(self, ec2):
+        """CreateLocalGatewayRouteTableVpcAssociation returns 200 response."""
+        resp = ec2.create_local_gateway_route_table_vpc_association(
+            LocalGatewayRouteTableId="lgw-rtb-12345678",
+            VpcId="vpc-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "LocalGatewayRouteTableVpcAssociation" in resp
+
+
+class TestEC2Batch0CreateNetworkInterfacePermission:
+    """Tests for CreateNetworkInterfacePermission operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_network_interface_permission_returns_200(self, ec2):
+        """CreateNetworkInterfacePermission returns 200 response."""
+        resp = ec2.create_network_interface_permission(
+            NetworkInterfaceId="eni-12345678",
+            Permission="INSTANCE-ATTACH",
+            AwsAccountId="123456789012",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InterfacePermission" in resp
+
+
+class TestEC2Batch0CreateReservedInstancesListing:
+    """Tests for CreateReservedInstancesListing operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_reserved_instances_listing_returns_200(self, ec2):
+        """CreateReservedInstancesListing returns 200 response."""
+        resp = ec2.create_reserved_instances_listing(
+            ReservedInstancesId="ri-12345678",
+            InstanceCount=1,
+            PriceSchedules=[],
+            ClientToken="test-token-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ReservedInstancesListings" in resp
+
+
+class TestEC2Batch0CreateRestoreImageTask:
+    """Tests for CreateRestoreImageTask operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_restore_image_task_returns_200(self, ec2):
+        """CreateRestoreImageTask returns 200 response with image ID."""
+        resp = ec2.create_restore_image_task(
+            ObjectKey="test-key",
+            Bucket="test-bucket",
+            Name="restored-image",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ImageId" in resp
+
+
+class TestEC2Batch0CreateTransitGatewayMulticastDomain:
+    """Tests for CreateTransitGatewayMulticastDomain operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_transit_gateway_multicast_domain_returns_200(self, ec2):
+        """CreateTransitGatewayMulticastDomain returns 200 response."""
+        resp = ec2.create_transit_gateway_multicast_domain(TransitGatewayId="tgw-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TransitGatewayMulticastDomain" in resp
+
+
+class TestEC2Batch0CreateTransitGatewayPolicyTable:
+    """Tests for CreateTransitGatewayPolicyTable operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_transit_gateway_policy_table_returns_200(self, ec2):
+        """CreateTransitGatewayPolicyTable returns 200 response."""
+        resp = ec2.create_transit_gateway_policy_table(TransitGatewayId="tgw-12345678")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TransitGatewayPolicyTable" in resp

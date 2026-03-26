@@ -1069,8 +1069,10 @@ class TestAthenaNotebookOperations:
         name = _unique("nb")
         create_resp = athena.create_notebook(WorkGroup="primary", Name=name)
         notebook_id = create_resp["NotebookId"]
-        del_resp = athena.delete_notebook(NotebookId=notebook_id)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        athena.delete_notebook(NotebookId=notebook_id)
+        resp = athena.list_notebooks(WorkGroup="primary")
+        ids = [n["NotebookId"] for n in resp.get("NotebookMetadataList", [])]
+        assert notebook_id not in ids
 
     def test_export_notebook(self, athena):
         """ExportNotebook returns notebook metadata and payload."""

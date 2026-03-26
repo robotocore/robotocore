@@ -404,7 +404,8 @@ def test_describe_virtual_gateways(dc):
 
 def test_describe_customer_metadata(dc):
     result = dc.describe_customer_metadata()
-    assert "customerMetadata" in result
+    assert "agreements" in result
+    assert "nniPartnerType" in result
 
 
 def test_confirm_customer_agreement(dc):
@@ -421,7 +422,7 @@ def test_describe_tags(dc, connection):
 
 def test_list_virtual_interface_test_history(dc):
     result = dc.list_virtual_interface_test_history()
-    assert "virtualInterfaceTests" in result
+    assert "virtualInterfaceTestHistory" in result
 
 
 def test_describe_loa(dc):

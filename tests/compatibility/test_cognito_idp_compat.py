@@ -2097,7 +2097,7 @@ class TestCognitoNewOperations:
         pool_id, client_id, _token = pool_and_client
         resp = cognito.add_user_pool_client_secret(UserPoolId=pool_id, ClientId=client_id)
         assert "ClientSecretDescriptor" in resp
-        assert "SecretId" in resp["ClientSecretDescriptor"]
+        assert "ClientSecretId" in resp["ClientSecretDescriptor"]
 
     def test_list_user_pool_client_secrets(self, cognito, pool_and_client):
         """ListUserPoolClientSecrets returns added secrets."""
@@ -2113,7 +2113,7 @@ class TestCognitoNewOperations:
         secret = cognito.add_user_pool_client_secret(UserPoolId=pool_id, ClientId=client_id)[
             "ClientSecretDescriptor"
         ]
-        secret_id = secret["SecretId"]
+        secret_id = secret["ClientSecretId"]
         resp = cognito.delete_user_pool_client_secret(
             UserPoolId=pool_id, ClientId=client_id, SecretId=secret_id
         )
