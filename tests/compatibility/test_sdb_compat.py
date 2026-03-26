@@ -1,7 +1,7 @@
 """Compatibility tests for Amazon SimpleDB (sdb)."""
 
-import pytest
 import boto3
+import pytest
 
 
 @pytest.fixture

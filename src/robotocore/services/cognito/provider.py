@@ -2376,4 +2376,65 @@ _ACTION_MAP: dict[str, Callable] = {
     "DescribeUserPoolDomain": _describe_user_pool_domain,
     "UpdateUserPoolDomain": _update_user_pool_domain,
     "DeleteUserPoolDomain": _delete_user_pool_domain,
+    # User self-service
+    "DeleteUser": _delete_user,
+    "DeleteUserAttributes": _delete_user_attributes,
+    "ResendConfirmationCode": _resend_confirmation_code,
+    "RevokeToken": _revoke_token,
+    "GetUserAttributeVerificationCode": _get_user_attribute_verification_code,
+    "VerifyUserAttribute": _verify_user_attribute,
+    "SetUserSettings": _set_user_settings,
+    "AdminSetUserSettings": _admin_set_user_settings,
+    "GetUserAuthFactors": _get_user_auth_factors,
+    # Identity provider
+    "AdminDisableProviderForUser": _admin_disable_provider_for_user,
+    "AdminLinkProviderForUser": _admin_link_provider_for_user,
+    "GetIdentityProviderByIdentifier": _get_identity_provider_by_identifier,
+    # Signing/UI/logging
+    "GetSigningCertificate": _get_signing_certificate,
+    "GetLogDeliveryConfiguration": _get_log_delivery_configuration,
+    "SetLogDeliveryConfiguration": _set_log_delivery_configuration,
+    "GetUICustomization": _get_ui_customization,
+    "SetUICustomization": _set_ui_customization,
+    # Risk configuration
+    "DescribeRiskConfiguration": _describe_risk_configuration,
+    "SetRiskConfiguration": _set_risk_configuration,
+    # Tokens
+    "GetTokensFromRefreshToken": _get_tokens_from_refresh_token,
+    # Auth events
+    "AdminListUserAuthEvents": _admin_list_user_auth_events,
+    "AdminUpdateAuthEventFeedback": _admin_update_auth_event_feedback,
+    "UpdateAuthEventFeedback": _update_auth_event_feedback,
+    # Devices
+    "ConfirmDevice": _confirm_device,
+    "ForgetDevice": _forget_device,
+    "GetDevice": _get_device,
+    "ListDevices": _list_devices,
+    "UpdateDeviceStatus": _update_device_status,
+    "AdminForgetDevice": _admin_forget_device,
+    "AdminGetDevice": _admin_get_device,
+    "AdminListDevices": _admin_list_devices,
+    "AdminUpdateDeviceStatus": _admin_update_device_status,
+    # User import jobs
+    "CreateUserImportJob": _create_user_import_job,
+    "DescribeUserImportJob": _describe_user_import_job,
+    "ListUserImportJobs": _list_user_import_jobs,
+    "StartUserImportJob": _start_user_import_job,
+    "StopUserImportJob": _stop_user_import_job,
+    "GetCSVHeader": _get_csv_header,
+    # Client secrets
+    "AddUserPoolClientSecret": _add_user_pool_client_secret,
+    "DeleteUserPoolClientSecret": _delete_user_pool_client_secret,
+    "ListUserPoolClientSecrets": _list_user_pool_client_secrets,
+    # Managed login branding
+    "CreateManagedLoginBranding": _create_managed_login_branding,
+    "DeleteManagedLoginBranding": _delete_managed_login_branding,
+    "DescribeManagedLoginBranding": _describe_managed_login_branding,
+    "DescribeManagedLoginBrandingByClient": _describe_managed_login_branding_by_client,
+    "UpdateManagedLoginBranding": _update_managed_login_branding,
+    # WebAuthn
+    "StartWebAuthnRegistration": _start_web_authn_registration,
+    "CompleteWebAuthnRegistration": _complete_web_authn_registration,
+    "DeleteWebAuthnCredential": _delete_web_authn_credential,
+    "ListWebAuthnCredentials": _list_web_authn_credentials,
 }

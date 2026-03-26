@@ -1954,3 +1954,127 @@ class TestMediaLiveMultiplexAlerts:
         with pytest.raises(ClientError) as exc:
             medialive.list_multiplex_alerts(MultiplexId=_uid("mpx"))
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestMediaLiveInputDeviceClaim:
+    """Tests for InputDevice operations using claim_device to register."""
+
+    def _claim(self, medialive, device_id=None):
+        did = device_id or _uid("dev")
+        medialive.claim_device(Id=did)
+        return did
+
+    def test_claim_and_describe_input_device(self, medialive):
+        """ClaimDevice registers the device; DescribeInputDevice returns it."""
+        did = self._claim(medialive)
+        resp = medialive.describe_input_device(InputDeviceId=did)
+        assert resp["Id"] == did
+        assert "ConnectionState" in resp
+
+    def test_update_input_device_name(self, medialive):
+        """UpdateInputDevice updates the device name."""
+        did = self._claim(medialive)
+        new_name = _uid("devname")
+        resp = medialive.update_input_device(InputDeviceId=did, Name=new_name)
+        assert resp["Name"] == new_name
+
+    def test_start_input_device(self, medialive):
+        """StartInputDevice returns 200 for a registered device."""
+        did = self._claim(medialive)
+        resp = medialive.start_input_device(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_stop_input_device(self, medialive):
+        """StopInputDevice returns 200 for a registered device."""
+        did = self._claim(medialive)
+        resp = medialive.stop_input_device(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_reboot_input_device(self, medialive):
+        """RebootInputDevice returns 200 for a registered device."""
+        did = self._claim(medialive)
+        resp = medialive.reboot_input_device(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_input_device_maintenance_window(self, medialive):
+        """StartInputDeviceMaintenanceWindow returns 200 for a registered device."""
+        did = self._claim(medialive)
+        resp = medialive.start_input_device_maintenance_window(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_transfer_and_accept_input_device(self, medialive):
+        """TransferInputDevice followed by AcceptInputDeviceTransfer."""
+        did = self._claim(medialive)
+        resp = medialive.transfer_input_device(InputDeviceId=did, TargetCustomerId="999999999999")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = medialive.accept_input_device_transfer(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_transfer_and_reject_input_device(self, medialive):
+        """TransferInputDevice followed by RejectInputDeviceTransfer."""
+        did = self._claim(medialive)
+        medialive.transfer_input_device(InputDeviceId=did, TargetCustomerId="999999999999")
+        resp = medialive.reject_input_device_transfer(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_transfer_and_cancel_input_device(self, medialive):
+        """TransferInputDevice followed by CancelInputDeviceTransfer."""
+        did = self._claim(medialive)
+        medialive.transfer_input_device(InputDeviceId=did, TargetCustomerId="999999999999")
+        resp = medialive.cancel_input_device_transfer(InputDeviceId=did)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_input_devices_includes_claimed(self, medialive):
+        """list_input_devices includes a claimed device."""
+        did = self._claim(medialive)
+        all_ids = [d["Id"] for d in medialive.list_input_devices()["InputDevices"]]
+        assert did in all_ids
+
+
+class TestMediaLiveReservationOperationsNew:
+    """Tests for Reservation/Offering CRUD operations (fully implemented)."""
+
+    def test_list_offerings_returns_list(self, medialive):
+        """ListOfferings returns an Offerings list."""
+        resp = medialive.list_offerings()
+        assert "Offerings" in resp
+        assert isinstance(resp["Offerings"], list)
+
+    def test_describe_offering_not_found(self, medialive):
+        """DescribeOffering raises NotFoundException for nonexistent ID."""
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_offering(OfferingId="nonexistent-offering-id-xyz")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_purchase_offering_not_found(self, medialive):
+        """PurchaseOffering raises NotFoundException for nonexistent offering."""
+        with pytest.raises(ClientError) as exc:
+            medialive.purchase_offering(OfferingId="nonexistent-offering-id-xyz", Count=1)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_list_reservations_returns_list(self, medialive):
+        """ListReservations returns a Reservations list."""
+        resp = medialive.list_reservations()
+        assert "Reservations" in resp
+        assert isinstance(resp["Reservations"], list)
+
+    def test_describe_reservation_not_found(self, medialive):
+        """DescribeReservation raises NotFoundException for nonexistent ID."""
+        with pytest.raises(ClientError) as exc:
+            medialive.describe_reservation(ReservationId="nonexistent-reservation-id-xyz")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_reservation_not_found(self, medialive):
+        """DeleteReservation raises NotFoundException for nonexistent ID."""
+        with pytest.raises(ClientError) as exc:
+            medialive.delete_reservation(ReservationId="nonexistent-reservation-id-xyz")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_update_reservation_not_found(self, medialive):
+        """UpdateReservation raises NotFoundException for nonexistent ID."""
+        with pytest.raises(ClientError) as exc:
+            medialive.update_reservation(
+                ReservationId="nonexistent-reservation-id-xyz",
+                Name="new-name",
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"

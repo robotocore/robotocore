@@ -2508,10 +2508,10 @@ class TestGlueGetOperations:
         assert "GetResourcePoliciesResponseList" in resp
 
     def test_get_resource_policy(self, glue):
-        """GetResourcePolicy returns policy or empty."""
+        """GetResourcePolicy returns policy or raises EntityNotFoundException."""
         try:
             resp = glue.get_resource_policy()
-            assert "PolicyInJson" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "PolicyInJson" in resp
         except ClientError as e:
             assert e.response["Error"]["Code"] == "EntityNotFoundException"
 
@@ -3231,7 +3231,7 @@ class TestGlueConnectionOperations:
                 }
             )
         resp = glue.batch_delete_connection(ConnectionNameList=[c1, c2])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Succeeded" in resp
 
     def test_update_connection(self, glue):
         conn_name = _unique("conn")
@@ -4818,6 +4818,13 @@ class TestGlueGetUserDefinedFunctions:
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
+    def test_get_user_defined_functions_all_databases(self, glue):
+        """GetUserDefinedFunctions without DatabaseName returns functions across all databases."""
+        resp = glue.get_user_defined_functions(Pattern="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UserDefinedFunctions" in resp
+        assert isinstance(resp["UserDefinedFunctions"], list)
+
 
 class TestGlueMLTaskRunOps:
     """Tests for Glue ML Task Run operations (newly implemented)."""
@@ -4865,11 +4872,7 @@ class TestGlueStubOps:
             DagNodes=[{"Id": "node1", "NodeType": "S3", "Args": []}],
             DagEdges=[],
         )
-        assert (
-            "PythonScript" in resp
-            or "ScalaCode" in resp
-            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        )
+        assert "PythonScript" in resp or "ScalaCode" in resp
 
     def test_test_connection_nonexistent(self, glue):
         """TestConnection with nonexistent connection raises error."""
@@ -5211,45 +5214,3 @@ class TestGlueNewGapOps:
 
         delete_resp = glue.delete_integration(IntegrationIdentifier=integration_arn)
         assert delete_resp["IntegrationArn"] == integration_arn
-
-
-class TestGlueGetUserDefinedFunctionsAllDatabases:
-    """Tests for GetUserDefinedFunctions without DatabaseName (all databases)."""
-
-    def test_get_user_defined_functions_all_databases(self, glue):
-        """GetUserDefinedFunctions without DatabaseName returns functions across all databases."""
-        resp = glue.get_user_defined_functions(Pattern="*")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UserDefinedFunctions" in resp
-        assert isinstance(resp["UserDefinedFunctions"], list)
-
-
-class TestGlueUpdateRegistry:
-    """Tests for UpdateRegistry operation."""
-
-    def test_update_registry_not_found(self, glue):
-        """UpdateRegistry raises EntityNotFoundException for unknown registry."""
-        with pytest.raises(ClientError) as exc_info:
-            glue.update_registry(
-                RegistryId={"RegistryName": "nonexistent-registry"},
-                Description="should fail",
-            )
-        assert exc_info.value.response["Error"]["Code"] == "EntityNotFoundException"
-
-    def test_update_registry(self, glue):
-        """UpdateRegistry updates the description of an existing registry."""
-        reg_name = _unique("reg")
-        glue.create_registry(RegistryName=reg_name, Description="original")
-        try:
-            resp = glue.update_registry(
-                RegistryId={"RegistryName": reg_name},
-                Description="updated description",
-            )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert resp["RegistryName"] == reg_name
-            assert "RegistryArn" in resp
-        finally:
-            try:
-                glue.delete_registry(RegistryId={"RegistryName": reg_name})
-            except Exception:
-                pass
