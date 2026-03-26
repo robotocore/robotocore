@@ -189,3 +189,25 @@ class TestUntagResource:
             assert tags_resp["tags"].get("ToKeep") == "yes"
         finally:
             influxdb.delete_db_instance(identifier=instance_id)
+
+
+class TestListDbClusters:
+    """Tests for ListDbClusters operation."""
+
+    def test_list_db_clusters(self, influxdb):
+        """ListDbClusters returns items list."""
+        resp = influxdb.list_db_clusters()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestListDbInstances:
+    """Tests for ListDbInstances operation."""
+
+    def test_list_db_instances(self, influxdb):
+        """ListDbInstances returns items list."""
+        resp = influxdb.list_db_instances()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

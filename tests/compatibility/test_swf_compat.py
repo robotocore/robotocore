@@ -932,3 +932,71 @@ class TestSWFRespondActivityTaskCanceled:
                 domain=domain, workflowType={"name": "cancel-wf", "version": "1.0"}
             )
             swf.deprecate_domain(name=domain)
+
+
+class TestPollForActivityTask:
+    """Tests for PollForActivityTask operation."""
+
+    @pytest.fixture
+    def swf(self):
+        return make_client("swf")
+
+    def test_poll_for_activity_task(self, swf):
+        """PollForActivityTask returns taskToken (empty if no task) and startedEventId."""
+        uid = _uid()
+        domain = f"poll-act-domain-{uid}"
+        task_list = f"poll-act-list-{uid}"
+        swf.register_domain(name=domain, workflowExecutionRetentionPeriodInDays="30")
+        try:
+            swf.register_workflow_type(
+                domain=domain,
+                name="poll-act-wf",
+                version="1.0",
+                defaultExecutionStartToCloseTimeout="3600",
+                defaultTaskStartToCloseTimeout="300",
+                defaultTaskList={"name": task_list},
+                defaultChildPolicy="TERMINATE",
+            )
+            swf.register_activity_type(
+                domain=domain,
+                name="poll-act-activity",
+                version="1.0",
+                defaultTaskStartToCloseTimeout="300",
+                defaultTaskHeartbeatTimeout="60",
+                defaultTaskList={"name": task_list},
+                defaultTaskScheduleToStartTimeout="300",
+                defaultTaskScheduleToCloseTimeout="600",
+            )
+            swf.start_workflow_execution(
+                domain=domain,
+                workflowId=f"wf-{uid}",
+                workflowType={"name": "poll-act-wf", "version": "1.0"},
+                taskList={"name": task_list},
+            )
+            decision = swf.poll_for_decision_task(domain=domain, taskList={"name": task_list})
+            decision_token = decision["taskToken"]
+            swf.respond_decision_task_completed(
+                taskToken=decision_token,
+                decisions=[
+                    {
+                        "decisionType": "ScheduleActivityTask",
+                        "scheduleActivityTaskDecisionAttributes": {
+                            "activityType": {"name": "poll-act-activity", "version": "1.0"},
+                            "activityId": f"activity-{uid}",
+                            "taskList": {"name": task_list},
+                        },
+                    }
+                ],
+            )
+            resp = swf.poll_for_activity_task(domain=domain, taskList={"name": task_list})
+            assert "startedEventId" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            swf.terminate_workflow_execution(domain=domain, workflowId=f"wf-{uid}")
+            swf.deprecate_activity_type(
+                domain=domain, activityType={"name": "poll-act-activity", "version": "1.0"}
+            )
+            swf.deprecate_workflow_type(
+                domain=domain, workflowType={"name": "poll-act-wf", "version": "1.0"}
+            )
+            swf.deprecate_domain(name=domain)

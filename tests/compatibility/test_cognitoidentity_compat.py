@@ -97,3 +97,26 @@ class TestCognitoIdentityOperations:
             assert resp["IdentityId"].startswith("us-east-1:")
         finally:
             cognito_identity.delete_identity_pool(IdentityPoolId=pool_id)
+
+
+class TestUpdateIdentityPool:
+    """Tests for UpdateIdentityPool operation."""
+
+    @pytest.fixture
+    def cognito_identity(self):
+        return make_client("cognito-identity")
+
+    def test_update_identity_pool(self, cognito_identity):
+        """UpdateIdentityPool returns pool response with IdentityPoolId."""
+        pool_id = _create_pool(cognito_identity, suffix="-update")
+        try:
+            resp = cognito_identity.update_identity_pool(
+                IdentityPoolId=pool_id,
+                IdentityPoolName="updated-pool-name",
+                AllowUnauthenticatedIdentities=False,
+            )
+            assert "IdentityPoolId" in resp
+            assert resp["IdentityPoolId"] == pool_id
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito_identity.delete_identity_pool(IdentityPoolId=pool_id)

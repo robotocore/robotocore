@@ -595,3 +595,26 @@ class TestForecastDeleteOps:
                 )
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestCreateWhatIfForecastExport:
+    """Tests for CreateWhatIfForecastExport operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("forecast")
+
+    def test_create_what_if_forecast_export(self, client):
+        """CreateWhatIfForecastExport returns a WhatIfForecastExportArn."""
+        resp = client.create_what_if_forecast_export(
+            WhatIfForecastExportName="test-export",
+            WhatIfForecastArns=["arn:aws:forecast:us-east-1:123456789012:whatIfForecast/test"],
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/prefix",
+                    "RoleArn": "arn:aws:iam::123456789012:role/forecast-role",
+                }
+            },
+        )
+        assert "WhatIfForecastExportArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

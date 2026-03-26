@@ -319,3 +319,27 @@ class TestConnectCampaignsNewStubs:
         )
         assert "successfulRequests" in result
         assert "failedRequests" in result
+
+
+class TestCreateCampaign:
+    """Tests for CreateCampaign operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("connectcampaigns")
+
+    def test_create_campaign(self, client):
+        """CreateCampaign returns campaign id, arn, and tags."""
+        resp = client.create_campaign(
+            name="test-create-campaign",
+            connectInstanceId="12345678-1234-1234-1234-123456789012",
+            dialerConfig={"predictiveDialerConfig": {"bandwidthAllocation": 1.0}},
+            outboundCallConfig={
+                "connectContactFlowId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            },
+        )
+        assert "id" in resp
+        assert "arn" in resp
+        assert "tags" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_campaign(id=resp["id"])
