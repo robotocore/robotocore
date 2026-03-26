@@ -2490,7 +2490,7 @@ class TestBackupMPAAndRestoreAccessOps:
             RecoveryPointArn="arn:aws:backup:us-east-1:123456789012:recovery-point:test-rp",
             Index="ENABLED",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RecoveryPointArn" in resp
 
     def test_create_backup_selection_fake_plan_raises(self, backup):
         """CreateBackupSelection with fake plan ID raises ResourceNotFoundException."""
