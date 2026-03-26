@@ -247,6 +247,7 @@ class TestAPIGatewayOperations:
         names = [m["name"] for m in models["items"]]
         assert "ListModel1" in names
         assert "ListModel2" in names
+        assert len(names) >= 2
 
     def test_delete_model(self, apigw, rest_api):
         """Create and then delete a model."""
@@ -313,6 +314,7 @@ class TestAPIGatewayOperations:
         )
         deployment = apigw.create_deployment(restApiId=rest_api)
         assert "id" in deployment
+        assert len(deployment["id"]) > 0
 
     def test_get_deployments(self, apigw, rest_api):
         """Create deployments and list them."""
@@ -383,6 +385,7 @@ class TestAPIGatewayOperations:
         stage_names = [s["stageName"] for s in stages["item"]]
         assert "dev" in stage_names
         assert "staging" in stage_names
+        assert len(stage_names) >= 2
 
     def test_update_stage(self, apigw, rest_api):
         """Update a stage's description via patch operations."""
@@ -465,6 +468,7 @@ class TestAPIGatewayOperations:
         responses = apigw.get_gateway_responses(restApiId=rest_api)
         types = [r["responseType"] for r in responses["items"]]
         assert "UNAUTHORIZED" in types
+        assert len(types) >= 1
 
     def test_create_request_validator(self, apigw, rest_api):
         """Create a request validator and list validators."""
@@ -495,6 +499,7 @@ class TestAPIGatewayOperations:
         names = [v["name"] for v in validators["items"]]
         assert "validator-1" in names
         assert "validator-2" in names
+        assert len(names) >= 2
 
     def test_get_resource(self, apigw, rest_api):
         """GetResource for a created child resource."""
@@ -599,6 +604,7 @@ class TestAPIGatewayOperations:
             domains = apigw.get_domain_names()
             names = [d["domainName"] for d in domains["items"]]
             assert "api.example.com" in names
+            assert len(names) >= 1
         except Exception:
             raise
         finally:
@@ -664,7 +670,8 @@ class TestAPIGatewayOperations:
         dep = apigw.create_deployment(restApiId=rest_api)
         apigw.create_stage(restApiId=rest_api, stageName="cache", deploymentId=dep["id"])
         apigw.flush_stage_authorizers_cache(restApiId=rest_api, stageName="cache")
-        apigw.flush_stage_cache(restApiId=rest_api, stageName="cache")
+        flush_resp = apigw.flush_stage_cache(restApiId=rest_api, stageName="cache")
+        assert flush_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
 
     def test_get_export(self, apigw, rest_api):
         """GetExport for swagger/oas30."""
@@ -691,6 +698,7 @@ class TestAPIGatewayOperations:
             accepts="application/json",
         )
         assert "body" in resp
+        assert resp["body"] is not None
 
 
 class TestAPIGatewayExtended:
@@ -832,6 +840,7 @@ class TestAPIGatewayExtended:
     def test_get_api_keys(self, apigw):
         resp = apigw.get_api_keys()
         assert "items" in resp
+        assert isinstance(resp["items"], list)
 
     def test_create_usage_plan(self, apigw):
         import uuid
@@ -855,6 +864,7 @@ class TestAPIGatewayExtended:
     def test_get_usage_plans(self, apigw):
         resp = apigw.get_usage_plans()
         assert "items" in resp
+        assert isinstance(resp["items"], list)
 
     def test_create_model(self, apigw, rest_api):
         import json
@@ -979,6 +989,7 @@ class TestApigatewayAutoCoverage:
         """GetVpcLinks returns a response."""
         resp = client.get_vpc_links()
         assert "items" in resp
+        assert isinstance(resp["items"], list)
 
     def test_get_authorizer(self, client, api, authorizer):
         """GetAuthorizer retrieves authorizer by ID."""
@@ -1059,6 +1070,7 @@ class TestApigatewayAutoCoverage:
         assert "items" in resp
         paths = [m["basePath"] for m in resp["items"]]
         assert "v3" in paths
+        assert len(paths) >= 1
 
     def test_update_base_path_mapping(self, client, api, domain):
         """UpdateBasePathMapping modifies a mapping."""
@@ -1814,6 +1826,7 @@ class TestAPIGatewayDocumentationVersions:
         assert "items" in resp
         versions = [v["version"] for v in resp["items"]]
         assert "2.0" in versions
+        assert len(versions) >= 1
 
 
 class TestAPIGatewayClientCertificates:
