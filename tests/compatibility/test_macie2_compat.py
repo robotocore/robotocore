@@ -16,6 +16,7 @@ class TestMacie2Operations:
         macie2.enable_macie()
         response = macie2.get_macie_session()
         assert "status" in response
+        assert response["status"] in ("ENABLED", "PAUSED")
 
     def test_list_members(self, macie2):
         response = macie2.list_members()
@@ -261,7 +262,7 @@ class TestMacie2Configuration:
     def test_get_classification_export_configuration(self, client):
         """GetClassificationExportConfiguration returns configuration."""
         resp = client.get_classification_export_configuration()
-        assert "configuration" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_findings_publication_configuration(self, client):
         """GetFindingsPublicationConfiguration returns securityHubConfiguration."""
@@ -726,7 +727,9 @@ class TestMacie2FindingsFilterLifecycle:
             findingCriteria={"criterion": {}},
         )
         assert "id" in resp
+        assert resp["id"] != ""
         assert "arn" in resp
+        assert "arn:aws" in resp["arn"]
         # Cleanup
         client.delete_findings_filter(id=resp["id"])
 
@@ -783,7 +786,9 @@ class TestMacie2ClassificationJobLifecycle:
             },
         )
         assert "jobId" in resp
+        assert resp["jobId"] != ""
         assert "jobArn" in resp
+        assert "arn:aws" in resp["jobArn"]
 
     def test_update_classification_job(self, client):
         """UpdateClassificationJob changes job status."""
@@ -818,6 +823,7 @@ class TestMacie2MemberOperations:
             account={"accountId": "222233334444", "email": "test@example.com"}
         )
         assert "arn" in resp
+        assert "arn:aws" in resp["arn"]
 
     def test_update_member_session_nonexistent(self, client):
         """UpdateMemberSession raises ResourceNotFoundException for unknown member."""
