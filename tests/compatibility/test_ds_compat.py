@@ -1421,6 +1421,35 @@ class TestDsADAssessment:
             ds.describe_ad_assessment(AssessmentId="a-0000000000abcdef")
         assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
 
+    def test_start_describe_delete_ad_assessment(self, ds, msad_directory):
+        """StartADAssessment returns an ID, DescribeADAssessment returns it, DeleteADAssessment removes it."""
+        # Start an assessment
+        start_resp = ds.start_ad_assessment(DirectoryId=msad_directory)
+        assert "AssessmentId" in start_resp
+        assessment_id = start_resp["AssessmentId"]
+        assert assessment_id
+
+        # Describe the assessment — should return it
+        desc_resp = ds.describe_ad_assessment(AssessmentId=assessment_id)
+        assert "Assessment" in desc_resp
+        assert desc_resp["Assessment"]["AssessmentId"] == assessment_id
+        assert desc_resp["Assessment"]["DirectoryId"] == msad_directory
+
+        # List assessments — should include it
+        list_resp = ds.list_ad_assessments(DirectoryId=msad_directory)
+        assert "Assessments" in list_resp
+        ids = [a["AssessmentId"] for a in list_resp["Assessments"]]
+        assert assessment_id in ids
+
+        # Delete the assessment
+        del_resp = ds.delete_ad_assessment(AssessmentId=assessment_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Describe after delete should raise not found
+        with pytest.raises(ClientError) as exc:
+            ds.describe_ad_assessment(AssessmentId=assessment_id)
+        assert exc.value.response["Error"]["Code"] == "EntityDoesNotExistException"
+
 
 class TestDsRegions:
     """Test DescribeRegions operation."""
