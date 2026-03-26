@@ -499,6 +499,7 @@ class TestWAFv2RegexPatternSetOperations:
             LockToken=get_resp["LockToken"],
         )
         assert "NextLockToken" in update_resp
+        assert isinstance(update_resp["NextLockToken"], str)
 
         # Verify update
         get_resp2 = wafv2.get_regex_pattern_set(Name=name, Scope="REGIONAL", Id=summary["Id"])
@@ -1408,6 +1409,7 @@ class TestWAFv2AdditionalOps:
         assert "MobileSdkRelease" in resp
         release = resp["MobileSdkRelease"]
         assert "ReleaseVersion" in release
+        assert release["ReleaseVersion"] == "1.0.0"
         assert "Timestamp" in release
 
     def test_list_managed_rule_sets(self, wafv2):
@@ -1426,6 +1428,7 @@ class TestWAFv2AdditionalOps:
         assert "ManagedRuleSet" in resp
         rule_set = resp["ManagedRuleSet"]
         assert "Name" in rule_set
+        assert rule_set["Name"] == "test-rule-set"
         assert "Id" in rule_set
         assert "ARN" in rule_set
         assert "LockToken" in resp
@@ -1506,6 +1509,7 @@ class TestWAFv2AdditionalOps:
             )
             assert "ManagedKeysIPV4" in keys_resp
             assert "ManagedKeysIPV6" in keys_resp
+            assert isinstance(keys_resp["ManagedKeysIPV4"], dict)
         finally:
             get_resp = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
             wafv2.delete_web_acl(
@@ -1603,6 +1607,7 @@ class TestWAFv2AdditionalOps:
                 WebACLLockToken=get_resp["LockToken"],
             )
             assert "NextWebACLLockToken" in fm_resp
+            assert isinstance(fm_resp["NextWebACLLockToken"], str)
         finally:
             get_resp2 = wafv2.get_web_acl(Name=name, Scope="REGIONAL", Id=summary["Id"])
             wafv2.delete_web_acl(

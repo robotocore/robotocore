@@ -1700,13 +1700,17 @@ class TestSESv2PutAccountVdmAttributes:
 
     def test_put_account_vdm_attributes_enabled(self, sesv2):
         """PutAccountVdmAttributes enables VDM."""
-        resp = sesv2.put_account_vdm_attributes(VdmAttributes={"VdmEnabled": "ENABLED"})
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.put_account_vdm_attributes(VdmAttributes={"VdmEnabled": "ENABLED"})
+        # Verify via GetAccount
+        account = sesv2.get_account()
+        assert "VdmAttributes" in account
 
     def test_put_account_vdm_attributes_disabled(self, sesv2):
         """PutAccountVdmAttributes disables VDM."""
-        resp = sesv2.put_account_vdm_attributes(VdmAttributes={"VdmEnabled": "DISABLED"})
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.put_account_vdm_attributes(VdmAttributes={"VdmEnabled": "DISABLED"})
+        # Verify via GetAccount
+        account = sesv2.get_account()
+        assert "VdmAttributes" in account
 
 
 class TestSESv2PutConfigurationSetSuppressionOptions:
