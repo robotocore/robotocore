@@ -12128,9 +12128,7 @@ class TestEC2Batch4NewOps:
         """EnableAddressTransfer initiates transfer of an Elastic IP."""
         eip = ec2.allocate_address(Domain="vpc")
         alloc_id = eip["AllocationId"]
-        r = ec2.enable_address_transfer(
-            AllocationId=alloc_id, TransferAccountId="123456789012"
-        )
+        r = ec2.enable_address_transfer(AllocationId=alloc_id, TransferAccountId="123456789012")
         assert "AddressTransfer" in r
         assert r["AddressTransfer"]["AddressTransferStatus"] == "pending"
 
@@ -12162,6 +12160,7 @@ class TestEC2Batch4NewOps:
         # Create an instance and make an image from it
         import pytest
         from botocore.exceptions import ClientError
+
         # Test with non-existent image returns proper error
         with pytest.raises(ClientError) as exc_info:
             ec2.disable_image(ImageId="ami-00000000")
@@ -12171,6 +12170,7 @@ class TestEC2Batch4NewOps:
         """EnableImage sets image state to available."""
         import pytest
         from botocore.exceptions import ClientError
+
         with pytest.raises(ClientError) as exc_info:
             ec2.enable_image(ImageId="ami-00000000")
         assert "InvalidAMIID" in exc_info.value.response["Error"]["Code"]
@@ -12179,29 +12179,24 @@ class TestEC2Batch4NewOps:
         """DisableImageDeprecation removes deprecation time from an image."""
         import pytest
         from botocore.exceptions import ClientError
+
         with pytest.raises(ClientError) as exc_info:
             ec2.disable_image_deprecation(ImageId="ami-00000000")
         assert "InvalidAMIID" in exc_info.value.response["Error"]["Code"]
 
     def test_enable_image_block_public_access(self, ec2):
         """EnableImageBlockPublicAccess sets the block public access state."""
-        r = ec2.enable_image_block_public_access(
-            ImageBlockPublicAccessState="block-new-sharing"
-        )
+        r = ec2.enable_image_block_public_access(ImageBlockPublicAccessState="block-new-sharing")
         assert "ImageBlockPublicAccessState" in r
 
     def test_disable_ipam_organization_admin_account(self, ec2):
         """DisableIpamOrganizationAdminAccount returns success."""
-        r = ec2.disable_ipam_organization_admin_account(
-            DelegatedAdminAccountId="123456789012"
-        )
+        r = ec2.disable_ipam_organization_admin_account(DelegatedAdminAccountId="123456789012")
         assert "Success" in r
 
     def test_enable_ipam_organization_admin_account(self, ec2):
         """EnableIpamOrganizationAdminAccount returns success."""
-        r = ec2.enable_ipam_organization_admin_account(
-            DelegatedAdminAccountId="123456789012"
-        )
+        r = ec2.enable_ipam_organization_admin_account(DelegatedAdminAccountId="123456789012")
         assert "Success" in r
 
     def test_disassociate_ipam_byoasn(self, ec2):
@@ -12247,6 +12242,7 @@ class TestEC2Batch4NewOps:
         """DisassociateClientVpnTargetNetwork raises correct error for nonexistent endpoint."""
         import pytest
         from botocore.exceptions import ClientError
+
         with pytest.raises(ClientError) as exc_info:
             ec2.disassociate_client_vpn_target_network(
                 ClientVpnEndpointId="cvpn-endpoint-fake",
@@ -12258,6 +12254,7 @@ class TestEC2Batch4NewOps:
         """DisassociateNatGatewayAddress raises correct error for nonexistent NAT gateway."""
         import pytest
         from botocore.exceptions import ClientError
+
         with pytest.raises(ClientError) as exc_info:
             ec2.disassociate_nat_gateway_address(
                 NatGatewayId="nat-fake",
@@ -12269,6 +12266,7 @@ class TestEC2Batch4NewOps:
         """DetachVerifiedAccessTrustProvider raises correct error for nonexistent instance."""
         import pytest
         from botocore.exceptions import ClientError
+
         with pytest.raises(ClientError) as exc_info:
             ec2.detach_verified_access_trust_provider(
                 VerifiedAccessInstanceId="vai-fake",
