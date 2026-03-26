@@ -171,17 +171,22 @@ class TestAccountNewOps:
         """GetGovCloudAccountInformation returns a response."""
         resp = account.get_gov_cloud_account_information()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "AccountState" in resp or resp["GovCloudAccountId"] is not None or True
+        assert isinstance(resp["AccountState"], str)
 
     def test_enable_region(self, account):
         """EnableRegion enables a region."""
         resp = account.enable_region(RegionName="ap-southeast-1")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify region is now enabled
+        regions = account.list_regions(RegionOptStatusContains=["ENABLED", "ENABLING"])
+        region_names = [r["RegionName"] for r in regions["Regions"]]
+        assert "ap-southeast-1" in region_names
 
     def test_disable_region(self, account):
         """DisableRegion disables a region."""
         resp = account.disable_region(RegionName="ap-southeast-2")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
 
 class TestAccountMissingGapOps:

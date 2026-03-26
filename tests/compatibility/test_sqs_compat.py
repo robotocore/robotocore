@@ -302,6 +302,10 @@ class TestSQSPermissions:
         # Verify the policy was added
         attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["Policy"])
         assert "Policy" in attrs["Attributes"]
+        import json as _json  # noqa: PLC0415
+
+        policy = _json.loads(attrs["Attributes"]["Policy"])
+        assert "Statement" in policy
 
         # Remove the permission
         sqs.remove_permission(QueueUrl=queue_url, Label="test-permission")
@@ -1449,6 +1453,7 @@ class TestSQSMessageMoveTasks:
             # Start move task from DLQ back to source
             resp = sqs.start_message_move_task(SourceArn=dlq_arn)
             assert "TaskHandle" in resp
+            assert isinstance(resp["TaskHandle"], str)
         finally:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)
@@ -1506,6 +1511,7 @@ class TestSQSMessageMoveTasks:
             task_handle = start_resp["TaskHandle"]
             cancel_resp = sqs.cancel_message_move_task(TaskHandle=task_handle)
             assert "ApproximateNumberOfMessagesMoved" in cancel_resp
+            assert isinstance(cancel_resp["ApproximateNumberOfMessagesMoved"], int)
         finally:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)

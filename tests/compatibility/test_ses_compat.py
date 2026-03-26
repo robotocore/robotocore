@@ -19,8 +19,10 @@ def sesv2():
 
 class TestSESOperations:
     def test_verify_email_identity(self, ses):
-        response = ses.verify_email_identity(EmailAddress="test@example.com")
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        ses.verify_email_identity(EmailAddress="test@example.com")
+        # Verify the identity appears in the list
+        list_resp = ses.list_identities()
+        assert "test@example.com" in list_resp["Identities"]
 
     def test_list_identities(self, ses):
         ses.verify_email_identity(EmailAddress="list@example.com")
