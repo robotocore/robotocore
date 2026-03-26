@@ -111,6 +111,7 @@ class TestFSxFileSystemOperations:
         fs_id = resp["FileSystem"]["FileSystemId"]
         del_resp = fsx.delete_file_system(FileSystemId=fs_id)
         assert "FileSystemId" in del_resp
+        assert del_resp["FileSystemId"] == fs_id
 
     def test_create_file_system_with_tags(self, fsx):
         """create_file_system with Tags stores them."""
@@ -252,6 +253,7 @@ class TestFSxDescribeEmpty:
         """DescribeSharedVpcConfiguration returns configuration."""
         resp = fsx.describe_shared_vpc_configuration()
         assert "EnableFsxRouteTableUpdatesFromParticipantAccounts" in resp
+        assert resp["EnableFsxRouteTableUpdatesFromParticipantAccounts"] in ("true", "false")
 
     def test_describe_s3_access_point_attachments_empty(self, fsx):
         """DescribeS3AccessPointAttachments returns empty list."""
@@ -767,12 +769,14 @@ class TestFSxMissingGapOps:
             EnableFsxRouteTableUpdatesFromParticipantAccounts="true"
         )
         assert "EnableFsxRouteTableUpdatesFromParticipantAccounts" in resp
+        assert resp["EnableFsxRouteTableUpdatesFromParticipantAccounts"] in ("true", "false")
 
     def test_release_file_system_nfs_v3_locks(self, fsx):
         """ReleaseFileSystemNfsV3Locks returns FileSystem for a fake ID."""
         fake_fs_id = "fs-" + uuid.uuid4().hex[:8]
         resp = fsx.release_file_system_nfs_v3_locks(FileSystemId=fake_fs_id)
         assert "FileSystem" in resp
+        assert isinstance(resp["FileSystem"], dict)
 
     def test_update_volume_not_found(self, fsx):
         """UpdateVolume with fake VolumeId raises VolumeNotFound."""
@@ -823,6 +827,7 @@ class TestFSxGapOps:
         """StartMisconfiguredStateRecovery returns FileSystem for any filesystem ID."""
         resp = client.start_misconfigured_state_recovery(FileSystemId="fs-0123456789abcdef0")
         assert "FileSystem" in resp
+        assert isinstance(resp["FileSystem"], dict)
 
 
 class TestFSxNewStubOps:

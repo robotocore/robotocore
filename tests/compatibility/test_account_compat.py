@@ -119,6 +119,8 @@ class TestAccountNewOps:
         resp = account.get_account_information()
         assert "AccountId" in resp
         assert "AccountName" in resp
+        assert len(resp["AccountId"]) == 12
+        assert resp["AccountId"].isdigit()
 
     def test_get_contact_information(self, account):
         """GetContactInformation returns ContactInformation dict."""
@@ -147,6 +149,7 @@ class TestAccountNewOps:
         """GetPrimaryEmail returns an email address."""
         resp = account.get_primary_email(AccountId="123456789012")
         assert "PrimaryEmail" in resp
+        assert "@" in resp["PrimaryEmail"]
 
     def test_get_region_opt_status(self, account):
         """GetRegionOptStatus returns region name and opt status."""

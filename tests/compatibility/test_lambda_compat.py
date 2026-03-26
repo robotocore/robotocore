@@ -3065,6 +3065,7 @@ class TestLambdaCapacityProviderCRUD:
             upd_resp = lam.update_capacity_provider(CapacityProviderName="test-cp-upd")
             assert "CapacityProvider" in upd_resp
             assert "CapacityProviderArn" in upd_resp["CapacityProvider"]
+            assert "test-cp-upd" in upd_resp["CapacityProvider"]["CapacityProviderArn"]
         finally:
             lam.delete_capacity_provider(CapacityProviderName="test-cp-upd")
 

@@ -709,12 +709,14 @@ class TestGuardDutyFindingsOperations:
             DetectorId=detector, FindingStatisticTypes=["COUNT_BY_SEVERITY"]
         )
         assert "FindingStatistics" in resp
+        assert isinstance(resp["FindingStatistics"], dict)
 
     def test_get_findings_statistics_has_count_by_severity(self, guardduty, detector):
         resp = guardduty.get_findings_statistics(
             DetectorId=detector, FindingStatisticTypes=["COUNT_BY_SEVERITY"]
         )
         assert "CountBySeverity" in resp["FindingStatistics"]
+        assert isinstance(resp["FindingStatistics"]["CountBySeverity"], dict)
 
 
 class TestGuardDutyMasterAccountOperations:
@@ -1887,6 +1889,7 @@ class TestGuardDutyMalwareProtection:
         """ListMalwareProtectionPlans returns MalwareProtectionPlans."""
         resp = guardduty.list_malware_protection_plans()
         assert "MalwareProtectionPlans" in resp
+        assert isinstance(resp["MalwareProtectionPlans"], list)
 
     def test_get_malware_protection_plan(self, guardduty):
         """GetMalwareProtectionPlan returns details of a created plan."""

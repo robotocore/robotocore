@@ -1064,6 +1064,7 @@ class TestSNSGapStubs:
     def test_list_origination_numbers(self, sns):
         resp = sns.list_origination_numbers()
         assert "PhoneNumbers" in resp
+        assert isinstance(resp["PhoneNumbers"], list)
 
     def test_get_sms_sandbox_account_status(self, sns):
         resp = sns.get_sms_sandbox_account_status()

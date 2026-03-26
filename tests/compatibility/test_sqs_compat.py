@@ -306,6 +306,7 @@ class TestSQSPermissions:
 
         policy = _json.loads(attrs["Attributes"]["Policy"])
         assert "Statement" in policy
+        assert len(policy["Statement"]) >= 1
 
         # Remove the permission
         sqs.remove_permission(QueueUrl=queue_url, Label="test-permission")

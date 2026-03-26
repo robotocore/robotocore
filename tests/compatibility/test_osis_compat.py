@@ -287,7 +287,8 @@ class TestOSISPipelineEndpointOps:
             VpcOptions={"SubnetIds": ["subnet-abc12345"]},
         )
         assert "Status" in resp
-        assert "PipelineArn" in resp
+        assert "EndpointId" in resp
+        assert resp["Status"] in ("ACTIVE", "PENDING", "CREATING")
 
     def test_delete_pipeline_endpoint(self, osis):
         """DeletePipelineEndpoint succeeds."""

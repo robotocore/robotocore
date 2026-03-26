@@ -795,6 +795,7 @@ class TestKMSGapStubs:
         try:
             resp = kms.rotate_key_on_demand(KeyId=key_id)
             assert "KeyId" in resp
+            assert resp["KeyId"] == key_id
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
 

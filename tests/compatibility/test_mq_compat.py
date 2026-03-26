@@ -290,6 +290,7 @@ class TestMQBrokerEngineTypes:
         """DescribeBrokerEngineTypes returns BrokerEngineTypes list."""
         resp = mq.describe_broker_engine_types()
         assert "BrokerEngineTypes" in resp
+        assert isinstance(resp["BrokerEngineTypes"], list)
 
     def test_list_configuration_revisions_nonexistent(self, mq):
         """ListConfigurationRevisions with nonexistent config raises NotFoundException."""

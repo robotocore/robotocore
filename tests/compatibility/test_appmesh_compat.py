@@ -248,8 +248,9 @@ class TestMeshAdditionalOperations:
         )
         resp = appmesh_client.list_tags_for_resource(resourceArn=mesh_arn)
         tags = resp["tags"]
-        tag_keys = [t["key"] for t in tags]
-        assert "env" in tag_keys
+        tag_map = {t["key"]: t["value"] for t in tags}
+        assert "env" in tag_map
+        assert tag_map["env"] == "test"
 
     def test_list_tags_for_resource(self, appmesh_client, mesh_name):
         desc = appmesh_client.describe_mesh(meshName=mesh_name)

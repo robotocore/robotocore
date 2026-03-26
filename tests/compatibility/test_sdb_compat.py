@@ -125,6 +125,7 @@ class TestSdbSelect:
         item_names = {i["Name"] for i in resp["Items"]}
         assert "p" in item_names
         assert "q" in item_names
+        assert len(item_names) == 2
 
 
 class TestSdbCreateDomain:

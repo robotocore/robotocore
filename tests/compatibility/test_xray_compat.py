@@ -69,6 +69,7 @@ class TestXRaySamplingRuleOperations:
     def test_get_sampling_statistic_summaries(self, xray):
         resp = xray.get_sampling_statistic_summaries()
         assert "SamplingStatisticSummaries" in resp
+        assert isinstance(resp["SamplingStatisticSummaries"], list)
 
 
 class TestXRayGroupOperations:
@@ -599,6 +600,7 @@ class TestXRayTraceSegmentDestination:
         resp = xray.get_trace_segment_destination()
         assert "Destination" in resp
         assert "Status" in resp
+        assert resp["Status"] in ("ACTIVE", "PENDING")
 
     def test_update_trace_segment_destination(self, xray):
         """UpdateTraceSegmentDestination returns updated destination."""

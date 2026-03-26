@@ -1029,6 +1029,7 @@ class TestRoute53Extended:
                 RecordType="A",
             )
             assert "RecordData" in resp
+            assert isinstance(resp["RecordData"], list)
         finally:
             route53.change_resource_record_sets(
                 HostedZoneId=hosted_zone,
@@ -1058,6 +1059,7 @@ class TestRoute53Extended:
                 CloudWatchLogsLogGroupArn=f"arn:aws:logs:us-east-1:123456789012:log-group:{log_group}",
             )
             assert "QueryLoggingConfig" in resp
+            assert "Id" in resp["QueryLoggingConfig"]
         finally:
             logs.delete_log_group(logGroupName=log_group)
 

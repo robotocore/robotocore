@@ -348,6 +348,7 @@ class TestSecretsManagerOperations:
                 ResourcePolicy=policy,
             )
             assert "PolicyValidationPassed" in response
+            assert response["PolicyValidationPassed"] is True
         finally:
             sm.delete_secret(SecretId="validate-policy/secret", ForceDeleteWithoutRecovery=True)
 
@@ -611,5 +612,6 @@ class TestSecretsManagerMissingGapOps:
         try:
             resp = sm.stop_replication_to_replica(SecretId=name)
             assert "ARN" in resp
+            assert resp["ARN"].startswith("arn:aws:secretsmanager:")
         finally:
             sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)

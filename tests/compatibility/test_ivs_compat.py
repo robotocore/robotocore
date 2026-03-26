@@ -472,6 +472,7 @@ class TestIVSNewOps:
             resp = ivs.get_stream_session(channelArn=channel_arn)
             assert "streamSession" in resp
             assert "streamId" in resp["streamSession"]
+            assert isinstance(resp["streamSession"]["streamId"], str)
         finally:
             ivs.delete_channel(arn=channel_arn)
 

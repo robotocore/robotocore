@@ -1299,6 +1299,7 @@ class TestAppsyncEvalAndIntrospection:
             context='{"arguments": {}, "source": {}}',
         )
         assert "evaluationResult" in resp
+        assert isinstance(resp["evaluationResult"], str)
 
     def test_evaluate_code(self, client):
         """EvaluateCode evaluates an AppSync JS runtime code."""
