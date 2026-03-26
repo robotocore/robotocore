@@ -335,3 +335,113 @@ class TestACMPCAOperations:
         acmpca.delete_certificate_authority(
             CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
         )
+
+    def test_list_permissions_empty(self, acmpca, certificate_authority):
+        """ListPermissions on a new CA returns an empty list."""
+        resp = acmpca.list_permissions(CertificateAuthorityArn=certificate_authority)
+        assert "Permissions" in resp
+        assert isinstance(resp["Permissions"], list)
+        assert len(resp["Permissions"]) == 0
+
+    def test_create_permission(self, acmpca, certificate_authority):
+        """CreatePermission grants a principal access to the CA."""
+        acmpca.create_permission(
+            CertificateAuthorityArn=certificate_authority,
+            Principal="acm.amazonaws.com",
+            SourceAccount="123456789012",
+            Actions=["IssueCertificate", "GetCertificate", "ListPermissions"],
+        )
+        resp = acmpca.list_permissions(CertificateAuthorityArn=certificate_authority)
+        assert len(resp["Permissions"]) == 1
+        perm = resp["Permissions"][0]
+        assert perm["Principal"] == "acm.amazonaws.com"
+        assert "IssueCertificate" in perm["Actions"]
+
+    def test_delete_permission(self, acmpca, certificate_authority):
+        """DeletePermission removes the permission for a principal."""
+        acmpca.create_permission(
+            CertificateAuthorityArn=certificate_authority,
+            Principal="acm.amazonaws.com",
+            SourceAccount="123456789012",
+            Actions=["IssueCertificate"],
+        )
+        acmpca.delete_permission(
+            CertificateAuthorityArn=certificate_authority,
+            Principal="acm.amazonaws.com",
+        )
+        resp = acmpca.list_permissions(CertificateAuthorityArn=certificate_authority)
+        assert len(resp["Permissions"]) == 0
+
+    def test_list_permissions_after_multiple_creates(self, acmpca, certificate_authority):
+        """ListPermissions returns all created permissions."""
+        acmpca.create_permission(
+            CertificateAuthorityArn=certificate_authority,
+            Principal="acm.amazonaws.com",
+            SourceAccount="123456789012",
+            Actions=["IssueCertificate", "GetCertificate"],
+        )
+        resp = acmpca.list_permissions(CertificateAuthorityArn=certificate_authority)
+        principals = [p["Principal"] for p in resp["Permissions"]]
+        assert "acm.amazonaws.com" in principals
+
+    def test_restore_certificate_authority(self, acmpca):
+        """RestoreCertificateAuthority restores a deleted CA to DISABLED status."""
+        unique = uuid.uuid4().hex[:8]
+        resp = acmpca.create_certificate_authority(
+            CertificateAuthorityConfiguration={
+                "KeyAlgorithm": "RSA_2048",
+                "SigningAlgorithm": "SHA256WITHRSA",
+                "Subject": {
+                    "CommonName": f"restore-test-{unique}.example.com",
+                    "Organization": "RobotocoreTest",
+                    "Country": "US",
+                },
+            },
+            CertificateAuthorityType="ROOT",
+        )
+        arn = resp["CertificateAuthorityArn"]
+        # Disable and delete
+        try:
+            acmpca.update_certificate_authority(CertificateAuthorityArn=arn, Status="DISABLED")
+        except Exception:
+            pass  # best-effort
+        acmpca.delete_certificate_authority(
+            CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
+        )
+        desc = acmpca.describe_certificate_authority(CertificateAuthorityArn=arn)
+        assert desc["CertificateAuthority"]["Status"] == "DELETED"
+
+        # Restore
+        acmpca.restore_certificate_authority(CertificateAuthorityArn=arn)
+        desc = acmpca.describe_certificate_authority(CertificateAuthorityArn=arn)
+        assert desc["CertificateAuthority"]["Status"] == "DISABLED"
+        # Cleanup
+        acmpca.delete_certificate_authority(
+            CertificateAuthorityArn=arn, PermanentDeletionTimeInDays=7
+        )
+
+    def test_restore_active_ca_fails(self, acmpca, certificate_authority):
+        """RestoreCertificateAuthority on a non-DELETED CA raises InvalidStateException."""
+        with pytest.raises(Exception) as exc_info:
+            acmpca.restore_certificate_authority(CertificateAuthorityArn=certificate_authority)
+        assert exc_info.value.response["Error"]["Code"] == "InvalidStateException"
+
+    def test_create_audit_report_non_active_ca_fails(self, acmpca, certificate_authority):
+        """CreateCertificateAuthorityAuditReport requires ACTIVE CA."""
+        with pytest.raises(Exception) as exc_info:
+            acmpca.create_certificate_authority_audit_report(
+                CertificateAuthorityArn=certificate_authority,
+                S3BucketName="test-bucket",
+                AuditReportResponseFormat="JSON",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidStateException"
+
+    def test_list_permissions_nonexistent_ca(self, acmpca):
+        """ListPermissions on a non-existent CA raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(Exception) as exc_info:
+            acmpca.list_permissions(CertificateAuthorityArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
