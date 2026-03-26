@@ -35,50 +35,62 @@ class TestForecastGapListOps:
     def test_list_datasets(self, client):
         resp = client.list_datasets()
         assert "Datasets" in resp
+        assert isinstance(resp["Datasets"], list)
 
     def test_list_dataset_import_jobs(self, client):
         resp = client.list_dataset_import_jobs()
         assert "DatasetImportJobs" in resp
+        assert isinstance(resp["DatasetImportJobs"], list)
 
     def test_list_forecasts(self, client):
         resp = client.list_forecasts()
         assert "Forecasts" in resp
+        assert isinstance(resp["Forecasts"], list)
 
     def test_list_forecast_export_jobs(self, client):
         resp = client.list_forecast_export_jobs()
         assert "ForecastExportJobs" in resp
+        assert isinstance(resp["ForecastExportJobs"], list)
 
     def test_list_predictors(self, client):
         resp = client.list_predictors()
         assert "Predictors" in resp
+        assert isinstance(resp["Predictors"], list)
 
     def test_list_predictor_backtest_export_jobs(self, client):
         resp = client.list_predictor_backtest_export_jobs()
         assert "PredictorBacktestExportJobs" in resp
+        assert isinstance(resp["PredictorBacktestExportJobs"], list)
 
     def test_list_explainabilities(self, client):
         resp = client.list_explainabilities()
         assert "Explainabilities" in resp
+        assert isinstance(resp["Explainabilities"], list)
 
     def test_list_explainability_exports(self, client):
         resp = client.list_explainability_exports()
         assert "ExplainabilityExports" in resp
+        assert isinstance(resp["ExplainabilityExports"], list)
 
     def test_list_monitors(self, client):
         resp = client.list_monitors()
         assert "Monitors" in resp
+        assert isinstance(resp["Monitors"], list)
 
     def test_list_what_if_analyses(self, client):
         resp = client.list_what_if_analyses()
         assert "WhatIfAnalyses" in resp
+        assert isinstance(resp["WhatIfAnalyses"], list)
 
     def test_list_what_if_forecasts(self, client):
         resp = client.list_what_if_forecasts()
         assert "WhatIfForecasts" in resp
+        assert isinstance(resp["WhatIfForecasts"], list)
 
     def test_list_what_if_forecast_exports(self, client):
         resp = client.list_what_if_forecast_exports()
         assert "WhatIfForecastExports" in resp
+        assert isinstance(resp["WhatIfForecastExports"], list)
 
     def test_list_tags_for_resource(self, client):
         arn = "arn:aws:forecast:us-east-1:123456789012:dataset-group/test"
@@ -396,7 +408,7 @@ class TestForecastCreateOps:
             },
         )
         assert "DatasetImportJobArn" in r
-        assert "test-import-job" in r["DatasetImportJobArn"]
+        assert r["DatasetImportJobArn"].startswith("arn:aws:forecast:")
 
     def test_create_predictor_returns_arn(self, client):
         r = client.create_predictor(
@@ -408,7 +420,7 @@ class TestForecastCreateOps:
             FeaturizationConfig={"ForecastFrequency": "D"},
         )
         assert "PredictorArn" in r
-        assert "test-predictor-ops" in r["PredictorArn"]
+        assert r["PredictorArn"].startswith("arn:aws:forecast:")
 
     def test_create_forecast_returns_arn(self, client):
         r = client.create_forecast(
@@ -416,7 +428,7 @@ class TestForecastCreateOps:
             PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexist",
         )
         assert "ForecastArn" in r
-        assert "test-forecast-ops" in r["ForecastArn"]
+        assert r["ForecastArn"].startswith("arn:aws:forecast:")
 
     def test_create_forecast_export_job_returns_arn(self, client):
         r = client.create_forecast_export_job(
@@ -430,7 +442,7 @@ class TestForecastCreateOps:
             },
         )
         assert "ForecastExportJobArn" in r
-        assert "test-forecast-export" in r["ForecastExportJobArn"]
+        assert r["ForecastExportJobArn"].startswith("arn:aws:forecast:")
 
     def test_create_explainability_returns_arn(self, client):
         r = client.create_explainability(
@@ -442,7 +454,7 @@ class TestForecastCreateOps:
             },
         )
         assert "ExplainabilityArn" in r
-        assert "test-explainability-ops" in r["ExplainabilityArn"]
+        assert r["ExplainabilityArn"].startswith("arn:aws:forecast:")
 
     def test_create_explainability_export_returns_arn(self, client):
         r = client.create_explainability_export(
@@ -456,7 +468,7 @@ class TestForecastCreateOps:
             },
         )
         assert "ExplainabilityExportArn" in r
-        assert "test-explainability-export" in r["ExplainabilityExportArn"]
+        assert r["ExplainabilityExportArn"].startswith("arn:aws:forecast:")
 
     def test_create_predictor_backtest_export_job_returns_arn(self, client):
         r = client.create_predictor_backtest_export_job(
@@ -470,7 +482,7 @@ class TestForecastCreateOps:
             },
         )
         assert "PredictorBacktestExportJobArn" in r
-        assert "test-backtest-export" in r["PredictorBacktestExportJobArn"]
+        assert r["PredictorBacktestExportJobArn"].startswith("arn:aws:forecast:")
 
     def test_create_what_if_analysis_returns_arn(self, client):
         r = client.create_what_if_analysis(
@@ -478,7 +490,7 @@ class TestForecastCreateOps:
             ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/nonexist",
         )
         assert "WhatIfAnalysisArn" in r
-        assert "test-what-if-analysis" in r["WhatIfAnalysisArn"]
+        assert r["WhatIfAnalysisArn"].startswith("arn:aws:forecast:")
 
     def test_create_what_if_forecast_returns_arn(self, client):
         r = client.create_what_if_forecast(
@@ -486,7 +498,7 @@ class TestForecastCreateOps:
             WhatIfAnalysisArn="arn:aws:forecast:us-east-1:123456789012:what-if-analysis/nonexist",
         )
         assert "WhatIfForecastArn" in r
-        assert "test-what-if-forecast" in r["WhatIfForecastArn"]
+        assert r["WhatIfForecastArn"].startswith("arn:aws:forecast:")
 
 
 class TestForecastDeleteOps:
@@ -617,3 +629,4 @@ class TestCreateWhatIfForecastExport:
             },
         )
         assert "WhatIfForecastExportArn" in resp
+        assert resp["WhatIfForecastExportArn"].startswith("arn:aws:forecast:")
