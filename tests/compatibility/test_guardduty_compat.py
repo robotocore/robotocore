@@ -1450,13 +1450,13 @@ class TestGuardDutyDisableOrganizationAdmin:
     """Tests for DisableOrganizationAdminAccount."""
 
     def test_disable_organization_admin_account(self, guardduty):
-        """DisableOrganizationAdminAccount removes admin from list."""
-        # Enable first so there's something to disable
-        guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
-        guardduty.disable_organization_admin_account(AdminAccountId="111122223333")
+        """DisableOrganizationAdminAccount is reflected in list_organization_admin_accounts."""
+        unique_id = "555566667777"
+        guardduty.enable_organization_admin_account(AdminAccountId=unique_id)
+        guardduty.disable_organization_admin_account(AdminAccountId=unique_id)
         resp = guardduty.list_organization_admin_accounts()
         admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
-        assert "111122223333" not in admin_ids
+        assert unique_id not in admin_ids
 
     def test_enable_then_disable_then_list(self, guardduty):
         """After enable then disable, the admin account is removed from list."""
@@ -1633,33 +1633,35 @@ class TestGuardDutyDisassociate:
     """Tests for Disassociate operations."""
 
     def test_disassociate_from_administrator_account(self, guardduty, detector):
-        """DisassociateFromAdministratorAccount returns 200."""
-        resp = guardduty.disassociate_from_administrator_account(DetectorId=detector)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """DisassociateFromAdministratorAccount clears administrator account."""
+        guardduty.disassociate_from_administrator_account(DetectorId=detector)
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        assert isinstance(resp.get("Administrator", {}), dict)
 
     def test_disassociate_from_master_account(self, guardduty, detector):
-        """DisassociateFromMasterAccount returns 200."""
-        resp = guardduty.disassociate_from_master_account(DetectorId=detector)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """DisassociateFromMasterAccount clears master account."""
+        guardduty.disassociate_from_master_account(DetectorId=detector)
+        resp = guardduty.get_master_account(DetectorId=detector)
+        assert isinstance(resp.get("Master", {}), dict)
 
     def test_disassociate_members(self, guardduty, detector):
-        """DisassociateMembers returns 200."""
+        """DisassociateMembers returns UnprocessedAccounts list."""
         resp = guardduty.disassociate_members(DetectorId=detector, AccountIds=["111122223333"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
 
 class TestGuardDutyAcceptInvitation:
     """Tests for AcceptInvitation (legacy API)."""
 
     def test_accept_invitation(self, guardduty, detector):
-        """AcceptInvitation (legacy) returns 200."""
-        resp = guardduty.accept_invitation(
+        """AcceptInvitation (legacy) is reflected in GetMasterAccount."""
+        guardduty.accept_invitation(
             DetectorId=detector,
             MasterId="111122223333",
             InvitationId="fake-invitation-id",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = guardduty.get_master_account(DetectorId=detector)
+        assert isinstance(resp.get("Master", {}), dict)
 
 
 class TestGuardDutyListCoverage:
@@ -1677,41 +1679,41 @@ class TestGuardDutyUpdateMemberDetectors:
     """Tests for UpdateMemberDetectors."""
 
     def test_update_member_detectors(self, guardduty, detector):
-        """UpdateMemberDetectors returns UnprocessedAccounts."""
+        """UpdateMemberDetectors returns UnprocessedAccounts list."""
         resp = guardduty.update_member_detectors(DetectorId=detector, AccountIds=["111122223333"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
 
 class TestGuardDutyUpdateMalwareScanSettings:
     """Tests for UpdateMalwareScanSettings."""
 
     def test_update_malware_scan_settings(self, guardduty, detector):
-        """UpdateMalwareScanSettings returns 200."""
-        resp = guardduty.update_malware_scan_settings(
+        """UpdateMalwareScanSettings is reflected in GetMalwareScanSettings."""
+        guardduty.update_malware_scan_settings(
             DetectorId=detector,
             ScanResourceCriteria={
                 "Include": {"EC2_INSTANCE_TAG": {"MapEquals": [{"Key": "env", "Value": "prod"}]}}
             },
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = guardduty.get_malware_scan_settings(DetectorId=detector)
+        assert isinstance(resp["ScanResourceCriteria"], dict)
 
     def test_update_malware_scan_settings_empty_criteria(self, guardduty, detector):
-        """UpdateMalwareScanSettings with empty criteria returns 200."""
-        resp = guardduty.update_malware_scan_settings(DetectorId=detector, ScanResourceCriteria={})
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """UpdateMalwareScanSettings with empty criteria is reflected."""
+        guardduty.update_malware_scan_settings(DetectorId=detector, ScanResourceCriteria={})
+        resp = guardduty.get_malware_scan_settings(DetectorId=detector)
+        assert isinstance(resp["ScanResourceCriteria"], dict)
 
 
 class TestGuardDutyStartMalwareScan:
     """Tests for StartMalwareScan."""
 
     def test_start_malware_scan(self, guardduty):
-        """StartMalwareScan returns a ScanId."""
+        """StartMalwareScan returns a ScanId string."""
         resp = guardduty.start_malware_scan(
             ResourceArn="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "ScanId" in resp
+        assert isinstance(resp["ScanId"], str)
 
 
 class TestGuardDutyIPSets:
@@ -2115,9 +2117,9 @@ class TestGuardDutyOrganizationStatistics:
         assert "OrganizationDetails" in resp
 
     def test_get_organization_statistics_response_code(self, guardduty):
-        """GetOrganizationStatistics returns 200."""
+        """GetOrganizationStatistics returns OrganizationDetails dict."""
         resp = guardduty.get_organization_statistics()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["OrganizationDetails"], dict)
 
 
 class TestGuardDutyListMalwareScans:

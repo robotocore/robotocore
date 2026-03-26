@@ -5093,7 +5093,7 @@ class TestSageMakerCreateTrainingPlan:
             TrainingPlanName=name,
             TrainingPlanOfferingId="trn1-32xl-1mo",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TrainingPlanArn" in resp
 
 
 class TestSageMakerCreateHubContentPresignedUrls:
@@ -5106,7 +5106,7 @@ class TestSageMakerCreateHubContentPresignedUrls:
                 HubContentType="Model",
                 HubContentName="fake-model",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "AuthorizedUrlConfigs" in resp
         finally:
             sagemaker.delete_hub(HubName=hub_name)
 
@@ -5120,7 +5120,7 @@ class TestSageMakerCreateHubContentReference:
                 HubName=hub_name,
                 SageMakerPublicHubContentArn="arn:aws:sagemaker:us-east-1:123456789012:hub-content/fake/Model/fake-model/1.0.0",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "HubArn" in resp
         finally:
             sagemaker.delete_hub(HubName=hub_name)
 
@@ -5135,7 +5135,7 @@ class TestSageMakerUpdateHubContentReference:
                 HubContentName="fake-ref",
                 HubContentType="Model",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "HubArn" in resp
         finally:
             sagemaker.delete_hub(HubName=hub_name)
 
@@ -5152,7 +5152,7 @@ class TestSageMakerImportHubContent:
                 HubName=hub_name,
                 HubContentDocument="{}",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "HubArn" in resp
         finally:
             sagemaker.delete_hub(HubName=hub_name)
 
@@ -5165,7 +5165,7 @@ class TestSageMakerClusterSchedulerConfig:
             ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
             SchedulerConfig={"PriorityClasses": []},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ClusterSchedulerConfigArn" in resp
         del_resp = sagemaker.delete_cluster_scheduler_config(
             ClusterSchedulerConfigId=name,
         )
@@ -5184,7 +5184,7 @@ class TestSageMakerComputeQuota:
                 "TeamName": "test-team",
             },
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ComputeQuotaArn" in resp
         del_resp = sagemaker.delete_compute_quota(ComputeQuotaId=name)
         assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -5195,7 +5195,7 @@ class TestSageMakerUpdatePipelineVersion:
             PipelineArn="arn:aws:sagemaker:us-east-1:123456789012:pipeline/fake-pipeline",
             PipelineVersionId=1,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "PipelineArn" in resp
 
 
 class TestSageMakerAttachDetachClusterNodeVolume:
@@ -5205,7 +5205,7 @@ class TestSageMakerAttachDetachClusterNodeVolume:
             NodeId="fake-node-id",
             VolumeId="vol-fake12345",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ClusterArn" in resp
 
     def test_detach_cluster_node_volume(self, sagemaker):
         resp = sagemaker.detach_cluster_node_volume(
@@ -5213,7 +5213,7 @@ class TestSageMakerAttachDetachClusterNodeVolume:
             NodeId="fake-node-id",
             VolumeId="vol-fake12345",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ClusterArn" in resp
 
 
 class TestSageMakerStartSession:
@@ -5221,7 +5221,7 @@ class TestSageMakerStartSession:
         resp = sagemaker.start_session(
             ResourceIdentifier="arn:aws:sagemaker:us-east-1:123456789012:image-version/fake/1",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "SessionId" in resp
 
 
 class TestSageMakerCreatePresignedMlflowAppUrl:
@@ -5694,7 +5694,7 @@ class TestSageMakerBatchAddClusterNodes:
             ClusterName="test-cluster",
             NodesToAdd=[{"InstanceGroupName": "worker-group", "IncrementTargetCountBy": 1}],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Successful" in resp
 
 
 class TestSageMakerMonitoringJobDefinitions:
