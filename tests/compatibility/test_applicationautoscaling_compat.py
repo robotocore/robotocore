@@ -1,6 +1,7 @@
 """Application Auto Scaling compatibility tests."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -297,3 +298,130 @@ class TestScheduledActionOperations:
                 ResourceId=resource_id,
                 ScalableDimension="dynamodb:table:ReadCapacityUnits",
             )
+
+
+class TestDescribeScalingActivities:
+    def test_describe_scaling_activities_returns_list(self, appas):
+        resp = appas.describe_scaling_activities(ServiceNamespace="dynamodb")
+        assert "ScalingActivities" in resp
+        assert isinstance(resp["ScalingActivities"], list)
+
+    def test_describe_scaling_activities_with_resource_id(self, appas):
+        table = _unique("table")
+        resource_id = f"table/{table}"
+        appas.register_scalable_target(
+            ServiceNamespace="dynamodb",
+            ResourceId=resource_id,
+            ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            MinCapacity=1,
+            MaxCapacity=100,
+        )
+        try:
+            resp = appas.describe_scaling_activities(
+                ServiceNamespace="dynamodb",
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            )
+            assert "ScalingActivities" in resp
+            assert isinstance(resp["ScalingActivities"], list)
+        finally:
+            appas.deregister_scalable_target(
+                ServiceNamespace="dynamodb",
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            )
+
+
+class TestGetPredictiveScalingForecast:
+    def test_get_predictive_scaling_forecast_returns_forecast_structure(self, appas):
+        table = _unique("table")
+        resource_id = f"table/{table}"
+        appas.register_scalable_target(
+            ServiceNamespace="dynamodb",
+            ResourceId=resource_id,
+            ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            MinCapacity=1,
+            MaxCapacity=100,
+        )
+        try:
+            now = datetime.now(UTC)
+            resp = appas.get_predictive_scaling_forecast(
+                ServiceNamespace="dynamodb",
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+                PolicyName=_unique("policy"),
+                StartTime=now,
+                EndTime=now + timedelta(hours=2),
+            )
+            assert "LoadForecast" in resp
+            assert "CapacityForecast" in resp
+            assert isinstance(resp["LoadForecast"], list)
+            assert "Timestamps" in resp["CapacityForecast"]
+            assert "Values" in resp["CapacityForecast"]
+        finally:
+            appas.deregister_scalable_target(
+                ServiceNamespace="dynamodb",
+                ResourceId=resource_id,
+                ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            )
+
+
+class TestTagOperations:
+    @pytest.fixture(autouse=True)
+    def _setup_target(self, appas):
+        self.table = _unique("table")
+        self.resource_id = f"table/{self.table}"
+        reg_resp = appas.register_scalable_target(
+            ServiceNamespace="dynamodb",
+            ResourceId=self.resource_id,
+            ScalableDimension="dynamodb:table:ReadCapacityUnits",
+            MinCapacity=1,
+            MaxCapacity=100,
+        )
+        self.target_arn = reg_resp["ScalableTargetARN"]
+        yield
+        appas.deregister_scalable_target(
+            ServiceNamespace="dynamodb",
+            ResourceId=self.resource_id,
+            ScalableDimension="dynamodb:table:ReadCapacityUnits",
+        )
+
+    def test_list_tags_for_resource_returns_empty_initially(self, appas):
+        resp = appas.list_tags_for_resource(ResourceARN=self.target_arn)
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], dict)
+
+    def test_tag_resource_adds_tags(self, appas):
+        appas.tag_resource(
+            ResourceARN=self.target_arn,
+            Tags={"env": "test", "project": "demo"},
+        )
+        resp = appas.list_tags_for_resource(ResourceARN=self.target_arn)
+        assert resp["Tags"]["env"] == "test"
+        assert resp["Tags"]["project"] == "demo"
+
+    def test_untag_resource_removes_tags(self, appas):
+        appas.tag_resource(
+            ResourceARN=self.target_arn,
+            Tags={"env": "test", "project": "demo", "owner": "alice"},
+        )
+        appas.untag_resource(
+            ResourceARN=self.target_arn,
+            TagKeys=["env", "owner"],
+        )
+        resp = appas.list_tags_for_resource(ResourceARN=self.target_arn)
+        assert "env" not in resp["Tags"]
+        assert "owner" not in resp["Tags"]
+        assert resp["Tags"]["project"] == "demo"
+
+    def test_tag_resource_updates_existing_tags(self, appas):
+        appas.tag_resource(
+            ResourceARN=self.target_arn,
+            Tags={"env": "staging"},
+        )
+        appas.tag_resource(
+            ResourceARN=self.target_arn,
+            Tags={"env": "production"},
+        )
+        resp = appas.list_tags_for_resource(ResourceARN=self.target_arn)
+        assert resp["Tags"]["env"] == "production"

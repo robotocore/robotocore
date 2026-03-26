@@ -3751,3 +3751,40 @@ class TestS3ControlIdentityCenterAndNewStubs:
         """ListCallerAccessGrants returns CallerAccessGrantsList."""
         resp = client.list_caller_access_grants(AccountId=self.ACCOUNT_ID)
         assert "CallerAccessGrantsList" in resp
+
+
+class TestS3ControlOutpostsBucket:
+    """Tests for S3 on Outposts bucket operations: CreateBucket, GetBucket, DeleteBucket."""
+
+    ACCOUNT_ID = "123456789012"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("s3control")
+
+    def test_create_bucket(self, client):
+        """CreateBucket creates an S3 on Outposts bucket and returns a BucketArn."""
+        bucket_name = f"test-outposts-{_uid()}"
+        resp = client.create_bucket(Bucket=bucket_name)
+        assert "BucketArn" in resp
+        assert bucket_name in resp["BucketArn"]
+        assert "Location" in resp
+        # cleanup
+        client.delete_bucket(AccountId=self.ACCOUNT_ID, Bucket=bucket_name)
+
+    def test_get_bucket(self, client):
+        """GetBucket returns bucket name and CreationDate for an existing bucket."""
+        bucket_name = f"test-outposts-{_uid()}"
+        client.create_bucket(Bucket=bucket_name)
+        resp = client.get_bucket(AccountId=self.ACCOUNT_ID, Bucket=bucket_name)
+        assert resp["Bucket"] == bucket_name
+        assert "CreationDate" in resp
+        # cleanup
+        client.delete_bucket(AccountId=self.ACCOUNT_ID, Bucket=bucket_name)
+
+    def test_delete_bucket(self, client):
+        """DeleteBucket removes the bucket and returns 204."""
+        bucket_name = f"test-outposts-{_uid()}"
+        client.create_bucket(Bucket=bucket_name)
+        resp = client.delete_bucket(AccountId=self.ACCOUNT_ID, Bucket=bucket_name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
