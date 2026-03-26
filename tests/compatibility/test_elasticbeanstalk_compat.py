@@ -19,7 +19,7 @@ def _unique(prefix: str) -> str:
 class TestApplicationOperations:
     def test_describe_applications_empty(self, eb):
         resp = eb.describe_applications()
-        assert "Applications" in resp
+        assert isinstance(resp["Applications"], list)
 
     def test_create_application(self, eb):
         name = _unique("app")
@@ -110,7 +110,7 @@ class TestEnvironmentOperations:
 
     def test_describe_environments_empty(self, eb):
         resp = eb.describe_environments()
-        assert "Environments" in resp
+        assert isinstance(resp["Environments"], list)
 
     def test_create_environment(self, eb, app, solution_stack):
         env_name = _unique("env")
@@ -191,7 +191,9 @@ class TestElasticBeanstalkAdditionalOps:
 
     def test_describe_account_attributes(self, eb):
         resp = eb.describe_account_attributes()
-        assert "ResourceQuotas" in resp
+        quotas = resp["ResourceQuotas"]
+        assert "ApplicationQuota" in quotas
+        assert isinstance(quotas["ApplicationQuota"]["Maximum"], int)
 
     def test_describe_application_versions_empty(self, eb):
         resp = eb.describe_application_versions()
@@ -200,8 +202,8 @@ class TestElasticBeanstalkAdditionalOps:
 
     def test_describe_configuration_options(self, eb):
         resp = eb.describe_configuration_options()
-        assert "Options" in resp
         assert isinstance(resp["Options"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_configuration_settings(self, eb):
         app_name = _unique("cfg-app")
@@ -235,8 +237,8 @@ class TestElasticBeanstalkAdditionalOps:
 
     def test_describe_events(self, eb):
         resp = eb.describe_events()
-        assert "Events" in resp
         assert isinstance(resp["Events"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_instances_health(self, eb):
         resp = eb.describe_instances_health(EnvironmentName="nonexistent-env")
@@ -670,8 +672,8 @@ class TestElasticBeanstalkNewOps:
     def test_check_dns_availability(self, eb):
         """CheckDNSAvailability returns availability and FQCN."""
         resp = eb.check_dns_availability(CNAMEPrefix="my-unique-prefix-xyz")
-        assert "Available" in resp
-        assert "FullyQualifiedCNAME" in resp
+        assert isinstance(resp["Available"], bool)
+        assert "elasticbeanstalk.com" in resp["FullyQualifiedCNAME"]
 
     def test_create_storage_location(self, eb):
         """CreateStorageLocation returns the S3 bucket name."""

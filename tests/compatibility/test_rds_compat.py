@@ -305,7 +305,7 @@ class TestRdsAutoCoverage:
     def test_describe_db_clusters(self, client):
         """DescribeDBClusters returns a response."""
         resp = client.describe_db_clusters()
-        assert "DBClusters" in resp
+        assert isinstance(resp["DBClusters"], list)
 
     def test_describe_db_instance_automated_backups(self, client):
         """DescribeDBInstanceAutomatedBackups returns a response."""
@@ -315,7 +315,7 @@ class TestRdsAutoCoverage:
     def test_describe_db_instances(self, client):
         """DescribeDBInstances returns a response."""
         resp = client.describe_db_instances()
-        assert "DBInstances" in resp
+        assert isinstance(resp["DBInstances"], list)
 
     def test_describe_db_parameter_groups(self, client):
         """DescribeDBParameterGroups returns a response."""
@@ -340,7 +340,7 @@ class TestRdsAutoCoverage:
     def test_describe_db_snapshots(self, client):
         """DescribeDBSnapshots returns a response."""
         resp = client.describe_db_snapshots()
-        assert "DBSnapshots" in resp
+        assert isinstance(resp["DBSnapshots"], list)
 
     def test_describe_db_subnet_groups(self, client):
         """DescribeDBSubnetGroups returns a response."""
@@ -452,7 +452,8 @@ class TestRDSDBClusterParameterGroupOperations:
         )
         try:
             resp = client.describe_db_cluster_parameters(DBClusterParameterGroupName=name)
-            assert "Parameters" in resp
+            assert isinstance(resp["Parameters"], list)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             try:
                 client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
@@ -4522,17 +4523,18 @@ class TestRDSDescribeListOperations:
     def test_describe_db_instances_returns_key(self, client):
         """DescribeDBInstances returns DBInstances list."""
         resp = client.describe_db_instances()
-        assert "DBInstances" in resp
+        assert isinstance(resp["DBInstances"], list)
 
     def test_describe_db_clusters_returns_key(self, client):
         """DescribeDBClusters returns DBClusters list."""
         resp = client.describe_db_clusters()
-        assert "DBClusters" in resp
+        assert isinstance(resp["DBClusters"], list)
 
     def test_describe_db_engine_versions_returns_versions(self, client):
         """DescribeDBEngineVersions returns DBEngineVersions list."""
         resp = client.describe_db_engine_versions()
-        assert "DBEngineVersions" in resp
+        assert isinstance(resp["DBEngineVersions"], list)
+        assert len(resp["DBEngineVersions"]) > 0
 
     def test_describe_db_parameter_groups_returns_key(self, client):
         """DescribeDBParameterGroups returns DBParameterGroups list."""
@@ -4547,7 +4549,7 @@ class TestRDSDescribeListOperations:
     def test_describe_db_snapshots_returns_key(self, client):
         """DescribeDBSnapshots returns DBSnapshots list."""
         resp = client.describe_db_snapshots()
-        assert "DBSnapshots" in resp
+        assert isinstance(resp["DBSnapshots"], list)
 
     def test_describe_db_cluster_snapshots_returns_key(self, client):
         """DescribeDBClusterSnapshots returns DBClusterSnapshots list."""

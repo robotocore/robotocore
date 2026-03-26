@@ -41,7 +41,7 @@ class TestAutoScalingLaunchConfigOperations:
 
     def test_describe_launch_configurations_empty(self, autoscaling):
         resp = autoscaling.describe_launch_configurations()
-        assert "LaunchConfigurations" in resp
+        assert isinstance(resp["LaunchConfigurations"], list)
 
     def test_describe_launch_configurations_filtered(self, autoscaling):
         name = _unique("lc-desc")
@@ -102,7 +102,7 @@ class TestAutoScalingGroupOperations:
 
     def test_describe_auto_scaling_groups_empty(self, autoscaling):
         resp = autoscaling.describe_auto_scaling_groups()
-        assert "AutoScalingGroups" in resp
+        assert isinstance(resp["AutoScalingGroups"], list)
 
     def test_update_auto_scaling_group(self, autoscaling):
         name = _unique("asg-upd")
@@ -318,7 +318,7 @@ class TestAutoScalingDescribeOperations:
 
     def test_describe_auto_scaling_instances(self, autoscaling):
         resp = autoscaling.describe_auto_scaling_instances()
-        assert "AutoScalingInstances" in resp
+        assert isinstance(resp["AutoScalingInstances"], list)
 
     def test_describe_tags_all(self, autoscaling):
         resp = autoscaling.describe_tags()

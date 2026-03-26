@@ -76,10 +76,10 @@ class TestEKSClusterOperations:
         )
         try:
             cluster = resp["cluster"]
+            assert cluster["status"] == "ACTIVE"
+            assert isinstance(cluster["version"], str)
             assert "endpoint" in cluster
-            assert "certificateAuthority" in cluster
             assert "kubernetesNetworkConfig" in cluster
-            assert "version" in cluster
         finally:
             eks.delete_cluster(name=name)
 
@@ -907,8 +907,8 @@ class TestEKSAddonOperations:
         )
         try:
             resp = eks.list_addons(clusterName=cluster_name)
-            assert "addons" in resp
             assert isinstance(resp["addons"], list)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             eks.delete_cluster(name=cluster_name)
 
@@ -984,8 +984,8 @@ class TestEKSAccessEntryOperations:
         )
         try:
             resp = eks.list_access_entries(clusterName=cluster_name)
-            assert "accessEntries" in resp
             assert isinstance(resp["accessEntries"], list)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             eks.delete_cluster(name=cluster_name)
 

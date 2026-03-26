@@ -850,14 +850,14 @@ class TestCodeBuildResourcePolicyOperations:
     def test_get_resource_policy(self, codebuild):
         """GetResourcePolicy retrieves a resource policy."""
         resource_arn = "arn:aws:codebuild:us-east-1:123456789012:report-group/get-policy-test"
+        policy_doc = '{"Version":"2012-10-17","Statement":[]}'
         try:
             codebuild.put_resource_policy(
-                policy='{"Version":"2012-10-17","Statement":[]}',
+                policy=policy_doc,
                 resourceArn=resource_arn,
             )
             resp = codebuild.get_resource_policy(resourceArn=resource_arn)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "policy" in resp
+            assert resp["policy"] == policy_doc
         finally:
             try:
                 codebuild.delete_resource_policy(resourceArn=resource_arn)
@@ -982,16 +982,16 @@ class TestCodeBuildMiscOperations:
         resp = codebuild.describe_test_cases(
             reportArn="arn:aws:codebuild:us-east-1:123456789012:report/fake-report"
         )
-        assert "testCases" in resp
         assert isinstance(resp["testCases"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_code_coverages(self, codebuild):
         """DescribeCodeCoverages returns code coverage list for a report."""
         resp = codebuild.describe_code_coverages(
             reportArn="arn:aws:codebuild:us-east-1:123456789012:report/fake-report"
         )
-        assert "codeCoverages" in resp
         assert isinstance(resp["codeCoverages"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_report_group_trend(self, codebuild):
         """GetReportGroupTrend returns trend stats for a report group."""
@@ -1000,6 +1000,7 @@ class TestCodeBuildMiscOperations:
             trendField="TOTAL",
         )
         assert "stats" in resp
+        assert isinstance(resp["rawData"], list)
 
     def test_delete_report(self, codebuild):
         """DeleteReport succeeds for a report ARN."""
