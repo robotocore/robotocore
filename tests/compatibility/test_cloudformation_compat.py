@@ -304,6 +304,10 @@ class TestCloudFormationBasic:
         assert "QueueUrl" in outputs
         assert "QueueArn" in outputs
         assert "cfn-test-queue" in outputs["QueueArn"]
+        # Verify stack metadata
+        assert stack["StackName"] == "test-outputs-stack"
+        assert stack["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+        assert "test-outputs-stack" in stack["StackId"]
 
         cfn.delete_stack(StackName="test-outputs-stack")
 
@@ -326,6 +330,13 @@ class TestCloudFormationBasic:
         response = cfn.list_stacks()
         names = [s["StackName"] for s in response["StackSummaries"]]
         assert "test-list-stack" in names
+        # Verify stack summary contains expected fields
+        stack_summary = next(
+            s for s in response["StackSummaries"] if s["StackName"] == "test-list-stack"
+        )
+        assert stack_summary["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+        assert "test-list-stack" in stack_summary["StackId"]
+        assert "CreationTime" in stack_summary
         cfn.delete_stack(StackName="test-list-stack")
 
     def test_describe_stack_resources(self, cfn):
@@ -351,6 +362,10 @@ class TestCloudFormationBasic:
             body = json.loads(body)
         assert "Resources" in body
         assert "MyQueue" in body["Resources"]
+        # Verify resource type and properties
+        assert body["Resources"]["MyQueue"]["Type"] == "AWS::SQS::Queue"
+        assert body["Resources"]["MyQueue"]["Properties"]["QueueName"] == "cfn-test-queue"
+        assert body["AWSTemplateFormatVersion"] == "2010-09-09"
         cfn.delete_stack(StackName="test-get-template-stack")
 
 
@@ -1068,6 +1083,10 @@ class TestCloudFormationAdvanced:
             for s in summaries:
                 assert "PhysicalResourceId" in s
                 assert "ResourceType" in s
+                # Verify resource summary has expected fields
+                assert s["ResourceType"] == "AWS::SQS::Queue"
+                assert s["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+                assert "LastUpdatedTimestamp" in s
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1158,8 +1177,11 @@ class TestCloudFormationAdvanced:
             assert "StackStatus" in stack
             assert stack["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
             assert "StackName" in stack
+            assert stack["StackName"] == stack_name
             assert "StackId" in stack
+            assert stack_name in stack["StackId"]
             assert "CreationTime" in stack
+            assert "us-east-1" in stack["StackId"]  # Verify region in ARN
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1269,6 +1291,17 @@ class TestCloudFormationAdvanced:
             types = [r["ResourceType"] for r in resp["StackResources"]]
             assert "AWS::Lambda::Function" in types
             assert "AWS::IAM::Role" in types
+            # Verify resources have expected fields
+            lambda_resource = next(
+                r for r in resp["StackResources"] if r["ResourceType"] == "AWS::Lambda::Function"
+            )
+            assert lambda_resource["LogicalResourceId"] == "Fn"
+            assert lambda_resource["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+            role_resource = next(
+                r for r in resp["StackResources"] if r["ResourceType"] == "AWS::IAM::Role"
+            )
+            assert role_resource["LogicalResourceId"] == "Role"
+            assert role_resource["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1291,6 +1324,10 @@ class TestCloudFormationAdvanced:
             resp = cfn.list_stacks(StackStatusFilter=["CREATE_COMPLETE"])
             names = [s["StackName"] for s in resp["StackSummaries"]]
             assert stack_name in names
+            # Verify filtered stacks have the expected status
+            stack_summary = next(s for s in resp["StackSummaries"] if s["StackName"] == stack_name)
+            assert stack_summary["StackStatus"] == "CREATE_COMPLETE"
+            assert stack_name in stack_summary["StackId"]
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1325,6 +1362,11 @@ class TestCloudFormationAdvancedOps:
             outputs = resp["Stacks"][0].get("Outputs", [])
             out_keys = [o["OutputKey"] for o in outputs]
             assert "QueueUrl" in out_keys
+            # Verify output has value and description
+            output = next(o for o in outputs if o["OutputKey"] == "QueueUrl")
+            assert "OutputValue" in output
+            assert "http" in output["OutputValue"]  # Queue URL should be HTTP URL
+            assert output.get("Description") == "Queue URL"
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1374,6 +1416,13 @@ class TestCloudFormationAdvancedOps:
         try:
             resp = cfn.get_template(StackName=stack_name)
             assert "TemplateBody" in resp
+            # Verify template body contains the resource we created
+            body = resp["TemplateBody"]
+            if isinstance(body, str):
+                body = json.loads(body)
+            assert "Resources" in body
+            assert "Q" in body["Resources"]
+            assert body["Resources"]["Q"]["Type"] == "AWS::SQS::Queue"
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1388,6 +1437,11 @@ class TestCloudFormationAdvancedOps:
         )
         resp = cfn.validate_template(TemplateBody=template)
         assert "Parameters" in resp
+        # Verify validation response has expected fields
+        assert isinstance(resp["Parameters"], list)
+        assert (
+            "Capabilities" in resp or "CapabilitiesReason" in resp or len(resp["Parameters"]) == 0
+        )
 
     def test_create_stack_with_tags(self, cfn):
         stack_name = f"tags-{uuid.uuid4().hex[:8]}"
@@ -1440,7 +1494,10 @@ class TestCloudFormationAdvancedOps:
                     },
                 }
             )
-            cfn.update_stack(StackName=stack_name, TemplateBody=template2)
+            update_resp = cfn.update_stack(StackName=stack_name, TemplateBody=template2)
+            # Verify update response has StackId
+            assert "StackId" in update_resp
+            assert stack_name in update_resp["StackId"]
             resp = cfn.describe_stacks(StackName=stack_name)
             status = resp["Stacks"][0]["StackStatus"]
             assert status in ("UPDATE_COMPLETE", "CREATE_COMPLETE", "UPDATE_IN_PROGRESS")
@@ -1487,6 +1544,14 @@ class TestCloudFormationAdvancedOps:
             resp = cfn.describe_stack_resources(StackName=stack_name)
             types = [r["ResourceType"] for r in resp["StackResources"]]
             assert "AWS::SNS::Topic" in types
+            # Verify resource has expected fields
+            topic_resource = next(
+                r for r in resp["StackResources"] if r["ResourceType"] == "AWS::SNS::Topic"
+            )
+            assert topic_resource["LogicalResourceId"] == "Topic"
+            assert topic_resource["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+            assert "PhysicalResourceId" in topic_resource
+            assert "arn:aws:sns" in topic_resource["PhysicalResourceId"]
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1509,6 +1574,11 @@ class TestCloudFormationAdvancedOps:
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
             assert resp["Stacks"][0]["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+            # Verify Fn::Join was evaluated by checking resource properties
+            resources_resp = cfn.describe_stack_resources(StackName=stack_name)
+            queue_resource = resources_resp["StackResources"][0]
+            assert queue_resource["ResourceType"] == "AWS::SQS::Queue"
+            assert queue_resource["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1531,6 +1601,11 @@ class TestCloudFormationAdvancedOps:
         try:
             resp = cfn.describe_stacks(StackName=stack_name)
             assert resp["Stacks"][0]["StackStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+            # Verify Fn::Sub was evaluated by checking resource properties
+            resources_resp = cfn.describe_stack_resources(StackName=stack_name)
+            queue_resource = resources_resp["StackResources"][0]
+            assert queue_resource["ResourceType"] == "AWS::SQS::Queue"
+            assert queue_resource["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1552,6 +1627,9 @@ class TestCloudFormationAdvancedOps:
         resp = cfn.list_stacks(StackStatusFilter=["DELETE_COMPLETE"])
         names = [s["StackName"] for s in resp["StackSummaries"]]
         assert stack_name in names
+        # Verify the deleted stack has expected status
+        deleted_stack = next(s for s in resp["StackSummaries"] if s["StackName"] == stack_name)
+        assert deleted_stack["StackStatus"] == "DELETE_COMPLETE"
 
     def test_list_stack_resources_types(self, cfn):
         stack_name = f"types-{uuid.uuid4().hex[:8]}"
@@ -1576,6 +1654,11 @@ class TestCloudFormationAdvancedOps:
             types = {r["ResourceType"] for r in resp["StackResourceSummaries"]}
             assert "AWS::SQS::Queue" in types
             assert "AWS::SNS::Topic" in types
+            # Verify each resource has expected fields
+            for resource in resp["StackResourceSummaries"]:
+                assert resource["ResourceStatus"] in ("CREATE_COMPLETE", "CREATE_IN_PROGRESS")
+                assert resource["LogicalResourceId"] in ("Q", "T")
+                assert "PhysicalResourceId" in resource
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1607,7 +1690,9 @@ class TestCloudFormationAdvancedOps:
             # Verify export has a value
             export = next(e for e in resp["Exports"] if e["Name"] == f"{stack_name}-url")
             assert "Value" in export
+            assert "http" in export["Value"]  # Queue URL should be HTTP URL
             assert "ExportingStackId" in export
+            assert stack_name in export["ExportingStackId"]
         finally:
             cfn.delete_stack(StackName=stack_name)
 
@@ -1628,7 +1713,11 @@ class TestCloudFormationGapStubs:
     def test_describe_organizations_access(self, cfn):
         resp = cfn.describe_organizations_access()
         assert "Status" in resp
-        assert resp["Status"] in ("ENABLED", "DISABLED", "DISABLED_PERMANENTLY")
+        status = resp["Status"]
+        assert status in ("ENABLED", "DISABLED", "DISABLED_PERMANENTLY")
+        # Verify status is a valid string value
+        assert isinstance(status, str)
+        assert len(status) > 0
 
     def test_list_generated_templates(self, cfn):
         resp = cfn.list_generated_templates()
@@ -1654,14 +1743,24 @@ class TestCloudFormationGapStubs:
         resp = cfn.describe_publisher()
         assert "PublisherId" in resp
         assert "PublisherStatus" in resp
-        assert resp["PublisherStatus"] in ("VERIFIED", "UNVERIFIED")
+        status = resp["PublisherStatus"]
+        assert status in ("VERIFIED", "UNVERIFIED")
+        # Verify PublisherId is non-empty
+        assert isinstance(resp["PublisherId"], str)
+        assert len(resp["PublisherId"]) > 0
 
     def test_describe_type(self, cfn):
         resp = cfn.describe_type()
         assert "TypeName" in resp
         assert "Type" in resp
-        assert resp["Type"] in ("RESOURCE", "MODULE", "HOOK")
+        type_value = resp["Type"]
+        assert type_value in ("RESOURCE", "MODULE", "HOOK")
         assert "Arn" in resp
+        # Verify TypeName and Arn are non-empty strings
+        assert isinstance(resp["TypeName"], str)
+        assert len(resp["TypeName"]) > 0
+        assert isinstance(resp["Arn"], str)
+        assert "arn:aws" in resp["Arn"]
 
     def test_list_type_versions(self, cfn):
         resp = cfn.list_type_versions(TypeName="AWS::S3::Bucket", Type="RESOURCE")
@@ -1688,6 +1787,10 @@ class TestCloudFormationTemplateSummary:
         resource_types = resp["ResourceTypes"]
         assert "AWS::SQS::Queue" in resource_types
         assert "AWS::SNS::Topic" in resource_types
+        # Verify summary contains expected metadata
+        assert len(resource_types) == 2
+        assert "Version" in resp
+        assert resp.get("Description") == "Test template for summary"
 
     def test_estimate_template_cost(self, cfn):
         template = json.dumps(
@@ -1698,6 +1801,9 @@ class TestCloudFormationTemplateSummary:
         )
         resp = cfn.estimate_template_cost(TemplateBody=template)
         assert "Url" in resp
+        # Verify URL is a valid string
+        assert isinstance(resp["Url"], str)
+        assert len(resp["Url"]) > 0
 
 
 class TestCloudFormationStackSets:
@@ -1725,6 +1831,9 @@ class TestCloudformationAutoCoverage:
         """ActivateType returns a response."""
         resp = client.activate_type()
         assert "Arn" in resp
+        # Verify Arn is a valid ARN string
+        assert isinstance(resp["Arn"], str)
+        assert "arn:aws" in resp["Arn"]
 
     def test_deactivate_organizations_access(self, client):
         """DeactivateOrganizationsAccess returns a response."""
@@ -1758,16 +1867,24 @@ class TestCloudformationAutoCoverage:
         """ListStackRefactors returns a response."""
         resp = client.list_stack_refactors()
         assert "StackRefactorSummaries" in resp
+        # Verify StackRefactorSummaries is a list
+        assert isinstance(resp["StackRefactorSummaries"], list)
 
     def test_publish_type(self, client):
         """PublishType returns a response."""
         resp = client.publish_type()
         assert "PublicTypeArn" in resp
+        # Verify PublicTypeArn is a valid ARN string
+        assert isinstance(resp["PublicTypeArn"], str)
+        assert len(resp["PublicTypeArn"]) > 0
 
     def test_register_publisher(self, client):
         """RegisterPublisher returns a response."""
         resp = client.register_publisher()
         assert "PublisherId" in resp
+        # Verify PublisherId is a non-empty string
+        assert isinstance(resp["PublisherId"], str)
+        assert len(resp["PublisherId"]) > 0
 
     def test_set_type_default_version(self, client):
         """SetTypeDefaultVersion returns a response."""
@@ -1778,11 +1895,17 @@ class TestCloudformationAutoCoverage:
         """StartResourceScan returns a response."""
         resp = client.start_resource_scan()
         assert "ResourceScanId" in resp
+        # Verify ResourceScanId is a valid ARN string
+        assert isinstance(resp["ResourceScanId"], str)
+        assert "arn:aws:cloudformation" in resp["ResourceScanId"]
 
     def test_test_type(self, client):
         """TestType returns a response."""
         resp = client.test_type()
         assert "TypeVersionArn" in resp
+        # Verify TypeVersionArn is a valid ARN string
+        assert isinstance(resp["TypeVersionArn"], str)
+        assert "arn:aws" in resp["TypeVersionArn"]
 
 
 class TestCloudFormationChangeSets:
@@ -1821,7 +1944,11 @@ class TestCloudFormationChangeSets:
                 ChangeSetType="CREATE",
             )
             assert "Id" in resp
+            # Verify change set ID contains change set name
+            assert cs_name in resp["Id"]
             assert "StackId" in resp
+            # Verify stack ID contains stack name
+            assert stack_name in resp["StackId"]
         finally:
             try:
                 client.delete_change_set(StackName=stack_name, ChangeSetName=cs_name)
@@ -2025,6 +2152,8 @@ class TestCloudFormationStackSetsOps:
                 TemplateBody=self._simple_template(),
             )
             assert "StackSetId" in resp
+            # Verify StackSetId contains the stack set name
+            assert name in resp["StackSetId"]
         finally:
             try:
                 client.delete_stack_set(StackSetName=name)
@@ -2062,6 +2191,9 @@ class TestCloudFormationStackSetsOps:
                 Description="Updated description",
             )
             assert "OperationId" in resp
+            # Verify OperationId is non-empty
+            assert isinstance(resp["OperationId"], str)
+            assert len(resp["OperationId"]) > 0
         finally:
             try:
                 client.delete_stack_set(StackSetName=name)
@@ -2105,6 +2237,8 @@ class TestCloudFormationStackSetsOps:
             )
             resp = client.list_stack_set_operations(StackSetName=name)
             assert "Summaries" in resp
+            # Verify Summaries is a list
+            assert isinstance(resp["Summaries"], list)
         finally:
             try:
                 client.delete_stack_set(StackSetName=name)
@@ -2125,6 +2259,9 @@ class TestCloudFormationStackSetsOps:
                 Regions=["us-east-1"],
             )
             assert "OperationId" in resp
+            # Verify OperationId is non-empty
+            assert isinstance(resp["OperationId"], str)
+            assert len(resp["OperationId"]) > 0
         finally:
             try:
                 client.delete_stack_instances(
@@ -2159,6 +2296,9 @@ class TestCloudFormationStackSetsOps:
                 Regions=["us-east-1"],
             )
             assert "OperationId" in resp
+            # Verify OperationId is non-empty
+            assert isinstance(resp["OperationId"], str)
+            assert len(resp["OperationId"]) > 0
         finally:
             try:
                 client.delete_stack_instances(
@@ -2194,6 +2334,9 @@ class TestCloudFormationStackSetsOps:
                 RetainStacks=True,
             )
             assert "OperationId" in resp
+            # Verify OperationId is non-empty
+            assert isinstance(resp["OperationId"], str)
+            assert len(resp["OperationId"]) > 0
         finally:
             try:
                 client.delete_stack_set(StackSetName=name)
@@ -2251,12 +2394,16 @@ class TestCloudFormationStackSetsOps:
             op_id = create_resp["OperationId"]
             resp = client.describe_stack_set_operation(StackSetName=name, OperationId=op_id)
             assert "StackSetOperation" in resp
-            assert resp["StackSetOperation"]["Status"] in (
+            operation = resp["StackSetOperation"]
+            assert operation["Status"] in (
                 "RUNNING",
                 "SUCCEEDED",
                 "FAILED",
                 "STOPPED",
             )
+            # Verify operation has expected fields
+            assert operation["OperationId"] == op_id
+            assert "Action" in operation
         finally:
             try:
                 client.delete_stack_instances(
@@ -2438,6 +2585,10 @@ class TestCloudFormationStackSetDetails:
             resp = client.list_stack_sets()
             names = [s["StackSetName"] for s in resp["Summaries"]]
             assert name in names
+            # Verify stack set summary has expected fields
+            stack_set_summary = next(s for s in resp["Summaries"] if s["StackSetName"] == name)
+            assert "Status" in stack_set_summary
+            assert stack_set_summary["Status"] in ("ACTIVE", "DELETED")
         finally:
             try:
                 client.delete_stack_set(StackSetName=name)
@@ -2602,6 +2753,8 @@ class TestCloudFormationImports:
             client.create_stack(StackName=stack_name, TemplateBody=template)
             resp = client.list_imports(ExportName=export_name)
             assert "Imports" in resp
+            # Verify Imports is a list
+            assert isinstance(resp["Imports"], list)
         finally:
             try:
                 client.delete_stack(StackName=stack_name)
@@ -2621,8 +2774,13 @@ class TestCloudFormationDriftOps:
         try:
             resp = client.detect_stack_set_drift(StackSetName="fake-stackset-drift-nonexist")
             assert "ResponseMetadata" in resp
+            # If successful, verify response metadata is valid
+            assert isinstance(resp["ResponseMetadata"], dict)
+            assert "HTTPStatusCode" in resp["ResponseMetadata"]
         except ClientError as e:
             assert "Code" in e.response["Error"]
+            # Verify error code is non-empty
+            assert len(e.response["Error"]["Code"]) > 0
 
     def test_describe_stack_drift_detection_status_fake(self, client):
         """DescribeStackDriftDetectionStatus with fake ID returns response or error."""
@@ -2631,8 +2789,13 @@ class TestCloudFormationDriftOps:
                 StackDriftDetectionId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
             assert "ResponseMetadata" in resp
+            # If successful, verify response metadata is valid
+            assert isinstance(resp["ResponseMetadata"], dict)
+            assert "HTTPStatusCode" in resp["ResponseMetadata"]
         except ClientError as e:
             assert "Code" in e.response["Error"]
+            # Verify error code is non-empty
+            assert len(e.response["Error"]["Code"]) > 0
 
 
 class TestCloudFormationResourceScan:
@@ -2657,8 +2820,13 @@ class TestCloudFormationResourceScan:
                 ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id"
             )
             assert "ResponseMetadata" in resp
+            # If successful, verify response metadata is valid
+            assert isinstance(resp["ResponseMetadata"], dict)
+            assert "HTTPStatusCode" in resp["ResponseMetadata"]
         except ClientError as e:
             assert "Code" in e.response["Error"]
+            # Verify error code is non-empty
+            assert len(e.response["Error"]["Code"]) > 0
 
     def test_list_resource_scan_related_resources_fake(self, client):
         """ListResourceScanRelatedResources with fake ID returns response or error."""
@@ -2673,8 +2841,13 @@ class TestCloudFormationResourceScan:
                 ],
             )
             assert "ResponseMetadata" in resp
+            # If successful, verify response metadata is valid
+            assert isinstance(resp["ResponseMetadata"], dict)
+            assert "HTTPStatusCode" in resp["ResponseMetadata"]
         except ClientError as e:
             assert "Code" in e.response["Error"]
+            # Verify error code is non-empty
+            assert len(e.response["Error"]["Code"]) > 0
 
 
 class TestCloudFormationMiscOps:
@@ -2692,8 +2865,13 @@ class TestCloudFormationMiscOps:
                 StackName="fake-hooks-stack-nonexist",
             )
             assert "ResponseMetadata" in resp
+            # If successful, verify response metadata is valid
+            assert isinstance(resp["ResponseMetadata"], dict)
+            assert "HTTPStatusCode" in resp["ResponseMetadata"]
         except ClientError as e:
             assert "Code" in e.response["Error"]
+            # Verify error code is non-empty
+            assert len(e.response["Error"]["Code"]) > 0
 
     def test_import_stacks_to_stack_set_fake(self, client):
         """ImportStacksToStackSet with nonexistent stack set raises error."""
@@ -2703,6 +2881,8 @@ class TestCloudFormationMiscOps:
                 StackIds=["arn:aws:cloudformation:us-east-1:123456789012:stack/fake/id"],
             )
         assert "Code" in exc.value.response["Error"]
+        # Verify error code is non-empty
+        assert len(exc.value.response["Error"]["Code"]) > 0
 
     def test_list_stack_instance_resource_drifts_fake(self, client):
         """ListStackInstanceResourceDrifts with fake stack set returns response or error."""

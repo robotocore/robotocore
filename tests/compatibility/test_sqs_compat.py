@@ -53,8 +53,11 @@ def fifo_queue_url(sqs):
 
 class TestSQSBasicOperations:
     def test_create_queue(self, sqs):
-        response = sqs.create_queue(QueueName=_qname("test-create-queue"))
+        queue_name = _qname("test-create-queue")
+        response = sqs.create_queue(QueueName=queue_name)
         assert "QueueUrl" in response
+        assert queue_name in response["QueueUrl"]
+        assert "/sqs." in response["QueueUrl"] or "//localhost" in response["QueueUrl"]
         sqs.delete_queue(QueueUrl=response["QueueUrl"])
 
     def test_send_and_receive_message(self, sqs, queue_url):
@@ -68,11 +71,26 @@ class TestSQSBasicOperations:
         sqs.send_message(QueueUrl=queue_url, MessageBody="delete me")
         response = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=1)
         receipt = response["Messages"][0]["ReceiptHandle"]
-        sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
+
+        # Delete the message
+        delete_response = sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt)
+        assert delete_response["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify message is gone - receive should return empty or different message
+        after_delete = sqs.receive_message(
+            QueueUrl=queue_url, MaxNumberOfMessages=1, WaitTimeSeconds=1
+        )
+        assert "Messages" not in after_delete or len(after_delete.get("Messages", [])) == 0
 
     def test_get_queue_attributes(self, sqs, queue_url):
         response = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["All"])
         assert "Attributes" in response
+        attrs = response["Attributes"]
+        assert isinstance(attrs, dict)
+        assert len(attrs) > 0
+        # Standard attributes should be present
+        assert "QueueArn" in attrs
+        assert "VisibilityTimeout" in attrs
 
     def test_list_queues(self, sqs, queue_url):
         queue_name = queue_url.rsplit("/", 1)[-1]
@@ -125,6 +143,9 @@ class TestSQSBasicOperations:
         attrs = msg.get("Attributes", {})
         assert "ApproximateReceiveCount" in attrs
         assert "SentTimestamp" in attrs
+        # Verify actual values
+        assert int(attrs["ApproximateReceiveCount"]) >= 1
+        assert int(attrs["SentTimestamp"]) > 0
 
 
 class TestSQSBatchOperations:
@@ -280,6 +301,10 @@ class TestSQSFIFO:
         )
         recv = sqs.receive_message(QueueUrl=fifo_queue_url, AttributeNames=["All"])
         assert "SequenceNumber" in recv["Messages"][0]["Attributes"]
+        seq_num = recv["Messages"][0]["Attributes"]["SequenceNumber"]
+        # SequenceNumber should be a non-empty string of digits
+        assert len(seq_num) > 0
+        assert seq_num.isdigit()
 
     def test_fifo_message_group_id(self, sqs, fifo_queue_url):
         sqs.send_message(
@@ -302,6 +327,12 @@ class TestSQSPermissions:
         # Verify the policy was added
         attrs = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["Policy"])
         assert "Policy" in attrs["Attributes"]
+        policy = attrs["Attributes"]["Policy"]
+        assert isinstance(policy, str)
+        assert len(policy) > 0
+        # Policy should contain the account ID and action
+        assert "111111111111" in policy
+        assert "SendMessage" in policy
 
         # Remove the permission
         sqs.remove_permission(QueueUrl=queue_url, Label="test-permission")
@@ -616,6 +647,11 @@ class TestSQSMessageAttributes:
         attrs = recv["Messages"][0].get("MessageAttributes", {})
         assert "X" in attrs
         assert "Y" in attrs
+        # Verify actual values match what was sent
+        assert attrs["X"]["StringValue"] == "val-x"
+        assert attrs["Y"]["StringValue"] == "val-y"
+        assert attrs["X"]["DataType"] == "String"
+        assert attrs["Y"]["DataType"] == "String"
 
     def test_custom_data_type(self, sqs, queue_url):
         """Custom data types like String.email are supported."""
@@ -1030,6 +1066,10 @@ class TestSQSSystemAttributes:
         sqs.send_message(QueueUrl=queue_url, MessageBody="sender-test")
         recv = sqs.receive_message(QueueUrl=queue_url, AttributeNames=["SenderId"])
         assert "SenderId" in recv["Messages"][0]["Attributes"]
+        sender_id = recv["Messages"][0]["Attributes"]["SenderId"]
+        # SenderId should be a non-empty string
+        assert isinstance(sender_id, str)
+        assert len(sender_id) > 0
 
     def test_md5_of_body(self, sqs, queue_url):
         """MD5OfBody is returned on send and receive."""
@@ -1222,9 +1262,14 @@ class TestSQSQueueAttributesExtended:
             sqs.delete_queue(QueueUrl=url)
 
     def test_queue_url_format(self, sqs):
-        url = sqs.create_queue(QueueName=_qname("url-format-q"))["QueueUrl"]
+        queue_name = _qname("url-format-q")
+        url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
         try:
-            assert "url-format-q" in url
+            assert queue_name in url
+            # URL should be a valid HTTP/HTTPS URL
+            assert url.startswith("http://") or url.startswith("https://")
+            # URL should contain sqs service identifier or localhost for local testing
+            assert "/sqs." in url or "localhost" in url
         finally:
             sqs.delete_queue(QueueUrl=url)
 
@@ -1288,6 +1333,12 @@ class TestSQSMessageAttributesExtended:
         try:
             resp = sqs.send_message(QueueUrl=url, MessageBody="delayed", DelaySeconds=0)
             assert "MessageId" in resp
+            # Verify MessageId is a non-empty string
+            assert isinstance(resp["MessageId"], str)
+            assert len(resp["MessageId"]) > 0
+            # Should also have MD5 of body
+            assert "MD5OfMessageBody" in resp
+            assert len(resp["MD5OfMessageBody"]) == 32  # MD5 is 32 hex chars
         finally:
             sqs.delete_queue(QueueUrl=url)
 
@@ -1388,6 +1439,8 @@ class TestSQSFIFOExtended:
             bodies = {m["Body"] for m in recv.get("Messages", [])}
             assert "g1-msg" in bodies
             assert "g2-msg" in bodies
+            # Verify we got exactly 2 messages
+            assert len(recv.get("Messages", [])) == 2
         finally:
             sqs.delete_queue(QueueUrl=url)
 
@@ -1416,6 +1469,11 @@ class TestSQSFIFOExtended:
         try:
             resp = sqs.send_message(QueueUrl=url, MessageBody="seq-test", MessageGroupId="g1")
             assert "SequenceNumber" in resp
+            seq_num = resp["SequenceNumber"]
+            # SequenceNumber should be a non-empty string of digits
+            assert isinstance(seq_num, str)
+            assert len(seq_num) > 0
+            assert seq_num.isdigit()
         finally:
             sqs.delete_queue(QueueUrl=url)
 
@@ -1449,6 +1507,9 @@ class TestSQSMessageMoveTasks:
             # Start move task from DLQ back to source
             resp = sqs.start_message_move_task(SourceArn=dlq_arn)
             assert "TaskHandle" in resp
+            # TaskHandle should be a non-empty string
+            assert isinstance(resp["TaskHandle"], str)
+            assert len(resp["TaskHandle"]) > 0
         finally:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)
@@ -1506,6 +1567,10 @@ class TestSQSMessageMoveTasks:
             task_handle = start_resp["TaskHandle"]
             cancel_resp = sqs.cancel_message_move_task(TaskHandle=task_handle)
             assert "ApproximateNumberOfMessagesMoved" in cancel_resp
+            # Verify the count is a non-negative integer
+            moved_count = cancel_resp["ApproximateNumberOfMessagesMoved"]
+            assert isinstance(moved_count, int)
+            assert moved_count >= 0
         finally:
             sqs.delete_queue(QueueUrl=src_url)
             sqs.delete_queue(QueueUrl=dlq_url)

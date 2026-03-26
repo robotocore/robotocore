@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -1383,10 +1384,16 @@ async def _shutdown():
     run_init_hooks("shutdown")
 
 
+@asynccontextmanager
+async def _lifespan(app):
+    await _start_background_engines()
+    yield
+    await _shutdown()
+
+
 app = Starlette(
     routes=management_routes,
-    on_startup=[_start_background_engines],
-    on_shutdown=[_shutdown],
+    lifespan=_lifespan,
 )
 
 

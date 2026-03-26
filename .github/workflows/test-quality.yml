@@ -1,0 +1,58 @@
+name: Test Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - 'tests/compatibility/**'
+      - 'scripts/validate_test_quality.py'
+  push:
+    branches: [main]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Validate test quality
+        run: |
+          # Fail if >5% of tests don't contact server or >10% have no assertions
+          uv run python scripts/validate_test_quality.py \
+            --max-no-contact-pct 5 \
+            --max-no-assertion-pct 10
+
+      - name: Generate quality report (with behavioral coverage)
+        if: always()
+        run: |
+          uv run python scripts/validate_test_quality.py --json --behavioral > quality-report.json
+          echo "=== Quality Report Summary ==="
+          cat quality-report.json | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          print(f\"Total tests: {d['total_tests']}\")
+          print(f\"Effective tests: {d['effective_tests']} ({d['effective_pct']}%)\")
+          print(f\"Behavioral coverage: {d.get('overall_behavioral_coverage_pct', 'N/A')}%\")
+          print(f\"\\nPattern coverage:\")
+          for p, v in d.get('pattern_coverage', {}).items():
+              print(f\"  {p}: {v['pct']}%\")
+          "
+
+      - name: Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: quality-report.json
