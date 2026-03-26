@@ -510,6 +510,7 @@ class TestCloudFrontConnectionFunctionCRUD:
         )
         assert "ConnectionFunctionSummary" in resp
         assert "ETag" in resp
+        assert isinstance(resp["ETag"], str)
 
     def test_publish_connection_function(self, cf):
         name, etag = self._create_connection_function(cf)
@@ -527,6 +528,7 @@ class TestCloudFrontConnectionFunctionCRUD:
         )
         assert "ConnectionFunctionTestResult" in resp
         assert "ComputeUtilization" in resp["ConnectionFunctionTestResult"]
+        assert isinstance(resp["ConnectionFunctionTestResult"], dict)
 
 
 class TestCloudFrontConnectionGroupCRUD:
@@ -884,6 +886,7 @@ class TestCloudFrontDistributionAdvanced:
     def test_list_cache_policies(self, cf):
         resp = cf.list_cache_policies()
         assert "CachePolicyList" in resp
+        assert isinstance(resp["CachePolicyList"], dict)
 
     def test_list_functions(self, cf):
         resp = cf.list_functions()
@@ -892,6 +895,7 @@ class TestCloudFrontDistributionAdvanced:
     def test_list_response_headers_policies(self, cf):
         resp = cf.list_response_headers_policies()
         assert "ResponseHeadersPolicyList" in resp
+        assert isinstance(resp["ResponseHeadersPolicyList"], dict)
 
     def test_create_and_describe_function(self, cf):
         name = _unique("func")
@@ -1318,22 +1322,27 @@ class TestCloudFrontListOperationsExtended:
     def test_list_streaming_distributions(self, cf):
         resp = cf.list_streaming_distributions()
         assert "StreamingDistributionList" in resp
+        assert isinstance(resp["StreamingDistributionList"], dict)
 
     def test_list_origin_request_policies(self, cf):
         resp = cf.list_origin_request_policies()
         assert "OriginRequestPolicyList" in resp
+        assert isinstance(resp["OriginRequestPolicyList"], dict)
 
     def test_list_continuous_deployment_policies(self, cf):
         resp = cf.list_continuous_deployment_policies()
         assert "ContinuousDeploymentPolicyList" in resp
+        assert isinstance(resp["ContinuousDeploymentPolicyList"], dict)
 
     def test_list_field_level_encryption_configs(self, cf):
         resp = cf.list_field_level_encryption_configs()
         assert "FieldLevelEncryptionList" in resp
+        assert isinstance(resp["FieldLevelEncryptionList"], dict)
 
     def test_list_field_level_encryption_profiles(self, cf):
         resp = cf.list_field_level_encryption_profiles()
         assert "FieldLevelEncryptionProfileList" in resp
+        assert isinstance(resp["FieldLevelEncryptionProfileList"], dict)
 
     def test_list_realtime_log_configs(self, cf):
         resp = cf.list_realtime_log_configs()
@@ -1342,6 +1351,7 @@ class TestCloudFrontListOperationsExtended:
     def test_list_conflicting_aliases(self, cf):
         resp = cf.list_conflicting_aliases(DistributionId="EDISTFAKE123", Alias="example.com")
         assert "ConflictingAliasesList" in resp
+        assert isinstance(resp["ConflictingAliasesList"], dict)
 
     def test_list_distributions_by_cache_policy_id(self, cf):
         resp = cf.list_distributions_by_cache_policy_id(CachePolicyId="fake-policy-id")
@@ -1350,6 +1360,7 @@ class TestCloudFrontListOperationsExtended:
     def test_list_distributions_by_key_group(self, cf):
         resp = cf.list_distributions_by_key_group(KeyGroupId="fake-key-group-id")
         assert "DistributionIdList" in resp
+        assert isinstance(resp["DistributionIdList"], dict)
 
     def test_list_distributions_by_origin_request_policy_id(self, cf):
         resp = cf.list_distributions_by_origin_request_policy_id(
@@ -1360,6 +1371,7 @@ class TestCloudFrontListOperationsExtended:
     def test_list_distributions_by_realtime_log_config(self, cf):
         resp = cf.list_distributions_by_realtime_log_config()
         assert "DistributionList" in resp
+        assert isinstance(resp["DistributionList"], dict)
 
     def test_list_distributions_by_response_headers_policy_id(self, cf):
         resp = cf.list_distributions_by_response_headers_policy_id(
@@ -1645,6 +1657,7 @@ class TestCloudFrontTestFunction:
         assert "TestResult" in test_resp
         assert "FunctionSummary" in test_resp["TestResult"]
         assert "FunctionOutput" in test_resp["TestResult"]
+        assert isinstance(test_resp["TestResult"], dict)
 
         cf.delete_function(Name=name, IfMatch=etag)
 
@@ -1730,7 +1743,7 @@ class TestCloudFrontContinuousDeploymentCRUD:
                 Id="ECDP-NONEXISTENT",
                 IfMatch="dummy-etag",
             )
-        assert "NoSuchContinuousDeploymentPolicy" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchContinuousDeploymentPolicy"
 
     def test_delete_continuous_deployment_policy(self, cf):
         cdp_id, etag = self._create_cdp(cf)
@@ -1977,6 +1990,7 @@ class TestCloudFrontKeyValueStoreCRUD:
         kvs_list = resp["KeyValueStoreList"]
         assert "Quantity" in kvs_list
         assert "MaxItems" in kvs_list
+        assert isinstance(kvs_list["Quantity"], int)
 
     def test_create_key_value_store(self, cf):
         name = _unique("kvs")
