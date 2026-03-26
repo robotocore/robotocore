@@ -350,6 +350,7 @@ class TestKinesisAnalyticsV2Operations:
             UrlType="FLINK_DASHBOARD_URL",
         )
         assert "AuthorizedUrl" in resp
+        assert isinstance(resp["AuthorizedUrl"], str)
 
     def test_create_application_snapshot(self, kav2):
         """CreateApplicationSnapshot creates a snapshot."""
@@ -569,6 +570,7 @@ class TestKinesisAnalyticsV2Operations:
             },
         )
         assert "InputSchema" in resp
+        assert isinstance(resp["InputSchema"], dict)
 
     def test_add_application_input(self, kav2):
         """AddApplicationInput adds an input to a SQL app."""
@@ -597,6 +599,7 @@ class TestKinesisAnalyticsV2Operations:
             },
         )
         assert "ApplicationARN" in resp
+        assert arn == resp["ApplicationARN"]
 
     def test_add_application_reference_data_source(self, kav2):
         """AddApplicationReferenceDataSource adds a reference to a SQL app."""
@@ -619,6 +622,7 @@ class TestKinesisAnalyticsV2Operations:
             },
         )
         assert "ApplicationARN" in resp
+        assert "ReferenceDataSourceDescriptions" in resp
 
     def test_add_application_vpc_configuration(self, kav2):
         """AddApplicationVpcConfiguration adds a VPC config."""
@@ -632,3 +636,4 @@ class TestKinesisAnalyticsV2Operations:
             },
         )
         assert "ApplicationARN" in resp
+        assert "VpcConfigurationDescription" in resp

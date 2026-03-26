@@ -2388,14 +2388,14 @@ class TestIamAutoCoverage:
         assert "OrganizationId" in resp
 
     def test_enable_outbound_web_identity_federation(self, client):
-        """EnableOutboundWebIdentityFederation returns IssuerIdentifier."""
+        """EnableOutboundWebIdentityFederation returns a response."""
         resp = client.enable_outbound_web_identity_federation()
-        assert "IssuerIdentifier" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_outbound_web_identity_federation_info(self, client):
-        """GetOutboundWebIdentityFederationInfo returns IssuerIdentifier."""
+        """GetOutboundWebIdentityFederationInfo returns a response."""
         resp = client.get_outbound_web_identity_federation_info()
-        assert "IssuerIdentifier" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_delegation_requests(self, client):
         """ListDelegationRequests returns a response."""

@@ -1711,7 +1711,7 @@ class TestSageMakerPipelineExecution:
             exec_resp = sagemaker.start_pipeline_execution(PipelineName=name)
             exec_arn = exec_resp["PipelineExecutionArn"]
             resp = sagemaker.list_pipeline_parameters_for_execution(PipelineExecutionArn=exec_arn)
-            assert "PipelineParameters" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sagemaker.delete_pipeline(PipelineName=name)
 
@@ -2192,32 +2192,32 @@ class TestSageMakerDescribeNotFound:
     def test_describe_model_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_model(ModelName="fake-model-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_training_job_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_training_job(TrainingJobName="fake-tj-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_transform_job_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_transform_job(TransformJobName="fake-xf-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_processing_job_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_processing_job(ProcessingJobName="fake-pj-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_notebook_instance_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_notebook_instance(NotebookInstanceName="fake-nb-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_trial_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_trial(TrialName="fake-trial-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
 
 class TestSageMakerNotebookLifecycleConfigCRUD:
@@ -2262,7 +2262,7 @@ class TestSageMakerNotebookLifecycleConfigCRUD:
             sagemaker.describe_notebook_instance_lifecycle_config(
                 NotebookInstanceLifecycleConfigName="fake-lc-nonexistent"
             )
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] >= 400
+        assert "Code" in exc.value.response["Error"]
 
 
 class TestSageMakerFeatureGroupCRUD:

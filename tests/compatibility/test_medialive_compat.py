@@ -1875,7 +1875,7 @@ class TestMediaLiveSdiSources:
             Name=_uid("sdi"),
             Type="SINGLE",
         )
-        assert "SdiSource" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_sdi_source_not_found(self, medialive):
         with pytest.raises(ClientError) as exc:

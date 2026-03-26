@@ -708,8 +708,11 @@ class TestCodeBuildWebhookOperations:
         name = self._create_github_project(codebuild)
         try:
             codebuild.create_webhook(projectName=name)
-            resp = codebuild.delete_webhook(projectName=name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            codebuild.delete_webhook(projectName=name)
+            # Verify webhook is gone by checking the project
+            resp = codebuild.batch_get_projects(names=[name])
+            project = resp["projects"][0]
+            assert project.get("webhook") is None
         finally:
             codebuild.delete_project(name=name)
 
@@ -868,8 +871,15 @@ class TestCodeBuildResourcePolicyOperations:
             policy='{"Version":"2012-10-17","Statement":[]}',
             resourceArn=resource_arn,
         )
-        resp = codebuild.delete_resource_policy(resourceArn=resource_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        codebuild.delete_resource_policy(resourceArn=resource_arn)
+        # Verify the policy is gone by trying to get it - should raise or return empty
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = codebuild.get_resource_policy(resourceArn=resource_arn)
+            assert resp.get("policy") is None or resp.get("policy") == ""
+        except ClientError:
+            pass  # expected if policy not found
 
 
 class TestCodeBuildMiscOperations:
@@ -894,8 +904,10 @@ class TestCodeBuildMiscOperations:
         """InvalidateProjectCache succeeds for a project."""
         name = self._create_project(codebuild)
         try:
-            resp = codebuild.invalidate_project_cache(projectName=name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            codebuild.invalidate_project_cache(projectName=name)
+            # Verify project still exists after cache invalidation
+            resp = codebuild.batch_get_projects(names=[name])
+            assert len(resp["projects"]) == 1
         finally:
             codebuild.delete_project(name=name)
 
@@ -927,7 +939,7 @@ class TestCodeBuildMiscOperations:
         try:
             arn = f"arn:aws:codebuild:us-east-1:123456789012:project/{name}"
             resp = codebuild.update_project_visibility(projectArn=arn, projectVisibility="PRIVATE")
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["projectVisibility"] == "PRIVATE"
         finally:
             codebuild.delete_project(name=name)
 
@@ -958,14 +970,12 @@ class TestCodeBuildMiscOperations:
     def test_list_shared_projects(self, codebuild):
         """ListSharedProjects returns shared project ARNs."""
         resp = codebuild.list_shared_projects()
-        assert "ResponseMetadata" in resp
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "projects" in resp
 
     def test_list_shared_report_groups(self, codebuild):
         """ListSharedReportGroups returns shared report group ARNs."""
         resp = codebuild.list_shared_report_groups()
-        assert "ResponseMetadata" in resp
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "reportGroups" in resp
 
     def test_describe_test_cases(self, codebuild):
         """DescribeTestCases returns test case list for a report."""
@@ -989,7 +999,7 @@ class TestCodeBuildMiscOperations:
             reportGroupArn="arn:aws:codebuild:us-east-1:123456789012:report-group/fake",
             trendField="TOTAL",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "stats" in resp
 
     def test_delete_report(self, codebuild):
         """DeleteReport succeeds for a report ARN."""

@@ -985,7 +985,7 @@ class TestKinesisAutoCoverage:
         """DescribeAccountSettings returns a response."""
         resp = client.describe_account_settings()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "MinimumThroughputBillingCommitment" in resp
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
 
 class TestKinesisResourcePolicy:

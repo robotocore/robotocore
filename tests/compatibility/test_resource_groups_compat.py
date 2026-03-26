@@ -230,6 +230,7 @@ class TestResourceGroupsExtended:
         try:
             resp = resource_groups.get_group_configuration(Group=name)
             assert "GroupConfiguration" in resp
+            assert isinstance(resp["GroupConfiguration"], dict)
         finally:
             resource_groups.delete_group(GroupName=name)
 
@@ -244,6 +245,7 @@ class TestResourceGroupsGapStubs:
     def test_get_account_settings(self, resource_groups):
         resp = resource_groups.get_account_settings()
         assert "AccountSettings" in resp
+        assert isinstance(resp["AccountSettings"], dict)
 
 
 class TestResourceGroupsAutoCoverage:

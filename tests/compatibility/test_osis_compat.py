@@ -240,14 +240,17 @@ class TestOSISMissingGapOps:
     def test_get_pipeline_blueprint(self, osis):
         resp = osis.get_pipeline_blueprint(BlueprintName="AWS-KinesisToS3")
         assert "Blueprint" in resp
+        assert isinstance(resp["Blueprint"], dict)
 
     def test_validate_pipeline(self, osis):
         resp = osis.validate_pipeline(PipelineConfigurationBody="version: 2023-01-01")
         assert "isValid" in resp
+        assert isinstance(resp["isValid"], bool)
 
     def test_get_pipeline_change_progress(self, osis):
         resp = osis.get_pipeline_change_progress(PipelineName="fake-pipeline")
         assert "ChangeProgressStatuses" in resp
+        assert isinstance(resp["ChangeProgressStatuses"], list)
 
 
 class TestOSISEndpointGapOps:
@@ -284,6 +287,7 @@ class TestOSISPipelineEndpointOps:
             VpcOptions={"SubnetIds": ["subnet-abc12345"]},
         )
         assert "Status" in resp
+        assert "PipelineArn" in resp
 
     def test_delete_pipeline_endpoint(self, osis):
         """DeletePipelineEndpoint succeeds."""
@@ -297,3 +301,4 @@ class TestOSISPipelineEndpointOps:
             EndpointIds=["vpce-abc12345"],
         )
         assert "PipelineArn" in resp
+        assert resp["PipelineArn"] == "arn:aws:osis:us-east-1:123456789012:pipeline/test-pipeline"
