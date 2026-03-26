@@ -19,10 +19,12 @@ class TestResourceGroupsTaggingOperations:
     def test_get_tag_keys(self, tagging):
         response = tagging.get_tag_keys()
         assert "TagKeys" in response
+        assert isinstance(response["TagKeys"], list)
 
     def test_get_tag_values(self, tagging):
         response = tagging.get_tag_values(Key="env")
         assert "TagValues" in response
+        assert isinstance(response["TagValues"], list)
 
     def test_get_resources_empty(self, tagging):
         response = tagging.get_resources()
@@ -57,6 +59,7 @@ class TestResourceGroupsTaggingOperations:
             Tags={"tagged-by": "compat-test"},
         )
         assert "FailedResourcesMap" in response
+        assert isinstance(response["FailedResourcesMap"], dict)
 
         # Cleanup
         queue_url = sqs.get_queue_url(QueueName="tag-resources-queue")["QueueUrl"]
@@ -101,10 +104,12 @@ class TestTaggingExtended:
     def test_get_tag_keys_returns_list(self, tagging):
         resp = tagging.get_tag_keys()
         assert "TagKeys" in resp
+        assert isinstance(resp["TagKeys"], list)
 
     def test_get_tag_values_returns_list(self, tagging):
         resp = tagging.get_tag_values(Key="env")
         assert "TagValues" in resp
+        assert isinstance(resp["TagValues"], list)
 
     def test_tag_resources_multiple_tags(self, tagging, sqs):
         import uuid
@@ -120,6 +125,7 @@ class TestTaggingExtended:
                 Tags={"env": "test", "team": "platform", "project": "search"},
             )
             assert "FailedResourcesMap" in resp
+            assert isinstance(resp["FailedResourcesMap"], dict)
         finally:
             sqs.delete_queue(QueueUrl=url)
 
@@ -199,10 +205,12 @@ class TestRGTAGapStubs:
     def test_describe_report_creation(self, tagging):
         resp = tagging.describe_report_creation()
         assert "Status" in resp
+        assert isinstance(resp["Status"], str)
 
     def test_get_compliance_summary(self, tagging):
         resp = tagging.get_compliance_summary()
         assert "SummaryList" in resp
+        assert isinstance(resp["SummaryList"], list)
 
 
 class TestResourcegroupstaggingapiAutoCoverage:

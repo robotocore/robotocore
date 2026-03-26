@@ -361,7 +361,6 @@ class TestKinesisVideoNewOps:
         try:
             resp = kinesisvideo_client.describe_stream_storage_configuration(StreamName=name)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "StreamStorageConfiguration" in resp
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)

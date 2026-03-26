@@ -34,14 +34,16 @@ class TestLakeFormationGetDataLakeSettings:
 class TestLakeFormationPutDataLakeSettings:
     def test_put_data_lake_settings(self, lakeformation):
         admin_arn = f"arn:aws:iam::123456789012:user/admin-{uuid.uuid4().hex[:8]}"
-        resp = lakeformation.put_data_lake_settings(
+        lakeformation.put_data_lake_settings(
             DataLakeSettings={
                 "DataLakeAdmins": [
                     {"DataLakePrincipalIdentifier": admin_arn},
                 ],
             }
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the settings were applied
+        get_resp = lakeformation.get_data_lake_settings()
+        assert "DataLakeSettings" in get_resp
 
     def test_put_then_get_data_lake_settings(self, lakeformation):
         admin_arn = f"arn:aws:iam::123456789012:user/admin-{uuid.uuid4().hex[:8]}"
@@ -62,14 +64,21 @@ class TestLakeFormationPutDataLakeSettings:
 class TestLakeFormationRegisterDeregisterResource:
     def test_register_resource(self, lakeformation, unique_suffix):
         resource_arn = f"arn:aws:s3:::test-bucket-{unique_suffix}"
-        resp = lakeformation.register_resource(ResourceArn=resource_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        lakeformation.register_resource(ResourceArn=resource_arn)
+        # Verify the resource appears in the list
+        list_resp = lakeformation.list_resources()
+        arns = [r["ResourceArn"] for r in list_resp.get("ResourceInfoList", [])]
+        assert resource_arn in arns
+        lakeformation.deregister_resource(ResourceArn=resource_arn)
 
     def test_register_then_deregister(self, lakeformation, unique_suffix):
         resource_arn = f"arn:aws:s3:::test-bucket-{unique_suffix}"
         lakeformation.register_resource(ResourceArn=resource_arn)
-        resp = lakeformation.deregister_resource(ResourceArn=resource_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        lakeformation.deregister_resource(ResourceArn=resource_arn)
+        # Verify it's no longer in the list
+        list_resp = lakeformation.list_resources()
+        arns = [r["ResourceArn"] for r in list_resp.get("ResourceInfoList", [])]
+        assert resource_arn not in arns
 
     def test_register_appears_in_list(self, lakeformation, unique_suffix):
         resource_arn = f"arn:aws:s3:::test-bucket-{unique_suffix}"

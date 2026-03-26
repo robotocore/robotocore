@@ -714,8 +714,11 @@ class TestSesv2AutoCoverage:
 
     def test_delete_nonexistent_template_succeeds(self, client):
         """DeleteEmailTemplate for nonexistent template succeeds (idempotent)."""
-        resp = client.delete_email_template(TemplateName="nonexistent-xyz-tmpl-del")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_email_template(TemplateName="nonexistent-xyz-tmpl-del")
+        # Verify the template doesn't exist by listing templates
+        resp = client.list_email_templates()
+        names = [t["TemplateName"] for t in resp.get("TemplatesMetadata", [])]
+        assert "nonexistent-xyz-tmpl-del" not in names
 
     def test_send_raw_email(self, client):
         """SendEmail with Raw content returns a MessageId."""
@@ -1048,13 +1051,17 @@ class TestSesv2AutoCoverage:
 
     def test_put_account_sending_attributes(self, client):
         """PutAccountSendingAttributes toggles sending enabled."""
-        resp = client.put_account_sending_attributes(SendingEnabled=True)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.put_account_sending_attributes(SendingEnabled=True)
+        # Verify via GetAccount
+        account = client.get_account()
+        assert account["SendingEnabled"] is True
 
     def test_put_account_suppression_attributes(self, client):
         """PutAccountSuppressionAttributes sets suppressed reasons."""
-        resp = client.put_account_suppression_attributes(SuppressedReasons=["BOUNCE"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.put_account_suppression_attributes(SuppressedReasons=["BOUNCE"])
+        # Verify via GetAccount
+        account = client.get_account()
+        assert "SuppressionAttributes" in account
 
     def test_put_account_details(self, client):
         """PutAccountDetails sets mail type and website URL."""
@@ -1596,13 +1603,17 @@ class TestSESv2AccountWarmup:
 
     def test_put_account_dedicated_ip_warmup_attributes(self, sesv2):
         """PutAccountDedicatedIpWarmupAttributes enables auto warmup."""
-        resp = sesv2.put_account_dedicated_ip_warmup_attributes(AutoWarmupEnabled=True)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.put_account_dedicated_ip_warmup_attributes(AutoWarmupEnabled=True)
+        # Verify via GetAccount
+        account = sesv2.get_account()
+        assert account["DedicatedIpAutoWarmupEnabled"] is True
 
     def test_put_account_dedicated_ip_warmup_attributes_disable(self, sesv2):
         """PutAccountDedicatedIpWarmupAttributes disables auto warmup."""
-        resp = sesv2.put_account_dedicated_ip_warmup_attributes(AutoWarmupEnabled=False)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.put_account_dedicated_ip_warmup_attributes(AutoWarmupEnabled=False)
+        # Verify via GetAccount
+        account = sesv2.get_account()
+        assert account["DedicatedIpAutoWarmupEnabled"] is False
 
 
 class TestSESv2DomainDeliverability:

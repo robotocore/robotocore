@@ -1470,6 +1470,7 @@ class TestStepFunctionsAliases:
         fake_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:nonexistent"
         resp = sfn.list_state_machine_aliases(stateMachineArn=fake_arn)
         assert "stateMachineAliases" in resp
+        assert isinstance(resp["stateMachineAliases"], list)
 
     def test_describe_state_machine_alias_nonexistent(self, sfn):
         """DescribeStateMachineAlias with nonexistent ARN raises ResourceNotFound."""
@@ -1492,6 +1493,7 @@ class TestStepFunctionsMissingGapOps:
         resp = sfn.get_activity_task(activityArn=activity_arn)
         assert "taskToken" in resp
         assert "input" in resp
+        assert isinstance(resp["taskToken"], str)
         sfn.delete_activity(activityArn=activity_arn)
 
     def test_redrive_execution_nonexistent_raises(self, sfn):
@@ -1532,12 +1534,16 @@ class TestStepFunctionsAliasGapOps:
         )
         alias_arn = alias["stateMachineAliasArn"]
         assert "stateMachineAliasArn" in alias
+        assert isinstance(alias["stateMachineAliasArn"], str)
 
         update_resp = sfn.update_state_machine_alias(
             stateMachineAliasArn=alias_arn,
             routingConfiguration=[{"stateMachineVersionArn": ver_arn, "weight": 100}],
         )
         assert "updateDate" in update_resp
+        assert isinstance(update_resp["updateDate"], str) or hasattr(
+            update_resp["updateDate"], "year"
+        )
 
         sfn.delete_state_machine_alias(stateMachineAliasArn=alias_arn)
         sfn.delete_state_machine_version(stateMachineVersionArn=ver_arn)
