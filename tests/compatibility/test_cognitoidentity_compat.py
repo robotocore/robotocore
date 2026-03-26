@@ -259,3 +259,30 @@ class TestCognitoIdentityNewOps:
             assert set_resp["IdentityPoolId"] == pool_id
         finally:
             cognito_identity.delete_identity_pool(IdentityPoolId=pool_id)
+
+    def test_unlink_developer_identity(self, cognito_identity):
+        """UnlinkDeveloperIdentity succeeds without raising an error."""
+        pool_id = _create_pool(cognito_identity)
+        try:
+            resp = cognito_identity.unlink_developer_identity(
+                IdentityId=f"{pool_id.split(':')[0]}:12345678-1234-1234-1234-123456789012",
+                IdentityPoolId=pool_id,
+                DeveloperProviderName="myapp.provider",
+                DeveloperUserIdentifier="user123",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito_identity.delete_identity_pool(IdentityPoolId=pool_id)
+
+    def test_unlink_identity(self, cognito_identity):
+        """UnlinkIdentity succeeds without raising an error."""
+        pool_id = _create_pool(cognito_identity)
+        try:
+            resp = cognito_identity.unlink_identity(
+                IdentityId=f"{pool_id.split(':')[0]}:12345678-1234-1234-1234-123456789012",
+                Logins={"cognito-identity.amazonaws.com": "testtoken"},
+                LoginsToRemove=["cognito-identity.amazonaws.com"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            cognito_identity.delete_identity_pool(IdentityPoolId=pool_id)

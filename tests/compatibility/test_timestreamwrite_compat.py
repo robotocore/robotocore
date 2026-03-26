@@ -190,6 +190,25 @@ class TestTimestreamWriteTagging:
         assert "to-remove" not in keys
 
 
+class TestTimestreamWriteUpdateDatabase:
+    """Tests for UpdateDatabase operation."""
+
+    def test_update_database(self, timestream_write):
+        """UpdateDatabase updates KmsKeyId and returns updated database details."""
+        db_name = f"upd-db-{uuid.uuid4().hex[:8]}"
+        timestream_write.create_database(DatabaseName=db_name)
+        try:
+            resp = timestream_write.update_database(
+                DatabaseName=db_name,
+                KmsKeyId="arn:aws:kms:us-east-1:123456789012:key/test-key",
+            )
+            assert "Database" in resp
+            assert resp["Database"]["DatabaseName"] == db_name
+            assert resp["Database"]["KmsKeyId"] == "arn:aws:kms:us-east-1:123456789012:key/test-key"
+        finally:
+            timestream_write.delete_database(DatabaseName=db_name)
+
+
 class TestTimestreamWriteUpdateTable:
     """Tests for UpdateTable operation."""
 

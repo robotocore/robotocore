@@ -1,5 +1,7 @@
 """Compatibility tests for Amazon SimpleDB (sdb)."""
 
+import uuid
+
 import boto3
 import pytest
 
@@ -123,3 +125,46 @@ class TestSdbSelect:
         item_names = {i["Name"] for i in resp["Items"]}
         assert "p" in item_names
         assert "q" in item_names
+
+
+class TestSdbCreateDomain:
+    """Tests for CreateDomain operation."""
+
+    def test_create_domain(self, sdb):
+        """CreateDomain succeeds and the domain appears in ListDomains."""
+        name = f"test-create-{uuid.uuid4().hex[:8]}"
+        sdb.create_domain(DomainName=name)
+        try:
+            resp = sdb.list_domains()
+            assert "DomainNames" in resp
+            assert name in resp["DomainNames"]
+        finally:
+            sdb.delete_domain(DomainName=name)
+
+
+class TestSdbDeleteDomain:
+    """Tests for DeleteDomain operation."""
+
+    def test_delete_domain(self, sdb):
+        """DeleteDomain removes the domain from the list."""
+        name = f"test-del-{uuid.uuid4().hex[:8]}"
+        sdb.create_domain(DomainName=name)
+        sdb.delete_domain(DomainName=name)
+        resp = sdb.list_domains()
+        assert name not in resp.get("DomainNames", [])
+
+
+class TestSdbListDomains:
+    """Tests for ListDomains operation."""
+
+    def test_list_domains(self, sdb):
+        """ListDomains returns 200 and DomainNames key when domains exist."""
+        name = f"test-list-{uuid.uuid4().hex[:8]}"
+        sdb.create_domain(DomainName=name)
+        try:
+            resp = sdb.list_domains()
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "DomainNames" in resp
+            assert name in resp["DomainNames"]
+        finally:
+            sdb.delete_domain(DomainName=name)

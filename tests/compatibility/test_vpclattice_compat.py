@@ -797,3 +797,65 @@ class TestVpcLatticeServiceNetworkVpcAssociationFull:
             serviceNetworkVpcAssociationIdentifier=assoc_id
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestVpcLatticeUpdateRule:
+    """Tests for UpdateRule operation."""
+
+    def test_update_rule(self, vpclattice_client, service):
+        """UpdateRule changes the priority of a rule."""
+        svc_id, _, _ = service
+        listener_resp = vpclattice_client.create_listener(
+            name=f"test-lst-{uuid.uuid4().hex[:8]}",
+            serviceIdentifier=svc_id,
+            protocol="HTTP",
+            port=80,
+            defaultAction={"fixedResponse": {"statusCode": 200}},
+        )
+        lst_id = listener_resp["id"]
+        try:
+            rule_resp = vpclattice_client.create_rule(
+                listenerIdentifier=lst_id,
+                serviceIdentifier=svc_id,
+                name="test-rule-update",
+                priority=10,
+                action={"fixedResponse": {"statusCode": 200}},
+                match={"httpMatch": {"pathMatch": {"match": {"exact": "/update"}}}},
+            )
+            rule_id = rule_resp["id"]
+            try:
+                update_resp = vpclattice_client.update_rule(
+                    serviceIdentifier=svc_id,
+                    listenerIdentifier=lst_id,
+                    ruleIdentifier=rule_id,
+                    priority=15,
+                )
+                assert update_resp["id"] == rule_id
+                assert update_resp["priority"] == 15
+            finally:
+                vpclattice_client.delete_rule(
+                    serviceIdentifier=svc_id,
+                    listenerIdentifier=lst_id,
+                    ruleIdentifier=rule_id,
+                )
+        finally:
+            vpclattice_client.delete_listener(serviceIdentifier=svc_id, listenerIdentifier=lst_id)
+
+
+class TestVpcLatticeUpdateTargetGroup:
+    """Tests for UpdateTargetGroup operation."""
+
+    def test_update_target_group(self, vpclattice_client):
+        """UpdateTargetGroup changes health check configuration."""
+        name = f"test-tg-upd-{uuid.uuid4().hex[:8]}"
+        created = vpclattice_client.create_target_group(name=name, type="INSTANCE")
+        tg_id = created["id"]
+        try:
+            update_resp = vpclattice_client.update_target_group(
+                targetGroupIdentifier=tg_id,
+                healthCheck={"enabled": True, "healthCheckIntervalSeconds": 30},
+            )
+            assert update_resp["id"] == tg_id
+            assert "config" in update_resp
+        finally:
+            vpclattice_client.delete_target_group(targetGroupIdentifier=tg_id)

@@ -445,3 +445,16 @@ class TestACMPCAOperations:
         with pytest.raises(Exception) as exc_info:
             acmpca.list_permissions(CertificateAuthorityArn=fake_arn)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_certificate_authority_audit_report_nonexistent_ca(self, acmpca):
+        """DescribeCertificateAuthorityAuditReport raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority"
+            "/00000000-0000-0000-0000-000000000000"
+        )
+        with pytest.raises(Exception) as exc_info:
+            acmpca.describe_certificate_authority_audit_report(
+                CertificateAuthorityArn=fake_arn,
+                AuditReportId="12345678-1234-1234-1234-123456789012",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"

@@ -69,3 +69,31 @@ class TestKinesisVideoArchivedMediaOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "ContentType" in resp
         assert "Payload" in resp
+
+    def test_get_clip_not_found(self, kvam):
+        """GetClip raises ResourceNotFoundException for nonexistent stream."""
+        with pytest.raises(kvam.exceptions.ResourceNotFoundException):
+            kvam.get_clip(
+                StreamName="nonexistent-stream-xyz",
+                ClipFragmentSelector={
+                    "FragmentSelectorType": "SERVER_TIMESTAMP",
+                    "TimestampRange": {
+                        "StartTimestamp": datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+                        "EndTimestamp": datetime.datetime(2024, 1, 2, tzinfo=datetime.UTC),
+                    },
+                },
+            )
+
+    def test_get_dash_streaming_session_url_not_found(self, kvam):
+        """GetDASHStreamingSessionURL raises ResourceNotFoundException for nonexistent stream."""
+        with pytest.raises(kvam.exceptions.ResourceNotFoundException):
+            kvam.get_dash_streaming_session_url(
+                StreamName="nonexistent-stream-xyz",
+            )
+
+    def test_get_hls_streaming_session_url_not_found(self, kvam):
+        """GetHLSStreamingSessionURL raises ResourceNotFoundException for nonexistent stream."""
+        with pytest.raises(kvam.exceptions.ResourceNotFoundException):
+            kvam.get_hls_streaming_session_url(
+                StreamName="nonexistent-stream-xyz",
+            )
