@@ -2172,3 +2172,11 @@ class TestGuardDutyUpdateMalwareProtectionPlan:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             guardduty.delete_malware_protection_plan(MalwareProtectionPlanId=plan_id)
+
+    def test_get_malware_scan_with_scan_id(self, guardduty):
+        """GetMalwareScan returns a response for a scan ID from StartMalwareScan."""
+        start_resp = guardduty.start_malware_scan(ResourceArn="arn:aws:s3:::test-bucket/test-key")
+        scan_id = start_resp["ScanId"]
+        assert scan_id
+        resp = guardduty.get_malware_scan(ScanId=scan_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
