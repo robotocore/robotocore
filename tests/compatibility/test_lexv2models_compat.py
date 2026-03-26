@@ -533,3 +533,145 @@ class TestSlotTypeCompat:
         sts = lexv2_client.list_slot_types(botId=bot_id, botVersion="DRAFT", localeId="en_US")
         st_ids = [s["slotTypeId"] for s in sts["slotTypeSummaries"]]
         assert slot_type_id not in st_ids
+
+
+class TestBotAliasCompat:
+    def test_create_bot_alias(self, lexv2_client, created_bot):
+        """CreateBotAlias returns aliasId and aliasName."""
+        bot_id = created_bot["botId"]
+        resp = lexv2_client.create_bot_alias(botId=bot_id, botAliasName="compat-alias")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "botAliasId" in resp
+        assert resp["botAliasName"] == "compat-alias"
+        assert resp["botId"] == bot_id
+
+    def test_describe_bot_alias(self, lexv2_client, created_bot):
+        """DescribeBotAlias returns alias details."""
+        bot_id = created_bot["botId"]
+        create_resp = lexv2_client.create_bot_alias(botId=bot_id, botAliasName="compat-desc-alias")
+        alias_id = create_resp["botAliasId"]
+
+        resp = lexv2_client.describe_bot_alias(botId=bot_id, botAliasId=alias_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["botAliasId"] == alias_id
+        assert resp["botAliasName"] == "compat-desc-alias"
+        assert resp["botId"] == bot_id
+
+    def test_update_bot_alias(self, lexv2_client, created_bot):
+        """UpdateBotAlias returns updated alias name."""
+        bot_id = created_bot["botId"]
+        create_resp = lexv2_client.create_bot_alias(
+            botId=bot_id, botAliasName="compat-update-alias"
+        )
+        alias_id = create_resp["botAliasId"]
+
+        resp = lexv2_client.update_bot_alias(
+            botId=bot_id, botAliasId=alias_id, botAliasName="compat-updated-alias"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["botAliasName"] == "compat-updated-alias"
+
+        # Verify persisted
+        desc = lexv2_client.describe_bot_alias(botId=bot_id, botAliasId=alias_id)
+        assert desc["botAliasName"] == "compat-updated-alias"
+
+    def test_delete_bot_alias(self, lexv2_client, created_bot):
+        """DeleteBotAlias removes the alias."""
+        bot_id = created_bot["botId"]
+        create_resp = lexv2_client.create_bot_alias(
+            botId=bot_id, botAliasName="compat-delete-alias"
+        )
+        alias_id = create_resp["botAliasId"]
+
+        del_resp = lexv2_client.delete_bot_alias(botId=bot_id, botAliasId=alias_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 202)
+        assert del_resp["botId"] == bot_id
+
+        # Alias should no longer appear in list
+        list_resp = lexv2_client.list_bot_aliases(botId=bot_id)
+        alias_ids = [a["botAliasId"] for a in list_resp["botAliasSummaries"]]
+        assert alias_id not in alias_ids
+
+
+class TestResourcePolicyCompat:
+    def test_create_and_describe_resource_policy(self, lexv2_client, created_bot):
+        """CreateResourcePolicy stores policy, DescribeResourcePolicy retrieves it."""
+        import json as _json
+
+        bot_id = created_bot["botId"]
+        bot_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
+        policy_doc = _json.dumps({"Version": "2012-10-17", "Statement": []})
+
+        create_resp = lexv2_client.create_resource_policy(resourceArn=bot_arn, policy=policy_doc)
+        assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "revisionId" in create_resp
+
+        desc_resp = lexv2_client.describe_resource_policy(resourceArn=bot_arn)
+        assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "policy" in desc_resp
+        assert desc_resp["resourceArn"] == bot_arn
+
+    def test_update_resource_policy(self, lexv2_client, created_bot):
+        """UpdateResourcePolicy returns a new revisionId."""
+        import json as _json
+
+        bot_id = created_bot["botId"]
+        bot_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
+        policy_doc = _json.dumps({"Version": "2012-10-17", "Statement": []})
+
+        create_resp = lexv2_client.create_resource_policy(resourceArn=bot_arn, policy=policy_doc)
+        revision_id = create_resp["revisionId"]
+
+        update_resp = lexv2_client.update_resource_policy(
+            resourceArn=bot_arn,
+            policy=policy_doc,
+            expectedRevisionId=revision_id,
+        )
+        assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "revisionId" in update_resp
+        assert update_resp["revisionId"] != revision_id
+
+    def test_delete_resource_policy(self, lexv2_client, created_bot):
+        """DeleteResourcePolicy removes the policy."""
+        import json as _json
+
+
+        bot_id = created_bot["botId"]
+        bot_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
+        policy_doc = _json.dumps({"Version": "2012-10-17", "Statement": []})
+
+        create_resp = lexv2_client.create_resource_policy(resourceArn=bot_arn, policy=policy_doc)
+        revision_id = create_resp["revisionId"]
+
+        del_resp = lexv2_client.delete_resource_policy(
+            resourceArn=bot_arn, expectedRevisionId=revision_id
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+
+class TestTaggingCompat:
+    def test_tag_resource_and_list_tags(self, lexv2_client, created_bot):
+        """TagResource and ListTagsForResource work on a bot."""
+        bot_id = created_bot["botId"]
+        bot_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
+
+        tag_resp = lexv2_client.tag_resource(resourceARN=bot_arn, tags={"env": "test"})
+        assert tag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        list_resp = lexv2_client.list_tags_for_resource(resourceARN=bot_arn)
+        assert list_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "tags" in list_resp
+        assert list_resp["tags"].get("env") == "test"
+
+    def test_untag_resource(self, lexv2_client, created_bot):
+        """UntagResource removes specified tags."""
+        bot_id = created_bot["botId"]
+        bot_arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
+
+        lexv2_client.tag_resource(resourceARN=bot_arn, tags={"env": "test", "team": "platform"})
+        untag_resp = lexv2_client.untag_resource(resourceARN=bot_arn, tagKeys=["env"])
+        assert untag_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        list_resp = lexv2_client.list_tags_for_resource(resourceARN=bot_arn)
+        assert "env" not in list_resp["tags"]
+        assert list_resp["tags"].get("team") == "platform"
