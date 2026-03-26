@@ -111,6 +111,22 @@ class TestGetDbInstance:
             influxdb.delete_db_instance(identifier=instance_id)
 
 
+class TestCreateDbParameterGroup:
+    """Tests for CreateDbParameterGroup operation."""
+
+    def test_create_db_parameter_group(self, influxdb):
+        """CreateDbParameterGroup returns id, name, and arn."""
+        name = unique_name("pg")
+        resp = influxdb.create_db_parameter_group(
+            name=name,
+            parameters={"InfluxDBv2": {"logLevel": "info"}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "id" in resp
+        assert "arn" in resp
+        assert resp["name"] == name
+
+
 class TestGetDbParameterGroup:
     """Tests for GetDbParameterGroup operation."""
 
