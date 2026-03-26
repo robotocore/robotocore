@@ -624,11 +624,27 @@ class TestGlueAutoCoverage:
         return make_client("glue")
 
     def test_delete_resource_policy(self, client):
-        """DeleteResourcePolicy returns a response."""
-        try:
-            client.delete_resource_policy()
-        except client.exceptions.ClientError:
-            pass  # Operation exists
+        """DeleteResourcePolicy succeeds when a policy exists."""
+        import json
+
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                        "Action": "glue:GetDatabase",
+                        "Resource": "*",
+                    }
+                ],
+            }
+        )
+        client.put_resource_policy(PolicyInJson=policy)
+        client.delete_resource_policy()
+        with pytest.raises(ClientError) as exc:
+            client.get_resource_policy()
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_connections(self, client):
         """GetConnections returns a response."""
@@ -639,6 +655,7 @@ class TestGlueAutoCoverage:
         """GetDataCatalogEncryptionSettings returns a response."""
         resp = client.get_data_catalog_encryption_settings()
         assert "DataCatalogEncryptionSettings" in resp
+        assert "EncryptionAtRest" in resp["DataCatalogEncryptionSettings"]
 
     def test_get_dev_endpoints(self, client):
         """GetDevEndpoints returns a response."""
@@ -666,6 +683,7 @@ class TestGlueAutoCoverage:
         """ListCrawlers returns a response."""
         resp = client.list_crawlers()
         assert "CrawlerNames" in resp
+        assert isinstance(resp["CrawlerNames"], list)
 
     def test_list_jobs(self, client):
         """ListJobs returns a response."""
@@ -828,6 +846,7 @@ class TestGluePartitionAndTableVersionOps:
         try:
             resp = client.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
             assert "PartitionIndexDescriptorList" in resp
+            assert isinstance(resp["PartitionIndexDescriptorList"], list)
         finally:
             self._cleanup(client, db_name, tbl_name)
 
@@ -1349,6 +1368,7 @@ class TestGluePutResourcePolicy:
         glue.put_resource_policy(PolicyInJson=policy)
         resp = glue.get_resource_policy()
         assert "PolicyInJson" in resp
+        assert "glue:GetDatabase" in resp["PolicyInJson"]
         # Clean up
         glue.delete_resource_policy()
 
@@ -1406,6 +1426,10 @@ class TestGluePutDataCatalogEncryptionSettings:
         )
         resp = glue.get_data_catalog_encryption_settings()
         assert "DataCatalogEncryptionSettings" in resp
+        assert (
+            resp["DataCatalogEncryptionSettings"]["EncryptionAtRest"]["CatalogEncryptionMode"]
+            == "DISABLED"
+        )
 
 
 class TestGlueBatchGetJobs:
@@ -2501,11 +2525,13 @@ class TestGlueGetOperations:
         """GetCatalogImportStatus returns import status."""
         resp = glue.get_catalog_import_status()
         assert "ImportStatus" in resp
+        assert "ImportCompleted" in resp["ImportStatus"]
 
     def test_get_resource_policies(self, glue):
         """GetResourcePolicies returns policy list."""
         resp = glue.get_resource_policies()
         assert "GetResourcePoliciesResponseList" in resp
+        assert isinstance(resp["GetResourcePoliciesResponseList"], list)
 
     def test_get_resource_policy(self, glue):
         """GetResourcePolicy returns policy or raises EntityNotFoundException."""
@@ -2529,6 +2555,7 @@ class TestGlueGetOperations:
         """GetCrawlerMetrics returns metrics list."""
         resp = glue.get_crawler_metrics()
         assert "CrawlerMetricsList" in resp
+        assert isinstance(resp["CrawlerMetricsList"], list)
 
     def test_get_ml_transform_not_found(self, glue):
         """GetMLTransform with fake ID returns error."""
@@ -2648,6 +2675,7 @@ class TestGlueEntityRecords:
             Limit=10,
         )
         assert "Records" in resp
+        assert isinstance(resp["Records"], list)
 
 
 class TestGlueMLTaskRuns:
@@ -2884,7 +2912,7 @@ class TestGlueWorkflowStopAndUpdate:
         """StopWorkflowRun for nonexistent workflow raises error."""
         with pytest.raises(ClientError) as exc:
             glue.stop_workflow_run(Name="fake-workflow", RunId="fake-run")
-        assert "Error" in exc.value.response
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_data_quality_model_not_found(self, glue):
         """GetDataQualityModel for nonexistent returns error."""
@@ -3232,6 +3260,7 @@ class TestGlueConnectionOperations:
             )
         resp = glue.batch_delete_connection(ConnectionNameList=[c1, c2])
         assert "Succeeded" in resp
+        assert c1 in resp["Succeeded"] and c2 in resp["Succeeded"]
 
     def test_update_connection(self, glue):
         conn_name = _unique("conn")
@@ -3400,6 +3429,7 @@ class TestGlueJobBookmark:
         try:
             resp = glue.get_job_bookmark(JobName=job_name)
             assert "JobBookmarkEntry" in resp
+            assert resp["JobBookmarkEntry"]["JobName"] == job_name
         finally:
             glue.delete_job(JobName=job_name)
 
@@ -3413,6 +3443,7 @@ class TestGlueJobBookmark:
         try:
             resp = glue.reset_job_bookmark(JobName=job_name)
             assert "JobBookmarkEntry" in resp
+            assert resp["JobBookmarkEntry"]["JobName"] == job_name
         finally:
             glue.delete_job(JobName=job_name)
 
@@ -3431,6 +3462,7 @@ class TestGlueGetCatalogs:
     def test_get_catalogs(self, glue):
         resp = glue.get_catalogs()
         assert "CatalogList" in resp
+        assert isinstance(resp["CatalogList"], list)
 
 
 class TestGlueSchemaVersions:
@@ -3442,6 +3474,7 @@ class TestGlueSchemaVersions:
             SchemaDefinition=('{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'),
         )
         assert "Valid" in resp
+        assert resp["Valid"] is True
 
     def test_delete_schema_versions(self, glue):
         reg_name = _unique("reg")
@@ -3889,6 +3922,7 @@ class TestGlueIntegrationOperations:
             TargetArn="arn:aws:glue:us-east-1:123456789012:database/tgt"
         )
         assert "InboundIntegrations" in resp
+        assert isinstance(resp["InboundIntegrations"], list)
 
 
 class TestGlueIntegrationResourceProperty:
@@ -3965,16 +3999,19 @@ class TestGlueDataQualityOps:
         """ListDataQualityStatistics returns a list."""
         resp = glue.list_data_quality_statistics()
         assert "Statistics" in resp
+        assert isinstance(resp["Statistics"], list)
 
     def test_list_data_quality_statistic_annotations(self, glue):
         """ListDataQualityStatisticAnnotations returns a list."""
         resp = glue.list_data_quality_statistic_annotations()
         assert "Annotations" in resp
+        assert isinstance(resp["Annotations"], list)
 
     def test_batch_put_data_quality_statistic_annotation(self, glue):
         """BatchPutDataQualityStatisticAnnotation with empty list returns empty failures."""
         resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
         assert "FailedInclusionAnnotations" in resp
+        assert isinstance(resp["FailedInclusionAnnotations"], list)
 
     def test_put_data_quality_profile_annotation(self, glue):
         """PutDataQualityProfileAnnotation succeeds for any profile ID."""
@@ -4006,6 +4043,7 @@ class TestGlueDataQualityOps:
             Role="arn:aws:iam::123456789012:role/test",
         )
         assert "RunId" in resp
+        assert resp["RunId"]
 
 
 class TestGlueDeletePartitionIndex:
@@ -4057,6 +4095,7 @@ class TestGlueStartBlueprintRun:
                 RoleArn="arn:aws:iam::123456789012:role/test",
             )
             assert "RunId" in resp
+            assert resp["RunId"]
         finally:
             glue.delete_blueprint(Name=name)
 
@@ -4234,6 +4273,7 @@ class TestGlueResumeWorkflowRun:
             run_id = run_resp["RunId"]
             resp = glue.resume_workflow_run(Name=wf_name, RunId=run_id, NodeIds=["node1"])
             assert "RunId" in resp
+            assert resp["RunId"]
         finally:
             glue.delete_workflow(Name=wf_name)
 
@@ -4241,7 +4281,7 @@ class TestGlueResumeWorkflowRun:
         """ResumeWorkflowRun for nonexistent workflow raises error."""
         with pytest.raises(ClientError) as exc:
             glue.resume_workflow_run(Name="nonexistent-wf-xyz", RunId="fake-run", NodeIds=["node1"])
-        assert "Error" in exc.value.response
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
 class TestGlueGetConnections:
@@ -4301,6 +4341,7 @@ class TestGlueGetPartitionIndexes:
         try:
             resp = glue.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
             assert "PartitionIndexDescriptorList" in resp
+            assert isinstance(resp["PartitionIndexDescriptorList"], list)
         finally:
             glue.delete_table(DatabaseName=db_name, Name=tbl_name)
             glue.delete_database(Name=db_name)
@@ -4309,6 +4350,7 @@ class TestGlueGetPartitionIndexes:
         """GetPartitionIndexes for nonexistent db returns empty list."""
         resp = glue.get_partition_indexes(DatabaseName="fake-db-xyz", TableName="fake-tbl")
         assert "PartitionIndexDescriptorList" in resp
+        assert isinstance(resp["PartitionIndexDescriptorList"], list)
 
 
 class TestGlueGetSchema:
@@ -4440,6 +4482,7 @@ class TestGlueListCrawlers:
         """ListCrawlers returns CrawlerNames."""
         resp = glue.list_crawlers()
         assert "CrawlerNames" in resp
+        assert isinstance(resp["CrawlerNames"], list)
 
 
 class TestGlueListCrawls:
@@ -4764,6 +4807,7 @@ class TestGlueStartDataQualityRulesetEvaluationRun:
             RulesetNames=["ruleset1"],
         )
         assert "RunId" in resp
+        assert resp["RunId"]
 
 
 class TestGlueBatchGetDataQualityResult:
@@ -4771,6 +4815,7 @@ class TestGlueBatchGetDataQualityResult:
         """BatchGetDataQualityResult returns results list (possibly empty)."""
         resp = glue.batch_get_data_quality_result(ResultIds=["result-fake-id"])
         assert "Results" in resp
+        assert "ResultsNotFound" in resp
 
 
 class TestGlueGetUserDefinedFunctions:
@@ -4901,6 +4946,7 @@ class TestGlueNewOps:
         resp = glue.get_dataflow_graph(PythonScript="x = 1")
         assert "DagNodes" in resp
         assert "DagEdges" in resp
+        assert isinstance(resp["DagNodes"], list)
 
     def test_get_glue_identity_center_configuration_not_found(self, glue):
         """GetGlueIdentityCenterConfiguration raises EntityNotFoundException when not configured."""
@@ -4932,6 +4978,7 @@ class TestGlueNewOps:
         """ListConnectionTypes returns connection types list."""
         resp = glue.list_connection_types()
         assert "ConnectionTypes" in resp
+        assert isinstance(resp["ConnectionTypes"], list)
 
     def test_list_entities_nonexistent_connection(self, glue):
         """ListEntities with nonexistent connection raises EntityNotFoundException."""
@@ -4943,6 +4990,7 @@ class TestGlueNewOps:
         """ListMaterializedViewRefreshTaskRuns returns empty list for nonexistent view."""
         resp = glue.list_materialized_view_refresh_task_runs(CatalogId="123456789012")
         assert "MaterializedViewRefreshTaskRuns" in resp
+        assert isinstance(resp["MaterializedViewRefreshTaskRuns"], list)
 
     def test_list_table_optimizer_runs_not_found(self, glue):
         """ListTableOptimizerRuns with nonexistent table raises EntityNotFoundException."""
@@ -4973,13 +5021,19 @@ class TestGlueNewGapOps:
         )
         assert "TableOptimizers" in resp
         assert "Failures" in resp
+        assert isinstance(resp["Failures"], list)
 
     def test_create_glue_identity_center_configuration(self, glue):
         """CreateGlueIdentityCenterConfiguration returns ApplicationArn."""
+        try:
+            glue.delete_glue_identity_center_configuration()
+        except Exception:
+            pass  # best-effort cleanup of any leftover config
         resp = glue.create_glue_identity_center_configuration(
             InstanceArn="arn:aws:sso:::instance/ssoins-test-gap-ops"
         )
         assert "ApplicationArn" in resp
+        assert resp["ApplicationArn"].startswith("arn:")
 
     def test_create_and_delete_table_optimizer(self, glue):
         """CreateTableOptimizer succeeds and DeleteTableOptimizer succeeds."""
@@ -5046,6 +5100,7 @@ class TestGlueNewGapOps:
             Source={"DatabaseName": "db", "TableName": "tbl"},
         )
         assert "PythonScript" in resp
+        assert "import" in resp["PythonScript"]
 
     def test_get_unfiltered_table_metadata_not_found(self, glue):
         """GetUnfilteredTableMetadata with nonexistent table raises EntityNotFoundException."""
@@ -5085,6 +5140,7 @@ class TestGlueNewGapOps:
         """ListIntegrationResourceProperties returns IntegrationResourcePropertyList."""
         resp = glue.list_integration_resource_properties()
         assert "IntegrationResourcePropertyList" in resp
+        assert isinstance(resp["IntegrationResourcePropertyList"], list)
 
     def test_query_schema_version_metadata_invalid_input(self, glue):
         """QuerySchemaVersionMetadata with fake ID raises InvalidInputException."""
@@ -5110,6 +5166,7 @@ class TestGlueNewGapOps:
             RestConfiguration={},
         )
         assert "ConnectionTypeArn" in resp
+        assert "arn:" in resp["ConnectionTypeArn"]
 
     def test_remove_schema_version_metadata_invalid_input(self, glue):
         """RemoveSchemaVersionMetadata without valid schema raises InvalidInputException."""
@@ -5175,11 +5232,13 @@ class TestGlueNewGapOps:
         """UpdateJobFromSourceControl with no job returns empty JobName."""
         resp = glue.update_job_from_source_control()
         assert "JobName" in resp
+        assert isinstance(resp["JobName"], str)
 
     def test_update_source_control_from_job_no_job(self, glue):
         """UpdateSourceControlFromJob with no job returns empty JobName."""
         resp = glue.update_source_control_from_job()
         assert "JobName" in resp
+        assert isinstance(resp["JobName"], str)
 
     def test_update_table_optimizer_not_found(self, glue):
         """UpdateTableOptimizer with nonexistent table raises EntityNotFoundException."""
