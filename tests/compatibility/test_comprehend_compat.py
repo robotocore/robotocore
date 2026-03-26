@@ -81,41 +81,49 @@ class TestComprehendAutoCoverage:
         """ListDocumentClassificationJobs returns a response."""
         resp = client.list_document_classification_jobs()
         assert "DocumentClassificationJobPropertiesList" in resp
+        assert isinstance(resp["DocumentClassificationJobPropertiesList"], list)
 
     def test_list_dominant_language_detection_jobs(self, client):
         """ListDominantLanguageDetectionJobs returns a response."""
         resp = client.list_dominant_language_detection_jobs()
         assert "DominantLanguageDetectionJobPropertiesList" in resp
+        assert isinstance(resp["DominantLanguageDetectionJobPropertiesList"], list)
 
     def test_list_endpoints(self, client):
         """ListEndpoints returns a response."""
         resp = client.list_endpoints()
         assert "EndpointPropertiesList" in resp
+        assert isinstance(resp["EndpointPropertiesList"], list)
 
     def test_list_entities_detection_jobs(self, client):
         """ListEntitiesDetectionJobs returns a response."""
         resp = client.list_entities_detection_jobs()
         assert "EntitiesDetectionJobPropertiesList" in resp
+        assert isinstance(resp["EntitiesDetectionJobPropertiesList"], list)
 
     def test_list_events_detection_jobs(self, client):
         """ListEventsDetectionJobs returns a response."""
         resp = client.list_events_detection_jobs()
         assert "EventsDetectionJobPropertiesList" in resp
+        assert isinstance(resp["EventsDetectionJobPropertiesList"], list)
 
     def test_list_flywheels(self, client):
         """ListFlywheels returns a response."""
         resp = client.list_flywheels()
         assert "FlywheelSummaryList" in resp
+        assert isinstance(resp["FlywheelSummaryList"], list)
 
     def test_list_pii_entities_detection_jobs(self, client):
         """ListPiiEntitiesDetectionJobs returns a response."""
         resp = client.list_pii_entities_detection_jobs()
         assert "PiiEntitiesDetectionJobPropertiesList" in resp
+        assert isinstance(resp["PiiEntitiesDetectionJobPropertiesList"], list)
 
     def test_list_targeted_sentiment_detection_jobs(self, client):
         """ListTargetedSentimentDetectionJobs returns a response."""
         resp = client.list_targeted_sentiment_detection_jobs()
         assert "TargetedSentimentDetectionJobPropertiesList" in resp
+        assert isinstance(resp["TargetedSentimentDetectionJobPropertiesList"], list)
 
     def test_create_and_describe_endpoint(self, client):
         """CreateEndpoint + DescribeEndpoint lifecycle."""
@@ -855,7 +863,9 @@ class TestComprehendBatchOps:
         """BatchDetectDominantLanguage returns ResultList and ErrorList."""
         resp = client.batch_detect_dominant_language(TextList=["Hello world", "Bonjour monde"])
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
         assert "ErrorList" in resp
+        assert isinstance(resp["ErrorList"], list)
 
     def test_batch_detect_entities(self, client):
         """BatchDetectEntities returns ResultList and ErrorList."""
@@ -863,7 +873,9 @@ class TestComprehendBatchOps:
             TextList=["John Smith is in New York"], LanguageCode="en"
         )
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
         assert "ErrorList" in resp
+        assert isinstance(resp["ErrorList"], list)
 
     def test_batch_detect_key_phrases(self, client):
         """BatchDetectKeyPhrases returns ResultList and ErrorList."""
@@ -871,13 +883,17 @@ class TestComprehendBatchOps:
             TextList=["AWS is a great cloud provider"], LanguageCode="en"
         )
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
         assert "ErrorList" in resp
+        assert isinstance(resp["ErrorList"], list)
 
     def test_batch_detect_sentiment(self, client):
         """BatchDetectSentiment returns ResultList and ErrorList."""
         resp = client.batch_detect_sentiment(TextList=["I love this product"], LanguageCode="en")
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
         assert "ErrorList" in resp
+        assert isinstance(resp["ErrorList"], list)
 
     def test_detect_toxic_content(self, client):
         """DetectToxicContent returns ResultList."""
@@ -885,6 +901,7 @@ class TestComprehendBatchOps:
             TextSegments=[{"Text": "Hello world"}], LanguageCode="en"
         )
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
 
 
 class TestComprehendBatchSyntaxTargetedSentiment:
@@ -900,8 +917,10 @@ class TestComprehendBatchSyntaxTargetedSentiment:
             TextList=["Hello world", "How are you?"], LanguageCode="en"
         )
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
 
     def test_batch_detect_targeted_sentiment(self, client):
         """BatchDetectTargetedSentiment returns ResultList."""
         resp = client.batch_detect_targeted_sentiment(TextList=["Hello world"], LanguageCode="en")
         assert "ResultList" in resp
+        assert isinstance(resp["ResultList"], list)
