@@ -5211,3 +5211,45 @@ class TestGlueNewGapOps:
 
         delete_resp = glue.delete_integration(IntegrationIdentifier=integration_arn)
         assert delete_resp["IntegrationArn"] == integration_arn
+
+
+class TestGlueGetUserDefinedFunctionsAllDatabases:
+    """Tests for GetUserDefinedFunctions without DatabaseName (all databases)."""
+
+    def test_get_user_defined_functions_all_databases(self, glue):
+        """GetUserDefinedFunctions without DatabaseName returns functions across all databases."""
+        resp = glue.get_user_defined_functions(Pattern="*")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UserDefinedFunctions" in resp
+        assert isinstance(resp["UserDefinedFunctions"], list)
+
+
+class TestGlueUpdateRegistry:
+    """Tests for UpdateRegistry operation."""
+
+    def test_update_registry_not_found(self, glue):
+        """UpdateRegistry raises EntityNotFoundException for unknown registry."""
+        with pytest.raises(ClientError) as exc_info:
+            glue.update_registry(
+                RegistryId={"RegistryName": "nonexistent-registry"},
+                Description="should fail",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_registry(self, glue):
+        """UpdateRegistry updates the description of an existing registry."""
+        reg_name = _unique("reg")
+        glue.create_registry(RegistryName=reg_name, Description="original")
+        try:
+            resp = glue.update_registry(
+                RegistryId={"RegistryName": reg_name},
+                Description="updated description",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["RegistryName"] == reg_name
+            assert "RegistryArn" in resp
+        finally:
+            try:
+                glue.delete_registry(RegistryId={"RegistryName": reg_name})
+            except Exception:
+                pass

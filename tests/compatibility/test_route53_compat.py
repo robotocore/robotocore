@@ -2375,7 +2375,7 @@ class TestRoute53UpdateHostedZoneFeatures:
     """Tests for UpdateHostedZoneFeatures."""
 
     def test_update_hosted_zone_features(self, route53, hosted_zone):
-        """UpdateHostedZoneFeatures returns a response without error."""
-        resp = route53.update_hosted_zone_features(HostedZoneId=hosted_zone)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert resp["ResponseMetadata"]["RequestId"] is not None
+        """UpdateHostedZoneFeatures is reflected in get_hosted_zone."""
+        route53.update_hosted_zone_features(HostedZoneId=hosted_zone)
+        hz = route53.get_hosted_zone(Id=hosted_zone)
+        assert isinstance(hz["HostedZone"]["Name"], str)

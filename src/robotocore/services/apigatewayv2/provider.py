@@ -1647,6 +1647,8 @@ _PASSTHROUGH_KEYS = frozenset(
         "responseParameters",
         "RequestParameters",
         "requestParameters",
+        "RouteSettings",
+        "routeSettings",
     }
 )
 

@@ -1241,11 +1241,13 @@ class TestSESv2DeliverabilityAndBlacklist:
 
 class TestSESv2DedicatedIpWarmup:
     def test_put_dedicated_ip_warmup_attributes(self, sesv2):
-        resp = sesv2.put_dedicated_ip_warmup_attributes(
+        sesv2.put_dedicated_ip_warmup_attributes(
             Ip="1.2.3.4",
             WarmupPercentage=50,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify no exception; list dedicated IPs (may be empty for fake IP)
+        resp = sesv2.list_dedicated_ip_pools()
+        assert "DedicatedIpPools" in resp
 
 
 class TestSESv2MultiRegionEndpoints:
@@ -1643,10 +1645,9 @@ class TestSESv2ConfigurationSetOptions:
         cs_name = _uid("cs")
         sesv2.create_configuration_set(ConfigurationSetName=cs_name)
         try:
-            resp = sesv2.put_configuration_set_delivery_options(
+            sesv2.put_configuration_set_delivery_options(
                 ConfigurationSetName=cs_name, TlsPolicy="REQUIRE"
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             got = sesv2.get_configuration_set(ConfigurationSetName=cs_name)
             assert got["DeliveryOptions"]["TlsPolicy"] == "REQUIRE"
         finally:
@@ -1678,11 +1679,10 @@ class TestSESv2ConfigurationSetOptions:
         cs_name = _uid("cs")
         sesv2.create_configuration_set(ConfigurationSetName=cs_name)
         try:
-            resp = sesv2.put_configuration_set_tracking_options(
+            sesv2.put_configuration_set_tracking_options(
                 ConfigurationSetName=cs_name,
                 CustomRedirectDomain="track.example.com",
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             got = sesv2.get_configuration_set(ConfigurationSetName=cs_name)
             assert got["TrackingOptions"]["CustomRedirectDomain"] == "track.example.com"
         finally:
@@ -1724,10 +1724,11 @@ class TestSESv2PutConfigurationSetSuppressionOptions:
         cs = _uid("cs")
         sesv2.create_configuration_set(ConfigurationSetName=cs)
         try:
-            resp = sesv2.put_configuration_set_suppression_options(
+            sesv2.put_configuration_set_suppression_options(
                 ConfigurationSetName=cs, SuppressedReasons=["BOUNCE"]
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_configuration_set(ConfigurationSetName=cs)
+            assert got["SuppressionOptions"]["SuppressedReasons"] == ["BOUNCE"]
         finally:
             sesv2.delete_configuration_set(ConfigurationSetName=cs)
 
@@ -1748,8 +1749,9 @@ class TestSESv2PutConfigurationSetArchivingOptions:
         cs = _uid("cs")
         sesv2.create_configuration_set(ConfigurationSetName=cs)
         try:
-            resp = sesv2.put_configuration_set_archiving_options(ConfigurationSetName=cs)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            sesv2.put_configuration_set_archiving_options(ConfigurationSetName=cs)
+            got = sesv2.get_configuration_set(ConfigurationSetName=cs)
+            assert got["ConfigurationSetName"] == cs
         finally:
             sesv2.delete_configuration_set(ConfigurationSetName=cs)
 
@@ -1768,10 +1770,11 @@ class TestSESv2PutEmailIdentityAttributes:
         email = f"{_uid('fb')}@example.com"
         sesv2.create_email_identity(EmailIdentity=email)
         try:
-            resp = sesv2.put_email_identity_feedback_attributes(
+            sesv2.put_email_identity_feedback_attributes(
                 EmailIdentity=email, EmailForwardingEnabled=True
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_email_identity(EmailIdentity=email)
+            assert got["FeedbackForwardingStatus"] is True
         finally:
             sesv2.delete_email_identity(EmailIdentity=email)
 

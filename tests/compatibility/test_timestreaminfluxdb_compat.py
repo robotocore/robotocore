@@ -221,3 +221,167 @@ class TestListDbInstances:
         assert "items" in resp
         assert isinstance(resp["items"], list)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDeleteDbCluster:
+    """Tests for DeleteDbCluster operation."""
+
+    def test_delete_db_cluster_not_found(self, influxdb):
+        """DeleteDbCluster raises ResourceNotFoundException for unknown cluster."""
+        with pytest.raises(influxdb.exceptions.ResourceNotFoundException) as exc_info:
+            influxdb.delete_db_cluster(dbClusterId="nonexistent-cluster-id")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_db_cluster(self, influxdb):
+        """DeleteDbCluster removes a cluster."""
+        create_resp = influxdb.create_db_cluster(
+            name=unique_name("del-cluster"),
+            dbInstanceType="db.influx.medium",
+            vpcSubnetIds=["subnet-12345678"],
+            vpcSecurityGroupIds=["sg-12345678"],
+            password="TestPassword123!",
+        )
+        cluster_id = create_resp["dbClusterId"]
+        resp = influxdb.delete_db_cluster(dbClusterId=cluster_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "id" in resp
+
+
+class TestListDbInstancesForCluster:
+    """Tests for ListDbInstancesForCluster operation."""
+
+    def test_list_db_instances_for_cluster_not_found(self, influxdb):
+        """ListDbInstancesForCluster raises ResourceNotFoundException for unknown cluster."""
+        with pytest.raises(influxdb.exceptions.ResourceNotFoundException):
+            influxdb.list_db_instances_for_cluster(dbClusterId="nonexistent")
+
+    def test_list_db_instances_for_cluster(self, influxdb):
+        """ListDbInstancesForCluster returns items for a valid cluster."""
+        create_resp = influxdb.create_db_cluster(
+            name=unique_name("list-inst-cluster"),
+            dbInstanceType="db.influx.medium",
+            vpcSubnetIds=["subnet-12345678"],
+            vpcSecurityGroupIds=["sg-12345678"],
+            password="TestPassword123!",
+        )
+        cluster_id = create_resp["dbClusterId"]
+        try:
+            resp = influxdb.list_db_instances_for_cluster(dbClusterId=cluster_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "items" in resp
+            assert isinstance(resp["items"], list)
+        finally:
+            influxdb.delete_db_cluster(dbClusterId=cluster_id)
+
+
+class TestRebootDbCluster:
+    """Tests for RebootDbCluster operation."""
+
+    def test_reboot_db_cluster_not_found(self, influxdb):
+        """RebootDbCluster raises ResourceNotFoundException for unknown cluster."""
+        with pytest.raises(influxdb.exceptions.ResourceNotFoundException):
+            influxdb.reboot_db_cluster(dbClusterId="nonexistent")
+
+    def test_reboot_db_cluster(self, influxdb):
+        """RebootDbCluster returns cluster details."""
+        create_resp = influxdb.create_db_cluster(
+            name=unique_name("reboot-cluster"),
+            dbInstanceType="db.influx.medium",
+            vpcSubnetIds=["subnet-12345678"],
+            vpcSecurityGroupIds=["sg-12345678"],
+            password="TestPassword123!",
+        )
+        cluster_id = create_resp["dbClusterId"]
+        try:
+            resp = influxdb.reboot_db_cluster(dbClusterId=cluster_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "id" in resp
+        finally:
+            influxdb.delete_db_cluster(dbClusterId=cluster_id)
+
+
+class TestRebootDbInstance:
+    """Tests for RebootDbInstance operation."""
+
+    def test_reboot_db_instance_not_found(self, influxdb):
+        """RebootDbInstance raises ResourceNotFoundException for unknown instance."""
+        with pytest.raises(influxdb.exceptions.ResourceNotFoundException):
+            influxdb.reboot_db_instance(identifier="nonexistent")
+
+    def test_reboot_db_instance(self, influxdb):
+        """RebootDbInstance returns instance details."""
+        create_resp = influxdb.create_db_instance(
+            name=unique_name("reboot-inst"),
+            password="TestPassword123!",
+            dbInstanceType="db.influx.medium",
+            vpcSubnetIds=["subnet-12345678"],
+            vpcSecurityGroupIds=["sg-12345678"],
+            allocatedStorage=20,
+        )
+        instance_id = create_resp["id"]
+        try:
+            resp = influxdb.reboot_db_instance(identifier=instance_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "id" in resp
+        finally:
+            influxdb.delete_db_instance(identifier=instance_id)
+
+
+class TestUpdateDbCluster:
+    """Tests for UpdateDbCluster operation."""
+
+    def test_update_db_cluster_not_found(self, influxdb):
+        """UpdateDbCluster raises ResourceNotFoundException for unknown cluster."""
+        with pytest.raises(influxdb.exceptions.ResourceNotFoundException):
+            influxdb.update_db_cluster(dbClusterId="nonexistent")
+
+    def test_update_db_cluster(self, influxdb):
+        """UpdateDbCluster modifies cluster properties."""
+        create_resp = influxdb.create_db_cluster(
+            name=unique_name("update-cluster"),
+            dbInstanceType="db.influx.medium",
+            vpcSubnetIds=["subnet-12345678"],
+            vpcSecurityGroupIds=["sg-12345678"],
+            password="TestPassword123!",
+        )
+        cluster_id = create_resp["dbClusterId"]
+        try:
+            resp = influxdb.update_db_cluster(
+                dbClusterId=cluster_id,
+                dbInstanceType="db.influx.large",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "id" in resp
+        finally:
+            influxdb.delete_db_cluster(dbClusterId=cluster_id)
+
+
+class TestUpdateDbInstance:
+    """Tests for UpdateDbInstance operation."""
+
+    def test_update_db_instance_not_found(self, influxdb):
+        """UpdateDbInstance raises ResourceNotFoundException for unknown instance."""
+        with pytest.raises(influxdb.exceptions.ResourceNotFoundException):
+            influxdb.update_db_instance(identifier="nonexistent")
+
+    def test_update_db_instance(self, influxdb):
+        """UpdateDbInstance modifies instance properties."""
+        create_resp = influxdb.create_db_instance(
+            name=unique_name("update-inst"),
+            password="TestPassword123!",
+            dbInstanceType="db.influx.medium",
+            vpcSubnetIds=["subnet-12345678"],
+            vpcSecurityGroupIds=["sg-12345678"],
+            allocatedStorage=20,
+        )
+        instance_id = create_resp["id"]
+        try:
+            resp = influxdb.update_db_instance(
+                identifier=instance_id,
+                dbInstanceType="db.influx.large",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "id" in resp
+            assert resp["dbInstanceType"] == "db.influx.large"
+        finally:
+            influxdb.delete_db_instance(identifier=instance_id)
