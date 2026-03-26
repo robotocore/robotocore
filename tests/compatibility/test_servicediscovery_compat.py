@@ -250,6 +250,7 @@ class TestServiceDiscoveryInstanceOperations:
         try:
             resp = sd.get_instances_health_status(ServiceId=service["Id"])
             assert "Status" in resp
+            assert isinstance(resp["Status"], dict)
         finally:
             sd.deregister_instance(ServiceId=service["Id"], InstanceId=inst_id)
 
@@ -286,6 +287,7 @@ class TestServiceDiscoveryNamespaceTypes:
         name = _unique("priv") + ".local"
         resp = sd.create_private_dns_namespace(Name=name, Vpc="vpc-12345")
         assert "OperationId" in resp
+        assert resp["OperationId"]  # non-empty operation ID
         op = sd.get_operation(OperationId=resp["OperationId"])
         ns_id = op["Operation"]["Targets"]["NAMESPACE"]
         sd.delete_namespace(Id=ns_id)
@@ -294,6 +296,7 @@ class TestServiceDiscoveryNamespaceTypes:
         name = _unique("pub") + ".example.com"
         resp = sd.create_public_dns_namespace(Name=name)
         assert "OperationId" in resp
+        assert resp["OperationId"]  # non-empty operation ID
         op = sd.get_operation(OperationId=resp["OperationId"])
         ns_id = op["Operation"]["Targets"]["NAMESPACE"]
         sd.delete_namespace(Id=ns_id)
@@ -316,6 +319,7 @@ class TestServiceDiscoveryNamespaceTypes:
                 Namespace={"Description": "updated"},
             )
             assert "OperationId" in upd
+            assert upd["OperationId"]  # non-empty operation ID
         finally:
             sd.delete_namespace(Id=ns_id)
 
@@ -330,6 +334,7 @@ class TestServiceDiscoveryNamespaceTypes:
                 Namespace={"Description": "updated"},
             )
             assert "OperationId" in upd
+            assert upd["OperationId"]  # non-empty operation ID
         finally:
             sd.delete_namespace(Id=ns_id)
 
@@ -339,6 +344,7 @@ class TestServiceDiscoveryNamespaceTypes:
             Service={"Description": "updated-desc"},
         )
         assert "OperationId" in resp
+        assert resp["OperationId"]  # non-empty operation ID
 
 
 class TestServiceDiscoveryDiscoverInstances:
