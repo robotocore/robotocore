@@ -203,8 +203,10 @@ class TestCodeBuildProjectEdgeCases:
 
     def test_delete_nonexistent_project_succeeds(self, codebuild):
         """DeleteProject on nonexistent project does not raise."""
-        resp = codebuild.delete_project(name="nonexistent-project-xyz")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        codebuild.delete_project(name="nonexistent-project-xyz")
+        # Verify the project isn't returned in batch_get_projects
+        resp = codebuild.batch_get_projects(names=["nonexistent-project-xyz"])
+        assert resp["projects"] == []
 
     def test_batch_get_projects_nonexistent(self, codebuild):
         """BatchGetProjects with nonexistent names returns empty projects."""

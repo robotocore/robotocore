@@ -264,7 +264,7 @@ class TestEMRInstanceOperations:
 
     def test_add_instance_groups(self, emr, cluster_id):
         """AddInstanceGroups adds a TASK instance group."""
-        emr.add_instance_groups(
+        add_resp = emr.add_instance_groups(
             InstanceGroups=[
                 {
                     "Name": "task-group",
@@ -275,6 +275,8 @@ class TestEMRInstanceOperations:
             ],
             JobFlowId=cluster_id,
         )
+        assert "InstanceGroupIds" in add_resp
+        assert isinstance(add_resp["InstanceGroupIds"], list)
         # Verify the group was added
         igs = emr.list_instance_groups(ClusterId=cluster_id)
         names = [g["Name"] for g in igs["InstanceGroups"]]
@@ -737,6 +739,7 @@ class TestEmrAutoCoverage:
         """ListReleaseLabels returns a response."""
         resp = client.list_release_labels()
         assert "ReleaseLabels" in resp
+        assert isinstance(resp["ReleaseLabels"], list)
 
     def test_modify_instance_groups_no_args(self, client):
         """ModifyInstanceGroups with no args succeeds."""

@@ -1711,7 +1711,7 @@ class TestSageMakerPipelineExecution:
             exec_resp = sagemaker.start_pipeline_execution(PipelineName=name)
             exec_arn = exec_resp["PipelineExecutionArn"]
             resp = sagemaker.list_pipeline_parameters_for_execution(PipelineExecutionArn=exec_arn)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "PipelineParameters" in resp
         finally:
             sagemaker.delete_pipeline(PipelineName=name)
 
@@ -1720,7 +1720,7 @@ class TestSageMakerPipelineExecution:
             sagemaker.describe_pipeline_execution(
                 PipelineExecutionArn="arn:aws:sagemaker:us-east-1:123456789012:pipeline/fake/execution/fake"
             )
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert "Code" in exc.value.response["Error"]
 
 
 class TestSageMakerDataQualityJobDefinitionCRUD:

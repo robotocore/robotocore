@@ -528,6 +528,9 @@ class TestApiCache:
         # flush_api_cache should succeed without error
         resp = client.flush_api_cache(apiId=api)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify cache still exists after flush
+        cache = client.get_api_cache(apiId=api)
+        assert cache["apiCache"]["status"] is not None
 
 
 class TestUpdateApiKey:
