@@ -190,6 +190,7 @@ class TestCodePipelineOperations:
         codepipeline.start_pipeline_execution(name=pipeline["name"])
         resp = codepipeline.list_pipeline_executions(pipelineName=pipeline["name"])
         assert "pipelineExecutionSummaries" in resp
+        assert len(resp["pipelineExecutionSummaries"]) >= 1
 
     def test_get_pipeline_execution(self, codepipeline, pipeline):
         start_resp = codepipeline.start_pipeline_execution(name=pipeline["name"])
@@ -215,6 +216,7 @@ class TestCodePipelineOperations:
         codepipeline.start_pipeline_execution(name=pipeline["name"])
         resp = codepipeline.list_action_executions(pipelineName=pipeline["name"])
         assert "actionExecutionDetails" in resp
+        assert isinstance(resp["actionExecutionDetails"], list)
 
     def test_disable_stage_transition(self, codepipeline, pipeline):
         codepipeline.disable_stage_transition(
@@ -359,6 +361,7 @@ class TestCodePipelineJobs:
             }
         )
         assert "jobs" in resp
+        assert isinstance(resp["jobs"], list)
 
     def test_get_job_details_nonexistent(self, codepipeline):
         with pytest.raises(ClientError) as exc_info:
@@ -401,6 +404,7 @@ class TestCodePipelineJobs:
             }
         )
         assert "jobs" in resp
+        assert isinstance(resp["jobs"], list)
 
     def test_acknowledge_third_party_job_nonexistent(self, codepipeline):
         with pytest.raises(ClientError) as exc_info:
@@ -488,6 +492,7 @@ class TestCodePipelineMiscOps:
     def test_list_rule_types(self, codepipeline):
         resp = codepipeline.list_rule_types()
         assert "ruleTypes" in resp
+        assert isinstance(resp["ruleTypes"], list)
 
     def test_list_rule_executions_nonexistent(self, codepipeline):
         with pytest.raises(ClientError) as exc_info:
