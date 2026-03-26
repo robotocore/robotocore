@@ -1,6 +1,7 @@
 """EC2 compatibility tests (basic operations)."""
 
 import uuid
+from datetime import UTC
 
 import botocore.exceptions
 import pytest
@@ -11079,3 +11080,91 @@ class TestEC2GapRunInstances:
         assert instance_id.startswith("i-")
         # Cleanup
         ec2.terminate_instances(InstanceIds=[instance_id])
+
+
+class TestEC2GapDescribeIdentityIdFormat:
+    """Tests for DescribeIdentityIdFormat operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_identity_id_format_returns_ok(self, ec2):
+        """DescribeIdentityIdFormat returns 200."""
+        resp = ec2.describe_identity_id_format(
+            PrincipalArn="arn:aws:iam::123456789012:role/test",
+            Resource="instance",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2GapDescribeFpgaImageAttribute:
+    """Tests for DescribeFpgaImageAttribute operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_fpga_image_attribute_returns_attribute(self, ec2):
+        """DescribeFpgaImageAttribute returns attribute info."""
+        resp = ec2.describe_fpga_image_attribute(
+            FpgaImageId="afi-0123456789abcdef0",
+            Attribute="description",
+        )
+        assert "FpgaImageAttribute" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2GapDescribeScheduledInstanceAvailability:
+    """Tests for DescribeScheduledInstanceAvailability operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_scheduled_instance_availability_returns_set(self, ec2):
+        """DescribeScheduledInstanceAvailability returns availability set."""
+        from datetime import datetime, timedelta
+
+        resp = ec2.describe_scheduled_instance_availability(
+            FirstSlotStartTimeRange={
+                "EarliestTime": datetime.now(UTC),
+                "LatestTime": datetime.now(UTC) + timedelta(days=7),
+            },
+            Recurrence={"Frequency": "Weekly", "Interval": 1, "OccurrenceDays": [1]},
+        )
+        assert "ScheduledInstanceAvailabilitySet" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2GapDescribeSecurityGroupReferences:
+    """Tests for DescribeSecurityGroupReferences operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_security_group_references_returns_set(self, ec2):
+        """DescribeSecurityGroupReferences returns reference set (may be empty)."""
+        resp = ec2.describe_security_group_references(GroupId=["sg-12345678"])
+        assert "SecurityGroupReferenceSet" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2GapDescribeSpotFleetRequestHistory:
+    """Tests for DescribeSpotFleetRequestHistory operation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_spot_fleet_request_history_returns_records(self, ec2):
+        """DescribeSpotFleetRequestHistory returns history records (may be empty)."""
+        from datetime import datetime
+
+        resp = ec2.describe_spot_fleet_request_history(
+            SpotFleetRequestId="sfr-12345678",
+            StartTime=datetime(2021, 1, 1, tzinfo=UTC),
+        )
+        assert "HistoryRecords" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

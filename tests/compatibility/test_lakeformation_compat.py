@@ -1068,11 +1068,13 @@ class TestLakeFormationLFTagExpressionCRUD:
         # Create an LF tag first (required for expressions)
         client.create_lf_tag(TagKey=tag_key, TagValues=["v1", "v2"])
         try:
-            resp = client.create_lf_tag_expression(
+            client.create_lf_tag_expression(
                 Name=expr_name,
                 Expression=[{"TagKey": tag_key, "TagValues": ["v1"]}],
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            list_resp = client.list_lf_tag_expressions()
+            names = [e["Name"] for e in list_resp.get("LFTagExpressions", [])]
+            assert expr_name in names
         finally:
             try:
                 client.delete_lf_tag_expression(Name=expr_name)
@@ -1120,9 +1122,9 @@ class TestLakeFormationIdentityCenterCRUD:
         return make_client("lakeformation")
 
     def test_create_identity_center_configuration(self, client):
-        """CreateLakeFormationIdentityCenterConfiguration returns OK."""
+        """CreateLakeFormationIdentityCenterConfiguration returns ApplicationArn."""
         resp = client.create_lake_formation_identity_center_configuration()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ApplicationArn" in resp
         # Cleanup
         try:
             client.delete_lake_formation_identity_center_configuration()
@@ -1132,8 +1134,9 @@ class TestLakeFormationIdentityCenterCRUD:
     def test_delete_identity_center_configuration(self, client):
         """DeleteLakeFormationIdentityCenterConfiguration removes config."""
         client.create_lake_formation_identity_center_configuration()
-        resp = client.delete_lake_formation_identity_center_configuration()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_lake_formation_identity_center_configuration()
+        resp = client.list_lake_formation_opt_ins()
+        assert "LakeFormationOptInsInfoList" in resp
 
     def test_update_identity_center_configuration_not_found(self, client):
         """UpdateLakeFormationIdentityCenterConfiguration raises EntityNotFoundException."""
@@ -1158,13 +1161,14 @@ class TestLakeFormationGapOps:
         return make_client("lakeformation")
 
     def test_revoke_permissions(self, client):
-        """RevokePermissions can be called and returns 200."""
-        resp = client.revoke_permissions(
+        """RevokePermissions can be called without error."""
+        client.revoke_permissions(
             Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test-role"},
             Resource={"Catalog": {}},
             Permissions=["ALL"],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = client.list_permissions()
+        assert "PrincipalResourcePermissions" in resp
 
 
 class TestLakeFormationNewStubOps:
@@ -1208,26 +1212,31 @@ class TestLakeFormationNewStubOps:
 
     def test_create_lake_formation_opt_in(self, client):
         """CreateLakeFormationOptIn succeeds."""
-        resp = client.create_lake_formation_opt_in(
+        client.create_lake_formation_opt_in(
             Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test-role"},
             Resource={"Catalog": {}},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = client.list_lake_formation_opt_ins()
+        assert "LakeFormationOptInsInfoList" in resp
 
     def test_delete_lake_formation_opt_in(self, client):
         """DeleteLakeFormationOptIn succeeds."""
-        resp = client.delete_lake_formation_opt_in(
+        client.delete_lake_formation_opt_in(
             Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test-role"},
             Resource={"Catalog": {}},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = client.list_lake_formation_opt_ins()
+        assert "LakeFormationOptInsInfoList" in resp
 
     def test_extend_transaction(self, client):
         """ExtendTransaction succeeds for a transaction."""
         txn = client.start_transaction(TransactionType="READ_AND_WRITE")
         txn_id = txn["TransactionId"]
-        resp = client.extend_transaction(TransactionId=txn_id)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.extend_transaction(TransactionId=txn_id)
+        # Verify transaction still exists
+        list_resp = client.list_transactions()
+        txn_ids = [t["TransactionId"] for t in list_resp["Transactions"]]
+        assert txn_id in txn_ids
 
     def test_update_table_storage_optimizer(self, client):
         """UpdateTableStorageOptimizer returns a result message."""
@@ -1242,7 +1251,7 @@ class TestLakeFormationNewStubOps:
         """UpdateTableObjects succeeds (stub)."""
         txn = client.start_transaction(TransactionType="READ_AND_WRITE")
         txn_id = txn["TransactionId"]
-        resp = client.update_table_objects(
+        client.update_table_objects(
             DatabaseName="test-db",
             TableName="test-table",
             TransactionId=txn_id,
@@ -1256,7 +1265,10 @@ class TestLakeFormationNewStubOps:
                 }
             ],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify transaction still exists after writing
+        list_resp = client.list_transactions()
+        txn_ids = [t["TransactionId"] for t in list_resp["Transactions"]]
+        assert txn_id in txn_ids
 
 
 class TestLakeFormationGapOps2:
@@ -1268,21 +1280,23 @@ class TestLakeFormationGapOps2:
 
     def test_delete_objects_on_cancel(self, client):
         """DeleteObjectsOnCancel succeeds and returns 200."""
-        resp = client.delete_objects_on_cancel(
+        client.delete_objects_on_cancel(
             DatabaseName="test-db",
             TableName="test-table",
             TransactionId="fake-txn-id-001",
             Objects=[{"Uri": "s3://my-bucket/data/file.parquet", "ETag": "etag123"}],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = client.list_transactions()
+        assert "Transactions" in resp
 
     def test_update_resource(self, client):
         """UpdateResource succeeds and returns 200."""
-        resp = client.update_resource(
+        client.update_resource(
             RoleArn="arn:aws:iam::123456789012:role/lakeformation-role",
             ResourceArn="arn:aws:s3:::my-lakeformation-bucket",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = client.list_resources()
+        assert "ResourceInfoList" in resp
 
 
 class TestLakeFormationQueryPlanningOps:
