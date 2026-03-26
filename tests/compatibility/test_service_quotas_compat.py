@@ -166,6 +166,36 @@ class TestAutoManagement:
         resp = quotas.stop_auto_management()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+    def test_start_auto_management(self, quotas):
+        """StartAutoManagement should succeed."""
+        resp = quotas.start_auto_management(OptInLevel="ACCOUNT", OptInType="REQUEST_INCREASE")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_auto_management_configuration(self, quotas):
+        """GetAutoManagementConfiguration should return 200."""
+        resp = quotas.get_auto_management_configuration()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_auto_management(self, quotas):
+        """UpdateAutoManagement should succeed."""
+        resp = quotas.update_auto_management(OptInType="REQUEST_INCREASE")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_quota_utilization_report(self, quotas):
+        """StartQuotaUtilizationReport should succeed."""
+        resp = quotas.start_quota_utilization_report()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_quota_utilization_report(self, quotas):
+        """GetQuotaUtilizationReport should return 200 with a report ID."""
+        resp = quotas.get_quota_utilization_report(ReportId="test-report-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_support_case(self, quotas):
+        """CreateSupportCase should succeed with a request ID."""
+        resp = quotas.create_support_case(RequestId="test-request-id")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
 
 class TestTaggingOperations:
     """Tests for TagResource, UntagResource, ListTagsForResource."""
