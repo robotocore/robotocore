@@ -3800,12 +3800,12 @@ class TestSageMakerUpdateOperationsSuccess:
     def test_update_experiment(self, sagemaker):
         """UpdateExperiment accepts a non-existent experiment name."""
         resp = sagemaker.update_experiment(ExperimentName="fake-exp-update-zzz")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ExperimentArn" in resp
 
     def test_update_trial(self, sagemaker):
         """UpdateTrial accepts a non-existent trial name."""
         resp = sagemaker.update_trial(TrialName="fake-trial-update-zzz")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TrialArn" in resp
 
     def test_update_notebook_instance(self, sagemaker):
         """UpdateNotebookInstance accepts a non-existent instance name."""
@@ -3844,7 +3844,7 @@ class TestSageMakerUpdateOperationsSuccess:
     def test_update_feature_group(self, sagemaker):
         """UpdateFeatureGroup accepts a non-existent feature group name."""
         resp = sagemaker.update_feature_group(FeatureGroupName="fake-fg-update-zzz")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "FeatureGroupArn" in resp
 
     def test_update_feature_metadata(self, sagemaker):
         """UpdateFeatureMetadata accepts non-existent feature group."""

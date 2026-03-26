@@ -266,6 +266,7 @@ class TestResourceGroupsAutoCoverage:
         try:
             resp = client.list_group_resources(Group=name)
             assert "ResourceIdentifiers" in resp
+            assert isinstance(resp["ResourceIdentifiers"], list)
         finally:
             client.delete_group(GroupName=name)
 
@@ -273,6 +274,7 @@ class TestResourceGroupsAutoCoverage:
         """ListTagSyncTasks returns a response."""
         resp = client.list_tag_sync_tasks()
         assert "TagSyncTasks" in resp
+        assert isinstance(resp["TagSyncTasks"], list)
 
     def test_put_group_configuration(self, client):
         """PutGroupConfiguration succeeds for a configuration-based group."""
@@ -312,6 +314,7 @@ class TestResourceGroupsAutoCoverage:
         """UpdateAccountSettings returns a response."""
         resp = client.update_account_settings()
         assert "AccountSettings" in resp
+        assert isinstance(resp["AccountSettings"], dict)
 
 
 class TestTagSyncTasks:

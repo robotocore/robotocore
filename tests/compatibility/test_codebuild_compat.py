@@ -1097,7 +1097,7 @@ class TestCodeBuildBatchOperations:
             b = codebuild.start_build_batch(projectName=name)
             bb_id = b["buildBatch"]["id"]
             resp = codebuild.delete_build_batch(id=bb_id)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "statusCode" in resp
         finally:
             codebuild.delete_project(name=name)
 
