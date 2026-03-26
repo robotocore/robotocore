@@ -135,3 +135,45 @@ class TestTimestreamQueryQuery:
         assert "QueryId" in resp
         assert "Rows" in resp
         assert isinstance(resp["Rows"], list)
+
+
+class TestTimestreamQueryTagging:
+    """Tests for ListTagsForResource on timestream-query resources."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("timestream-query")
+
+    @pytest.fixture
+    def scheduled_query_arn(self, client):
+        """Create a scheduled query and return its ARN."""
+        resp = client.create_scheduled_query(
+            Name="test-tagging-sq",
+            QueryString="SELECT 1",
+            ScheduleConfiguration={"ScheduleExpression": "rate(1 hour)"},
+            NotificationConfiguration={
+                "SnsConfiguration": {
+                    "TopicArn": "arn:aws:sns:us-east-1:123456789012:test-tag-topic"
+                }
+            },
+            ScheduledQueryExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            ErrorReportConfiguration={
+                "S3Configuration": {
+                    "BucketName": "test-bucket",
+                    "EncryptionOption": "SSE_S3",
+                }
+            },
+        )
+        arn = resp["Arn"]
+        yield arn
+        try:
+            client.delete_scheduled_query(ScheduledQueryArn=arn)
+        except Exception:
+            pass
+
+    def test_list_tags_for_resource(self, client, scheduled_query_arn):
+        """ListTagsForResource returns Tags list for a scheduled query."""
+        resp = client.list_tags_for_resource(ResourceARN=scheduled_query_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], list)
