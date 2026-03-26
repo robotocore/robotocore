@@ -1652,7 +1652,10 @@ class TestDMSDescribeConversionAndMetadata:
             MigrationProjectIdentifier="arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
         )
         assert "ConversionConfiguration" in response
-        assert "MigrationProjectIdentifier" in response
+        assert (
+            response["MigrationProjectIdentifier"]
+            == "arn:aws:dms:us-east-1:123456789012:migration-project:nonexistent"
+        )
 
     def test_describe_replication_table_statistics(self, dms):
         """DescribeReplicationTableStatistics returns stats list."""
@@ -1669,6 +1672,7 @@ class TestDMSDescribeConversionAndMetadata:
             SelectionRules='{"rules":[]}',
         )
         assert "TargetSelectionRules" in response
+        assert isinstance(response["TargetSelectionRules"], str)
 
     def test_describe_metadata_model(self, dms):
         """DescribeMetadataModel returns metadata for a migration project."""
@@ -1704,6 +1708,7 @@ class TestDMSDescribeConversionAndMetadata:
         try:
             status_resp = dms.describe_refresh_schemas_status(EndpointArn=ep_arn)
             assert "RefreshSchemasStatus" in status_resp
+            assert status_resp["RefreshSchemasStatus"]["EndpointArn"] == ep_arn
         finally:
             dms.delete_endpoint(EndpointArn=ep_arn)
 
@@ -1905,6 +1910,7 @@ class TestDMSEventSubscriptionOperations:
         try:
             resp = dms.modify_event_subscription(SubscriptionName=sub_name, Enabled=False)
             assert "EventSubscription" in resp
+            assert resp["EventSubscription"]["CustSubscriptionId"] == sub_name
         finally:
             dms.delete_event_subscription(SubscriptionName=sub_name)
 
@@ -1952,6 +1958,7 @@ class TestDMSInstanceProfileOperations:
                 InstanceProfileIdentifier=ip_arn, Description="updated"
             )
             assert "InstanceProfile" in resp
+            assert resp["InstanceProfile"]["InstanceProfileArn"] == ip_arn
         finally:
             dms.delete_instance_profile(InstanceProfileIdentifier=ip_arn)
 
@@ -2003,6 +2010,7 @@ class TestDMSDataProviderOperations:
                 Settings={"MySqlSettings": {"ServerName": "newhost", "Port": 3306}},
             )
             assert "DataProvider" in resp
+            assert resp["DataProvider"]["DataProviderArn"] == dp_arn
         finally:
             dms.delete_data_provider(DataProviderIdentifier=dp_arn)
 
@@ -2072,6 +2080,7 @@ class TestDMSMigrationProjectOperations:
         )
         assert "MigrationProject" in resp
         mp_arn = resp["MigrationProject"]["MigrationProjectArn"]
+        assert mp_arn.startswith("arn:aws:dms:")
         dms.delete_migration_project(MigrationProjectIdentifier=mp_arn)
 
     def test_modify_migration_project(self, dms, migration_deps):
@@ -2089,6 +2098,7 @@ class TestDMSMigrationProjectOperations:
                 MigrationProjectName="updated-mp",
             )
             assert "MigrationProject" in resp
+            assert resp["MigrationProject"]["MigrationProjectName"] == "updated-mp"
         finally:
             dms.delete_migration_project(MigrationProjectIdentifier=mp_arn)
 
@@ -2102,6 +2112,7 @@ class TestDMSMigrationProjectOperations:
         mp_arn = mp["MigrationProject"]["MigrationProjectArn"]
         resp = dms.delete_migration_project(MigrationProjectIdentifier=mp_arn)
         assert "MigrationProject" in resp
+        assert resp["MigrationProject"]["MigrationProjectArn"] == mp_arn
 
 
 class TestDMSReplicationConfigOperations:
@@ -2180,6 +2191,7 @@ class TestDMSReplicationConfigOperations:
         try:
             resp = dms.modify_replication_config(ReplicationConfigArn=rc_arn, ReplicationType="cdc")
             assert "ReplicationConfig" in resp
+            assert resp["ReplicationConfig"]["ReplicationType"] == "cdc"
         finally:
             dms.delete_replication_config(ReplicationConfigArn=rc_arn)
 
@@ -2262,10 +2274,12 @@ class TestDMSModifyReplicationInstance:
             ReplicationInstanceClass="dms.t2.small",
         )
         assert "ReplicationInstance" in resp
+        assert resp["ReplicationInstance"]["ReplicationInstanceArn"] == replication_instance["arn"]
 
     def test_reboot_replication_instance(self, dms, replication_instance):
         resp = dms.reboot_replication_instance(ReplicationInstanceArn=replication_instance["arn"])
         assert "ReplicationInstance" in resp
+        assert resp["ReplicationInstance"]["ReplicationInstanceArn"] == replication_instance["arn"]
 
     def test_modify_replication_task(self, dms, ec2, replication_instance):
         import json
@@ -2331,6 +2345,7 @@ class TestDMSModifyReplicationInstance:
                 ReplicationTaskArn=task_arn, TableMappings=new_mappings
             )
             assert "ReplicationTask" in resp
+            assert resp["ReplicationTask"]["ReplicationTaskArn"] == task_arn
         finally:
             dms.delete_replication_task(ReplicationTaskArn=task_arn)
             dms.delete_endpoint(EndpointArn=ep1["Endpoint"]["EndpointArn"])
@@ -2344,6 +2359,7 @@ class TestDMSFleetAdvisorOperations:
         """RunFleetAdvisorLsaAnalysis returns a response."""
         resp = dms.run_fleet_advisor_lsa_analysis()
         assert "LsaAnalysisId" in resp
+        assert len(resp["LsaAnalysisId"]) > 0
 
     def test_create_fleet_advisor_collector(self, dms):
         """CreateFleetAdvisorCollector returns collector reference id."""
@@ -2358,11 +2374,13 @@ class TestDMSFleetAdvisorOperations:
         """DeleteFleetAdvisorDatabases accepts database IDs."""
         resp = dms.delete_fleet_advisor_databases(DatabaseIds=["fake-db-id"])
         assert "DatabaseIds" in resp
+        assert resp["DatabaseIds"] == ["fake-db-id"]
 
     def test_batch_start_recommendations(self, dms):
         """BatchStartRecommendations with empty data returns 200."""
         resp = dms.batch_start_recommendations(Data=[])
         assert "ErrorEntries" in resp
+        assert isinstance(resp["ErrorEntries"], list)
 
     def test_start_recommendations(self, dms):
         """StartRecommendations accepts database ID and settings."""
@@ -2481,6 +2499,7 @@ class TestDMSTaskAssessmentOperations:
             ),
         )
         assert "ReplicationTaskAssessmentRun" in resp
+        assert resp["ReplicationTaskAssessmentRun"]["Status"] == "cancelling"
 
     def test_delete_replication_task_assessment_run(self, dms):
         """DeleteReplicationTaskAssessmentRun returns a response for fake ARN."""
@@ -2490,6 +2509,7 @@ class TestDMSTaskAssessmentOperations:
             ),
         )
         assert "ReplicationTaskAssessmentRun" in resp
+        assert resp["ReplicationTaskAssessmentRun"]["Status"] == "deleting"
 
     def test_move_replication_task(self, dms):
         """MoveReplicationTask returns task details."""
@@ -2500,6 +2520,7 @@ class TestDMSTaskAssessmentOperations:
                 TargetReplicationInstanceArn=info["ri_arn"],
             )
             assert "ReplicationTask" in resp
+            assert resp["ReplicationTask"]["ReplicationTaskArn"] == info["task_arn"]
         finally:
             self._cleanup(dms, info)
 
@@ -2511,7 +2532,7 @@ class TestDMSTaskAssessmentOperations:
                 ReplicationTaskArn=info["task_arn"],
                 TablesToReload=[{"SchemaName": "public", "TableName": "test"}],
             )
-            assert "ReplicationTaskArn" in resp
+            assert resp["ReplicationTaskArn"] == info["task_arn"]
         finally:
             self._cleanup(dms, info)
 
@@ -2524,6 +2545,7 @@ class TestDMSTaskAssessmentOperations:
                 ReplicationInstanceArn=info["ri_arn"],
             )
             assert "RefreshSchemasStatus" in resp
+            assert resp["RefreshSchemasStatus"]["EndpointArn"] == info["src_arn"]
         finally:
             self._cleanup(dms, info)
 
@@ -2537,7 +2559,10 @@ class TestDMSReloadReplicationTables:
             ReplicationConfigArn=("arn:aws:dms:us-east-1:123456789012:replication-config:fake"),
             TablesToReload=[{"SchemaName": "public", "TableName": "test"}],
         )
-        assert "ReplicationConfigArn" in resp
+        assert (
+            resp["ReplicationConfigArn"]
+            == "arn:aws:dms:us-east-1:123456789012:replication-config:fake"
+        )
 
 
 class TestDMSMaintenanceAction:
@@ -2558,6 +2583,7 @@ class TestDMSMaintenanceAction:
                 OptInType="immediate",
             )
             assert "ResourcePendingMaintenanceActions" in resp
+            assert resp["ResourcePendingMaintenanceActions"]["ResourceIdentifier"] == ri_arn
         finally:
             dms.delete_replication_instance(ReplicationInstanceArn=ri_arn)
 
@@ -2606,6 +2632,7 @@ class TestDMSMetadataModelOperations:
             SelectionRules='{"rules":[]}',
         )
         assert "PdfReport" in resp
+        assert "S3ObjectKey" in resp["PdfReport"]
 
     def test_modify_conversion_configuration(self, dms):
         """ModifyConversionConfiguration returns a migration project identifier."""
@@ -2613,7 +2640,7 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
             ConversionConfiguration="{}",
         )
-        assert "MigrationProjectIdentifier" in resp
+        assert resp["MigrationProjectIdentifier"] == "fake-proj"
 
     def test_start_extension_pack_association(self, dms):
         """StartExtensionPackAssociation returns a request identifier."""
@@ -2621,6 +2648,7 @@ class TestDMSMetadataModelOperations:
             MigrationProjectIdentifier="fake-proj",
         )
         assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0
 
     def test_start_metadata_model_assessment(self, dms):
         """StartMetadataModelAssessment returns a request identifier."""
@@ -2629,6 +2657,7 @@ class TestDMSMetadataModelOperations:
             SelectionRules='{"rules":[]}',
         )
         assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0
 
     def test_start_metadata_model_conversion(self, dms):
         """StartMetadataModelConversion returns a request identifier."""
@@ -2637,6 +2666,7 @@ class TestDMSMetadataModelOperations:
             SelectionRules='{"rules":[]}',
         )
         assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0
 
     def test_start_metadata_model_export_as_script(self, dms):
         """StartMetadataModelExportAsScript returns a request identifier."""
@@ -2646,6 +2676,7 @@ class TestDMSMetadataModelOperations:
             Origin="SOURCE",
         )
         assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0
 
     def test_start_metadata_model_export_to_target(self, dms):
         """StartMetadataModelExportToTarget returns a request identifier."""
@@ -2654,6 +2685,7 @@ class TestDMSMetadataModelOperations:
             SelectionRules='{"rules":[]}',
         )
         assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0
 
     def test_start_metadata_model_import(self, dms):
         """StartMetadataModelImport returns a request identifier."""
@@ -2663,6 +2695,7 @@ class TestDMSMetadataModelOperations:
             Origin="SOURCE",
         )
         assert "RequestIdentifier" in resp
+        assert len(resp["RequestIdentifier"]) > 0
 
     def test_cancel_metadata_model_conversion(self, dms):
         """CancelMetadataModelConversion returns a request identifier."""
@@ -2714,6 +2747,7 @@ class TestDMSAdditionalOps:
                 ServiceAccessRoleArn=("arn:aws:iam::123456789012:role/dms-role"),
             )
             assert "DataMigration" in resp
+            assert "DataMigrationArn" in resp["DataMigration"]
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
