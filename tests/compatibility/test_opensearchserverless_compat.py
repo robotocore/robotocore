@@ -583,6 +583,7 @@ class TestOpenSearchServerlessLifecyclePolicies:
         )
         assert "effectiveLifecyclePolicyDetails" in resp
         assert "effectiveLifecyclePolicyErrorDetails" in resp
+        assert isinstance(resp["effectiveLifecyclePolicyDetails"], list)
 
     def test_delete_lifecycle_policy_nonexistent(self, client):
         """DeleteLifecyclePolicy for nonexistent policy raises error."""
@@ -734,11 +735,13 @@ class TestOpenSearchServerlessAccountSettings:
         """GetAccountSettings returns capacity limits."""
         resp = client.get_account_settings()
         assert "accountSettingsDetail" in resp
+        assert isinstance(resp["accountSettingsDetail"], dict)
 
     def test_get_policies_stats(self, client):
         """GetPoliciesStats returns policy counts."""
         resp = client.get_policies_stats()
         assert "TotalPolicyCount" in resp
+        assert isinstance(resp["TotalPolicyCount"], int)
 
     def test_delete_security_policy(self, client):
         """DeleteSecurityPolicy removes an encryption policy."""
@@ -908,17 +911,20 @@ class TestOpenSearchServerlessCollectionGroupStubs:
         """ListCollectionGroups returns a list (possibly empty)."""
         result = client.list_collection_groups()
         assert "collectionGroupSummaries" in result
+        assert isinstance(result["collectionGroupSummaries"], list)
 
     def test_batch_get_collection_group(self, client):
         """BatchGetCollectionGroup returns details and error details."""
         result = client.batch_get_collection_group(ids=["grp"])
         assert "collectionGroupDetails" in result
         assert "collectionGroupErrorDetails" in result
+        assert isinstance(result["collectionGroupDetails"], list)
 
     def test_create_collection_group(self, client):
         """CreateCollectionGroup returns createCollectionGroupDetail."""
         result = client.create_collection_group(name="grp", standbyReplicas="ENABLED")
         assert "createCollectionGroupDetail" in result
+        assert isinstance(result["createCollectionGroupDetail"], dict)
 
     def test_delete_collection_group(self, client):
         """DeleteCollectionGroup returns 200."""
@@ -929,6 +935,7 @@ class TestOpenSearchServerlessCollectionGroupStubs:
         """UpdateCollectionGroup returns updateCollectionGroupDetail."""
         result = client.update_collection_group(id="grp")
         assert "updateCollectionGroupDetail" in result
+        assert isinstance(result["updateCollectionGroupDetail"], dict)
 
 
 class TestOpenSearchServerlessIndexOps:
