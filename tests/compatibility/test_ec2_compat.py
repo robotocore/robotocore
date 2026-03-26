@@ -11849,3 +11849,228 @@ class TestEC2GetOperations:
         resp = ec2.describe_capacity_reservation_billing_requests(Role="odcr-owner")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "CapacityReservationBillingRequests" in resp
+
+
+class TestEC2Batch4NewOps:
+    """Compat tests for EC2 operations implemented in Batch 4 (Import* through Withdraw*)."""
+
+    def test_modify_verified_access_instance(self, ec2):
+        """ModifyVerifiedAccessInstance updates description."""
+        r = ec2.create_verified_access_instance(Description="original")
+        inst_id = r["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        r2 = ec2.modify_verified_access_instance(
+            VerifiedAccessInstanceId=inst_id, Description="updated"
+        )
+        assert r2["VerifiedAccessInstance"]["Description"] == "updated"
+
+    def test_modify_verified_access_trust_provider(self, ec2):
+        """ModifyVerifiedAccessTrustProvider updates description."""
+        r = ec2.create_verified_access_trust_provider(
+            TrustProviderType="user",
+            PolicyReferenceName="test",
+            UserTrustProviderType="iam-identity-center",
+        )
+        tp_id = r["VerifiedAccessTrustProvider"]["VerifiedAccessTrustProviderId"]
+        r2 = ec2.modify_verified_access_trust_provider(
+            VerifiedAccessTrustProviderId=tp_id, Description="modified tp"
+        )
+        assert r2["VerifiedAccessTrustProvider"]["Description"] == "modified tp"
+
+    def test_modify_verified_access_group(self, ec2):
+        """ModifyVerifiedAccessGroup updates description."""
+        inst = ec2.create_verified_access_instance()
+        inst_id = inst["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        r = ec2.create_verified_access_group(VerifiedAccessInstanceId=inst_id)
+        grp_id = r["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+        r2 = ec2.modify_verified_access_group(VerifiedAccessGroupId=grp_id, Description="new desc")
+        assert r2["VerifiedAccessGroup"]["Description"] == "new desc"
+
+    def test_modify_verified_access_group_policy(self, ec2):
+        """ModifyVerifiedAccessGroupPolicy enables/disables policy."""
+        inst = ec2.create_verified_access_instance()
+        inst_id = inst["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        r = ec2.create_verified_access_group(VerifiedAccessInstanceId=inst_id)
+        grp_id = r["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+        r2 = ec2.modify_verified_access_group_policy(
+            VerifiedAccessGroupId=grp_id,
+            PolicyEnabled=True,
+            PolicyDocument="permit(principal, action, resource);",
+        )
+        assert r2["PolicyEnabled"] is True
+
+    def test_modify_verified_access_endpoint(self, ec2):
+        """ModifyVerifiedAccessEndpoint updates description."""
+        inst = ec2.create_verified_access_instance()
+        inst_id = inst["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        grp = ec2.create_verified_access_group(VerifiedAccessInstanceId=inst_id)
+        grp_id = grp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+        r = ec2.create_verified_access_endpoint(
+            VerifiedAccessGroupId=grp_id,
+            EndpointType="network-interface",
+            AttachmentType="vpc",
+            DomainCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/test",
+            ApplicationDomain="example.com",
+            EndpointDomainPrefix="myapp",
+        )
+        ep_id = r["VerifiedAccessEndpoint"]["VerifiedAccessEndpointId"]
+        r2 = ec2.modify_verified_access_endpoint(
+            VerifiedAccessEndpointId=ep_id, Description="updated ep"
+        )
+        assert r2["VerifiedAccessEndpoint"]["Description"] == "updated ep"
+
+    def test_modify_verified_access_endpoint_policy(self, ec2):
+        """ModifyVerifiedAccessEndpointPolicy enables policy."""
+        inst = ec2.create_verified_access_instance()
+        inst_id = inst["VerifiedAccessInstance"]["VerifiedAccessInstanceId"]
+        grp = ec2.create_verified_access_group(VerifiedAccessInstanceId=inst_id)
+        grp_id = grp["VerifiedAccessGroup"]["VerifiedAccessGroupId"]
+        r = ec2.create_verified_access_endpoint(
+            VerifiedAccessGroupId=grp_id,
+            EndpointType="network-interface",
+            AttachmentType="vpc",
+            DomainCertificateArn="arn:aws:acm:us-east-1:123456789012:certificate/test",
+            ApplicationDomain="example.com",
+            EndpointDomainPrefix="myapp2",
+        )
+        ep_id = r["VerifiedAccessEndpoint"]["VerifiedAccessEndpointId"]
+        r2 = ec2.modify_verified_access_endpoint_policy(
+            VerifiedAccessEndpointId=ep_id,
+            PolicyEnabled=True,
+            PolicyDocument="permit(principal, action, resource);",
+        )
+        assert r2["PolicyEnabled"] is True
+
+    def test_modify_traffic_mirror_filter_network_services(self, ec2):
+        """ModifyTrafficMirrorFilterNetworkServices adds/removes network services."""
+        f = ec2.create_traffic_mirror_filter()
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        r = ec2.modify_traffic_mirror_filter_network_services(
+            TrafficMirrorFilterId=fid, AddNetworkServices=["amazon-dns"]
+        )
+        assert "TrafficMirrorFilter" in r
+
+    def test_modify_traffic_mirror_filter_rule(self, ec2):
+        """ModifyTrafficMirrorFilterRule updates a filter rule."""
+        f = ec2.create_traffic_mirror_filter()
+        fid = f["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        rule = ec2.create_traffic_mirror_filter_rule(
+            TrafficMirrorFilterId=fid,
+            TrafficDirection="ingress",
+            RuleNumber=100,
+            RuleAction="accept",
+            DestinationCidrBlock="0.0.0.0/0",
+            SourceCidrBlock="0.0.0.0/0",
+        )
+        rid = rule["TrafficMirrorFilterRule"]["TrafficMirrorFilterRuleId"]
+        r = ec2.modify_traffic_mirror_filter_rule(
+            TrafficMirrorFilterRuleId=rid, Description="updated rule"
+        )
+        assert r["TrafficMirrorFilterRule"]["Description"] == "updated rule"
+
+    def test_modify_traffic_mirror_session(self, ec2):
+        """ModifyTrafficMirrorSession updates session description."""
+        # Create a network interface via ENI creation
+        vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        subnet = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.0.0/24")
+        subnet_id = subnet["Subnet"]["SubnetId"]
+        eni = ec2.create_network_interface(SubnetId=subnet_id)
+        eni_id = eni["NetworkInterface"]["NetworkInterfaceId"]
+        filt = ec2.create_traffic_mirror_filter()
+        fid = filt["TrafficMirrorFilter"]["TrafficMirrorFilterId"]
+        target = ec2.create_traffic_mirror_target(NetworkInterfaceId=eni_id)
+        tid = target["TrafficMirrorTarget"]["TrafficMirrorTargetId"]
+        session = ec2.create_traffic_mirror_session(
+            NetworkInterfaceId=eni_id,
+            TrafficMirrorTargetId=tid,
+            TrafficMirrorFilterId=fid,
+            SessionNumber=1,
+        )
+        sid = session["TrafficMirrorSession"]["TrafficMirrorSessionId"]
+        r = ec2.modify_traffic_mirror_session(
+            TrafficMirrorSessionId=sid, Description="updated session"
+        )
+        assert r["TrafficMirrorSession"]["Description"] == "updated session"
+
+    def test_monitor_instances(self, ec2):
+        """MonitorInstances enables monitoring on an instance."""
+        r = ec2.run_instances(ImageId="ami-12345678", MinCount=1, MaxCount=1)
+        iid = r["Instances"][0]["InstanceId"]
+        r2 = ec2.monitor_instances(InstanceIds=[iid])
+        assert r2["InstanceMonitorings"][0]["Monitoring"]["State"] == "enabled"
+
+    def test_unmonitor_instances(self, ec2):
+        """UnmonitorInstances disables monitoring on an instance."""
+        r = ec2.run_instances(ImageId="ami-12345678", MinCount=1, MaxCount=1)
+        iid = r["Instances"][0]["InstanceId"]
+        ec2.monitor_instances(InstanceIds=[iid])
+        r2 = ec2.unmonitor_instances(InstanceIds=[iid])
+        assert r2["InstanceMonitorings"][0]["Monitoring"]["State"] == "disabled"
+
+    def test_modify_id_format(self, ec2):
+        """ModifyIdFormat returns 200 without error."""
+        r = ec2.modify_id_format(Resource="instance", UseLongIds=True)
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_lock_snapshot(self, ec2):
+        """LockSnapshot returns locked state."""
+        vol = ec2.create_volume(Size=1, AvailabilityZone="us-east-1a")
+        vid = vol["VolumeId"]
+        snap = ec2.create_snapshot(VolumeId=vid)
+        sid = snap["SnapshotId"]
+        r = ec2.lock_snapshot(SnapshotId=sid, LockMode="governance", LockDuration=1)
+        assert r["LockState"] == "locked"
+
+    def test_unlock_snapshot(self, ec2):
+        """UnlockSnapshot returns unlocked state."""
+        vol = ec2.create_volume(Size=1, AvailabilityZone="us-east-1a")
+        vid = vol["VolumeId"]
+        snap = ec2.create_snapshot(VolumeId=vid)
+        sid = snap["SnapshotId"]
+        ec2.lock_snapshot(SnapshotId=sid, LockMode="governance", LockDuration=1)
+        r = ec2.unlock_snapshot(SnapshotId=sid)
+        assert r["SnapshotId"] == sid
+
+    def test_withdraw_byoip_cidr(self, ec2):
+        """WithdrawByoipCidr returns withdrawn state."""
+        r = ec2.withdraw_byoip_cidr(Cidr="192.0.2.0/24")
+        assert r["ByoipCidr"]["State"] == "withdrawn"
+
+    def test_restore_image_from_recycle_bin(self, ec2):
+        """RestoreImageFromRecycleBin returns True."""
+        r = ec2.restore_image_from_recycle_bin(ImageId="ami-12345678")
+        assert r["Return"] is True
+
+    def test_restore_snapshot_from_recycle_bin(self, ec2):
+        """RestoreSnapshotFromRecycleBin returns snapshot id."""
+        r = ec2.restore_snapshot_from_recycle_bin(SnapshotId="snap-12345678")
+        assert r["SnapshotId"] == "snap-12345678"
+
+    def test_restore_snapshot_tier(self, ec2):
+        """RestoreSnapshotTier returns snapshot id."""
+        r = ec2.restore_snapshot_tier(SnapshotId="snap-12345678")
+        assert r["SnapshotId"] == "snap-12345678"
+
+    def test_reset_image_attribute(self, ec2):
+        """ResetImageAttribute clears launch permissions."""
+        r = ec2.register_image(Name="test-ami-reset")
+        ami_id = r["ImageId"]
+        r2 = ec2.reset_image_attribute(ImageId=ami_id, Attribute="launchPermission")
+        assert r2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_modify_address_attribute(self, ec2):
+        """ModifyAddressAttribute updates domain name for Elastic IP."""
+        eip = ec2.allocate_address(Domain="vpc")
+        alloc_id = eip["AllocationId"]
+        r = ec2.modify_address_attribute(AllocationId=alloc_id, DomainName="example.com")
+        assert "Address" in r
+
+    def test_move_address_to_vpc(self, ec2):
+        """MoveAddressToVpc returns 200."""
+        r = ec2.move_address_to_vpc(PublicIp="1.2.3.4")
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_restore_address_to_classic(self, ec2):
+        """RestoreAddressToClassic returns 200."""
+        r = ec2.restore_address_to_classic(PublicIp="1.2.3.4")
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
