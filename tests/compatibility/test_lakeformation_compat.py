@@ -1340,7 +1340,11 @@ class TestLakeFormationQueryPlanningOps:
         )
         qid = start["QueryId"]
         resp = client.get_query_statistics(QueryId=qid)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert (
+            "ExecutionStatistics" in resp
+            or "PlanningStatistics" in resp
+            or "QuerySubmissionTime" in resp
+        )
 
     def test_get_work_units_returns_list(self, client):
         start = client.start_query_planning(
@@ -1358,7 +1362,7 @@ class TestLakeFormationQueryPlanningOps:
         )
         qid = start["QueryId"]
         resp = client.get_work_unit_results(QueryId=qid, WorkUnitId=0, WorkUnitToken="token")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ResultStream" in resp
 
 
 class TestLakeFormationAssumeDecoratedRoleWithSAML:
@@ -1390,48 +1394,52 @@ class TestLakeFormationOptIn:
     """Test CreateLakeFormationOptIn and DeleteLakeFormationOptIn."""
 
     def test_create_lake_formation_opt_in_succeeds(self, lakeformation):
-        resp = lakeformation.create_lake_formation_opt_in(
+        lakeformation.create_lake_formation_opt_in(
             Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test"},
             Resource={"Catalog": {}},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_lake_formation_opt_ins()
+        assert "LakeFormationOptInsInfoList" in resp
 
     def test_delete_lake_formation_opt_in_succeeds(self, lakeformation):
-        resp = lakeformation.delete_lake_formation_opt_in(
+        lakeformation.delete_lake_formation_opt_in(
             Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test"},
             Resource={"Catalog": {}},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_lake_formation_opt_ins()
+        assert "LakeFormationOptInsInfoList" in resp
 
 
 class TestLakeFormationDeleteObjectsOnCancel:
     """Test DeleteObjectsOnCancel."""
 
     def test_delete_objects_on_cancel_succeeds(self, lakeformation):
-        resp = lakeformation.delete_objects_on_cancel(
+        lakeformation.delete_objects_on_cancel(
             DatabaseName="testdb",
             TableName="testtable",
             TransactionId="abc1234567890123456789012345678901",
             Objects=[{"Uri": "s3://bucket/key", "ETag": "etag123"}],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_transactions()
+        assert "Transactions" in resp
 
 
 class TestLakeFormationExtendTransaction:
     """Test ExtendTransaction."""
 
     def test_extend_transaction_succeeds(self, lakeformation):
-        resp = lakeformation.extend_transaction(
+        lakeformation.extend_transaction(
             TransactionId="abc1234567890123456789012345678901",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_transactions()
+        assert "Transactions" in resp
 
 
 class TestLakeFormationUpdateTableObjects:
     """Test UpdateTableObjects."""
 
     def test_update_table_objects_succeeds(self, lakeformation):
-        resp = lakeformation.update_table_objects(
+        lakeformation.update_table_objects(
             DatabaseName="testdb",
             TableName="testtable",
             TransactionId="abc1234567890123456789012345678901",
@@ -1439,4 +1447,5 @@ class TestLakeFormationUpdateTableObjects:
                 {"AddObject": {"Uri": "s3://bucket/key", "ETag": "etag123", "Size": 100}}
             ],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_transactions()
+        assert "Transactions" in resp
