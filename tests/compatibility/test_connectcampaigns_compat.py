@@ -29,6 +29,7 @@ class TestConnectCampaignsOperations:
         response = connectcampaigns.list_campaigns()
         assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "campaignSummaryList" in response
+        assert isinstance(response["campaignSummaryList"], list)
 
     def test_describe_campaign(self, connectcampaigns):
         resp = _create_campaign(connectcampaigns)
