@@ -230,10 +230,12 @@ class TestRoute53ResolverOperations:
     def test_list_resolver_endpoints(self, resolver):
         response = resolver.list_resolver_endpoints()
         assert "ResolverEndpoints" in response
+        assert isinstance(response["ResolverEndpoints"], list)
 
     def test_list_resolver_rules(self, resolver):
         response = resolver.list_resolver_rules()
         assert "ResolverRules" in response
+        assert isinstance(response["ResolverRules"], list)
 
     def test_create_resolver_rule(self, resolver):
         name = f"test-rule-{_uid()}"
@@ -488,6 +490,7 @@ class TestRoute53ResolverOperations:
     def test_list_resolver_dnssec_configs(self, resolver):
         resp = resolver.list_resolver_dnssec_configs()
         assert "ResolverDnssecConfigs" in resp
+        assert isinstance(resp["ResolverDnssecConfigs"], list)
 
     def test_get_resolver_dnssec_config(self, resolver, ec2):
         vpc = ec2.create_vpc(CidrBlock="10.90.0.0/16")
@@ -521,26 +524,32 @@ class TestRoute53ResolverGapStubs:
     def test_list_firewall_configs(self, resolver):
         resp = resolver.list_firewall_configs()
         assert "FirewallConfigs" in resp
+        assert isinstance(resp["FirewallConfigs"], list)
 
     def test_list_firewall_domain_lists(self, resolver):
         resp = resolver.list_firewall_domain_lists()
         assert "FirewallDomainLists" in resp
+        assert isinstance(resp["FirewallDomainLists"], list)
 
     def test_list_firewall_rule_groups(self, resolver):
         resp = resolver.list_firewall_rule_groups()
         assert "FirewallRuleGroups" in resp
+        assert isinstance(resp["FirewallRuleGroups"], list)
 
     def test_list_firewall_rule_group_associations(self, resolver):
         resp = resolver.list_firewall_rule_group_associations()
         assert "FirewallRuleGroupAssociations" in resp
+        assert isinstance(resp["FirewallRuleGroupAssociations"], list)
 
     def test_list_outpost_resolvers(self, resolver):
         resp = resolver.list_outpost_resolvers()
         assert "OutpostResolvers" in resp
+        assert isinstance(resp["OutpostResolvers"], list)
 
     def test_list_resolver_configs(self, resolver):
         resp = resolver.list_resolver_configs()
         assert "ResolverConfigs" in resp
+        assert isinstance(resp["ResolverConfigs"], list)
 
 
 class TestRoute53ResolverFirewallDomainList:
@@ -1123,6 +1132,7 @@ class TestRoute53ResolverFirewallConfigGapOps:
             DomainFileUrl="s3://fake-bucket/domains.txt",
         )
         assert "Status" in resp
+        assert isinstance(resp["Status"], str)
 
     def test_update_firewall_config(self, client):
         """UpdateFirewallConfig returns updated FirewallConfig."""
@@ -1131,6 +1141,7 @@ class TestRoute53ResolverFirewallConfigGapOps:
             FirewallFailOpen="DISABLED",
         )
         assert "FirewallConfig" in resp
+        assert isinstance(resp["FirewallConfig"], dict)
 
     def test_update_firewall_rule_group_association(self, client):
         """UpdateFirewallRuleGroupAssociation returns FirewallRuleGroupAssociation."""
@@ -1139,6 +1150,7 @@ class TestRoute53ResolverFirewallConfigGapOps:
             Priority=100,
         )
         assert "FirewallRuleGroupAssociation" in resp
+        assert isinstance(resp["FirewallRuleGroupAssociation"], dict)
 
     def test_update_resolver_config(self, client):
         """UpdateResolverConfig returns updated ResolverConfig."""
@@ -1147,6 +1159,7 @@ class TestRoute53ResolverFirewallConfigGapOps:
             AutodefinedReverseFlag="ENABLE",
         )
         assert "ResolverConfig" in resp
+        assert isinstance(resp["ResolverConfig"], dict)
 
 
 class TestRoute53ResolverOutpostResolverOps:
@@ -1172,11 +1185,14 @@ class TestRoute53ResolverOutpostResolverOps:
     def test_get_outpost_resolver(self, client):
         resp = client.get_outpost_resolver(Id="rslvr-out-abc123")
         assert "OutpostResolver" in resp
+        assert isinstance(resp["OutpostResolver"], dict)
 
     def test_delete_outpost_resolver(self, client):
         resp = client.delete_outpost_resolver(Id="rslvr-out-abc123")
         assert "OutpostResolver" in resp
+        assert isinstance(resp["OutpostResolver"], dict)
 
     def test_update_outpost_resolver(self, client):
         resp = client.update_outpost_resolver(Id="rslvr-out-abc123")
         assert "OutpostResolver" in resp
+        assert isinstance(resp["OutpostResolver"], dict)
