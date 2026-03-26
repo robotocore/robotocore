@@ -393,6 +393,7 @@ class TestECRExtendedOperations:
     def test_describe_registry(self, ecr):
         resp = ecr.describe_registry()
         assert "registryId" in resp
+        assert isinstance(resp["registryId"], str)
 
     def test_batch_check_layer_availability(self, ecr):
         repo_name = _unique("layer-repo")
@@ -609,6 +610,7 @@ class TestECRRegistryPolicy:
         ecr.put_registry_policy(policyText=policy)
         resp = ecr.delete_registry_policy()
         assert "registryId" in resp
+        assert isinstance(resp["registryId"], str)
         # Verify it's gone
         with pytest.raises(ClientError) as exc_info:
             ecr.get_registry_policy()
@@ -639,6 +641,7 @@ class TestEcrAutoCoverage:
         """GetRegistryScanningConfiguration returns a response."""
         resp = client.get_registry_scanning_configuration()
         assert "registryId" in resp
+        assert isinstance(resp["registryId"], str)
 
 
 class TestECRReplicationConfig:
@@ -680,6 +683,7 @@ class TestECRBatchScanningConfig:
             repositoryNames=[repo],
         )
         assert "scanningConfigurations" in resp
+        assert isinstance(resp["scanningConfigurations"], list)
 
 
 class TestECRPullThroughCacheRules:
@@ -1134,11 +1138,13 @@ class TestECRMissingGapOps:
         digest = "sha256:" + "c" * 64
         resp = client.list_image_referrers(repositoryName=repo, subjectId={"imageDigest": digest})
         assert "referrers" in resp
+        assert isinstance(resp["referrers"], list)
 
     def test_list_pull_time_update_exclusions(self, client):
         """ListPullTimeUpdateExclusions returns the exclusions list."""
         resp = client.list_pull_time_update_exclusions()
         assert "pullTimeUpdateExclusions" in resp
+        assert isinstance(resp["pullTimeUpdateExclusions"], list)
 
     def test_put_and_delete_signing_configuration(self, client):
         """PutSigningConfiguration and DeleteSigningConfiguration work."""
