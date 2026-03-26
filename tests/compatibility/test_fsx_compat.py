@@ -842,11 +842,13 @@ class TestFSxNewStubOps:
         resp = client.cancel_data_repository_task(TaskId="drt-0123456789abcdef0")
         assert "Lifecycle" in resp
         assert "TaskId" in resp
+        assert isinstance(resp["Lifecycle"], str)
 
     def test_copy_backup(self, client):
         """CopyBackup returns a Backup object for a source backup ID."""
         resp = client.copy_backup(SourceBackupId="backup-0123456789abcdef0")
         assert "Backup" in resp
+        assert isinstance(resp["Backup"], dict)
 
     def test_copy_snapshot_and_update_volume(self, client):
         """CopySnapshotAndUpdateVolume returns VolumeId."""
@@ -855,6 +857,7 @@ class TestFSxNewStubOps:
             SourceSnapshotARN="arn:aws:fsx:us-east-1:123456789012:snapshot:fssnap-0123456789abcdef0",
         )
         assert "VolumeId" in resp
+        assert isinstance(resp["VolumeId"], str)
 
     def test_create_and_attach_s3_access_point(self, client):
         """CreateAndAttachS3AccessPoint returns HTTP 200."""
@@ -869,6 +872,7 @@ class TestFSxNewStubOps:
             Report={"Enabled": False},
         )
         assert "DataRepositoryTask" in resp
+        assert isinstance(resp["DataRepositoryTask"], dict)
 
     def test_create_file_cache(self, client):
         """CreateFileCache returns a FileCache object."""
@@ -879,12 +883,14 @@ class TestFSxNewStubOps:
             SubnetIds=["subnet-00000001"],
         )
         assert "FileCache" in resp
+        assert isinstance(resp["FileCache"], dict)
 
     def test_delete_file_cache(self, client):
         """DeleteFileCache returns FileCacheId and Lifecycle."""
         resp = client.delete_file_cache(FileCacheId="fc-0123456789abcdef0")
         assert "FileCacheId" in resp
         assert "Lifecycle" in resp
+        assert isinstance(resp["Lifecycle"], str)
 
     def test_detach_and_delete_s3_access_point(self, client):
         """DetachAndDeleteS3AccessPoint returns HTTP 200."""
@@ -895,3 +901,4 @@ class TestFSxNewStubOps:
         """UpdateFileCache returns a FileCache object."""
         resp = client.update_file_cache(FileCacheId="fc-0123456789abcdef0")
         assert "FileCache" in resp
+        assert isinstance(resp["FileCache"], dict)
