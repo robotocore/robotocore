@@ -350,7 +350,7 @@ class TestLakeFormationGetResourceLFTags:
     def test_get_resource_lf_tags_catalog(self, client):
         """GetResourceLFTags for the Catalog resource returns a response."""
         resp = client.get_resource_lf_tags(Resource={"Catalog": {}})
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "LFTagOnDatabase" in resp or "LFTagsOnTable" in resp or "LFTagsOnColumns" in resp
 
 
 class TestLakeFormationTagOps:
@@ -382,7 +382,7 @@ class TestLakeFormationTagOps:
                 Resource={"Database": {"Name": f"db-{uuid.uuid4().hex[:8]}"}},
                 LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Failures" in resp
         finally:
             client.delete_lf_tag(TagKey=tag_key)
 
