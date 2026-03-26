@@ -806,7 +806,7 @@ class TestRekognitionDatasetOps:
             rekognition.describe_dataset(
                 DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_dataset_nonexistent(self, rekognition):
         """DeleteDataset with fake DatasetArn raises ResourceNotFoundException."""
@@ -816,7 +816,7 @@ class TestRekognitionDatasetOps:
             rekognition.delete_dataset(
                 DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_dataset_entries_nonexistent(self, rekognition):
         """ListDatasetEntries with fake DatasetArn raises ResourceNotFoundException."""
@@ -826,7 +826,7 @@ class TestRekognitionDatasetOps:
             rekognition.list_dataset_entries(
                 DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_dataset_labels_nonexistent(self, rekognition):
         """ListDatasetLabels with fake DatasetArn raises ResourceNotFoundException."""
@@ -836,7 +836,7 @@ class TestRekognitionDatasetOps:
             rekognition.list_dataset_labels(
                 DatasetArn="arn:aws:rekognition:us-east-1:123456789012:project/x/dataset/train/999"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestRekognitionProjectVersionOps:
@@ -850,7 +850,7 @@ class TestRekognitionProjectVersionOps:
             rekognition.describe_project_versions(
                 ProjectArn="arn:aws:rekognition:us-east-1:123456789012:project/nonexistent/999"
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_project_version_nonexistent(self, rekognition):
         """DeleteProjectVersion with fake ARN raises ResourceNotFoundException."""
@@ -862,7 +862,7 @@ class TestRekognitionProjectVersionOps:
                     "arn:aws:rekognition:us-east-1:123456789012:project/x/version/v1/999"
                 )
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_start_project_version_nonexistent(self, rekognition):
         """StartProjectVersion with fake ARN raises ResourceNotFoundException."""
@@ -875,7 +875,7 @@ class TestRekognitionProjectVersionOps:
                 ),
                 MinInferenceUnits=1,
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_stop_project_version_nonexistent(self, rekognition):
         """StopProjectVersion with fake ARN raises ResourceNotFoundException."""
@@ -887,7 +887,7 @@ class TestRekognitionProjectVersionOps:
                     "arn:aws:rekognition:us-east-1:123456789012:project/x/version/v1/999"
                 )
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestRekognitionStreamProcessorStartStop:
@@ -899,7 +899,7 @@ class TestRekognitionStreamProcessorStartStop:
 
         with pytest.raises(ClientError) as exc_info:
             rekognition.start_stream_processor(Name=_unique("nope"))
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_stop_stream_processor_nonexistent(self, rekognition):
         """StopStreamProcessor with fake name raises ResourceNotFoundException."""
@@ -907,7 +907,7 @@ class TestRekognitionStreamProcessorStartStop:
 
         with pytest.raises(ClientError) as exc_info:
             rekognition.stop_stream_processor(Name=_unique("nope"))
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestRekognitionVideoGetWithFakeJobId:
@@ -1016,7 +1016,7 @@ class TestRekognitionDatasetWithProject:
                 DatasetType="TRAIN",
                 ProjectArn="arn:aws:rekognition:us-east-1:123456789012:project/nonexist/9999",
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestRekognitionProjectVersionWithProject:
@@ -1032,7 +1032,7 @@ class TestRekognitionProjectVersionWithProject:
                 VersionName="v1",
                 OutputConfig={"S3Bucket": "test-bucket", "S3KeyPrefix": "output/"},
             )
-        assert "ResourceNotFoundException" in str(exc_info.value)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestRekognitionDescribeProjectsFiltered:
@@ -1405,6 +1405,7 @@ class TestRekognitionNewStubOps:
         resp = rekognition.get_media_analysis_job(JobId="fake-job-id-123")
         assert "JobId" in resp
         assert "Status" in resp
+        assert isinstance(resp["JobId"], str)
 
     def test_list_project_policies(self, rekognition):
         """ListProjectPolicies returns ProjectPolicies list."""
@@ -1422,6 +1423,7 @@ class TestRekognitionNewStubOps:
             PolicyDocument='{"Version":"2012-10-17","Statement":[]}',
         )
         assert "PolicyRevisionId" in resp
+        assert isinstance(resp["PolicyRevisionId"], str)
 
     def test_delete_project_policy(self, rekognition):
         """DeleteProjectPolicy succeeds with empty response."""
@@ -1443,6 +1445,7 @@ class TestRekognitionNewStubOps:
             OutputConfig={"S3Bucket": "output-bucket", "S3KeyPrefix": "prefix"},
         )
         assert "ProjectVersionArn" in resp
+        assert isinstance(resp["ProjectVersionArn"], str)
 
     def test_update_dataset_entries(self, rekognition):
         """UpdateDatasetEntries succeeds with empty response."""
