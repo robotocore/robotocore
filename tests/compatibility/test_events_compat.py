@@ -1462,10 +1462,12 @@ class TestEventsGapStubs:
     def test_list_connections(self, events):
         resp = events.list_connections()
         assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
 
     def test_list_api_destinations(self, events):
         resp = events.list_api_destinations()
         assert "ApiDestinations" in resp
+        assert isinstance(resp["ApiDestinations"], list)
 
     def test_list_endpoints(self, events):
         resp = events.list_endpoints()
@@ -1610,6 +1612,7 @@ class TestEventsAutoCoverage:
         """UpdateEventBus returns a response."""
         resp = client.update_event_bus()
         assert "Arn" in resp
+        assert resp["Arn"].startswith("arn:aws:events:")
 
 
 class TestEventBridgePartnerEventSource:
