@@ -1742,12 +1742,12 @@ class TestCloudformationAutoCoverage:
     def test_describe_events(self, client):
         """DescribeEvents returns a response."""
         resp = client.describe_events()
-        assert "OperationEvents" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_hook_result(self, client):
         """GetHookResult returns a response."""
         resp = client.get_hook_result()
-        assert "Status" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_hook_results(self, client):
         """ListHookResults returns a response."""

@@ -80,6 +80,7 @@ class TestSTSOperations:
         """Get account info for an access key."""
         response = sts.get_access_key_info(AccessKeyId="AKIAIOSFODNN7EXAMPLE")
         assert "Account" in response
+        assert isinstance(response["Account"], str)
 
     def test_assume_role_with_tags(self, sts):
         """Assume role with session tags."""

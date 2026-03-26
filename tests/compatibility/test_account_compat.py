@@ -196,6 +196,7 @@ class TestAccountMissingGapOps:
         """PutAccountName updates the account name."""
         resp = account.put_account_name(AccountName="My Test Account")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None
 
     def test_start_primary_email_update(self, account):
         """StartPrimaryEmailUpdate initiates an email update."""
@@ -203,6 +204,7 @@ class TestAccountMissingGapOps:
             AccountId="123456789012", PrimaryEmail="new@example.com"
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Status"], str)
 
     def test_accept_primary_email_update(self, account):
         """AcceptPrimaryEmailUpdate completes the email update flow."""

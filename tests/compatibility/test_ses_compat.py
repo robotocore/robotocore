@@ -97,11 +97,13 @@ class TestSESOperations:
     def test_set_identity_feedback_forwarding(self, ses):
         """Enable/disable feedback forwarding for an identity."""
         ses.verify_email_identity(EmailAddress="feedback@example.com")
-        response = ses.set_identity_feedback_forwarding_enabled(
+        ses.set_identity_feedback_forwarding_enabled(
             Identity="feedback@example.com",
             ForwardingEnabled=False,
         )
-        assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the forwarding setting was updated
+        attrs = ses.get_identity_feedback_forwarding_enabled(Identities=["feedback@example.com"])
+        assert attrs["NotificationAttributes"]["feedback@example.com"]["ForwardingEnabled"] is False
 
     def test_delete_identity(self, ses):
         """Verify and then delete an identity."""
