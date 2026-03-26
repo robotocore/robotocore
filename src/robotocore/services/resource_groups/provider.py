@@ -4,12 +4,14 @@ Intercepts tag operations where Moto's URL routing breaks on encoded ARNs,
 and operations missing from Moto's flask_paths routing table:
 - GetTags / Tag / Untag: ARN in URL path contains encoded slashes
 - GetAccountSettings, ListGroupResources, UpdateAccountSettings: No Moto route
+- GroupResources, UngroupResources, ListGroupingStatuses: Not in Moto at all
 """
 
 import json
 import logging
 import re
 import urllib.parse
+from collections import defaultdict
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -20,6 +22,16 @@ _TAGS_RE = re.compile(r"^/resources/(.+)/tags$")
 _GET_ACCOUNT_SETTINGS_RE = re.compile(r"^/get-account-settings$")
 _LIST_GROUP_RESOURCES_RE = re.compile(r"^/list-group-resources$")
 _UPDATE_ACCOUNT_SETTINGS_RE = re.compile(r"^/update-account-settings$")
+_GROUP_RESOURCES_RE = re.compile(r"^/group-resources$")
+_UNGROUP_RESOURCES_RE = re.compile(r"^/ungroup-resources$")
+_LIST_GROUPING_STATUSES_RE = re.compile(r"^/list-grouping-statuses$")
+
+# In-memory store for manual group membership
+# (keyed by account_id -> region -> group -> set of ARNs)
+# This supports GroupResources/UngroupResources/ListGroupingStatuses
+_group_memberships: dict[str, dict[str, dict[str, set[str]]]] = defaultdict(
+    lambda: defaultdict(lambda: defaultdict(set))
+)
 
 
 logger = logging.getLogger(__name__)
@@ -62,6 +74,21 @@ async def handle_resource_groups_request(
     if _UPDATE_ACCOUNT_SETTINGS_RE.match(path) and request.method == "POST":
         body = await request.body()
         return _update_account_settings(body)
+
+    # GroupResources (POST /group-resources)
+    if _GROUP_RESOURCES_RE.match(path) and request.method == "POST":
+        body = await request.body()
+        return _group_resources(body, region, account_id)
+
+    # UngroupResources (POST /ungroup-resources)
+    if _UNGROUP_RESOURCES_RE.match(path) and request.method == "POST":
+        body = await request.body()
+        return _ungroup_resources(body, region, account_id)
+
+    # ListGroupingStatuses (POST /list-grouping-statuses)
+    if _LIST_GROUPING_STATUSES_RE.match(path) and request.method == "POST":
+        body = await request.body()
+        return _list_grouping_statuses(body, region, account_id)
 
     return await forward_to_moto(request, "resource-groups", account_id=account_id)
 
@@ -187,6 +214,89 @@ def _update_account_settings(body: bytes) -> Response:
                     "GroupLifecycleEventsStatus": desired_status,
                     "GroupLifecycleEventsStatusMessage": "",
                 }
+            }
+        ),
+        status_code=200,
+        media_type="application/json",
+    )
+
+
+def _group_resources(body: bytes, region: str, account_id: str) -> Response:
+    """GroupResources — add resources to a group by ARN."""
+    params = json.loads(body) if body else {}
+    group = params.get("Group", "")
+    resource_arns = params.get("ResourceArns", [])
+
+    _group_memberships[account_id][region][group].update(resource_arns)
+
+    return Response(
+        content=json.dumps(
+            {
+                "Succeeded": resource_arns,
+                "Failed": [],
+                "Pending": [],
+            }
+        ),
+        status_code=200,
+        media_type="application/json",
+    )
+
+
+def _ungroup_resources(body: bytes, region: str, account_id: str) -> Response:
+    """UngroupResources — remove resources from a group."""
+    params = json.loads(body) if body else {}
+    group = params.get("Group", "")
+    resource_arns = params.get("ResourceArns", [])
+
+    group_set = _group_memberships[account_id][region][group]
+    succeeded = [arn for arn in resource_arns if arn in group_set]
+    failed = [
+        {
+            "ResourceArn": arn,
+            "ErrorCode": "RESOURCE_NOT_FOUND",
+            "ErrorMessage": "Resource not in group",
+        }
+        for arn in resource_arns
+        if arn not in group_set
+    ]
+    for arn in succeeded:
+        group_set.discard(arn)
+
+    return Response(
+        content=json.dumps(
+            {
+                "Succeeded": succeeded,
+                "Failed": failed,
+                "Pending": [],
+            }
+        ),
+        status_code=200,
+        media_type="application/json",
+    )
+
+
+def _list_grouping_statuses(body: bytes, region: str, account_id: str) -> Response:
+    """ListGroupingStatuses — list resources and their grouping status."""
+    params = json.loads(body) if body else {}
+    group = params.get("Group", "")
+
+    group_set = _group_memberships[account_id][region].get(group, set())
+    grouping_statuses = [
+        {
+            "ResourceArn": arn,
+            "Action": "GROUP",
+            "Status": "SUCCESS",
+            "ErrorCode": None,
+            "ErrorMessage": None,
+        }
+        for arn in group_set
+    ]
+
+    return Response(
+        content=json.dumps(
+            {
+                "Group": group,
+                "GroupingStatuses": grouping_statuses,
             }
         ),
         status_code=200,

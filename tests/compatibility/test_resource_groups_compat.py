@@ -389,3 +389,57 @@ class TestTagSyncTasks:
             assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             client.delete_group(GroupName=name)
+
+
+class TestGroupResourcesOperations:
+    """Tests for GroupResources, UngroupResources, ListGroupingStatuses."""
+
+    @pytest.fixture
+    def rg_client(self):
+        return make_client("resource-groups")
+
+    def test_group_resources(self, rg_client):
+        """GroupResources adds ARNs to a group and returns Succeeded list."""
+        name = f"grp-res-{_uid()}"
+        rg_client.create_group(
+            Name=name, Description="Group for resources", ResourceQuery=RESOURCE_QUERY
+        )
+        try:
+            test_arn = f"arn:aws:ec2:us-east-1:123456789012:instance/i-{_uid()}"
+            resp = rg_client.group_resources(Group=name, ResourceArns=[test_arn])
+            assert test_arn in resp["Succeeded"]
+            assert resp["Failed"] == []
+        finally:
+            rg_client.delete_group(Group=name)
+
+    def test_ungroup_resources(self, rg_client):
+        """UngroupResources removes previously grouped ARNs."""
+        name = f"ungrp-res-{_uid()}"
+        rg_client.create_group(
+            Name=name, Description="Group for ungroup", ResourceQuery=RESOURCE_QUERY
+        )
+        try:
+            test_arn = f"arn:aws:ec2:us-east-1:123456789012:instance/i-{_uid()}"
+            rg_client.group_resources(Group=name, ResourceArns=[test_arn])
+            resp = rg_client.ungroup_resources(Group=name, ResourceArns=[test_arn])
+            assert test_arn in resp["Succeeded"]
+            assert resp["Failed"] == []
+        finally:
+            rg_client.delete_group(Group=name)
+
+    def test_list_grouping_statuses(self, rg_client):
+        """ListGroupingStatuses returns group name and status list."""
+        name = f"list-grp-status-{_uid()}"
+        rg_client.create_group(
+            Name=name, Description="Group for statuses", ResourceQuery=RESOURCE_QUERY
+        )
+        try:
+            test_arn = f"arn:aws:ec2:us-east-1:123456789012:instance/i-{_uid()}"
+            rg_client.group_resources(Group=name, ResourceArns=[test_arn])
+            resp = rg_client.list_grouping_statuses(Group=name)
+            assert resp["Group"] == name
+            assert "GroupingStatuses" in resp
+            arns = [s["ResourceArn"] for s in resp["GroupingStatuses"]]
+            assert test_arn in arns
+        finally:
+            rg_client.delete_group(Group=name)
