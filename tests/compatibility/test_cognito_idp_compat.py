@@ -1607,7 +1607,558 @@ class TestCognitoAuthExtended:
                     },
                 )
                 assert "AuthenticationResult" in resp
+                assert "AccessToken" in resp["AuthenticationResult"]
             else:
                 assert "AuthenticationResult" in auth
         finally:
             cognito.delete_user_pool(UserPoolId=pool_id)
+
+
+class TestCognitoNewOps:
+    """Tests for AdminRespondToAuthChallenge, Terms, MFA token, and resource server list ops."""
+
+    def test_admin_respond_to_auth_challenge(self, cognito):
+        """AdminRespondToAuthChallenge returns ResourceNotFoundException for unknown session."""
+        from botocore.exceptions import ClientError
+
+        # Verify the operation is implemented by calling with a fake session —
+        # a real 501 would return NotImplementedError, but we get ResourceNotFoundException.
+        with pytest.raises(ClientError) as exc_info:
+            cognito.admin_respond_to_auth_challenge(
+                UserPoolId="us-east-1_fakepool123",
+                ClientId="fakeclientid123456789012",
+                ChallengeName="NEW_PASSWORD_REQUIRED",
+                Session="a" * 100,
+                ChallengeResponses={
+                    "USERNAME": "testuser",
+                    "NEW_PASSWORD": "NewPerm@12345678",
+                },
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_resource_servers(self, cognito):
+        """ListResourceServers returns list of resource servers for a user pool."""
+        pool = cognito.create_user_pool(PoolName=_unique("lrs-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            cognito.create_resource_server(
+                UserPoolId=pool_id,
+                Identifier="https://api.example.com",
+                Name="test-api",
+            )
+            resp = cognito.list_resource_servers(UserPoolId=pool_id)
+            assert "ResourceServers" in resp
+            identifiers = [rs["Identifier"] for rs in resp["ResourceServers"]]
+            assert "https://api.example.com" in identifiers
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_create_terms(self, cognito):
+        """CreateTerms creates terms for a user pool client."""
+        pool = cognito.create_user_pool(PoolName=_unique("cterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="cterms-client",
+            )["UserPoolClient"]["ClientId"]
+            resp = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+                Links={"en": "https://example.com/terms"},
+            )
+            terms = resp["Terms"]
+            assert "TermsId" in terms
+            assert terms["TermsName"] == "terms-of-use"
+            assert terms["UserPoolId"] == pool_id
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_describe_terms(self, cognito):
+        """DescribeTerms returns terms details by ID."""
+        pool = cognito.create_user_pool(PoolName=_unique("dterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="dterms-client",
+            )["UserPoolClient"]["ClientId"]
+            terms_id = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="privacy-policy",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )["Terms"]["TermsId"]
+            resp = cognito.describe_terms(TermsId=terms_id, UserPoolId=pool_id)
+            assert resp["Terms"]["TermsId"] == terms_id
+            assert resp["Terms"]["TermsName"] == "privacy-policy"
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_list_terms(self, cognito):
+        """ListTerms returns all terms for a user pool."""
+        pool = cognito.create_user_pool(PoolName=_unique("lterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="lterms-client",
+            )["UserPoolClient"]["ClientId"]
+            cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )
+            resp = cognito.list_terms(UserPoolId=pool_id)
+            assert "Terms" in resp
+            assert len(resp["Terms"]) >= 1
+            names = [t["TermsName"] for t in resp["Terms"]]
+            assert "terms-of-use" in names
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_update_terms(self, cognito):
+        """UpdateTerms updates an existing terms record."""
+        pool = cognito.create_user_pool(PoolName=_unique("uterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="uterms-client",
+            )["UserPoolClient"]["ClientId"]
+            terms_id = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )["Terms"]["TermsId"]
+            resp = cognito.update_terms(
+                TermsId=terms_id,
+                UserPoolId=pool_id,
+                Links={"en": "https://example.com/updated-terms"},
+            )
+            assert resp["Terms"]["TermsId"] == terms_id
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_delete_terms(self, cognito):
+        """DeleteTerms removes a terms record from a user pool."""
+        pool = cognito.create_user_pool(PoolName=_unique("xterms-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        try:
+            client_id = cognito.create_user_pool_client(
+                UserPoolId=pool_id,
+                ClientName="xterms-client",
+            )["UserPoolClient"]["ClientId"]
+            terms_id = cognito.create_terms(
+                UserPoolId=pool_id,
+                ClientId=client_id,
+                TermsName="terms-of-use",
+                TermsSource="LINK",
+                Enforcement="NONE",
+            )["Terms"]["TermsId"]
+            resp = cognito.delete_terms(TermsId=terms_id, UserPoolId=pool_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            list_resp = cognito.list_terms(UserPoolId=pool_id)
+            term_ids = [t["TermsId"] for t in list_resp["Terms"]]
+            assert terms_id not in term_ids
+        finally:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+
+    def test_set_user_mfa_preference(self, cognito):
+        """SetUserMFAPreference is implemented (NotAuthorizedException for invalid token)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.set_user_mfa_preference(
+                AccessToken="invalid-access-token-value",
+                SoftwareTokenMfaSettings={"Enabled": False, "PreferredMfa": False},
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotAuthorizedException"
+
+    def test_associate_software_token(self, cognito):
+        """AssociateSoftwareToken is implemented (NotAuthorizedException for invalid token)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.associate_software_token(AccessToken="invalid-access-token-value")
+        assert exc_info.value.response["Error"]["Code"] == "NotAuthorizedException"
+
+    def test_verify_software_token(self, cognito):
+        """VerifySoftwareToken is implemented (NotAuthorizedException for invalid token)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.verify_software_token(
+                AccessToken="invalid-access-token-value",
+                UserCode="123456",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NotAuthorizedException"
+
+
+class TestCognitoNewOperations:
+    """Tests for newly implemented Cognito operations."""
+
+    @pytest.fixture
+    def pool_and_client(self, cognito):
+        """Create a user pool, client, and confirmed user. Returns (pool_id, client_id, token)."""
+        pool = cognito.create_user_pool(PoolName=_unique("new-ops-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        client = cognito.create_user_pool_client(UserPoolId=pool_id, ClientName=_unique("client"))[
+            "UserPoolClient"
+        ]
+        client_id = client["ClientId"]
+        cognito.admin_create_user(
+            UserPoolId=pool_id, Username="testuser", TemporaryPassword="TempPass1!"
+        )
+        cognito.admin_set_user_password(
+            UserPoolId=pool_id, Username="testuser", Password="TestPass1!", Permanent=True
+        )
+        auth = cognito.initiate_auth(
+            AuthFlow="USER_PASSWORD_AUTH",
+            ClientId=client_id,
+            AuthParameters={"USERNAME": "testuser", "PASSWORD": "TestPass1!"},
+        )
+        token = auth["AuthenticationResult"]["AccessToken"]
+        yield pool_id, client_id, token
+        try:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def test_resend_confirmation_code(self, cognito, pool_and_client):
+        """ResendConfirmationCode returns delivery details."""
+        pool_id, client_id, _token = pool_and_client
+        # Create an unconfirmed user
+        cognito.admin_create_user(
+            UserPoolId=pool_id, Username="unconfirmed", TemporaryPassword="TempPass1!"
+        )
+        resp = cognito.resend_confirmation_code(ClientId=client_id, Username="unconfirmed")
+        assert "CodeDeliveryDetails" in resp
+
+    def test_get_user_attribute_verification_code(self, cognito, pool_and_client):
+        """GetUserAttributeVerificationCode returns delivery details."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.get_user_attribute_verification_code(
+            AccessToken=token, AttributeName="email"
+        )
+        assert "CodeDeliveryDetails" in resp
+        assert resp["CodeDeliveryDetails"]["AttributeName"] == "email"
+
+    def test_verify_user_attribute(self, cognito, pool_and_client):
+        """VerifyUserAttribute succeeds for authenticated user."""
+        _pool_id, _client_id, token = pool_and_client
+        # Succeeds (we accept any code for local dev)
+        resp = cognito.verify_user_attribute(
+            AccessToken=token, AttributeName="email", Code="123456"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_set_user_settings(self, cognito, pool_and_client):
+        """SetUserSettings stores MFA options."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.set_user_settings(AccessToken=token, MFAOptions=[])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_user_auth_factors(self, cognito, pool_and_client):
+        """GetUserAuthFactors returns user MFA info."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.get_user_auth_factors(AccessToken=token)
+        assert "Username" in resp
+        assert resp["Username"] == "testuser"
+
+    def test_admin_set_user_settings(self, cognito, pool_and_client):
+        """AdminSetUserSettings stores MFA options for a user."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_set_user_settings(
+            UserPoolId=pool_id, Username="testuser", MFAOptions=[]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_signing_certificate(self, cognito, pool_and_client):
+        """GetSigningCertificate returns a certificate string."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.get_signing_certificate(UserPoolId=pool_id)
+        assert "Certificate" in resp
+        assert len(resp["Certificate"]) > 0
+
+    def test_get_log_delivery_configuration(self, cognito, pool_and_client):
+        """GetLogDeliveryConfiguration returns configuration for pool."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.get_log_delivery_configuration(UserPoolId=pool_id)
+        assert "LogDeliveryConfiguration" in resp
+        assert resp["LogDeliveryConfiguration"]["UserPoolId"] == pool_id
+
+    def test_set_log_delivery_configuration(self, cognito, pool_and_client):
+        """SetLogDeliveryConfiguration stores log config."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.set_log_delivery_configuration(UserPoolId=pool_id, LogConfigurations=[])
+        assert "LogDeliveryConfiguration" in resp
+        assert resp["LogDeliveryConfiguration"]["UserPoolId"] == pool_id
+
+    def test_get_ui_customization(self, cognito, pool_and_client):
+        """GetUICustomization returns UICustomization object."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.get_ui_customization(UserPoolId=pool_id)
+        assert "UICustomization" in resp
+        assert resp["UICustomization"]["UserPoolId"] == pool_id
+
+    def test_set_ui_customization(self, cognito, pool_and_client):
+        """SetUICustomization stores CSS customization."""
+        pool_id, _client_id, _token = pool_and_client
+        css = ".logo-customizable { max-width: 60%; }"
+        resp = cognito.set_ui_customization(UserPoolId=pool_id, CSS=css)
+        assert "UICustomization" in resp
+        assert resp["UICustomization"]["CSS"] == css
+
+    def test_describe_risk_configuration(self, cognito, pool_and_client):
+        """DescribeRiskConfiguration returns risk config for pool."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.describe_risk_configuration(UserPoolId=pool_id)
+        assert "RiskConfiguration" in resp
+        assert resp["RiskConfiguration"]["UserPoolId"] == pool_id
+
+    def test_set_risk_configuration(self, cognito, pool_and_client):
+        """SetRiskConfiguration stores risk config."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.set_risk_configuration(
+            UserPoolId=pool_id,
+            RiskExceptionConfiguration={"BlockedIPRangeList": [], "SkippedIPRangeList": []},
+        )
+        assert "RiskConfiguration" in resp
+        assert resp["RiskConfiguration"]["UserPoolId"] == pool_id
+
+    def test_revoke_token(self, cognito, pool_and_client):
+        """RevokeToken accepts any token without error."""
+        _pool_id, client_id, _token = pool_and_client
+        resp = cognito.revoke_token(Token="any-refresh-token", ClientId=client_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_tokens_from_refresh_token(self, cognito, pool_and_client):
+        """GetTokensFromRefreshToken returns new auth tokens."""
+        _pool_id, client_id, _token = pool_and_client
+        resp = cognito.get_tokens_from_refresh_token(
+            RefreshToken="any-refresh-token", ClientId=client_id
+        )
+        assert "AuthenticationResult" in resp
+        assert "AccessToken" in resp["AuthenticationResult"]
+
+    def test_admin_list_user_auth_events(self, cognito, pool_and_client):
+        """AdminListUserAuthEvents returns empty list for new user."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_list_user_auth_events(UserPoolId=pool_id, Username="testuser")
+        assert "AuthEvents" in resp
+        assert isinstance(resp["AuthEvents"], list)
+
+    def test_admin_update_auth_event_feedback(self, cognito, pool_and_client):
+        """AdminUpdateAuthEventFeedback accepts valid pool/user."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_update_auth_event_feedback(
+            UserPoolId=pool_id,
+            Username="testuser",
+            EventId="fake-event-id",
+            FeedbackValue="Valid",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_devices(self, cognito, pool_and_client):
+        """ListDevices returns empty list (no devices in local env)."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.list_devices(AccessToken=token)
+        assert "Devices" in resp
+        assert resp["Devices"] == []
+
+    def test_admin_list_devices(self, cognito, pool_and_client):
+        """AdminListDevices returns empty list."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_list_devices(UserPoolId=pool_id, Username="testuser")
+        assert "Devices" in resp
+        assert resp["Devices"] == []
+
+    def test_admin_forget_device(self, cognito, pool_and_client):
+        """AdminForgetDevice succeeds (no-op when device doesn't exist)."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_forget_device(
+            UserPoolId=pool_id, Username="testuser", DeviceKey="fake-device-key"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_user_import_job(self, cognito, pool_and_client):
+        """CreateUserImportJob returns a job with status 'Created'."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.create_user_import_job(
+            UserPoolId=pool_id,
+            JobName=_unique("import-job"),
+            CloudWatchLogsRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        assert "UserImportJob" in resp
+        job = resp["UserImportJob"]
+        assert job["Status"] == "Created"
+        assert "JobId" in job
+        assert "PreSignedUrl" in job
+
+    def test_list_user_import_jobs(self, cognito, pool_and_client):
+        """ListUserImportJobs returns the created job."""
+        pool_id, _client_id, _token = pool_and_client
+        cognito.create_user_import_job(
+            UserPoolId=pool_id,
+            JobName=_unique("import-job"),
+            CloudWatchLogsRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        resp = cognito.list_user_import_jobs(UserPoolId=pool_id, MaxResults=10)
+        assert "UserImportJobs" in resp
+        assert len(resp["UserImportJobs"]) >= 1
+
+    def test_get_csv_header(self, cognito, pool_and_client):
+        """GetCSVHeader returns standard Cognito CSV column headers."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.get_csv_header(UserPoolId=pool_id)
+        assert "CSVHeader" in resp
+        assert "cognito:username" in resp["CSVHeader"]
+        assert "email" in resp["CSVHeader"]
+
+    def test_create_managed_login_branding(self, cognito, pool_and_client):
+        """CreateManagedLoginBranding creates a branding record."""
+        pool_id, client_id, _token = pool_and_client
+        resp = cognito.create_managed_login_branding(
+            UserPoolId=pool_id, ClientId=client_id, UseCognitoProvidedValues=True
+        )
+        assert "ManagedLoginBranding" in resp
+        branding = resp["ManagedLoginBranding"]
+        assert "ManagedLoginBrandingId" in branding
+        assert branding["UserPoolId"] == pool_id
+
+    def test_describe_managed_login_branding(self, cognito, pool_and_client):
+        """DescribeManagedLoginBranding returns the created branding."""
+        pool_id, client_id, _token = pool_and_client
+        branding = cognito.create_managed_login_branding(
+            UserPoolId=pool_id, ClientId=client_id, UseCognitoProvidedValues=True
+        )["ManagedLoginBranding"]
+        branding_id = branding["ManagedLoginBrandingId"]
+        resp = cognito.describe_managed_login_branding(
+            UserPoolId=pool_id, ManagedLoginBrandingId=branding_id
+        )
+        assert resp["ManagedLoginBranding"]["ManagedLoginBrandingId"] == branding_id
+
+    def test_describe_managed_login_branding_by_client(self, cognito, pool_and_client):
+        """DescribeManagedLoginBrandingByClient finds branding by client."""
+        pool_id, client_id, _token = pool_and_client
+        cognito.create_managed_login_branding(
+            UserPoolId=pool_id, ClientId=client_id, UseCognitoProvidedValues=True
+        )
+        resp = cognito.describe_managed_login_branding_by_client(
+            UserPoolId=pool_id, ClientId=client_id
+        )
+        assert "ManagedLoginBranding" in resp
+
+    def test_update_managed_login_branding(self, cognito, pool_and_client):
+        """UpdateManagedLoginBranding updates the branding record."""
+        pool_id, client_id, _token = pool_and_client
+        branding = cognito.create_managed_login_branding(
+            UserPoolId=pool_id, ClientId=client_id, UseCognitoProvidedValues=True
+        )["ManagedLoginBranding"]
+        branding_id = branding["ManagedLoginBrandingId"]
+        resp = cognito.update_managed_login_branding(
+            UserPoolId=pool_id,
+            ManagedLoginBrandingId=branding_id,
+            UseCognitoProvidedValues=False,
+        )
+        assert "ManagedLoginBranding" in resp
+
+    def test_delete_managed_login_branding(self, cognito, pool_and_client):
+        """DeleteManagedLoginBranding removes the branding record."""
+        pool_id, client_id, _token = pool_and_client
+        branding = cognito.create_managed_login_branding(
+            UserPoolId=pool_id, ClientId=client_id, UseCognitoProvidedValues=True
+        )["ManagedLoginBranding"]
+        branding_id = branding["ManagedLoginBrandingId"]
+        resp = cognito.delete_managed_login_branding(
+            UserPoolId=pool_id, ManagedLoginBrandingId=branding_id
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Should be gone now
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            cognito.describe_managed_login_branding(
+                UserPoolId=pool_id, ManagedLoginBrandingId=branding_id
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_add_user_pool_client_secret(self, cognito, pool_and_client):
+        """AddUserPoolClientSecret creates a new client secret."""
+        pool_id, client_id, _token = pool_and_client
+        resp = cognito.add_user_pool_client_secret(UserPoolId=pool_id, ClientId=client_id)
+        assert "ClientSecretDescriptor" in resp
+        assert "ClientSecretId" in resp["ClientSecretDescriptor"]
+
+    def test_list_user_pool_client_secrets(self, cognito, pool_and_client):
+        """ListUserPoolClientSecrets returns added secrets."""
+        pool_id, client_id, _token = pool_and_client
+        cognito.add_user_pool_client_secret(UserPoolId=pool_id, ClientId=client_id)
+        resp = cognito.list_user_pool_client_secrets(UserPoolId=pool_id, ClientId=client_id)
+        assert "ClientSecrets" in resp
+        assert len(resp["ClientSecrets"]) >= 1
+
+    def test_delete_user_pool_client_secret(self, cognito, pool_and_client):
+        """DeleteUserPoolClientSecret removes a client secret."""
+        pool_id, client_id, _token = pool_and_client
+        secret = cognito.add_user_pool_client_secret(UserPoolId=pool_id, ClientId=client_id)[
+            "ClientSecretDescriptor"
+        ]
+        secret_id = secret["ClientSecretId"]
+        resp = cognito.delete_user_pool_client_secret(
+            UserPoolId=pool_id, ClientId=client_id, ClientSecretId=secret_id
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_web_authn_registration(self, cognito, pool_and_client):
+        """StartWebAuthnRegistration returns credential creation options."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.start_web_authn_registration(AccessToken=token)
+        assert "CredentialCreationOptions" in resp
+
+    def test_list_web_authn_credentials(self, cognito, pool_and_client):
+        """ListWebAuthnCredentials returns empty list initially."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.list_web_authn_credentials(AccessToken=token)
+        assert "Credentials" in resp
+        assert isinstance(resp["Credentials"], list)
+
+    def test_admin_disable_provider_for_user(self, cognito, pool_and_client):
+        """AdminDisableProviderForUser returns success."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_disable_provider_for_user(
+            UserPoolId=pool_id,
+            User={
+                "ProviderName": "Cognito",
+                "ProviderAttributeName": "cognito:username",
+                "ProviderAttributeValue": "testuser",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_user(self, cognito, pool_and_client):
+        """DeleteUser removes the authenticated user."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.delete_user(AccessToken=token)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_user_attributes(self, cognito, pool_and_client):
+        """DeleteUserAttributes removes specified attributes."""
+        pool_id, _client_id, token = pool_and_client
+        # First add an attribute
+        cognito.admin_update_user_attributes(
+            UserPoolId=pool_id,
+            Username="testuser",
+            UserAttributes=[{"Name": "nickname", "Value": "tester"}],
+        )
+        resp = cognito.delete_user_attributes(AccessToken=token, UserAttributeNames=["nickname"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
