@@ -59,6 +59,7 @@ class TestInspector2OrganizationOperations:
         assert "ec2" in auto_enable
         assert "ecr" in auto_enable
         assert "lambda" in auto_enable
+        assert isinstance(resp["maxAccountLimitReached"], bool)
 
 
 class TestInspector2AutoCoverage:
@@ -94,6 +95,7 @@ class TestInspector2MemberOperations:
         assert "member" in resp
         member = resp["member"]
         assert "accountId" in member
+        assert member["accountId"] == "210987654321"
 
     def test_disassociate_member(self, client):
         """DisassociateMember removes a member account."""
@@ -161,6 +163,7 @@ class TestInspector2UpdateOrgConfigOperation:
         auto_enable = resp["autoEnable"]
         assert "ec2" in auto_enable
         assert "ecr" in auto_enable
+        assert auto_enable["ec2"] is True
 
 
 class TestInspector2TagOperations:
@@ -182,6 +185,7 @@ class TestInspector2TagOperations:
         client.tag_resource(resourceArn=arn, tags={"env": "test"})
         resp = client.list_tags_for_resource(resourceArn=arn)
         assert "tags" in resp
+        assert resp["tags"].get("env") == "test"
 
     def test_list_tags_for_resource(self, client):
         """ListTagsForResource on a filter with no extra tags."""
@@ -426,6 +430,7 @@ class TestInspector2ConfigAndPermissions:
         """GetConfiguration returns ECR scan configuration."""
         resp = client.get_configuration()
         assert "ecrConfiguration" in resp
+        assert isinstance(resp["ecrConfiguration"], dict)
 
     def test_list_account_permissions(self, client):
         """ListAccountPermissions returns permissions list."""
@@ -450,22 +455,26 @@ class TestInspector2ConfigAndPermissions:
         resp = client.get_ec2_deep_inspection_configuration()
         assert "packagePaths" in resp
         assert "status" in resp
+        assert isinstance(resp["packagePaths"], list)
 
     def test_get_encryption_key(self, client):
         """GetEncryptionKey returns KMS key ID for scan type."""
         resp = client.get_encryption_key(scanType="NETWORK", resourceType="AWS_EC2_INSTANCE")
         assert "kmsKeyId" in resp
+        assert isinstance(resp["kmsKeyId"], str)
 
     def test_get_findings_report_status(self, client):
         """GetFindingsReportStatus returns report status."""
         resp = client.get_findings_report_status()
         assert "status" in resp
+        assert resp["status"] in ("IN_PROGRESS", "COMPLETE", "FAILED", "CANCELLED", "NOT_FOUND")
 
     def test_get_sbom_export(self, client):
         """GetSbomExport returns export status."""
         resp = client.get_sbom_export(reportId="test-report-id")
         assert "reportId" in resp
         assert "status" in resp
+        assert resp["reportId"] == "test-report-id"
 
     def test_list_usage_totals(self, client):
         """ListUsageTotals returns usage totals list."""
@@ -510,6 +519,7 @@ class TestInspector2CisAndCoverage:
         resp = client.list_coverage_statistics()
         assert "countsByGroup" in resp
         assert "totalCounts" in resp
+        assert isinstance(resp["totalCounts"], int)
 
     def test_list_finding_aggregations(self, client):
         """ListFindingAggregations returns aggregation type and responses."""
@@ -621,6 +631,7 @@ class TestInspector2ConfigurationUpdates:
         )
         assert "packagePaths" in resp
         assert "status" in resp
+        assert isinstance(resp["packagePaths"], list)
 
     def test_update_org_ec2_deep_inspection_configuration(self, client):
         """UpdateOrgEc2DeepInspectionConfiguration updates org deep inspection."""
@@ -726,6 +737,7 @@ class TestInspector2MemberDeepInspection:
         )
         assert "accountIds" in resp
         assert "failedAccountIds" in resp
+        assert isinstance(resp["failedAccountIds"], list)
 
 
 class TestInspector2CisScanManagement:
@@ -831,6 +843,10 @@ class TestInspector2CodeSecurityOps:
             type="GITHUB",
         )
         assert "integrationArn" in resp
+        assert (
+            "inspector2" in resp["integrationArn"]
+            or "code-security-integration" in resp["integrationArn"]
+        )
 
     def test_delete_code_security_integration(self, client):
         """DeleteCodeSecurityIntegration with fake ARN returns OK."""
@@ -839,6 +855,7 @@ class TestInspector2CodeSecurityOps:
             integrationArn=fake_arn,
         )
         assert "integrationArn" in resp
+        assert resp["integrationArn"] == fake_arn
 
     def test_delete_code_security_scan_configuration(self, client):
         """DeleteCodeSecurityScanConfiguration with fake ARN returns OK."""
@@ -847,6 +864,7 @@ class TestInspector2CodeSecurityOps:
             scanConfigurationArn=fake_arn,
         )
         assert "scanConfigurationArn" in resp
+        assert resp["scanConfigurationArn"] == fake_arn
 
 
 class TestInspector2FilterUpdateOp:
@@ -968,6 +986,7 @@ class TestInspector2CodeSecurityScanConfig:
             configuration={"ruleSetCategories": ["SAST"]},
         )
         assert "scanConfigurationArn" in resp
+        assert resp["scanConfigurationArn"] == fake_arn
 
     def test_get_code_security_scan(self, client):
         """GetCodeSecurityScan returns scan details."""
@@ -977,6 +996,7 @@ class TestInspector2CodeSecurityScanConfig:
         )
         assert "scanId" in resp
         assert "status" in resp
+        assert resp["scanId"] == "fake-scan-id"
 
     def test_start_code_security_scan(self, client):
         """StartCodeSecurityScan starts a scan."""
@@ -985,6 +1005,7 @@ class TestInspector2CodeSecurityScanConfig:
         )
         assert "scanId" in resp
         assert "status" in resp
+        assert resp["status"] in ("IN_PROGRESS", "SUCCESSFUL", "FAILED", "SKIPPED")
 
     def test_update_code_security_integration(self, client):
         """UpdateCodeSecurityIntegration updates an integration."""
@@ -995,6 +1016,7 @@ class TestInspector2CodeSecurityScanConfig:
         )
         assert "integrationArn" in resp
         assert "status" in resp
+        assert resp["integrationArn"] == fake_arn
 
 
 class TestInspector2BatchScanConfigAssociations:
@@ -1018,6 +1040,7 @@ class TestInspector2BatchScanConfigAssociations:
         )
         assert "failedAssociations" in resp
         assert "successfulAssociations" in resp
+        assert isinstance(resp["failedAssociations"], list)
 
     def test_batch_disassociate_code_security_scan_configuration(self, client):
         """BatchDisassociateCodeSecurityScanConfiguration returns results."""
@@ -1033,3 +1056,4 @@ class TestInspector2BatchScanConfigAssociations:
         )
         assert "failedAssociations" in resp
         assert "successfulAssociations" in resp
+        assert isinstance(resp["successfulAssociations"], list)
