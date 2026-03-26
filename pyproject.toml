@@ -159,4 +159,5 @@ skips = ["B324", "B202", "B314", "B310", "B104", "B108", "B608"]
 dev = [
     "freezegun>=1.5.5",
     "pytest-playwright>=0.7.2",
+    "ruff>=0.15.5",
 ]
