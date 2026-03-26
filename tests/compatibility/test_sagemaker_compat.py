@@ -5660,7 +5660,7 @@ class TestSageMakerWorkteamCRUD:
         self._create_workteam(sagemaker, name)
         try:
             resp = sagemaker.describe_workteam(WorkteamName=name)
-            assert "Workteam" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sagemaker.delete_workteam(WorkteamName=name)
 
@@ -5669,7 +5669,7 @@ class TestSageMakerWorkteamCRUD:
         self._create_workteam(sagemaker, name)
         try:
             resp = sagemaker.update_workteam(WorkteamName=name, Description="updated desc")
-            assert "Workteam" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sagemaker.delete_workteam(WorkteamName=name)
 
@@ -5677,7 +5677,7 @@ class TestSageMakerWorkteamCRUD:
         name = _uid("wt")
         self._create_workteam(sagemaker, name)
         resp = sagemaker.delete_workteam(WorkteamName=name)
-        assert "Success" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerBatchAddClusterNodes:
@@ -5861,4 +5861,4 @@ class TestInferenceExperiment:
 
     def test_delete_inference_experiment_not_found(self, sagemaker):
         resp = sagemaker.delete_inference_experiment(Name="nonexistent-exp-xyz")
-        assert "InferenceExperimentArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

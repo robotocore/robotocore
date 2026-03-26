@@ -1461,6 +1461,107 @@ class TestRoutingRuleCrud:
 class TestApiGatewayV2MissingOps:
     """Tests for previously untested APIGatewayV2 operations."""
 
+    @pytest.fixture
+    def api_with_stage(self, apigwv2):
+        api = apigwv2.create_api(Name=_unique("missing-ops-api"), ProtocolType="HTTP")
+        api_id = api["ApiId"]
+        apigwv2.create_stage(
+            ApiId=api_id,
+            StageName="prod",
+            AccessLogSettings={
+                "DestinationArn": "arn:aws:logs:us-east-1:123456789012:log-group:/test",
+                "Format": "$context.requestId",
+            },
+            RouteSettings={
+                "GET /test": {
+                    "ThrottlingBurstLimit": 100,
+                    "ThrottlingRateLimit": 50.0,
+                }
+            },
+        )
+        yield api_id
+        try:
+            apigwv2.delete_api(ApiId=api_id)
+        except ClientError:
+            pass
+
+    def test_import_api(self, apigwv2):
+        """ImportApi with minimal OpenAPI spec creates a new API."""
+        spec = json.dumps(
+            {
+                "openapi": "3.0.1",
+                "info": {"title": _unique("import-api"), "version": "1.0"},
+                "paths": {},
+            }
+        )
+        resp = apigwv2.import_api(Body=spec)
+        assert "ApiId" in resp
+        apigwv2.delete_api(ApiId=resp["ApiId"])
+
+    def test_export_api(self, apigwv2, api_with_stage):
+        """ExportApi returns an OpenAPI spec body."""
+        resp = apigwv2.export_api(
+            ApiId=api_with_stage,
+            OutputType="JSON",
+            Specification="OAS30",
+        )
+        assert "body" in resp
+
+    def test_update_deployment(self, apigwv2, api_with_stage):
+        """UpdateDeployment updates deployment description."""
+        deploy = apigwv2.create_deployment(ApiId=api_with_stage)
+        deploy_id = deploy["DeploymentId"]
+        resp = apigwv2.update_deployment(
+            ApiId=api_with_stage,
+            DeploymentId=deploy_id,
+            Description="updated-description",
+        )
+        assert resp["DeploymentId"] == deploy_id
+        assert resp["Description"] == "updated-description"
+
+    def test_delete_access_log_settings(self, apigwv2, api_with_stage):
+        """DeleteAccessLogSettings removes access log settings from a stage."""
+        # Stage was created with access log settings
+        resp = apigwv2.get_stage(ApiId=api_with_stage, StageName="prod")
+        assert "AccessLogSettings" in resp
+        apigwv2.delete_access_log_settings(ApiId=api_with_stage, StageName="prod")
+        # After deletion, access log settings should be gone
+        resp = apigwv2.get_stage(ApiId=api_with_stage, StageName="prod")
+        assert resp.get("AccessLogSettings") is None or resp.get("AccessLogSettings") == {}
+
+    def test_delete_route_settings(self, apigwv2, api_with_stage):
+        """DeleteRouteSettings removes settings for a specific route."""
+        resp = apigwv2.get_stage(ApiId=api_with_stage, StageName="prod")
+        assert "GET /test" in resp.get("RouteSettings", {})
+        apigwv2.delete_route_settings(
+            ApiId=api_with_stage, StageName="prod", RouteKey="GET /test"
+        )
+        resp = apigwv2.get_stage(ApiId=api_with_stage, StageName="prod")
+        assert "GET /test" not in resp.get("RouteSettings", {})
+
+    def test_reset_authorizers_cache(self, apigwv2, api_with_stage):
+        """ResetAuthorizersCache succeeds for existing api/stage."""
+        resp = apigwv2.reset_authorizers_cache(ApiId=api_with_stage, StageName="prod")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+
+    def test_update_api_mapping(self, apigwv2, api_with_stage):
+        """UpdateApiMapping updates the api mapping key."""
+        domain_name = _unique("test") + ".example.com"
+        apigwv2.create_domain_name(DomainName=domain_name)
+        mapping = apigwv2.create_api_mapping(
+            ApiId=api_with_stage, DomainName=domain_name, Stage="prod"
+        )
+        mapping_id = mapping["ApiMappingId"]
+        resp = apigwv2.update_api_mapping(
+            ApiId=api_with_stage,
+            ApiMappingId=mapping_id,
+            DomainName=domain_name,
+            Stage="prod",
+            ApiMappingKey="v2",
+        )
+        assert resp["ApiMappingId"] == mapping_id
+        assert resp["ApiMappingKey"] == "v2"
+
     def test_delete_access_log_settings_nonexistent(self, apigwv2):
         """DeleteAccessLogSettings with fake API raises NotFoundException."""
         with pytest.raises(ClientError) as exc:

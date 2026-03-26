@@ -1261,12 +1261,12 @@ class TestSsmAutoCoverage:
     def test_describe_instance_properties(self, client):
         """DescribeInstanceProperties returns a response."""
         resp = client.describe_instance_properties()
-        assert "InstanceProperties" in resp
+        assert isinstance(resp["InstanceProperties"], list)
 
     def test_list_nodes(self, client):
         """ListNodes returns a response."""
         resp = client.list_nodes()
-        assert "Nodes" in resp
+        assert isinstance(resp["Nodes"], list)
 
 
 class TestSSMParameterAdvanced:
@@ -2373,19 +2373,19 @@ class TestSSMDescribeOperations:
             OperatingSystem="AMAZON_LINUX_2",
             Property="PRODUCT",
         )
-        assert "Properties" in resp
+        assert isinstance(resp["Properties"], list)
 
     def test_describe_sessions(self, ssm):
         """DescribeSessions returns session list."""
         resp = ssm.describe_sessions(State="Active")
-        assert "Sessions" in resp
+        assert isinstance(resp["Sessions"], list)
 
     def test_get_calendar_state(self, ssm):
         """GetCalendarState with nonexistent calendar returns error or state."""
         try:
             resp = ssm.get_calendar_state(CalendarNames=["/nonexistent/calendar"])
             # If it succeeds, should have State key
-            assert "State" in resp
+            assert resp["State"] in ("OPEN", "CLOSED")
         except ssm.exceptions.ClientError:
             # InvalidDocument or similar is acceptable
             pass  # resource may already be cleaned up
@@ -2507,8 +2507,8 @@ class TestSSMInventoryAndPatches:
             InstanceId="i-1234567890abcdef0",
             TypeName="AWS:Application",
         )
-        assert "TypeName" in resp
-        assert "InstanceId" in resp
+        assert resp["TypeName"] == "AWS:Application"
+        assert resp["InstanceId"] == "i-1234567890abcdef0"
 
     def test_delete_inventory(self, ssm):
         """DeleteInventory returns a deletion ID."""
@@ -2552,7 +2552,7 @@ class TestSSMDocumentVersions:
                 DocumentVersion="1",
                 Metadata="DocumentReviews",
             )
-            assert "Name" in resp
+            assert resp["Name"] == doc_name
         finally:
             ssm.delete_document(Name=doc_name)
 
@@ -3546,9 +3546,7 @@ class TestSSMMiscOpsExtended:
 
     def test_start_associations_once(self, ssm):
         """StartAssociationsOnce accepts valid-format association IDs."""
-        resp = ssm.start_associations_once(
-            AssociationIds=["00000000-0000-0000-0000-000000000000"]
-        )
+        resp = ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_deployable_patch_snapshot_for_instance(self, ssm):

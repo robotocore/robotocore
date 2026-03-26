@@ -1,11 +1,10 @@
 """Timestream Query compatibility tests."""
 
+import boto3
 import pytest
 from botocore.config import Config
 
-from tests.compatibility.conftest import ENDPOINT_URL, make_client
-
-import boto3
+from tests.compatibility.conftest import ENDPOINT_URL
 
 
 def make_tsq_client():
@@ -41,7 +40,7 @@ class TestTimestreamQueryScheduledQuery:
 
     @pytest.fixture
     def client(self):
-        return make_client("timestream-query")
+        return make_tsq_client()
 
     @pytest.fixture
     def scheduled_query_arn(self, client):
@@ -141,7 +140,7 @@ class TestTimestreamQueryQuery:
 
     @pytest.fixture
     def client(self):
-        return make_client("timestream-query")
+        return make_tsq_client()
 
     def test_query(self, client):
         """Query returns a QueryId and Rows."""
@@ -157,7 +156,7 @@ class TestTimestreamQueryTagging:
 
     @pytest.fixture
     def client(self):
-        return make_client("timestream-query")
+        return make_tsq_client()
 
     @pytest.fixture
     def scheduled_query_arn(self, client):
@@ -200,7 +199,7 @@ class TestTimestreamQueryMissingOps:
 
     @pytest.fixture
     def client(self):
-        return make_client("timestream-query")
+        return make_tsq_client()
 
     @pytest.fixture
     def scheduled_query_arn(self, client):
@@ -271,3 +270,79 @@ class TestTimestreamQueryMissingOps:
             InvocationTime="2024-01-01T00:00:00Z",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestTimestreamQueryUpdateAccountSettings:
+    """Tests for UpdateAccountSettings operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_tsq_client()
+
+    def test_update_account_settings(self, client):
+        """UpdateAccountSettings updates MaxQueryTCU and returns updated values."""
+        resp = client.update_account_settings(MaxQueryTCU=750)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["MaxQueryTCU"] == 750
+        assert "QueryPricingModel" in resp
+
+    def test_update_account_settings_pricing_model(self, client):
+        """UpdateAccountSettings can update QueryPricingModel."""
+        resp = client.update_account_settings(QueryPricingModel="COMPUTE_UNITS")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["QueryPricingModel"] == "COMPUTE_UNITS"
+
+    def test_update_account_settings_reflects_in_describe(self, client):
+        """Updated settings are visible in DescribeAccountSettings."""
+        client.update_account_settings(MaxQueryTCU=333)
+        describe_resp = client.describe_account_settings()
+        assert describe_resp["MaxQueryTCU"] == 333
+
+
+class TestTimestreamQueryUpdateScheduledQuery:
+    """Tests for UpdateScheduledQuery operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_tsq_client()
+
+    @pytest.fixture
+    def scheduled_query_arn(self, client):
+        """Create a scheduled query and return its ARN."""
+        resp = client.create_scheduled_query(
+            Name="test-update-sq",
+            QueryString="SELECT 1",
+            ScheduleConfiguration={"ScheduleExpression": "rate(1 hour)"},
+            NotificationConfiguration={
+                "SnsConfiguration": {"TopicArn": "arn:aws:sns:us-east-1:123456789012:update-topic"}
+            },
+            ScheduledQueryExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            ErrorReportConfiguration={
+                "S3Configuration": {
+                    "BucketName": "test-bucket",
+                    "EncryptionOption": "SSE_S3",
+                }
+            },
+        )
+        arn = resp["Arn"]
+        yield arn
+        try:
+            client.delete_scheduled_query(ScheduledQueryArn=arn)
+        except Exception:
+            pass
+
+    def test_update_scheduled_query_state(self, client, scheduled_query_arn):
+        """UpdateScheduledQuery can change state to DISABLED."""
+        resp = client.update_scheduled_query(
+            ScheduledQueryArn=scheduled_query_arn,
+            State="DISABLED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_scheduled_query_not_found(self, client):
+        """UpdateScheduledQuery raises ResourceNotFoundException for unknown ARN."""
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.update_scheduled_query(
+                ScheduledQueryArn="arn:aws:timestream:us-east-1:123456789012:scheduled-query/nonexistent",
+                State="DISABLED",
+            )

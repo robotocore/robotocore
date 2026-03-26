@@ -348,12 +348,15 @@ class TestPanoramaMissingGapOps:
         assert "Tags" in resp
 
     def test_tag_resource(self, panorama):
-        resp = panorama.tag_resource(
+        panorama.tag_resource(
             ResourceArn="arn:aws:panorama:us-east-1:123456789012:device/fake",
             Tags={"env": "test"},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert resp["ResponseMetadata"]["RequestId"] is not None
+        # Verify tags were stored
+        tags_resp = panorama.list_tags_for_resource(
+            ResourceArn="arn:aws:panorama:us-east-1:123456789012:device/fake"
+        )
+        assert isinstance(tags_resp["Tags"], dict)
 
     def test_list_devices_jobs(self, panorama):
         device_id = "device-" + uuid.uuid4().hex[:8]
