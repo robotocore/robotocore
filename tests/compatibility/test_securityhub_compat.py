@@ -55,6 +55,7 @@ class TestSecurityhubAutoCoverage:
         """GetFindings returns a response."""
         resp = client.get_findings()
         assert "Findings" in resp
+        assert isinstance(resp["Findings"], list)
 
     def test_get_master_account(self, client):
         """GetMasterAccount returns a 200 response."""
@@ -130,6 +131,7 @@ class TestSecurityHubDescribeHub:
         """DescribeHub returns ControlFindingGenerator field."""
         resp = hub_client.describe_hub()
         assert "ControlFindingGenerator" in resp
+        assert resp["ControlFindingGenerator"] in ("STANDARD_CONTROL", "SECURITY_CONTROL")
 
 
 class TestSecurityHubEnableWithTags:
@@ -1578,7 +1580,9 @@ class TestSecurityHubAutomationRuleCrud:
             ],
         )
         assert "ProcessedAutomationRules" in resp
+        assert isinstance(resp["ProcessedAutomationRules"], list)
         assert "UnprocessedAutomationRules" in resp
+        assert isinstance(resp["UnprocessedAutomationRules"], list)
 
     def test_batch_update_automation_rules(self, hub_client):
         """BatchUpdateAutomationRules returns Processed and Unprocessed lists."""
@@ -1593,7 +1597,9 @@ class TestSecurityHubAutomationRuleCrud:
             ],
         )
         assert "ProcessedAutomationRules" in resp
+        assert isinstance(resp["ProcessedAutomationRules"], list)
         assert "UnprocessedAutomationRules" in resp
+        assert isinstance(resp["UnprocessedAutomationRules"], list)
 
     def test_create_automation_rule_then_batch_get(self, hub_client):
         """Created automation rule can be retrieved via BatchGetAutomationRules."""
