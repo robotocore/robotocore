@@ -157,11 +157,13 @@ class TestLakeformationAutoCoverage:
         """ListDataCellsFilter returns a response."""
         resp = client.list_data_cells_filter()
         assert "DataCellsFilters" in resp
+        assert isinstance(resp["DataCellsFilters"], list)
 
     def test_list_lf_tags(self, client):
         """ListLFTags returns a response."""
         resp = client.list_lf_tags()
         assert "LFTags" in resp
+        assert isinstance(resp["LFTags"], list)
 
     def test_get_lf_tag(self, client):
         """GetLFTag returns tag details after creation."""
@@ -253,6 +255,7 @@ class TestLakeFormationBatchPermissions:
             ]
         )
         assert "Failures" in resp
+        assert isinstance(resp["Failures"], list)
 
     def test_batch_revoke_permissions(self, client):
         """BatchRevokePermissions revokes previously granted permissions."""
@@ -281,6 +284,7 @@ class TestLakeFormationBatchPermissions:
             ]
         )
         assert "Failures" in resp
+        assert isinstance(resp["Failures"], list)
 
 
 class TestLakeFormationResourceLFTags:
@@ -301,6 +305,7 @@ class TestLakeFormationResourceLFTags:
                 LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
             )
             assert "Failures" in resp
+            assert isinstance(resp["Failures"], list)
         finally:
             client.delete_lf_tag(TagKey=tag_key)
 
@@ -351,6 +356,7 @@ class TestLakeFormationGetResourceLFTags:
         """GetResourceLFTags for the Catalog resource returns a response."""
         resp = client.get_resource_lf_tags(Resource={"Catalog": {}})
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp.get("LFTagOnDatabase", []), list)
 
 
 class TestLakeFormationTagOps:
@@ -373,6 +379,7 @@ class TestLakeFormationTagOps:
     def test_list_lf_tags(self, client):
         resp = client.list_lf_tags()
         assert "LFTags" in resp
+        assert isinstance(resp["LFTags"], list)
 
     def test_add_lf_tags_to_resource(self, client):
         tag_key = f"key-{uuid.uuid4().hex[:8]}"
@@ -383,6 +390,7 @@ class TestLakeFormationTagOps:
                 LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
             )
             assert "Failures" in resp
+            assert isinstance(resp["Failures"], list)
         finally:
             client.delete_lf_tag(TagKey=tag_key)
 
@@ -698,6 +706,8 @@ class TestLakeFormationSearchByLFTags:
             )
             assert "DatabaseList" in resp
             assert isinstance(resp["DatabaseList"], list)
+            # confirm it's a list of database entries (may be empty)
+            assert all(isinstance(d, dict) for d in resp["DatabaseList"])
         finally:
             client.delete_lf_tag(TagKey=tag_key)
 
@@ -1354,6 +1364,7 @@ class TestLakeFormationQueryPlanningOps:
         qid = start["QueryId"]
         resp = client.get_work_units(QueryId=qid)
         assert "WorkUnitRanges" in resp
+        assert isinstance(resp["WorkUnitRanges"], list)
 
     def test_get_work_unit_results_returns_200(self, client):
         start = client.start_query_planning(
