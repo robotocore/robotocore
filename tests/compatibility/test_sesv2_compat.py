@@ -1791,12 +1791,14 @@ class TestSESv2PutEmailIdentityAttributes:
         """PutEmailIdentityMailFromAttributes sets MAIL FROM domain."""
         email = f"{_uid('mf')}@example.com"
         sesv2.create_email_identity(EmailIdentity=email)
+        mail_domain = f"mail.{_uid('mf')}.example.com"
         try:
-            resp = sesv2.put_email_identity_mail_from_attributes(
+            sesv2.put_email_identity_mail_from_attributes(
                 EmailIdentity=email,
-                MailFromDomain=f"mail.{_uid('mf')}.example.com",
+                MailFromDomain=mail_domain,
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            got = sesv2.get_email_identity(EmailIdentity=email)
+            assert got["MailFromAttributes"]["MailFromDomain"] == mail_domain
         finally:
             sesv2.delete_email_identity(EmailIdentity=email)
 
@@ -1805,10 +1807,9 @@ class TestSESv2PutEmailIdentityAttributes:
         email = f"{_uid('dk')}@example.com"
         sesv2.create_email_identity(EmailIdentity=email)
         try:
-            resp = sesv2.put_email_identity_dkim_attributes(
-                EmailIdentity=email, SigningEnabled=True
-            )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            sesv2.put_email_identity_dkim_attributes(EmailIdentity=email, SigningEnabled=True)
+            got = sesv2.get_email_identity(EmailIdentity=email)
+            assert "DkimAttributes" in got
         finally:
             sesv2.delete_email_identity(EmailIdentity=email)
 
@@ -1818,18 +1819,19 @@ class TestSESv2DedicatedIpPoolOperations:
 
     def test_put_dedicated_ip_in_pool(self, sesv2):
         """PutDedicatedIpInPool moves an IP to a pool."""
-        resp = sesv2.put_dedicated_ip_in_pool(Ip="192.0.2.1", DestinationPoolName="default")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.put_dedicated_ip_in_pool(Ip="192.0.2.1", DestinationPoolName="default")
+        resp = sesv2.list_dedicated_ip_pools()
+        assert "DedicatedIpPools" in resp
 
     def test_put_dedicated_ip_pool_scaling_attributes(self, sesv2):
         """PutDedicatedIpPoolScalingAttributes sets scaling mode."""
         pool = _uid("pool")
         sesv2.create_dedicated_ip_pool(PoolName=pool)
         try:
-            resp = sesv2.put_dedicated_ip_pool_scaling_attributes(
-                PoolName=pool, ScalingMode="STANDARD"
-            )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            sesv2.put_dedicated_ip_pool_scaling_attributes(PoolName=pool, ScalingMode="STANDARD")
+            resp = sesv2.list_dedicated_ip_pools()
+            pool_names = [p for p in resp.get("DedicatedIpPools", [])]
+            assert pool in pool_names
         finally:
             sesv2.delete_dedicated_ip_pool(PoolName=pool)
 
@@ -1839,8 +1841,9 @@ class TestSESv2DeliverabilityDashboardExtra:
 
     def test_put_deliverability_dashboard_option(self, sesv2):
         """PutDeliverabilityDashboardOption enables the dashboard."""
-        resp = sesv2.put_deliverability_dashboard_option(DashboardEnabled=True)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.put_deliverability_dashboard_option(DashboardEnabled=True)
+        resp = sesv2.get_deliverability_dashboard_options()
+        assert "DashboardEnabled" in resp
 
     def test_list_deliverability_test_reports(self, sesv2):
         """ListDeliverabilityTestReports returns a list."""
@@ -1857,12 +1860,12 @@ class TestSESv2DeliverabilityDashboardExtra:
             StartDate=datetime.datetime(2025, 1, 1),
             EndDate=datetime.datetime(2025, 12, 31),
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "OverallVolume" in resp or "DailyVolumes" in resp
 
     def test_get_email_address_insights(self, sesv2):
         """GetEmailAddressInsights returns insights for an email address."""
         resp = sesv2.get_email_address_insights(EmailAddress=f"{_uid('ins')}@example.com")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "MailboxValidation" in resp
 
 
 class TestSESv2SendOperations:
@@ -1916,7 +1919,7 @@ class TestSESv2SendOperations:
             resp = sesv2.send_custom_verification_email(
                 EmailAddress=f"verify-{uid}@example.com", TemplateName=tpl
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "MessageId" in resp
         finally:
             sesv2.delete_custom_verification_email_template(TemplateName=tpl)
             sesv2.delete_email_identity(EmailIdentity=email)
@@ -1970,8 +1973,9 @@ class TestSESv2ExportJobs:
             ExportDestination={"DataFormat": "CSV"},
         )
         job_id = resp["JobId"]
-        cancel = sesv2.cancel_export_job(JobId=job_id)
-        assert cancel["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.cancel_export_job(JobId=job_id)
+        got = sesv2.get_export_job(JobId=job_id)
+        assert got["JobStatus"] in ("CANCELLED", "FAILED", "COMPLETED", "CREATED", "PROCESSING")
 
 
 class TestSESv2ImportJobs:
@@ -2022,7 +2026,7 @@ class TestSESv2DeliverabilityTestReport:
             report_id = resp["ReportId"]
 
             got = sesv2.get_deliverability_test_report(ReportId=report_id)
-            assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "DeliverabilityTestReport" in got or "OverallPlacement" in got
         finally:
             sesv2.delete_email_identity(EmailIdentity=email)
 
@@ -2037,7 +2041,7 @@ class TestSESv2TenantCRUD:
         assert "TenantId" in resp
         try:
             got = sesv2.get_tenant(TenantName=name)
-            assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert got["Tenant"]["TenantName"] == name
         finally:
             sesv2.delete_tenant(TenantName=name)
 
@@ -2051,8 +2055,10 @@ class TestSESv2TenantCRUD:
         """DeleteTenant removes a tenant."""
         name = _uid("tenant")
         sesv2.create_tenant(TenantName=name)
-        resp = sesv2.delete_tenant(TenantName=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        sesv2.delete_tenant(TenantName=name)
+        resp = sesv2.list_tenants()
+        tenant_names = [t.get("TenantName") for t in resp.get("Tenants", [])]
+        assert name not in tenant_names
 
 
 class TestSESv2TenantResourceAssociation:

@@ -1571,7 +1571,7 @@ class TestGlueCreateConnection:
                 },
             }
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "CreateConnectionStatus" in resp
 
     def test_create_and_get_connection(self, glue):
         conn_name = _unique("conn")

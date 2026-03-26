@@ -1681,223 +1681,6 @@ def _get_user_auth_factors(store: CognitoStore, params: dict, region: str, accou
     }
 
 
-def _get_identity_provider_by_identifier(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    """Forward to Moto which has identity provider storage."""
-
-    raise CognitoError(
-        "ResourceNotFoundException",
-        "No identity provider found for the given identifier.",
-        404,
-    )
-
-
-def _get_signing_certificate(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    _require_pool(store, pool_id)
-    # Return a fake certificate for local development
-    return {"Certificate": f"FAKE-CERTIFICATE-{pool_id}"}
-
-
-def _get_log_delivery_configuration(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    _require_pool(store, pool_id)
-    with store.lock:
-        pool = store.pools[pool_id]
-        log_configs = pool.get("LogDeliveryConfiguration", {})
-    return {
-        "LogDeliveryConfiguration": {
-            "UserPoolId": pool_id,
-            "LogConfigurations": log_configs.get("LogConfigurations", []),
-        }
-    }
-
-
-def _set_log_delivery_configuration(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    log_configs = params.get("LogConfigurations", [])
-    _require_pool(store, pool_id)
-    with store.lock:
-        pool = store.pools[pool_id]
-        pool["LogDeliveryConfiguration"] = {"LogConfigurations": log_configs}
-    return {
-        "LogDeliveryConfiguration": {
-            "UserPoolId": pool_id,
-            "LogConfigurations": log_configs,
-        }
-    }
-
-
-def _get_ui_customization(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    client_id = params.get("ClientId", "ALL")
-    _require_pool(store, pool_id)
-    with store.lock:
-        pool = store.pools[pool_id]
-        ui_key = f"UICustomization:{client_id}"
-        customization = pool.get(ui_key, {})
-    return {
-        "UICustomization": {
-            "UserPoolId": pool_id,
-            "ClientId": client_id,
-            "CSS": customization.get("CSS", ""),
-            "ImageUrl": customization.get("ImageUrl", ""),
-            "LastModifiedDate": customization.get("LastModifiedDate", time.time()),
-            "CreationDate": customization.get("CreationDate", time.time()),
-        }
-    }
-
-
-def _set_ui_customization(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    client_id = params.get("ClientId", "ALL")
-    css = params.get("CSS", "")
-    image_url = params.get("ImageFile", "")
-    _require_pool(store, pool_id)
-    with store.lock:
-        pool = store.pools[pool_id]
-        ui_key = f"UICustomization:{client_id}"
-        now = time.time()
-        existing = pool.get(ui_key, {})
-        pool[ui_key] = {
-            "CSS": css,
-            "ImageUrl": image_url,
-            "LastModifiedDate": now,
-            "CreationDate": existing.get("CreationDate", now),
-        }
-        customization = pool[ui_key]
-    return {
-        "UICustomization": {
-            "UserPoolId": pool_id,
-            "ClientId": client_id,
-            **customization,
-        }
-    }
-
-
-def _delete_resource_server(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    """Forward to Moto for resource server deletion."""
-    from robotocore.providers.moto_bridge import forward_to_moto_sync  # noqa: F401
-
-    # We don't have resource servers in our native store; let Moto handle it
-    raise CognitoError(
-        "ResourceNotFoundException",
-        "Resource server not found.",
-        404,
-    )
-
-
-def _update_resource_server(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    raise CognitoError(
-        "ResourceNotFoundException",
-        "Resource server not found.",
-        404,
-    )
-
-
-def _describe_risk_configuration(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    _require_pool(store, pool_id)
-    with store.lock:
-        pool = store.pools[pool_id]
-        risk_config = pool.get("RiskConfiguration", {})
-    return {
-        "RiskConfiguration": {
-            "UserPoolId": pool_id,
-            **risk_config,
-        }
-    }
-
-
-def _set_risk_configuration(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    _require_pool(store, pool_id)
-    with store.lock:
-        pool = store.pools[pool_id]
-        risk_config: dict = {}
-        for key in (
-            "CompromisedCredentialsRiskConfiguration",
-            "AccountTakeoverRiskConfiguration",
-            "RiskExceptionConfiguration",
-        ):
-            if key in params:
-                risk_config[key] = params[key]
-        pool["RiskConfiguration"] = risk_config
-    return {
-        "RiskConfiguration": {
-            "UserPoolId": pool_id,
-            **risk_config,
-        }
-    }
-
-
-def _get_tokens_from_refresh_token(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    refresh_token = params.get("RefreshToken", "")
-    client_id = params.get("ClientId", "")
-    if not refresh_token:
-        raise CognitoError("NotAuthorizedException", "Missing refresh token.")
-    pool_id = _find_pool_by_client(store, client_id)
-    # For local dev, issue new tokens without verifying the refresh token
-    # (we don't store refresh tokens in native provider)
-    _ = store.pools.get(pool_id, {})  # noqa: F841 - kept for context
-    region_str = pool_id.split("_")[0] if "_" in pool_id else region
-    issuer = f"https://cognito-idp.{region_str}.amazonaws.com/{pool_id}"
-    sub = _new_id()
-    return {
-        "AuthenticationResult": {
-            "AccessToken": _generate_jwt(sub, issuer, client_id, "access"),
-            "IdToken": _generate_jwt(sub, issuer, client_id, "id"),
-            "TokenType": "Bearer",
-            "ExpiresIn": 3600,
-        }
-    }
-
-
-def _admin_list_user_auth_events(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    username = params.get("Username", "")
-    _require_pool(store, pool_id)
-    _require_user(store, pool_id, username)
-    return {"AuthEvents": [], "NextToken": None}
-
-
-def _admin_update_auth_event_feedback(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    pool_id = params.get("UserPoolId", "")
-    _require_pool(store, pool_id)
-    return {}
-
-
-def _update_auth_event_feedback(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
-    access_token = params.get("AccessToken", "")
-    if not access_token:
-        raise CognitoError("NotAuthorizedException", "Missing access token.")
-    _user_from_token(store, access_token)
-    return {}
-
-
 def _admin_disable_provider_for_user(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -1965,9 +1748,7 @@ def _set_log_delivery_configuration(
     }
 
 
-def _get_ui_customization(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _get_ui_customization(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     client_id = params.get("ClientId", "ALL")
     _require_pool(store, pool_id)
@@ -1987,9 +1768,7 @@ def _get_ui_customization(
     }
 
 
-def _set_ui_customization(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _set_ui_customization(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     client_id = params.get("ClientId", "ALL")
     css = params.get("CSS", "")
@@ -2143,9 +1922,7 @@ def _list_devices(store: CognitoStore, params: dict, region: str, account_id: st
     return {"Devices": []}
 
 
-def _update_device_status(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _update_device_status(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     access_token = params.get("AccessToken", "")
     if not access_token:
         raise CognitoError("NotAuthorizedException", "Missing access token.")
@@ -2153,9 +1930,7 @@ def _update_device_status(
     return {}
 
 
-def _admin_forget_device(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _admin_forget_device(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     username = params.get("Username", "")
     _require_pool(store, pool_id)
@@ -2234,9 +2009,7 @@ def _describe_user_import_job(
     return {"UserImportJob": job}
 
 
-def _list_user_import_jobs(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _list_user_import_jobs(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     _require_pool(store, pool_id)
     with store.lock:
@@ -2244,34 +2017,26 @@ def _list_user_import_jobs(
     return {"UserImportJobs": jobs}
 
 
-def _start_user_import_job(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _start_user_import_job(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     job_id = params.get("JobId", "")
     _require_pool(store, pool_id)
     with store.lock:
         job = store.pools[pool_id].get("ImportJobs", {}).get(job_id)
         if not job:
-            raise CognitoError(
-                "ResourceNotFoundException", f"Import job {job_id} not found.", 404
-            )
+            raise CognitoError("ResourceNotFoundException", f"Import job {job_id} not found.", 404)
         job["Status"] = "InProgress"
     return {"UserImportJob": job}
 
 
-def _stop_user_import_job(
-    store: CognitoStore, params: dict, region: str, account_id: str
-) -> dict:
+def _stop_user_import_job(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
     pool_id = params.get("UserPoolId", "")
     job_id = params.get("JobId", "")
     _require_pool(store, pool_id)
     with store.lock:
         job = store.pools[pool_id].get("ImportJobs", {}).get(job_id)
         if not job:
-            raise CognitoError(
-                "ResourceNotFoundException", f"Import job {job_id} not found.", 404
-            )
+            raise CognitoError("ResourceNotFoundException", f"Import job {job_id} not found.", 404)
         job["Status"] = "Stopped"
     return {"UserImportJob": job}
 
@@ -2522,9 +2287,7 @@ def _delete_web_authn_credential(
     user, _pool_id = _user_from_token(store, access_token)
     with store.lock:
         user["WebAuthnCredentials"] = [
-            c
-            for c in user.get("WebAuthnCredentials", [])
-            if c.get("CredentialId") != credential_id
+            c for c in user.get("WebAuthnCredentials", []) if c.get("CredentialId") != credential_id
         ]
     return {}
 

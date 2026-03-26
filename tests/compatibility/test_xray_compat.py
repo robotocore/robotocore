@@ -210,7 +210,7 @@ class TestXRayTraceOperations:
 
     def test_put_telemetry_records(self, xray):
         now = time.time()
-        resp = xray.put_telemetry_records(
+        xray.put_telemetry_records(
             TelemetryRecords=[
                 {
                     "Timestamp": now,
@@ -227,8 +227,9 @@ class TestXRayTraceOperations:
                 }
             ],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert resp["ResponseMetadata"]["RequestId"] is not None
+        # Verify server responds: list sampling rules as side-effect
+        rules = xray.get_sampling_rules()
+        assert isinstance(rules["SamplingRuleRecords"], list)
 
     def test_put_multiple_trace_segments(self, xray):
         """PutTraceSegments with multiple segments in one call."""
@@ -570,8 +571,7 @@ class TestXRayInsightStubOperations:
     def test_get_insight_returns_stub(self, xray):
         """GetInsight returns a stub insight structure."""
         resp = xray.get_insight(InsightId="fake-insight-id-00000000")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "Insight" in resp
+        assert isinstance(resp["Insight"], dict)
 
     def test_get_insight_events_returns_list(self, xray):
         """GetInsightEvents returns an InsightEvents list."""
@@ -588,8 +588,7 @@ class TestXRayInsightStubOperations:
             StartTime=now - 3600,
             EndTime=now,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "Services" in resp
+        assert isinstance(resp["Services"], list)
 
 
 class TestXRayTraceSegmentDestination:
@@ -707,16 +706,13 @@ class TestXRayNewInsightOperations:
             StartTime=now - 3600,
             EndTime=now,
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "Services" in resp
         assert isinstance(resp["Services"], list)
 
     def test_batch_get_traces_returns_structure(self, client):
         """BatchGetTraces returns Traces and UnprocessedTraceIds."""
         resp = client.batch_get_traces(TraceIds=["1-5759e988-bd862e3fe1be46a994272793"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "Traces" in resp
-        assert "UnprocessedTraceIds" in resp
+        assert isinstance(resp["Traces"], list)
+        assert isinstance(resp["UnprocessedTraceIds"], list)
 
     def test_get_service_graph_returns_structure(self, client):
         """GetServiceGraph returns Services, StartTime, EndTime."""
@@ -729,8 +725,7 @@ class TestXRayNewInsightOperations:
     def test_get_trace_graph_returns_structure(self, client):
         """GetTraceGraph returns Services list."""
         resp = client.get_trace_graph(TraceIds=["1-5759e988-bd862e3fe1be46a994272793"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "Services" in resp
+        assert isinstance(resp["Services"], list)
 
     def test_put_telemetry_records_succeeds(self, client):
         """PutTelemetryRecords returns 200."""

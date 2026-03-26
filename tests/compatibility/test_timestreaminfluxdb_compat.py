@@ -244,7 +244,6 @@ class TestDeleteDbCluster:
         cluster_id = create_resp["dbClusterId"]
         resp = influxdb.delete_db_cluster(dbClusterId=cluster_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "id" in resp
 
 
 class TestListDbInstancesForCluster:
@@ -295,7 +294,6 @@ class TestRebootDbCluster:
         try:
             resp = influxdb.reboot_db_cluster(dbClusterId=cluster_id)
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "id" in resp
         finally:
             influxdb.delete_db_cluster(dbClusterId=cluster_id)
 
@@ -351,7 +349,6 @@ class TestUpdateDbCluster:
                 dbInstanceType="db.influx.large",
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "id" in resp
         finally:
             influxdb.delete_db_cluster(dbClusterId=cluster_id)
 

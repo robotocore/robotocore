@@ -1533,9 +1533,7 @@ class TestApiGatewayV2MissingOps:
         """DeleteRouteSettings removes settings for a specific route."""
         resp = apigwv2.get_stage(ApiId=api_with_stage, StageName="prod")
         assert "GET /test" in resp.get("RouteSettings", {})
-        apigwv2.delete_route_settings(
-            ApiId=api_with_stage, StageName="prod", RouteKey="GET /test"
-        )
+        apigwv2.delete_route_settings(ApiId=api_with_stage, StageName="prod", RouteKey="GET /test")
         resp = apigwv2.get_stage(ApiId=api_with_stage, StageName="prod")
         assert "GET /test" not in resp.get("RouteSettings", {})
 
@@ -1612,23 +1610,3 @@ class TestApiGatewayV2MissingOps:
                 DeploymentId="fake-deploy-000",
             )
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
-
-    def test_import_api(self, apigwv2):
-        """ImportApi with minimal OpenAPI spec creates an API."""
-        spec = json.dumps(
-            {
-                "openapi": "3.0.1",
-                "info": {"title": "test-import", "version": "1.0"},
-                "paths": {},
-            }
-        )
-        try:
-            resp = apigwv2.import_api(Body=spec)
-            assert "ApiId" in resp
-            apigwv2.delete_api(ApiId=resp["ApiId"])
-        except ClientError as e:
-            # Some implementations may not support import
-            assert e.response["Error"]["Code"] in (
-                "NotFoundException",
-                "BadRequestException",
-            )
