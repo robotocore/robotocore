@@ -37,6 +37,7 @@ class TestEBSMissingGapOps:
         resp = ebs.list_snapshot_blocks(SnapshotId=snap_id)
         assert "Blocks" in resp
         assert "VolumeSize" in resp
+        assert resp["VolumeSize"] == 1
 
     def test_list_changed_blocks(self, ebs):
         """ListChangedBlocks compares two snapshots."""
@@ -47,6 +48,7 @@ class TestEBSMissingGapOps:
             SecondSnapshotId=snap2["SnapshotId"],
         )
         assert "ChangedBlocks" in resp
+        assert isinstance(resp["ChangedBlocks"], list)
 
     def test_put_and_get_snapshot_block(self, ebs):
         """PutSnapshotBlock stores a block; GetSnapshotBlock retrieves it."""
