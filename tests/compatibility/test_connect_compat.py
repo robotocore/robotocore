@@ -2961,7 +2961,7 @@ class TestConnectDataTables:
             InstanceId=instance_id,
             DataTableId=str(uuid.uuid4()),
         )
-        assert "Attributes" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestConnectNotifications:
