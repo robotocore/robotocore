@@ -444,6 +444,7 @@ class TestOpenSearchGapStubs:
     def test_list_vpc_endpoints(self, opensearch):
         resp = opensearch.list_vpc_endpoints()
         assert "VpcEndpointSummaryList" in resp
+        assert isinstance(resp["VpcEndpointSummaryList"], list)
 
 
 class TestOpensearchAutoCoverage:
@@ -1262,11 +1263,13 @@ class TestOpenSearchVpcEndpointOperations:
             assert "VpcEndpoint" in resp
             endpoint = resp["VpcEndpoint"]
             assert "VpcEndpointId" in endpoint
+            assert isinstance(endpoint["VpcEndpointId"], str)
             endpoint_id = endpoint["VpcEndpointId"]
 
             # Delete it
             del_resp = opensearch.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
             assert "VpcEndpointSummary" in del_resp
+            assert isinstance(del_resp["VpcEndpointSummary"], dict)
         finally:
             opensearch.delete_domain(DomainName=domain_name)
 
@@ -1277,6 +1280,7 @@ class TestOpenSearchVpcEndpointOperations:
         try:
             resp = opensearch.list_vpc_endpoints_for_domain(DomainName=domain_name)
             assert "VpcEndpointSummaryList" in resp
+            assert isinstance(resp["VpcEndpointSummaryList"], list)
         finally:
             opensearch.delete_domain(DomainName=domain_name)
 
@@ -1309,6 +1313,7 @@ class TestOpenSearchConnectionOperations:
         )
         assert "ConnectionStatus" in resp
         assert "ConnectionId" in resp
+        assert isinstance(resp["ConnectionId"], str)
 
     def test_accept_inbound_connection_nonexistent(self, opensearch):
         """AcceptInboundConnection for nonexistent raises ResourceNotFoundException."""
@@ -1670,26 +1675,31 @@ class TestOpenSearchMissingGapOps:
         """get_upgrade_history returns UpgradeHistories key."""
         response = opensearch.get_upgrade_history(DomainName="fake-domain")
         assert "UpgradeHistories" in response
+        assert isinstance(response["UpgradeHistories"], list)
 
     def test_get_upgrade_status(self, opensearch):
         """get_upgrade_status returns UpgradeStep key."""
         response = opensearch.get_upgrade_status(DomainName="fake-domain")
         assert "UpgradeStep" in response
+        assert isinstance(response["UpgradeStep"], str)
 
     def test_cancel_service_software_update(self, opensearch):
         """cancel_service_software_update returns ServiceSoftwareOptions key."""
         response = opensearch.cancel_service_software_update(DomainName="fake-domain")
         assert "ServiceSoftwareOptions" in response
+        assert isinstance(response["ServiceSoftwareOptions"], dict)
 
     def test_start_service_software_update(self, opensearch):
         """start_service_software_update returns ServiceSoftwareOptions key."""
         response = opensearch.start_service_software_update(DomainName="fake-domain")
         assert "ServiceSoftwareOptions" in response
+        assert isinstance(response["ServiceSoftwareOptions"], dict)
 
     def test_list_vpc_endpoint_access(self, opensearch):
         """list_vpc_endpoint_access returns AuthorizedPrincipalList key."""
         response = opensearch.list_vpc_endpoint_access(DomainName="fake-domain")
         assert "AuthorizedPrincipalList" in response
+        assert isinstance(response["AuthorizedPrincipalList"], list)
 
     def test_upgrade_domain(self, opensearch):
         """upgrade_domain returns DomainName and TargetVersion."""
@@ -1714,11 +1724,13 @@ class TestOpenSearchNewStubOps:
         """ListDirectQueryDataSources returns a list."""
         resp = opensearch.list_direct_query_data_sources()
         assert "DirectQueryDataSources" in resp
+        assert isinstance(resp["DirectQueryDataSources"], list)
 
     def test_reject_inbound_connection(self, opensearch):
         """RejectInboundConnection returns the connection with REJECTED status."""
         resp = opensearch.reject_inbound_connection(ConnectionId="fake-conn-id")
         assert "Connection" in resp
+        assert isinstance(resp["Connection"], dict)
 
     def test_cancel_domain_config_change(self, opensearch):
         """CancelDomainConfigChange returns dry run and cancelled change ids."""
@@ -1727,6 +1739,7 @@ class TestOpenSearchNewStubOps:
         try:
             resp = opensearch.cancel_domain_config_change(DomainName=name, DryRun=True)
             assert "CancelledChangeIds" in resp
+            assert isinstance(resp["CancelledChangeIds"], list)
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -1789,11 +1802,13 @@ class TestOpenSearchNewGapOps:
             DomainName=domain,
         )
         assert "DomainPackageDetailsList" in resp
+        assert isinstance(resp["DomainPackageDetailsList"], list)
         resp2 = client.dissociate_packages(
             PackageList=["F12345"],
             DomainName=domain,
         )
         assert "DomainPackageDetailsList" in resp2
+        assert isinstance(resp2["DomainPackageDetailsList"], list)
 
     def test_create_and_delete_index(self, client, domain):
         """CreateIndex, UpdateIndex, DeleteIndex all return 200."""
