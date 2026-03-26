@@ -2111,7 +2111,8 @@ def _delete_user_pool_client_secret(
 ) -> dict:
     pool_id = params.get("UserPoolId", "")
     client_id = params.get("ClientId", "")
-    secret_id = params.get("SecretId", "")
+    # AWS API uses ClientSecretId as the param name
+    secret_id = params.get("ClientSecretId", params.get("SecretId", ""))
     _require_pool(store, pool_id)
     with store.lock:
         client = store.clients.get(pool_id, {}).get(client_id)
@@ -2120,7 +2121,9 @@ def _delete_user_pool_client_secret(
                 "ResourceNotFoundException", f"Client {client_id} does not exist.", 404
             )
         client["ClientSecrets"] = [
-            s for s in client.get("ClientSecrets", []) if s.get("SecretId") != secret_id
+            s
+            for s in client.get("ClientSecrets", [])
+            if s.get("ClientSecretId") != secret_id and s.get("SecretId") != secret_id
         ]
     return {}
 
