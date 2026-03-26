@@ -1940,6 +1940,28 @@ class TestAPIGatewayGetUsage:
         apigw.delete_usage_plan(usagePlanId=plan_id)
 
 
+class TestAPIGatewayGetSdk:
+    """Tests for GetSdk."""
+
+    def test_get_sdk_javascript(self, apigw):
+        api = apigw.create_rest_api(name="sdk-test", description="test")
+        api_id = api["id"]
+        resources = apigw.get_resources(restApiId=api_id)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api_id, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(restApiId=api_id, resourceId=root_id, httpMethod="GET", type="MOCK")
+        apigw.create_deployment(restApiId=api_id, stageName="dev")
+        resp = apigw.get_sdk(restApiId=api_id, stageName="dev", sdkType="javascript")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp.get("contentType") == "application/octet-stream"
+        body = resp.get("body")
+        assert body is not None
+        assert len(body.read()) > 0
+        apigw.delete_rest_api(restApiId=api_id)
+
+
 class TestAPIGatewayFlushStageAuthorizersCache:
     """Tests for FlushStageAuthorizersCache."""
 
