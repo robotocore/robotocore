@@ -1133,18 +1133,22 @@ class TestTranscribeRemainingGapOps:
 
     def test_update_vocabulary_lifecycle(self, client):
         """UpdateVocabulary updates an existing vocabulary and returns updated fields."""
-        vocab_name = "test-update-vocab-lifecycle"
+        import uuid  # noqa: PLC0415
+
+        vocab_name = f"test-update-vocab-{uuid.uuid4().hex[:8]}"
         client.create_vocabulary(
             VocabularyName=vocab_name,
             LanguageCode="en-US",
             Phrases=["original"],
         )
-        resp = client.update_vocabulary(
-            VocabularyName=vocab_name,
-            LanguageCode="en-US",
-            Phrases=["updated"],
-        )
-        assert resp["VocabularyName"] == vocab_name
-        assert resp["LanguageCode"] == "en-US"
-        assert "VocabularyState" in resp
-        client.delete_vocabulary(VocabularyName=vocab_name)
+        try:
+            resp = client.update_vocabulary(
+                VocabularyName=vocab_name,
+                LanguageCode="en-US",
+                Phrases=["updated"],
+            )
+            assert resp["VocabularyName"] == vocab_name
+            assert resp["LanguageCode"] == "en-US"
+            assert "VocabularyState" in resp
+        finally:
+            client.delete_vocabulary(VocabularyName=vocab_name)
