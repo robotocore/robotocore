@@ -1,13 +1,28 @@
 """Timestream Query compatibility tests."""
 
 import pytest
+from botocore.config import Config
 
-from tests.compatibility.conftest import make_client
+from tests.compatibility.conftest import ENDPOINT_URL, make_client
+
+import boto3
+
+
+def make_tsq_client():
+    """Create a timestream-query client with endpoint discovery disabled."""
+    return boto3.client(
+        "timestream-query",
+        endpoint_url=ENDPOINT_URL,
+        region_name="us-east-1",
+        aws_access_key_id="testing",
+        aws_secret_access_key="testing",
+        config=Config(endpoint_discovery_enabled=False),
+    )
 
 
 @pytest.fixture
 def timestream_query():
-    return make_client("timestream-query")
+    return make_tsq_client()
 
 
 class TestTimestreamQueryOperations:

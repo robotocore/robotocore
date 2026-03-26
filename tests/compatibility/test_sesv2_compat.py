@@ -1065,22 +1065,24 @@ class TestSesv2AutoCoverage:
 
     def test_put_account_details(self, client):
         """PutAccountDetails sets mail type and website URL."""
-        resp = client.put_account_details(
+        client.put_account_details(
             MailType="MARKETING",
             WebsiteURL="https://example.com",
             UseCaseDescription="Testing robotocore",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        account = client.get_account()
+        assert "Details" in account or "SendingEnabled" in account
 
     def test_put_configuration_set_sending_options(self, client):
         """PutConfigurationSetSendingOptions toggles sending on a config set."""
         cs_name = _uid("cssend")
         client.create_configuration_set(ConfigurationSetName=cs_name)
         try:
-            resp = client.put_configuration_set_sending_options(
+            client.put_configuration_set_sending_options(
                 ConfigurationSetName=cs_name, SendingEnabled=True
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            resp = client.get_configuration_set(ConfigurationSetName=cs_name)
+            assert resp["SendingOptions"]["SendingEnabled"] is True
         finally:
             client.delete_configuration_set(ConfigurationSetName=cs_name)
 
@@ -1089,10 +1091,11 @@ class TestSesv2AutoCoverage:
         cs_name = _uid("csrep")
         client.create_configuration_set(ConfigurationSetName=cs_name)
         try:
-            resp = client.put_configuration_set_reputation_options(
+            client.put_configuration_set_reputation_options(
                 ConfigurationSetName=cs_name, ReputationMetricsEnabled=True
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            resp = client.get_configuration_set(ConfigurationSetName=cs_name)
+            assert resp["ReputationOptions"]["ReputationMetricsEnabled"] is True
         finally:
             client.delete_configuration_set(ConfigurationSetName=cs_name)
 

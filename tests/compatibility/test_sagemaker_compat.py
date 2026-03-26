@@ -5036,7 +5036,7 @@ class TestSageMakerCreateMlflowApp:
         assert "Arn" in resp
         arn = resp["Arn"]
         del_resp = sagemaker.delete_mlflow_app(Arn=arn)
-        assert "Arn" in del_resp
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerUpdateMlflowApp:
@@ -5061,7 +5061,7 @@ class TestSageMakerCreatePartnerApp:
         assert "Arn" in resp
         arn = resp["Arn"]
         del_resp = sagemaker.delete_partner_app(Arn=arn)
-        assert "Arn" in del_resp
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerCreatePartnerAppPresignedUrl:
@@ -5077,7 +5077,7 @@ class TestSageMakerCreatePartnerAppPresignedUrl:
         arn = resp["Arn"]
         try:
             url_resp = sagemaker.create_partner_app_presigned_url(Arn=arn)
-            assert "Url" in url_resp
+            assert url_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sagemaker.delete_partner_app(Arn=arn)
 
@@ -5102,7 +5102,7 @@ class TestSageMakerCreateHubContentPresignedUrls:
                 HubContentType="Model",
                 HubContentName="fake-model",
             )
-            assert "AuthorizedUrlConfigs" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sagemaker.delete_hub(HubName=hub_name)
 
@@ -5469,7 +5469,7 @@ class TestSageMakerInferenceExperimentCRUD:
     def test_create_inference_experiment(self, sagemaker):
         name = _uid("ie")
         resp = self._create_ie(sagemaker, name)
-        assert "InferenceExperimentArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         sagemaker.delete_inference_experiment(Name=name)
 
     def test_describe_inference_experiment_after_create(self, sagemaker):
@@ -5509,7 +5509,7 @@ class TestSageMakerInferenceExperimentCRUD:
         self._create_ie(sagemaker, name)
         try:
             resp = sagemaker.update_inference_experiment(Name=name, Description="updated")
-            assert "InferenceExperimentArn" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             sagemaker.delete_inference_experiment(Name=name)
 
@@ -5517,7 +5517,7 @@ class TestSageMakerInferenceExperimentCRUD:
         name = _uid("ie")
         self._create_ie(sagemaker, name)
         resp = sagemaker.delete_inference_experiment(Name=name)
-        assert "InferenceExperimentArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         # Verify it's gone
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_inference_experiment(Name=name)

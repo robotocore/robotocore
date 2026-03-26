@@ -2412,12 +2412,12 @@ class TestSSMDescribeOperations:
     def test_describe_instance_patch_states(self, ssm):
         """DescribeInstancePatchStates returns patch states."""
         resp = ssm.describe_instance_patch_states(InstanceIds=["i-1234567890abcdef0"])
-        assert "InstancePatchStates" in resp
+        assert isinstance(resp["InstancePatchStates"], list)
 
     def test_describe_instance_patch_states_for_patch_group(self, ssm):
         """DescribeInstancePatchStatesForPatchGroup returns patch states."""
         resp = ssm.describe_instance_patch_states_for_patch_group(PatchGroup="test-group")
-        assert "InstancePatchStates" in resp
+        assert isinstance(resp["InstancePatchStates"], list)
 
     def test_describe_association_executions(self, ssm):
         """DescribeAssociationExecutions with fake ID returns error."""
@@ -2448,12 +2448,12 @@ class TestSSMDescribeOperations:
     def test_describe_effective_instance_associations(self, ssm):
         """DescribeEffectiveInstanceAssociations returns associations list."""
         resp = ssm.describe_effective_instance_associations(InstanceId="i-1234567890abcdef0")
-        assert "Associations" in resp
+        assert isinstance(resp["Associations"], list)
 
     def test_describe_instance_associations_status(self, ssm):
         """DescribeInstanceAssociationsStatus returns associations list."""
         resp = ssm.describe_instance_associations_status(InstanceId="i-1234567890abcdef0")
-        assert "InstanceAssociationStatusInfos" in resp
+        assert isinstance(resp["InstanceAssociationStatusInfos"], list)
 
 
 class TestSSMOpsMetadataOperations:
