@@ -2162,3 +2162,187 @@ class TestCognitoNewOperations:
         )
         resp = cognito.delete_user_attributes(AccessToken=token, UserAttributeNames=["nickname"])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCognitoDeviceAndImportOps:
+    """Tests for device management and user import job operations."""
+
+    @pytest.fixture
+    def pool_and_client(self, cognito):
+        """Create a user pool, client, and authenticated user."""
+        pool = cognito.create_user_pool(PoolName=_unique("device-ops-pool"))["UserPool"]
+        pool_id = pool["Id"]
+        client = cognito.create_user_pool_client(UserPoolId=pool_id, ClientName=_unique("client"))[
+            "UserPoolClient"
+        ]
+        client_id = client["ClientId"]
+        cognito.admin_create_user(
+            UserPoolId=pool_id, Username="testuser", TemporaryPassword="TempPass1!"
+        )
+        cognito.admin_set_user_password(
+            UserPoolId=pool_id, Username="testuser", Password="TestPass1!", Permanent=True
+        )
+        auth = cognito.initiate_auth(
+            AuthFlow="USER_PASSWORD_AUTH",
+            ClientId=client_id,
+            AuthParameters={"USERNAME": "testuser", "PASSWORD": "TestPass1!"},
+        )
+        token = auth["AuthenticationResult"]["AccessToken"]
+        yield pool_id, client_id, token
+        try:
+            cognito.delete_user_pool(UserPoolId=pool_id)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def test_describe_user_import_job(self, cognito, pool_and_client):
+        """DescribeUserImportJob returns job details."""
+        pool_id, _client_id, _token = pool_and_client
+        create_resp = cognito.create_user_import_job(
+            UserPoolId=pool_id,
+            JobName=_unique("import-job"),
+            CloudWatchLogsRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        job_id = create_resp["UserImportJob"]["JobId"]
+        resp = cognito.describe_user_import_job(UserPoolId=pool_id, JobId=job_id)
+        assert "UserImportJob" in resp
+        assert resp["UserImportJob"]["JobId"] == job_id
+        assert resp["UserImportJob"]["Status"] == "Created"
+
+    def test_start_user_import_job(self, cognito, pool_and_client):
+        """StartUserImportJob transitions job to InProgress."""
+        pool_id, _client_id, _token = pool_and_client
+        create_resp = cognito.create_user_import_job(
+            UserPoolId=pool_id,
+            JobName=_unique("import-job"),
+            CloudWatchLogsRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        job_id = create_resp["UserImportJob"]["JobId"]
+        resp = cognito.start_user_import_job(UserPoolId=pool_id, JobId=job_id)
+        assert "UserImportJob" in resp
+        assert resp["UserImportJob"]["JobId"] == job_id
+
+    def test_stop_user_import_job(self, cognito, pool_and_client):
+        """StopUserImportJob transitions a running job to Stopped."""
+        pool_id, _client_id, _token = pool_and_client
+        create_resp = cognito.create_user_import_job(
+            UserPoolId=pool_id,
+            JobName=_unique("import-job"),
+            CloudWatchLogsRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        job_id = create_resp["UserImportJob"]["JobId"]
+        cognito.start_user_import_job(UserPoolId=pool_id, JobId=job_id)
+        resp = cognito.stop_user_import_job(UserPoolId=pool_id, JobId=job_id)
+        assert "UserImportJob" in resp
+        assert resp["UserImportJob"]["JobId"] == job_id
+
+    def test_admin_link_provider_for_user(self, cognito, pool_and_client):
+        """AdminLinkProviderForUser links a federated identity to a local user."""
+        pool_id, _client_id, _token = pool_and_client
+        # Create a provider first
+        cognito.create_identity_provider(
+            UserPoolId=pool_id,
+            ProviderName="Google",
+            ProviderType="Google",
+            ProviderDetails={"client_id": "test", "client_secret": "test", "authorize_scopes": "openid"},
+        )
+        resp = cognito.admin_link_provider_for_user(
+            UserPoolId=pool_id,
+            DestinationUser={
+                "ProviderName": "Cognito",
+                "ProviderAttributeName": "cognito:username",
+                "ProviderAttributeValue": "testuser",
+            },
+            SourceUser={
+                "ProviderName": "Google",
+                "ProviderAttributeName": "Cognito_Subject",
+                "ProviderAttributeValue": "google-user-id-123",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_admin_update_device_status(self, cognito, pool_and_client):
+        """AdminUpdateDeviceStatus succeeds for a valid user."""
+        pool_id, _client_id, _token = pool_and_client
+        resp = cognito.admin_update_device_status(
+            UserPoolId=pool_id,
+            Username="testuser",
+            DeviceKey="fake-device-key",
+            DeviceRememberedStatus="remembered",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_forget_device(self, cognito, pool_and_client):
+        """ForgetDevice succeeds for authenticated user."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.forget_device(AccessToken=token, DeviceKey="fake-device-key")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_device(self, cognito, pool_and_client):
+        """GetDevice returns device info (even for unknown devices in emulator)."""
+        _pool_id, _client_id, token = pool_and_client
+        from botocore.exceptions import ClientError
+
+        # In the emulator a fake key may raise ResourceNotFoundException - that's fine
+        try:
+            resp = cognito.get_device(AccessToken=token, DeviceKey="fake-device-key")
+            assert "Device" in resp
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "NotAuthorizedException",
+            )
+
+    def test_update_device_status(self, cognito, pool_and_client):
+        """UpdateDeviceStatus succeeds for authenticated user."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.update_device_status(
+            AccessToken=token,
+            DeviceKey="fake-device-key",
+            DeviceRememberedStatus="remembered",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_confirm_device(self, cognito, pool_and_client):
+        """ConfirmDevice succeeds for authenticated user with device info."""
+        _pool_id, _client_id, token = pool_and_client
+        resp = cognito.confirm_device(
+            AccessToken=token,
+            DeviceKey="fake-device-key",
+            DeviceName="My Test Device",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_web_authn_credential(self, cognito, pool_and_client):
+        """DeleteWebAuthnCredential returns success for valid access token."""
+        _pool_id, _client_id, token = pool_and_client
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = cognito.delete_web_authn_credential(
+                AccessToken=token, CredentialId="fake-credential-id"
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "NotAuthorizedException",
+            )
+
+    def test_complete_web_authn_registration(self, cognito, pool_and_client):
+        """CompleteWebAuthnRegistration is callable (will fail with invalid credential)."""
+        _pool_id, _client_id, token = pool_and_client
+        from botocore.exceptions import ClientError
+
+        try:
+            resp = cognito.complete_web_authn_registration(
+                AccessToken=token,
+                Credential={"id": "fake", "rawId": "fake", "response": {}, "type": "public-key"},
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] in (
+                "WebAuthnChallengeNotFoundException",
+                "WebAuthnClientMismatchException",
+                "NotAuthorizedException",
+                "InvalidParameterException",
+            )
