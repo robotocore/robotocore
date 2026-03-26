@@ -28,7 +28,7 @@ TARGET_PREFIX_MAP: dict[str, str] = {
     "Kinesis": "kinesis",
     "Logs": "logs",
     "monitoring": "cloudwatch",
-    "OvertureService": "support",
+    "OvertureService": "directconnect",
     "Route53Domains": "route53domains",
     "SageMaker": "sagemaker",
     "SecretManager": "secretsmanager",
@@ -333,11 +333,29 @@ def route_to_service(request: Request) -> str | None:
         if "Topic" in path or "topic" in path:
             return "sns"
 
-    # 7. Body-based Action detection for unsigned requests
-    # Some STS operations (AssumeRoleWithWebIdentity, AssumeRoleWithSAML)
-    # don't include an Authorization header.
+    # 7. Body-based Action detection for form-encoded requests
     content_type = request.headers.get("content-type", "")
-    if "x-www-form-urlencoded" in content_type and not auth:
-        return "sts"
+    if "x-www-form-urlencoded" in content_type:
+        # Read cached body (pre-read in handle_aws_request before routing).
+        body_bytes = getattr(request, "_body", b"") or b""
+        if body_bytes and not auth:
+            from urllib.parse import parse_qs
+
+            try:
+                body_params = parse_qs(body_bytes.decode("utf-8", errors="replace"))
+            except Exception:  # noqa: BLE001 - best-effort body parsing for routing
+                body_params = {}
+            # SimpleDB (sdb) uses AWS Signature Version 2 with credentials embedded
+            # in the POST body.  Detect via Version=2009-04-15 or SignatureVersion=2.
+            version = (body_params.get("Version") or [""])[0]
+            sig_version = (body_params.get("SignatureVersion") or [""])[0]
+            if version == "2009-04-15" or sig_version == "2":
+                return "sdb"
+            # STS operations (AssumeRoleWithWebIdentity, AssumeRoleWithSAML)
+            # don't include an Authorization header.
+            return "sts"
+        elif not auth:
+            # No body, no auth - assume STS (unsigned STS ops)
+            return "sts"
 
     return None

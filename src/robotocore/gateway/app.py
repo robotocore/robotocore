@@ -1062,6 +1062,9 @@ async def pods_delete(request: Request) -> JSONResponse:
 
 async def handle_aws_request(request: Request) -> Response:
     """Main handler: route, build context, run handler chain, forward to Moto."""
+    # Pre-read body before routing so the router can inspect form-encoded bodies
+    # (needed for SigV2 services like SimpleDB that embed credentials in the body).
+    await request.body()
     service_name = route_to_service(request)
     if service_name is None:
         return JSONResponse(
@@ -1087,10 +1090,6 @@ async def handle_aws_request(request: Request) -> Response:
         service_name=service_name,
         account_id=account_id,
     )
-
-    # Pre-read the body so synchronous handlers (populate_context_handler) can
-    # access it via request._body for form-encoded Action parsing.
-    await request.body()
 
     await asyncio.to_thread(_handler_chain.handle, context)
 

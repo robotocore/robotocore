@@ -125,6 +125,268 @@ class TestEMRContainersJobRuns:
         assert cancel_resp["virtualClusterId"] == vc_id
 
 
+class TestEMRContainersJobTemplates:
+    def test_list_job_templates_empty(self, emr_containers):
+        resp = emr_containers.list_job_templates()
+        assert "templates" in resp
+
+    def test_create_job_template(self, emr_containers):
+        name = _unique("test-template")
+        resp = emr_containers.create_job_template(
+            name=name,
+            clientToken=uuid.uuid4().hex,
+            jobTemplateData={
+                "executionRoleArn": "arn:aws:iam::123456789012:role/EMRRole",
+                "releaseLabel": "emr-6.3.0-latest",
+                "jobDriver": {
+                    "sparkSubmitJobDriver": {
+                        "entryPoint": "s3://bucket/script.py",
+                    }
+                },
+            },
+        )
+        assert "id" in resp
+        assert resp["name"] == name
+        assert "arn" in resp
+        # Cleanup
+        emr_containers.delete_job_template(id=resp["id"])
+
+    def test_describe_job_template(self, emr_containers):
+        name = _unique("describe-template")
+        create_resp = emr_containers.create_job_template(
+            name=name,
+            clientToken=uuid.uuid4().hex,
+            jobTemplateData={
+                "executionRoleArn": "arn:aws:iam::123456789012:role/EMRRole",
+                "releaseLabel": "emr-6.3.0-latest",
+                "jobDriver": {
+                    "sparkSubmitJobDriver": {
+                        "entryPoint": "s3://bucket/script.py",
+                    }
+                },
+            },
+        )
+        template_id = create_resp["id"]
+        resp = emr_containers.describe_job_template(id=template_id)
+        assert "jobTemplate" in resp
+        assert resp["jobTemplate"]["id"] == template_id
+        assert resp["jobTemplate"]["name"] == name
+        assert "arn" in resp["jobTemplate"]
+        # Cleanup
+        emr_containers.delete_job_template(id=template_id)
+
+    def test_delete_job_template(self, emr_containers):
+        create_resp = emr_containers.create_job_template(
+            name=_unique("delete-template"),
+            clientToken=uuid.uuid4().hex,
+            jobTemplateData={
+                "executionRoleArn": "arn:aws:iam::123456789012:role/EMRRole",
+                "releaseLabel": "emr-6.3.0-latest",
+                "jobDriver": {
+                    "sparkSubmitJobDriver": {
+                        "entryPoint": "s3://bucket/script.py",
+                    }
+                },
+            },
+        )
+        template_id = create_resp["id"]
+        delete_resp = emr_containers.delete_job_template(id=template_id)
+        assert delete_resp["id"] == template_id
+
+    def test_list_job_templates_includes_created(self, emr_containers):
+        name = _unique("list-template")
+        create_resp = emr_containers.create_job_template(
+            name=name,
+            clientToken=uuid.uuid4().hex,
+            jobTemplateData={
+                "executionRoleArn": "arn:aws:iam::123456789012:role/EMRRole",
+                "releaseLabel": "emr-6.3.0-latest",
+                "jobDriver": {
+                    "sparkSubmitJobDriver": {
+                        "entryPoint": "s3://bucket/script.py",
+                    }
+                },
+            },
+        )
+        template_id = create_resp["id"]
+        resp = emr_containers.list_job_templates()
+        template_ids = [t["id"] for t in resp["templates"]]
+        assert template_id in template_ids
+        # Cleanup
+        emr_containers.delete_job_template(id=template_id)
+
+
+class TestEMRContainersManagedEndpoints:
+    @pytest.fixture
+    def vc_for_endpoints(self, emr_containers):
+        namespace = f"ns-{uuid.uuid4().hex[:12]}"
+        resp = emr_containers.create_virtual_cluster(
+            name=_unique("test-vc-ep"),
+            containerProvider={
+                "id": "eks-cluster-1",
+                "type": "EKS",
+                "info": {"eksInfo": {"namespace": namespace}},
+            },
+        )
+        vc_id = resp["id"]
+        yield resp
+        try:
+            emr_containers.delete_virtual_cluster(id=vc_id)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_list_managed_endpoints_empty(self, emr_containers, vc_for_endpoints):
+        vc_id = vc_for_endpoints["id"]
+        resp = emr_containers.list_managed_endpoints(virtualClusterId=vc_id)
+        assert "endpoints" in resp
+
+    def test_create_managed_endpoint(self, emr_containers, vc_for_endpoints):
+        vc_id = vc_for_endpoints["id"]
+        name = _unique("test-ep")
+        resp = emr_containers.create_managed_endpoint(
+            name=name,
+            virtualClusterId=vc_id,
+            type="JUPYTER_ENTERPRISE_GATEWAY",
+            releaseLabel="emr-6.3.0-latest",
+            executionRoleArn="arn:aws:iam::123456789012:role/EMRRole",
+            clientToken=uuid.uuid4().hex,
+        )
+        assert "id" in resp
+        assert resp["name"] == name
+        assert resp["virtualClusterId"] == vc_id
+        assert "arn" in resp
+        # Cleanup
+        emr_containers.delete_managed_endpoint(id=resp["id"], virtualClusterId=vc_id)
+
+    def test_describe_managed_endpoint(self, emr_containers, vc_for_endpoints):
+        vc_id = vc_for_endpoints["id"]
+        name = _unique("describe-ep")
+        create_resp = emr_containers.create_managed_endpoint(
+            name=name,
+            virtualClusterId=vc_id,
+            type="JUPYTER_ENTERPRISE_GATEWAY",
+            releaseLabel="emr-6.3.0-latest",
+            executionRoleArn="arn:aws:iam::123456789012:role/EMRRole",
+            clientToken=uuid.uuid4().hex,
+        )
+        ep_id = create_resp["id"]
+        resp = emr_containers.describe_managed_endpoint(id=ep_id, virtualClusterId=vc_id)
+        assert "endpoint" in resp
+        assert resp["endpoint"]["id"] == ep_id
+        assert resp["endpoint"]["name"] == name
+        assert resp["endpoint"]["virtualClusterId"] == vc_id
+        # Cleanup
+        emr_containers.delete_managed_endpoint(id=ep_id, virtualClusterId=vc_id)
+
+    def test_delete_managed_endpoint(self, emr_containers, vc_for_endpoints):
+        vc_id = vc_for_endpoints["id"]
+        create_resp = emr_containers.create_managed_endpoint(
+            name=_unique("delete-ep"),
+            virtualClusterId=vc_id,
+            type="JUPYTER_ENTERPRISE_GATEWAY",
+            releaseLabel="emr-6.3.0-latest",
+            executionRoleArn="arn:aws:iam::123456789012:role/EMRRole",
+            clientToken=uuid.uuid4().hex,
+        )
+        ep_id = create_resp["id"]
+        delete_resp = emr_containers.delete_managed_endpoint(id=ep_id, virtualClusterId=vc_id)
+        assert delete_resp["id"] == ep_id
+        assert delete_resp["virtualClusterId"] == vc_id
+
+    def test_list_managed_endpoints_includes_created(self, emr_containers, vc_for_endpoints):
+        vc_id = vc_for_endpoints["id"]
+        create_resp = emr_containers.create_managed_endpoint(
+            name=_unique("list-ep"),
+            virtualClusterId=vc_id,
+            type="JUPYTER_ENTERPRISE_GATEWAY",
+            releaseLabel="emr-6.3.0-latest",
+            executionRoleArn="arn:aws:iam::123456789012:role/EMRRole",
+            clientToken=uuid.uuid4().hex,
+        )
+        ep_id = create_resp["id"]
+        resp = emr_containers.list_managed_endpoints(virtualClusterId=vc_id)
+        ep_ids = [e["id"] for e in resp["endpoints"]]
+        assert ep_id in ep_ids
+        # Cleanup
+        emr_containers.delete_managed_endpoint(id=ep_id, virtualClusterId=vc_id)
+
+
+class TestEMRContainersSecurityConfigurations:
+    def test_list_security_configurations_empty(self, emr_containers):
+        resp = emr_containers.list_security_configurations()
+        assert "securityConfigurations" in resp
+
+    def test_create_security_configuration(self, emr_containers):
+        name = _unique("test-sc")
+        resp = emr_containers.create_security_configuration(
+            name=name,
+            clientToken=uuid.uuid4().hex,
+            securityConfigurationData={
+                "authorizationConfiguration": {
+                    "lakeFormationConfiguration": {
+                        "authorizedSessionTagValue": "EMR",
+                        "secureNamespaceInfo": {
+                            "clusterId": "my-cluster",
+                            "namespace": "my-ns",
+                        },
+                        "queryEngineRoleArn": "arn:aws:iam::123456789012:role/LFRole",
+                    }
+                }
+            },
+        )
+        assert "id" in resp
+        assert resp["name"] == name
+        assert "arn" in resp
+
+    def test_describe_security_configuration(self, emr_containers):
+        name = _unique("describe-sc")
+        create_resp = emr_containers.create_security_configuration(
+            name=name,
+            clientToken=uuid.uuid4().hex,
+            securityConfigurationData={
+                "authorizationConfiguration": {
+                    "lakeFormationConfiguration": {
+                        "authorizedSessionTagValue": "EMR",
+                        "secureNamespaceInfo": {
+                            "clusterId": "my-cluster",
+                            "namespace": "my-ns",
+                        },
+                        "queryEngineRoleArn": "arn:aws:iam::123456789012:role/LFRole",
+                    }
+                }
+            },
+        )
+        sc_id = create_resp["id"]
+        resp = emr_containers.describe_security_configuration(id=sc_id)
+        assert "securityConfiguration" in resp
+        assert resp["securityConfiguration"]["id"] == sc_id
+        assert resp["securityConfiguration"]["name"] == name
+        assert "arn" in resp["securityConfiguration"]
+
+    def test_list_security_configurations_includes_created(self, emr_containers):
+        name = _unique("list-sc")
+        create_resp = emr_containers.create_security_configuration(
+            name=name,
+            clientToken=uuid.uuid4().hex,
+            securityConfigurationData={
+                "authorizationConfiguration": {
+                    "lakeFormationConfiguration": {
+                        "authorizedSessionTagValue": "EMR",
+                        "secureNamespaceInfo": {
+                            "clusterId": "my-cluster",
+                            "namespace": "my-ns",
+                        },
+                        "queryEngineRoleArn": "arn:aws:iam::123456789012:role/LFRole",
+                    }
+                }
+            },
+        )
+        sc_id = create_resp["id"]
+        resp = emr_containers.list_security_configurations()
+        sc_ids = [sc["id"] for sc in resp["securityConfigurations"]]
+        assert sc_id in sc_ids
+
+
 class TestEMRContainersVirtualCluster:
     def test_list_virtual_clusters_empty(self, emr_containers):
         resp = emr_containers.list_virtual_clusters()

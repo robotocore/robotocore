@@ -486,28 +486,31 @@ class TestS3TablesBucketSubPaths:
 
     def test_put_table_bucket_policy(self, s3tables, table_bucket):
         """PutTableBucketPolicy stores a policy on the bucket."""
-        resp = s3tables.put_table_bucket_policy(
+        s3tables.put_table_bucket_policy(
             tableBucketARN=table_bucket,
             resourcePolicy='{"Version":"2012-10-17","Statement":[]}',
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3tables.get_table_bucket_policy(tableBucketARN=table_bucket)
+        assert "resourcePolicy" in resp
 
     def test_put_table_bucket_encryption(self, s3tables, table_bucket):
         """PutTableBucketEncryption sets encryption configuration."""
-        resp = s3tables.put_table_bucket_encryption(
+        s3tables.put_table_bucket_encryption(
             tableBucketARN=table_bucket,
             encryptionConfiguration={"sseAlgorithm": "AES256"},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3tables.get_table_bucket_encryption(tableBucketARN=table_bucket)
+        assert "encryptionConfiguration" in resp
 
     def test_put_table_bucket_metrics_configuration(self, s3tables, table_bucket):
         """PutTableBucketMetricsConfiguration sets metrics configuration."""
-        resp = s3tables.put_table_bucket_metrics_configuration(tableBucketARN=table_bucket)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        s3tables.put_table_bucket_metrics_configuration(tableBucketARN=table_bucket)
+        resp = s3tables.get_table_bucket_metrics_configuration(tableBucketARN=table_bucket)
+        assert "tableBucketARN" in resp
 
     def test_put_table_bucket_maintenance_configuration(self, s3tables, table_bucket):
         """PutTableBucketMaintenanceConfiguration sets maintenance configuration."""
-        resp = s3tables.put_table_bucket_maintenance_configuration(
+        s3tables.put_table_bucket_maintenance_configuration(
             tableBucketARN=table_bucket,
             type="icebergUnreferencedFileRemoval",
             value={
@@ -520,7 +523,8 @@ class TestS3TablesBucketSubPaths:
                 },
             },
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        resp = s3tables.get_table_bucket(tableBucketARN=table_bucket)
+        assert resp["arn"] == table_bucket
 
 
 class TestS3TablesStorageClassAndExpiration:
@@ -546,20 +550,22 @@ class TestS3TablesStorageClassAndExpiration:
     def test_put_table_bucket_storage_class(self, s3tables, bucket_and_table):
         """PutTableBucketStorageClass sets storage class on a table bucket."""
         bucket_arn, _ = bucket_and_table
-        resp = s3tables.put_table_bucket_storage_class(
+        s3tables.put_table_bucket_storage_class(
             tableBucketARN=bucket_arn,
             storageClassConfiguration={"storageClass": "STANDARD_INFREQUENT_ACCESS"},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = s3tables.get_table_bucket_storage_class(tableBucketARN=bucket_arn)
+        assert "storageClassConfiguration" in resp
 
     def test_put_table_record_expiration_configuration(self, s3tables, bucket_and_table):
         """PutTableRecordExpirationConfiguration sets expiration on a table."""
         _, table_arn = bucket_and_table
-        resp = s3tables.put_table_record_expiration_configuration(
+        s3tables.put_table_record_expiration_configuration(
             tableArn=table_arn,
             value={"status": "enabled", "settings": {"days": 365}},
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        resp = s3tables.get_table_record_expiration_configuration(tableArn=table_arn)
+        assert "tableARN" in resp or "configuration" in resp
 
 
 class TestS3TablesReplicationGapOps:

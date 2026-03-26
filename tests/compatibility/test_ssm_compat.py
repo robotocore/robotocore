@@ -783,6 +783,22 @@ class TestSSMMaintenanceWindowExtended:
         finally:
             ssm.delete_maintenance_window(WindowId=wid)
 
+    def test_update_maintenance_window(self, ssm):
+        """UpdateMaintenanceWindow updates window fields."""
+        wid = self._create_window(ssm, name=_unique("mw-update"))
+        try:
+            resp = ssm.update_maintenance_window(
+                WindowId=wid,
+                Name="updated-window-name",
+                Duration=3,
+                Cutoff=1,
+            )
+            assert resp["WindowId"] == wid
+            assert resp["Name"] == "updated-window-name"
+            assert resp["Duration"] == 3
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
     def test_register_and_deregister_target(self, ssm):
         """RegisterTargetWithMaintenanceWindow / DeregisterTargetFromMaintenanceWindow."""
         wid = self._create_window(ssm)
@@ -3506,11 +3522,10 @@ class TestSSMMiscOpsExtended:
             ssm.cancel_command(CommandId="00000000-0000-0000-0000-000000000000")
         assert exc.value.response["Error"]["Code"] != "InternalError"
 
-    def test_deregister_managed_instance_nonexistent(self, ssm):
-        """DeregisterManagedInstance with fake instance ID."""
-        with pytest.raises(ClientError) as exc:
-            ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
-        assert exc.value.response["Error"]["Code"] != "InternalError"
+    def test_deregister_managed_instance(self, ssm):
+        """DeregisterManagedInstance accepts a valid managed instance ID."""
+        resp = ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_automation_step_executions_nonexistent(self, ssm):
         """DescribeAutomationStepExecutions with fake execution ID."""
@@ -3530,19 +3545,21 @@ class TestSSMMiscOpsExtended:
         assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_start_associations_once(self, ssm):
-        """StartAssociationsOnce with fake association IDs."""
-        with pytest.raises(ClientError) as exc:
-            ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
-        assert exc.value.response["Error"]["Code"] != "InternalError"
+        """StartAssociationsOnce accepts valid-format association IDs."""
+        resp = ssm.start_associations_once(
+            AssociationIds=["00000000-0000-0000-0000-000000000000"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_get_deployable_patch_snapshot_for_instance_nonexistent(self, ssm):
-        """GetDeployablePatchSnapshotForInstance with fake instance."""
-        with pytest.raises(ClientError) as exc:
-            ssm.get_deployable_patch_snapshot_for_instance(
-                InstanceId="i-00000000000000000",
-                SnapshotId="00000000-0000-0000-0000-000000000000",
-            )
-        assert exc.value.response["Error"]["Code"] != "InternalError"
+    def test_get_deployable_patch_snapshot_for_instance(self, ssm):
+        """GetDeployablePatchSnapshotForInstance returns snapshot URL."""
+        resp = ssm.get_deployable_patch_snapshot_for_instance(
+            InstanceId="i-00000000000000000",
+            SnapshotId="00000000-0000-0000-0000-000000000000",
+        )
+        assert resp["InstanceId"] == "i-00000000000000000"
+        assert resp["SnapshotId"] == "00000000-0000-0000-0000-000000000000"
+        assert "SnapshotDownloadUrl" in resp
 
     def test_get_execution_preview_nonexistent(self, ssm):
         """GetExecutionPreview with fake execution preview ID."""
@@ -3603,13 +3620,22 @@ class TestSSMGapOps:
         assert "BaselineId" in resp
         assert resp["BaselineId"] == "pb-1234567890abcdef0"
 
-    def test_update_patch_baseline_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.update_patch_baseline(BaselineId="pb-1234567890abcdef0")
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "DoesNotExistException",
-        )
+    def test_update_patch_baseline(self, client):
+        """UpdatePatchBaseline updates an existing baseline's fields."""
+        bid = client.create_patch_baseline(
+            Name="test-update-baseline",
+            OperatingSystem="WINDOWS",
+        )["BaselineId"]
+        try:
+            resp = client.update_patch_baseline(
+                BaselineId=bid,
+                Name="test-update-baseline-v2",
+                Description="Updated description",
+            )
+            assert resp["BaselineId"] == bid
+            assert resp["Name"] == "test-update-baseline-v2"
+        finally:
+            client.delete_patch_baseline(BaselineId=bid)
 
     def test_list_nodes_summary(self, client):
         resp = client.list_nodes_summary(

@@ -457,13 +457,20 @@ class TestBudgetSubscriberOperations:
                     {"SubscriptionType": "EMAIL", "Address": "orig@example.com"},
                 ],
             )
-            resp = budgets.create_subscriber(
+            budgets.create_subscriber(
                 AccountId=ACCOUNT_ID,
                 BudgetName=name,
                 Notification=notification,
                 Subscriber={"SubscriptionType": "EMAIL", "Address": "new@example.com"},
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify subscriber was created
+            subs = budgets.describe_subscribers_for_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+            )
+            addresses = [s["Address"] for s in subs["Subscribers"]]
+            assert "new@example.com" in addresses
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 
@@ -494,13 +501,20 @@ class TestBudgetSubscriberOperations:
                     {"SubscriptionType": "EMAIL", "Address": "extra@example.com"},
                 ],
             )
-            resp = budgets.delete_subscriber(
+            budgets.delete_subscriber(
                 AccountId=ACCOUNT_ID,
                 BudgetName=name,
                 Notification=notification,
                 Subscriber={"SubscriptionType": "EMAIL", "Address": "extra@example.com"},
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify subscriber was deleted
+            subs = budgets.describe_subscribers_for_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+            )
+            addresses = [s["Address"] for s in subs["Subscribers"]]
+            assert "extra@example.com" not in addresses
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 
@@ -576,14 +590,21 @@ class TestBudgetNotificationUpdateOperations:
                     {"SubscriptionType": "EMAIL", "Address": "old@example.com"},
                 ],
             )
-            resp = budgets.update_subscriber(
+            budgets.update_subscriber(
                 AccountId=ACCOUNT_ID,
                 BudgetName=name,
                 Notification=notification,
                 OldSubscriber={"SubscriptionType": "EMAIL", "Address": "old@example.com"},
                 NewSubscriber={"SubscriptionType": "EMAIL", "Address": "new@example.com"},
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify subscriber was updated
+            subs = budgets.describe_subscribers_for_notification(
+                AccountId=ACCOUNT_ID,
+                BudgetName=name,
+                Notification=notification,
+            )
+            addresses = [s["Address"] for s in subs["Subscribers"]]
+            assert "new@example.com" in addresses
         finally:
             budgets.delete_budget(AccountId=ACCOUNT_ID, BudgetName=name)
 

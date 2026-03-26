@@ -53,15 +53,16 @@ class TestAccountAlternateContact:
             PhoneNumber="555-0300",
             Title="Delete Title",
         )
-        resp = account.delete_alternate_contact(AlternateContactType="BILLING")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        account.delete_alternate_contact(AlternateContactType="BILLING")
         # Verify contact is gone (should raise an exception)
         from botocore.exceptions import ClientError
 
-        try:
+        with pytest.raises(ClientError) as exc_info:
             account.get_alternate_contact(AlternateContactType="BILLING")
-        except ClientError as exc:
-            assert exc.response["Error"]["Code"] in ("ResourceNotFoundException", "NoSuchEntity")
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "NoSuchEntity",
+        )
 
     def test_put_operations_contact(self, account):
         """PutAlternateContact works with OPERATIONS type."""
@@ -183,20 +184,22 @@ class TestAccountNewOps:
         assert "ap-southeast-1" in region_names
 
     def test_disable_region(self, account):
-        """DisableRegion disables a region."""
-        resp = account.disable_region(RegionName="ap-southeast-2")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert resp["ResponseMetadata"]["RequestId"] is not None
+        """DisableRegion is reflected by list_regions showing DISABLING status."""
+        account.disable_region(RegionName="ap-southeast-2")
+        regions = account.list_regions(RegionOptStatusContains=["ENABLED", "DISABLING", "DISABLED"])
+        statuses = {r["RegionName"]: r["RegionOptStatus"] for r in regions["Regions"]}
+        assert statuses.get("ap-southeast-2") in ("DISABLING", "DISABLED")
 
 
 class TestAccountMissingGapOps:
     """Tests for previously-missing Account operations."""
 
     def test_put_account_name(self, account):
-        """PutAccountName updates the account name."""
-        resp = account.put_account_name(AccountName="My Test Account")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert resp["ResponseMetadata"]["RequestId"] is not None
+        """PutAccountName runs without error."""
+        account.put_account_name(AccountName="My Test Account")
+        # Verify server still responds after the call
+        regions = account.list_regions()
+        assert isinstance(regions["Regions"], list)
 
     def test_start_primary_email_update(self, account):
         """StartPrimaryEmailUpdate initiates an email update."""

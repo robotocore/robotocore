@@ -209,7 +209,7 @@ class TestCodePipelineOperations:
             abandon=True,
             reason="test stop",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["pipelineExecutionId"] == exec_id
 
     def test_list_action_executions(self, codepipeline, pipeline):
         codepipeline.start_pipeline_execution(name=pipeline["name"])
@@ -217,13 +217,15 @@ class TestCodePipelineOperations:
         assert "actionExecutionDetails" in resp
 
     def test_disable_stage_transition(self, codepipeline, pipeline):
-        resp = codepipeline.disable_stage_transition(
+        codepipeline.disable_stage_transition(
             pipelineName=pipeline["name"],
             stageName="Deploy",
             transitionType="Inbound",
             reason="testing disable",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        state = codepipeline.get_pipeline_state(name=pipeline["name"])
+        deploy_stage = next(s for s in state["stageStates"] if s["stageName"] == "Deploy")
+        assert "inboundTransitionState" in deploy_stage
 
     def test_enable_stage_transition(self, codepipeline, pipeline):
         # Disable first, then enable
@@ -233,12 +235,14 @@ class TestCodePipelineOperations:
             transitionType="Inbound",
             reason="testing",
         )
-        resp = codepipeline.enable_stage_transition(
+        codepipeline.enable_stage_transition(
             pipelineName=pipeline["name"],
             stageName="Deploy",
             transitionType="Inbound",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        state = codepipeline.get_pipeline_state(name=pipeline["name"])
+        deploy_stage = next(s for s in state["stageStates"] if s["stageName"] == "Deploy")
+        assert not deploy_stage.get("inboundTransitionState", {}).get("disabled", False)
 
 
 class TestCodePipelineCustomActions:
@@ -268,8 +272,10 @@ class TestCodePipelineCustomActions:
             inputArtifactDetails={"minimumCount": 0, "maximumCount": 1},
             outputArtifactDetails={"minimumCount": 0, "maximumCount": 1},
         )
-        resp = codepipeline.delete_custom_action_type(category="Test", provider=name, version="1")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        codepipeline.delete_custom_action_type(category="Test", provider=name, version="1")
+        list_resp = codepipeline.list_action_types(actionOwnerFilter="Custom")
+        providers = [a["id"]["provider"] for a in list_resp.get("actionTypes", [])]
+        assert name not in providers
 
     def test_get_action_type(self, codepipeline):
         name = _unique("custom-get")
@@ -545,7 +551,7 @@ class TestCodePipelineActionRevision:
             inputArtifactDetails={"minimumCount": 0, "maximumCount": 1},
             outputArtifactDetails={"minimumCount": 0, "maximumCount": 1},
         )
-        resp = codepipeline.update_action_type(
+        codepipeline.update_action_type(
             actionType={
                 "id": {
                     "category": "Test",
@@ -561,5 +567,9 @@ class TestCodePipelineActionRevision:
                 "outputArtifactDetails": {"minimumCount": 0, "maximumCount": 1},
             }
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify the update took effect — get_action_type should show updated artifacts
+        get_resp = codepipeline.get_action_type(
+            category="Test", owner="Custom", provider=provider_name, version="1"
+        )
+        assert get_resp["actionType"]["inputArtifactDetails"]["maximumCount"] == 2
         codepipeline.delete_custom_action_type(category="Test", provider=provider_name, version="1")

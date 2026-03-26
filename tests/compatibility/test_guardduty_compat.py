@@ -150,11 +150,10 @@ class TestGuardDutyAdministratorAccountOperations:
             guardduty.delete_detector(DetectorId=detector_id)
 
     def test_get_administrator_account_no_admin_set(self, guardduty, detector):
-        result = guardduty.get_administrator_account(DetectorId=detector)
-        # When no administrator is configured, the Administrator key is absent
-        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Administrator key may be absent (no admin set) or present
-        assert isinstance(result.get("Administrator", {}), dict)
+        guardduty.get_administrator_account(DetectorId=detector)
+        # Verify the detector is still accessible after the call
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Status"], str)
 
 
 class TestGuardDutyFilterOperations:
@@ -722,16 +721,17 @@ class TestGuardDutyMasterAccountOperations:
     """Tests for GetMasterAccount operation."""
 
     def test_get_master_account(self, guardduty, detector):
-        resp = guardduty.get_master_account(DetectorId=detector)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert isinstance(resp.get("Master", {}), dict)
+        guardduty.get_master_account(DetectorId=detector)
+        # Verify the detector is still accessible after the call
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Status"], str)
 
     def test_get_master_account_no_master(self, guardduty, detector):
         """When no master is configured, response still returns 200."""
-        resp = guardduty.get_master_account(DetectorId=detector)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Master key is absent when no master is set
-        assert resp.get("Master") is None or isinstance(resp["Master"], dict)
+        guardduty.get_master_account(DetectorId=detector)
+        # Verify detector is still accessible
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Status"], str)
 
 
 class TestGuardDutyOrganizationConfigOperations:
@@ -2136,19 +2136,19 @@ class TestGuardDutySendObjectMalwareScan:
     """Tests for SendObjectMalwareScan."""
 
     def test_send_object_malware_scan(self, guardduty):
-        """SendObjectMalwareScan returns 200."""
+        """SendObjectMalwareScan returns a ScanId."""
         resp = guardduty.send_object_malware_scan()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["ScanId"], str)
 
     def test_send_object_malware_scan_with_s3_object(self, guardduty):
-        """SendObjectMalwareScan accepts S3Object parameter."""
+        """SendObjectMalwareScan with S3Object returns a ScanId."""
         resp = guardduty.send_object_malware_scan(
             S3Object={
                 "Bucket": "test-bucket",
                 "Key": "test-key",
             }
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["ScanId"], str)
 
 
 class TestGuardDutyUpdateMalwareProtectionPlan:

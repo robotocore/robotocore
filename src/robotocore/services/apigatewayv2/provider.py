@@ -95,6 +95,10 @@ _ROUTE_RESPONSE_PATH = re.compile(r"^/v2/apis/([^/]+)/routes/([^/]+)/routerespon
 _ROUTE_RESPONSES_LIST = re.compile(r"^/v2/apis/([^/]+)/routes/([^/]+)/routeresponses/?$")
 _CORS_PATH = re.compile(r"^/v2/apis/([^/]+)/cors/?$")
 _ROUTE_REQUEST_PARAM_PATH = re.compile(r"^/v2/apis/([^/]+)/routes/([^/]+)/requestparameters/(.+)$")
+_EXPORT_API_PATH = re.compile(r"^/v2/apis/([^/]+)/exports/([^/]+)$")
+_ACCESS_LOG_SETTINGS_PATH = re.compile(r"^/v2/apis/([^/]+)/stages/([^/]+)/accesslogsettings$")
+_ROUTE_SETTINGS_PATH = re.compile(r"^/v2/apis/([^/]+)/stages/([^/]+)/routesettings/(.+)$")
+_AUTHORIZERS_CACHE_PATH = re.compile(r"^/v2/apis/([^/]+)/stages/([^/]+)/cache/authorizers$")
 
 
 class ApiGatewayV2Error(Exception):
@@ -125,6 +129,39 @@ async def handle_apigatewayv2_request(
                 return _json_response(_create_api(params, region, account_id), 201)
             if method == "GET":
                 return _json_response(_get_apis(region))
+            if method == "PUT":
+                # import_api
+                return _json_response(_import_api(params, region, account_id), 201)
+
+        # Export API
+        m = _EXPORT_API_PATH.match(path)
+        if m:
+            api_id, specification = m.group(1), m.group(2)
+            if method == "GET":
+                output_type = request.query_params.get("outputType", "JSON")
+                return _json_response(_export_api(api_id, specification, output_type, region))
+
+        # Stage sub-resource operations (must match before stage path)
+        m = _ACCESS_LOG_SETTINGS_PATH.match(path)
+        if m:
+            api_id, stage_name = m.group(1), m.group(2)
+            if method == "DELETE":
+                _delete_access_log_settings(api_id, stage_name, region)
+                return Response(status_code=204)
+
+        m = _ROUTE_SETTINGS_PATH.match(path)
+        if m:
+            api_id, stage_name, route_key = m.group(1), m.group(2), unquote(m.group(3))
+            if method == "DELETE":
+                _delete_route_settings(api_id, stage_name, route_key, region)
+                return Response(status_code=204)
+
+        m = _AUTHORIZERS_CACHE_PATH.match(path)
+        if m:
+            api_id, stage_name = m.group(1), m.group(2)
+            if method == "DELETE":
+                _reset_authorizers_cache(api_id, stage_name, region)
+                return Response(status_code=204)
 
         # CORS configuration
         m = _CORS_PATH.match(path)
@@ -296,6 +333,8 @@ async def handle_apigatewayv2_request(
             api_id, deploy_id = m.group(1), m.group(2)
             if method == "GET":
                 return _json_response(_get_deployment(api_id, deploy_id, region))
+            if method == "PATCH":
+                return _json_response(_update_deployment(api_id, deploy_id, params, region))
             if method == "DELETE":
                 _delete_deployment(api_id, deploy_id, region)
                 return Response(status_code=204)
@@ -340,6 +379,8 @@ async def handle_apigatewayv2_request(
             domain, mapping_id = m.group(1), m.group(2)
             if method == "GET":
                 return _json_response(_get_api_mapping(domain, mapping_id, region))
+            if method == "PATCH":
+                return _json_response(_update_api_mapping(domain, mapping_id, params, region))
             if method == "DELETE":
                 _delete_api_mapping(domain, mapping_id, region)
                 return Response(status_code=204)
@@ -853,6 +894,93 @@ def _reimport_api(api_id: str, params: dict, region: str) -> dict:
     return api
 
 
+def _import_api(params: dict, region: str, account_id: str) -> dict:
+    """Create a new API from an OpenAPI spec (import). Simplified implementation."""
+    body = params.get("Body", "{}")
+    try:
+        spec = json.loads(body) if isinstance(body, str) else body
+    except (json.JSONDecodeError, TypeError):
+        spec = {}
+    # Extract API name and version from spec info
+    info = spec.get("info", {})
+    name = info.get("title", "imported-api")
+    version = info.get("version", "")
+    create_params = {
+        "Name": name,
+        "ProtocolType": "HTTP",
+        "Version": version,
+    }
+    return _create_api(create_params, region, account_id)
+
+
+def _export_api(api_id: str, specification: str, output_type: str, region: str) -> dict:
+    """Export an API as an OpenAPI spec. Returns minimal spec."""
+    api = _get_api(api_id, region)
+    routes = _store(_routes, region, api_id)
+    with _lock:
+        route_list = list(routes.values())
+
+    paths: dict = {}
+    for route in route_list:
+        route_key = route.get("RouteKey", "")
+        # Parse route key like "GET /path" or "$default"
+        if route_key.startswith("$"):
+            continue
+        parts = route_key.split(" ", 1)
+        if len(parts) == 2:
+            http_method, path_key = parts
+            paths.setdefault(path_key, {})[http_method.lower()] = {
+                "responses": {"200": {"description": "OK"}},
+            }
+
+    spec = {
+        "openapi": "3.0.1",
+        "info": {
+            "title": api.get("Name", ""),
+            "version": api.get("Version") or "1.0",
+        },
+        "paths": paths,
+    }
+    if output_type.upper() == "YAML":
+        # Return JSON anyway (simplified)
+        return spec
+    return spec
+
+
+def _delete_access_log_settings(api_id: str, stage_name: str, region: str) -> None:
+    """Delete access log settings from a stage."""
+    _require_api(api_id, region)
+    stages = _store(_stages, region, api_id)
+    with _lock:
+        stage = stages.get(stage_name)
+        if not stage:
+            raise ApiGatewayV2Error("NotFoundException", f"Stage {stage_name} not found", 404)
+        stage.pop("AccessLogSettings", None)
+
+
+def _delete_route_settings(api_id: str, stage_name: str, route_key: str, region: str) -> None:
+    """Delete route settings for a specific route from a stage."""
+    _require_api(api_id, region)
+    stages = _store(_stages, region, api_id)
+    with _lock:
+        stage = stages.get(stage_name)
+        if not stage:
+            raise ApiGatewayV2Error("NotFoundException", f"Stage {stage_name} not found", 404)
+        route_settings = stage.get("RouteSettings", {})
+        route_settings.pop(route_key, None)
+
+
+def _reset_authorizers_cache(api_id: str, stage_name: str, region: str) -> None:
+    """Reset the authorizer cache for a stage (no-op in emulator)."""
+    _require_api(api_id, region)
+    stages = _store(_stages, region, api_id)
+    with _lock:
+        stage = stages.get(stage_name)
+        if not stage:
+            raise ApiGatewayV2Error("NotFoundException", f"Stage {stage_name} not found", 404)
+    # No actual cache to reset in the emulator
+
+
 # ---------------------------------------------------------------------------
 # Stage CRUD
 # ---------------------------------------------------------------------------
@@ -1086,6 +1214,19 @@ def _get_deployments(api_id: str, region: str) -> dict:
     return {"Items": items}
 
 
+def _update_deployment(api_id: str, deploy_id: str, params: dict, region: str) -> dict:
+    _require_api(api_id, region)
+    deployments = _store(_deployments, region, api_id)
+    with _lock:
+        deploy = deployments.get(deploy_id)
+        if not deploy:
+            raise ApiGatewayV2Error("NotFoundException", f"Deployment {deploy_id} not found", 404)
+        for key in ("Description", "StageName"):
+            if key in params:
+                deploy[key] = params[key]
+    return deploy
+
+
 def _delete_deployment(api_id: str, deploy_id: str, region: str) -> None:
     _require_api(api_id, region)
     deployments = _store(_deployments, region, api_id)
@@ -1248,6 +1389,18 @@ def _get_api_mappings(domain: str, region: str) -> dict:
     with _lock:
         items = list(mappings.values())
     return {"Items": items}
+
+
+def _update_api_mapping(domain: str, mapping_id: str, params: dict, region: str) -> dict:
+    mappings = _store(_api_mappings, region, domain)
+    with _lock:
+        mapping = mappings.get(mapping_id)
+        if not mapping:
+            raise ApiGatewayV2Error("NotFoundException", f"API mapping {mapping_id} not found", 404)
+        for key in ("ApiId", "ApiMappingKey", "Stage"):
+            if key in params:
+                mapping[key] = params[key]
+    return mapping
 
 
 def _delete_api_mapping(domain: str, mapping_id: str, region: str) -> None:

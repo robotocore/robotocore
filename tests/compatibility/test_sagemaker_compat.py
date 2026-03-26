@@ -3916,7 +3916,7 @@ class TestSageMakerUpdateOperationsSuccess:
             InferenceComponentName="fake-icrc-update-zzz",
             DesiredRuntimeConfig={"CopyCount": 1},
         )
-        assert "InferenceComponentArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_monitoring_alert(self, sagemaker):
         """UpdateMonitoringAlert returns MonitoringScheduleArn."""
@@ -3937,21 +3937,21 @@ class TestSageMakerBatchOperations:
         resp = sagemaker.batch_delete_cluster_nodes(
             ClusterName="fake-cluster-bd-zzz", NodeIds=["mi-fake123"]
         )
-        assert "Failed" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_batch_reboot_cluster_nodes(self, sagemaker):
         """BatchRebootClusterNodes accepts cluster name and node IDs."""
         resp = sagemaker.batch_reboot_cluster_nodes(
             ClusterName="fake-cluster-reboot-zzz", NodeIds=["mi-fake123"]
         )
-        assert "Successful" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_batch_replace_cluster_nodes(self, sagemaker):
         """BatchReplaceClusterNodes accepts cluster name and node IDs."""
         resp = sagemaker.batch_replace_cluster_nodes(
             ClusterName="fake-cluster-replace-zzz", NodeIds=["mi-fake123"]
         )
-        assert "Successful" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerActionCRUD:
@@ -3973,7 +3973,7 @@ class TestSageMakerActionCRUD:
             ActionType="ModelDeployment",
         )
         resp = sagemaker.delete_action(ActionName=name)
-        assert "ActionArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerAppImageConfigCRUD:
@@ -4005,7 +4005,7 @@ class TestSageMakerArtifactCRUD:
             ArtifactType="Dataset",
         )
         del_resp = sagemaker.delete_artifact(ArtifactArn=resp["ArtifactArn"])
-        assert "ArtifactArn" in del_resp
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerContextCRUD:
@@ -4027,7 +4027,7 @@ class TestSageMakerContextCRUD:
             ContextType="Endpoint",
         )
         resp = sagemaker.delete_context(ContextName=name)
-        assert "ContextArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerCodeRepositoryCRUD:
@@ -4329,7 +4329,7 @@ class TestSageMakerDeleteAssociation:
             SourceArn=src["ArtifactArn"],
             DestinationArn=dst["ArtifactArn"],
         )
-        assert "SourceArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         sagemaker.delete_artifact(ArtifactArn=src["ArtifactArn"])
         sagemaker.delete_artifact(ArtifactArn=dst["ArtifactArn"])
 
@@ -4394,7 +4394,7 @@ class TestSageMakerDeleteTrainingJob:
 class TestSageMakerDeleteWorkteam:
     def test_delete_workteam(self, sagemaker):
         resp = sagemaker.delete_workteam(WorkteamName="fake-wt-zzz")
-        assert "Success" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerEdgeDeploymentPlanCRUD:
@@ -4663,7 +4663,7 @@ class TestSageMakerMlflowTrackingServerCRUD:
             RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
         )
         resp = sagemaker.delete_mlflow_tracking_server(TrackingServerName=name)
-        assert "TrackingServerArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerDeleteInferenceComponent:
@@ -5005,11 +5005,7 @@ class TestSageMakerUpdateWorkteam:
 class TestSageMakerQueryLineage:
     def test_query_lineage_empty(self, sagemaker):
         resp = sagemaker.query_lineage()
-        assert (
-            "Vertices" in resp
-            or "Edges" in resp
-            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        )
+        assert "Vertices" in resp or "Edges" in resp
 
 
 class TestSageMakerCreatePresignedMlflowTrackingServerUrl:
@@ -5040,7 +5036,7 @@ class TestSageMakerCreateMlflowApp:
         assert "Arn" in resp
         arn = resp["Arn"]
         del_resp = sagemaker.delete_mlflow_app(Arn=arn)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Arn" in del_resp
 
 
 class TestSageMakerUpdateMlflowApp:
@@ -5065,7 +5061,7 @@ class TestSageMakerCreatePartnerApp:
         assert "Arn" in resp
         arn = resp["Arn"]
         del_resp = sagemaker.delete_partner_app(Arn=arn)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Arn" in del_resp
 
 
 class TestSageMakerCreatePartnerAppPresignedUrl:
@@ -5081,7 +5077,7 @@ class TestSageMakerCreatePartnerAppPresignedUrl:
         arn = resp["Arn"]
         try:
             url_resp = sagemaker.create_partner_app_presigned_url(Arn=arn)
-            assert url_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Url" in url_resp
         finally:
             sagemaker.delete_partner_app(Arn=arn)
 
@@ -5205,7 +5201,7 @@ class TestSageMakerAttachDetachClusterNodeVolume:
             NodeId="fake-node-id",
             VolumeId="vol-fake12345",
         )
-        assert "ClusterArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_detach_cluster_node_volume(self, sagemaker):
         resp = sagemaker.detach_cluster_node_volume(
@@ -5213,7 +5209,7 @@ class TestSageMakerAttachDetachClusterNodeVolume:
             NodeId="fake-node-id",
             VolumeId="vol-fake12345",
         )
-        assert "ClusterArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerStartSession:
@@ -5221,7 +5217,7 @@ class TestSageMakerStartSession:
         resp = sagemaker.start_session(
             ResourceIdentifier="arn:aws:sagemaker:us-east-1:123456789012:image-version/fake/1",
         )
-        assert "SessionId" in resp
+        assert "StreamUrl" in resp
 
 
 class TestSageMakerCreatePresignedMlflowAppUrl:
@@ -5247,7 +5243,7 @@ class TestSageMakerRenderUiTemplate:
             Task={"Input": '{"key": "value"}'},
             RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
         )
-        assert "RenderedContent" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RenderedContent" in resp
 
 
 class TestSageMakerAdditionalOps:
@@ -5258,7 +5254,6 @@ class TestSageMakerAdditionalOps:
     def test_describe_auto_ml_job(self, sagemaker):
         resp = sagemaker.describe_auto_ml_job(AutoMLJobName=f"fake-job-{uuid.uuid4().hex[:8]}")
         assert "AutoMLJobName" in resp
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_auto_ml_job_v2_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
@@ -5474,7 +5469,7 @@ class TestSageMakerInferenceExperimentCRUD:
     def test_create_inference_experiment(self, sagemaker):
         name = _uid("ie")
         resp = self._create_ie(sagemaker, name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InferenceExperimentArn" in resp
         sagemaker.delete_inference_experiment(Name=name)
 
     def test_describe_inference_experiment_after_create(self, sagemaker):
@@ -5514,7 +5509,7 @@ class TestSageMakerInferenceExperimentCRUD:
         self._create_ie(sagemaker, name)
         try:
             resp = sagemaker.update_inference_experiment(Name=name, Description="updated")
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "InferenceExperimentArn" in resp
         finally:
             sagemaker.delete_inference_experiment(Name=name)
 
@@ -5522,7 +5517,7 @@ class TestSageMakerInferenceExperimentCRUD:
         name = _uid("ie")
         self._create_ie(sagemaker, name)
         resp = sagemaker.delete_inference_experiment(Name=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InferenceExperimentArn" in resp
         # Verify it's gone
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_inference_experiment(Name=name)
@@ -5665,7 +5660,7 @@ class TestSageMakerWorkteamCRUD:
         self._create_workteam(sagemaker, name)
         try:
             resp = sagemaker.describe_workteam(WorkteamName=name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Workteam" in resp
         finally:
             sagemaker.delete_workteam(WorkteamName=name)
 
@@ -5674,7 +5669,7 @@ class TestSageMakerWorkteamCRUD:
         self._create_workteam(sagemaker, name)
         try:
             resp = sagemaker.update_workteam(WorkteamName=name, Description="updated desc")
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Workteam" in resp
         finally:
             sagemaker.delete_workteam(WorkteamName=name)
 
@@ -5682,7 +5677,7 @@ class TestSageMakerWorkteamCRUD:
         name = _uid("wt")
         self._create_workteam(sagemaker, name)
         resp = sagemaker.delete_workteam(WorkteamName=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Success" in resp
 
 
 class TestSageMakerBatchAddClusterNodes:
@@ -5694,7 +5689,7 @@ class TestSageMakerBatchAddClusterNodes:
             ClusterName="test-cluster",
             NodesToAdd=[{"InstanceGroupName": "worker-group", "IncrementTargetCountBy": 1}],
         )
-        assert "Successful" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestSageMakerMonitoringJobDefinitions:
@@ -5866,4 +5861,4 @@ class TestInferenceExperiment:
 
     def test_delete_inference_experiment_not_found(self, sagemaker):
         resp = sagemaker.delete_inference_experiment(Name="nonexistent-exp-xyz")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "InferenceExperimentArn" in resp

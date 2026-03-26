@@ -2743,15 +2743,17 @@ class TestDynamoDBResourcePolicy:
             }
         )
         client.put_resource_policy(ResourceArn=table_arn, Policy=policy)
-        resp = client.delete_resource_policy(ResourceArn=table_arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.delete_resource_policy(ResourceArn=table_arn)
         # Verify policy is gone
         try:
             get_resp = client.get_resource_policy(ResourceArn=table_arn)
             # Empty policy or null means deleted
             assert get_resp.get("Policy") in (None, "", "{}")
-        except ClientError:
-            pass  # PolicyNotFoundException is also valid
+        except ClientError as exc:
+            assert exc.response["Error"]["Code"] in (
+                "PolicyNotFoundException",
+                "ResourceNotFoundException",
+            )
 
     def test_update_continuous_backups(self, client, table):
         """UpdateContinuousBackups enables point-in-time recovery."""

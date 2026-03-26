@@ -321,8 +321,7 @@ class TestKinesisVideoNewOps:
         kinesisvideo_client.create_stream(StreamName=name)
         try:
             resp = kinesisvideo_client.describe_image_generation_configuration(StreamName=name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "ImageGenerationConfiguration" in resp
+            assert isinstance(resp["ImageGenerationConfiguration"], dict)
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
@@ -332,8 +331,7 @@ class TestKinesisVideoNewOps:
         kinesisvideo_client.create_stream(StreamName=name)
         try:
             resp = kinesisvideo_client.describe_notification_configuration(StreamName=name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "NotificationConfiguration" in resp
+            assert isinstance(resp["NotificationConfiguration"], dict)
         finally:
             arn = kinesisvideo_client.describe_stream(StreamName=name)["StreamInfo"]["StreamARN"]
             kinesisvideo_client.delete_stream(StreamARN=arn)
