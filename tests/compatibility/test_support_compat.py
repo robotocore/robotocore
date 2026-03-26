@@ -92,6 +92,7 @@ class TestSupportAutoCoverage:
         """ResolveCase returns a response."""
         resp = client.resolve_case()
         assert "initialCaseStatus" in resp
+        assert isinstance(resp["initialCaseStatus"], str)
 
     def test_add_communication_to_case(self, client):
         """AddCommunicationToCase adds a message to an existing case."""
@@ -129,6 +130,7 @@ class TestSupportAutoCoverage:
         check_id = checks_resp["checks"][0]["id"]
         resp = client.refresh_trusted_advisor_check(checkId=check_id)
         assert "status" in resp
+        assert "checkId" in resp["status"]
 
     def test_describe_trusted_advisor_check_result(self, client):
         """DescribeTrustedAdvisorCheckResult returns check result."""
@@ -136,6 +138,7 @@ class TestSupportAutoCoverage:
         check_id = checks_resp["checks"][0]["id"]
         resp = client.describe_trusted_advisor_check_result(checkId=check_id)
         assert "result" in resp
+        assert "checkId" in resp["result"]
 
     def test_describe_trusted_advisor_check_summaries(self, client):
         """DescribeTrustedAdvisorCheckSummaries returns summaries."""
@@ -143,6 +146,7 @@ class TestSupportAutoCoverage:
         check_id = checks_resp["checks"][0]["id"]
         resp = client.describe_trusted_advisor_check_summaries(checkIds=[check_id])
         assert "summaries" in resp
+        assert isinstance(resp["summaries"], list)
 
 
 class TestSupportNewOperations:

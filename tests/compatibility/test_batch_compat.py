@@ -896,8 +896,7 @@ class TestSchedulingPolicies:
             fairsharePolicy={"shareDecaySeconds": 600},
         )
         arn = create_resp["arn"]
-        resp = batch.delete_scheduling_policy(arn=arn)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        batch.delete_scheduling_policy(arn=arn)
         # Verify it's gone
         desc = batch.describe_scheduling_policies(arns=[arn])
         assert len(desc["schedulingPolicies"]) == 0
@@ -990,8 +989,13 @@ class TestConsumableResources:
             consumableResourceName=name,
             totalQuantity=10,
         )
-        resp = batch.delete_consumable_resource(consumableResource=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        batch.delete_consumable_resource(consumableResource=name)
+        # Verify it's gone
+        list_resp = batch.list_consumable_resources()
+        resource_names = [
+            r["consumableResourceName"] for r in list_resp.get("consumableResources", [])
+        ]
+        assert name not in resource_names
 
     def test_list_jobs_by_consumable_resource(self, batch):
         name = _unique("cr-jobs")
@@ -1055,8 +1059,10 @@ class TestServiceEnvironments:
             serviceEnvironmentType="SAGEMAKER_TRAINING",
             capacityLimits=[{"maxCapacity": 5}],
         )
-        resp = batch.delete_service_environment(serviceEnvironment=name)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        batch.delete_service_environment(serviceEnvironment=name)
+        # Verify it's gone
+        desc = batch.describe_service_environments(serviceEnvironments=[name])
+        assert len(desc["serviceEnvironments"]) == 0
 
 
 class TestServiceJobs:

@@ -2378,3 +2378,4 @@ class TestRoute53UpdateHostedZoneFeatures:
         """UpdateHostedZoneFeatures returns a response without error."""
         resp = route53.update_hosted_zone_features(HostedZoneId=hosted_zone)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["RequestId"] is not None

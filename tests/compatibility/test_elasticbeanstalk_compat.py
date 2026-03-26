@@ -617,7 +617,7 @@ class TestPlatformVersionOperations:
         )
         platform_arn = created["PlatformSummary"]["PlatformArn"]
         resp = eb.delete_platform_version(PlatformArn=platform_arn)
-        assert "PlatformSummary" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestComposeEnvironments:

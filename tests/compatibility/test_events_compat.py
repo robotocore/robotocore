@@ -2253,13 +2253,17 @@ class TestEventBridgeMissingGapOps:
 
     def test_activate_event_source(self, events):
         """ActivateEventSource on non-existent source returns 200 (no-op in Moto)."""
-        resp = events.activate_event_source(Name="aws.partner/test.com/123/test-source")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        events.activate_event_source(Name="aws.partner/test.com/123/test-source")
+        # Verify the operation doesn't interfere with the default event bus
+        bus = events.describe_event_bus()
+        assert bus["Name"] == "default"
 
     def test_deactivate_event_source(self, events):
         """DeactivateEventSource returns 200."""
-        resp = events.deactivate_event_source(Name="aws.partner/test.com/123/test-source")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        events.deactivate_event_source(Name="aws.partner/test.com/123/test-source")
+        # Verify the operation doesn't interfere with the default event bus
+        bus = events.describe_event_bus()
+        assert bus["Name"] == "default"
 
     def test_describe_event_source_not_found(self, events):
         """DescribeEventSource raises ResourceNotFoundException for unknown source."""
@@ -2302,8 +2306,11 @@ class TestEventBridgeMissingGapOps:
         )
         assert resp["State"] == "ACTIVE"
         assert "Arn" in resp
-        del_resp = events.delete_endpoint(Name=name)
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        events.delete_endpoint(Name=name)
+        # Verify the endpoint is gone
+        list_resp = events.list_endpoints()
+        endpoint_names = [e["Name"] for e in list_resp.get("Endpoints", [])]
+        assert name not in endpoint_names
 
     def test_update_endpoint(self, events):
         """UpdateEndpoint modifies endpoint routing config."""

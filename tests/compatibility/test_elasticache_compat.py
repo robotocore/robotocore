@@ -1244,17 +1244,20 @@ class TestElastiCacheGapOps:
         """DescribeReservedCacheNodes returns a list."""
         resp = client.describe_reserved_cache_nodes()
         assert "ReservedCacheNodes" in resp
+        assert isinstance(resp["ReservedCacheNodes"], list)
 
     def test_describe_reserved_cache_nodes_offerings(self, client):
         """DescribeReservedCacheNodesOfferings returns a list."""
         resp = client.describe_reserved_cache_nodes_offerings()
         assert "ReservedCacheNodesOfferings" in resp
+        assert isinstance(resp["ReservedCacheNodesOfferings"], list)
 
     def test_list_allowed_node_type_modifications(self, client):
         """ListAllowedNodeTypeModifications returns scale up/down lists."""
         resp = client.list_allowed_node_type_modifications()
         assert "ScaleUpModifications" in resp
         assert "ScaleDownModifications" in resp
+        assert isinstance(resp["ScaleUpModifications"], list)
 
     def test_reboot_cache_cluster(self, client, cluster):
         """RebootCacheCluster returns the cluster."""

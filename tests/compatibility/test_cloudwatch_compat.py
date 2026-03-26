@@ -529,6 +529,7 @@ class TestCloudWatchOperations:
 
         response = cw.describe_alarm_history(AlarmName=alarm_name)
         assert "AlarmHistoryItems" in response
+        assert isinstance(response["AlarmHistoryItems"], list)
 
         cw.delete_alarms(AlarmNames=[alarm_name])
 
@@ -671,6 +672,7 @@ class TestCloudWatchOperations:
         assert "MetricDataResults" in response
         results = {r["Id"]: r for r in response["MetricDataResults"]}
         assert "total" in results
+        assert results["total"]["Label"] == "TotalOps"
 
     def test_list_metrics_metric_name_filter(self, cw):
         """ListMetrics filtered by MetricName."""
@@ -920,6 +922,7 @@ class TestCloudWatchOperations:
             )
             response = cw.describe_alarm_history(AlarmName="history-alarm")
             assert "AlarmHistoryItems" in response
+            assert isinstance(response["AlarmHistoryItems"], list)
         finally:
             cw.delete_alarms(AlarmNames=["history-alarm"])
 
@@ -1387,6 +1390,7 @@ class TestCloudWatchManagedInsightRules:
             ResourceARN="arn:aws:ec2:us-east-1:123456789012:instance/i-fake"
         )
         assert "ManagedRules" in resp
+        assert isinstance(resp["ManagedRules"], list)
 
 
 class TestCloudWatchMetricStreams:
@@ -1537,6 +1541,7 @@ class TestCloudWatchGapOps:
             assert "Contributors" in resp
             assert "KeyLabels" in resp
             assert "AggregateValue" in resp
+            assert isinstance(resp["Contributors"], list)
         finally:
             cw.delete_insight_rules(RuleNames=[rule_name])
 
@@ -1562,6 +1567,7 @@ class TestCloudWatchAlarmMuteRules:
         """DescribeAlarmContributors returns AlarmContributors list."""
         resp = cw.describe_alarm_contributors(AlarmName="nonexistent-alarm")
         assert "AlarmContributors" in resp
+        assert isinstance(resp["AlarmContributors"], list)
 
     def test_get_alarm_mute_rule_nonexistent(self, cw):
         """GetAlarmMuteRule with nonexistent name raises ResourceNotFoundException."""

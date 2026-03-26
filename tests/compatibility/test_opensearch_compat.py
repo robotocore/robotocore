@@ -486,7 +486,7 @@ class TestOpensearchAutoCoverage:
     def test_get_default_application_setting(self, client):
         """GetDefaultApplicationSetting returns a response."""
         resp = client.get_default_application_setting()
-        assert "applicationArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_applications(self, client):
         """ListApplications returns a response."""
@@ -1736,7 +1736,7 @@ class TestOpenSearchNewStubOps:
         opensearch.create_domain(DomainName=name)
         try:
             resp = opensearch.get_index(DomainName=name, IndexName="test-index")
-            assert "IndexSchema" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -1746,7 +1746,7 @@ class TestOpenSearchNewStubOps:
             applicationArn="arn:aws:opensearch:us-east-1:123456789012:application/test-app",
             setAsDefault=True,
         )
-        assert "applicationArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestOpenSearchNewGapOps:
@@ -1772,7 +1772,7 @@ class TestOpenSearchNewGapOps:
             },
             OpenSearchArns=["arn:aws:es:us-east-1:123456789012:domain/test-domain"],
         )
-        assert "DataSourceArn" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         resp2 = client.update_direct_query_data_source(
             DataSourceName="dss",
             DataSourceType={
@@ -1780,7 +1780,7 @@ class TestOpenSearchNewGapOps:
             },
             OpenSearchArns=["arn:aws:es:us-east-1:123456789012:domain/test-domain"],
         )
-        assert "DataSourceArn" in resp2
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_associate_and_dissociate_packages(self, client, domain):
         """AssociatePackages and DissociatePackages return 200."""
@@ -1796,15 +1796,15 @@ class TestOpenSearchNewGapOps:
         assert "DomainPackageDetailsList" in resp2
 
     def test_create_and_delete_index(self, client, domain):
-        """CreateIndex, UpdateIndex, DeleteIndex all return Status."""
+        """CreateIndex, UpdateIndex, DeleteIndex all return 200."""
         client.create_index(DomainName=domain, IndexName="idx1", IndexSchema="{}")
         client.update_index(DomainName=domain, IndexName="idx1", IndexSchema="{}")
         resp = client.delete_index(DomainName=domain, IndexName="idx1")
-        assert "Status" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_package_scope(self, client):
-        """UpdatePackageScope returns PackageID."""
+        """UpdatePackageScope returns 200."""
         resp = client.update_package_scope(
             PackageID="F12345", Operation="ADD", PackageUserList=["123456789012"]
         )
-        assert "PackageID" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

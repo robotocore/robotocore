@@ -847,7 +847,7 @@ class TestSageMakerDescribeOperations:
         """DescribeCluster returns error for fake cluster."""
         with pytest.raises(ClientError) as exc:
             client.describe_cluster(ClusterName="fake-cluster-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_cluster_node_not_found(self, client):
         """DescribeClusterNode returns error for fake cluster/node."""
@@ -856,7 +856,7 @@ class TestSageMakerDescribeOperations:
                 ClusterName="fake-cluster-nonexistent",
                 NodeId="fake-node-nonexistent",
             )
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_compilation_job_not_found(self, client):
         """DescribeCompilationJob returns ResourceNotFound for fake job."""
@@ -874,19 +874,19 @@ class TestSageMakerDescribeOperations:
         """DescribeDomain returns error for fake domain."""
         with pytest.raises(ClientError) as exc:
             client.describe_domain(DomainId="fake-domain-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_endpoint_not_found(self, client):
         """DescribeEndpoint returns error for fake endpoint."""
         with pytest.raises(ClientError) as exc:
             client.describe_endpoint(EndpointName="fake-endpoint-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_endpoint_config_not_found(self, client):
         """DescribeEndpointConfig returns error for fake config."""
         with pytest.raises(ClientError) as exc:
             client.describe_endpoint_config(EndpointConfigName="fake-config-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
 
     def test_describe_hyper_parameter_tuning_job_not_found(self, client):
         """DescribeHyperParameterTuningJob returns ResourceNotFound."""

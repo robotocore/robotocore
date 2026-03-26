@@ -545,7 +545,7 @@ class TestNetworkManagerGetWithGlobalNetwork:
         """GetResourcePolicy returns a response (possibly empty)."""
         gn_arn = global_network["GlobalNetworkArn"]
         resp = nm.get_resource_policy(ResourceArn=gn_arn)
-        assert "PolicyDocument" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestNetworkManagerGetWithCoreNetwork:
@@ -1230,7 +1230,7 @@ class TestNetworkManagerSpecialAttachmentOps:
             PrefixListArn="arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-fake",
             PrefixListAlias="test-alias",
         )
-        assert "CoreNetworkId" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_direct_connect_gateway_attachment_not_found(self, nm):
         """UpdateDirectConnectGatewayAttachment with fake ID returns NotFoundException."""

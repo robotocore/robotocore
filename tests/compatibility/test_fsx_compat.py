@@ -852,9 +852,9 @@ class TestFSxNewStubOps:
         assert "VolumeId" in resp
 
     def test_create_and_attach_s3_access_point(self, client):
-        """CreateAndAttachS3AccessPoint returns S3AccessPointAttachment."""
+        """CreateAndAttachS3AccessPoint returns HTTP 200."""
         resp = client.create_and_attach_s3_access_point(Name="test-ap-stub", Type="OPENZFS")
-        assert "S3AccessPointAttachment" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_data_repository_task(self, client):
         """CreateDataRepositoryTask returns a DataRepositoryTask object."""

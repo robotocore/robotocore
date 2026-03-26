@@ -580,7 +580,7 @@ class TestEFSLegacyTagOps:
                 SourceFileSystemId=fs_id, Destinations=[{"Region": "us-west-2"}]
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            assert "SourceFileSystemId" in resp
+            assert resp["SourceFileSystemId"] == fs_id
         finally:
             efs.delete_file_system(FileSystemId=fs_id)
 

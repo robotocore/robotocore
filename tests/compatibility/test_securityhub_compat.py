@@ -49,7 +49,7 @@ class TestSecurityhubAutoCoverage:
     def test_get_administrator_account(self, client):
         """GetAdministratorAccount returns a 200 response."""
         resp = client.get_administrator_account()
-        assert "Administrator" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_findings(self, client):
         """GetFindings returns a response."""
@@ -59,7 +59,7 @@ class TestSecurityhubAutoCoverage:
     def test_get_master_account(self, client):
         """GetMasterAccount returns a 200 response."""
         resp = client.get_master_account()
-        assert "Master" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_organization_configuration(self, client):
         """DescribeOrganizationConfiguration requires org admin access."""

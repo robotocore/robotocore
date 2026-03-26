@@ -534,6 +534,7 @@ class TestSTSExtended:
                 WebIdentityToken="dummy-oidc-token",
             )
             assert "Credentials" in response
+            assert "AccessKeyId" in response["Credentials"]
         finally:
             iam.delete_role(RoleName=role_name)
 

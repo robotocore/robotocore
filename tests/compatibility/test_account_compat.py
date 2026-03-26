@@ -212,3 +212,4 @@ class TestAccountMissingGapOps:
             AccountId="123456789012", Otp="123456", PrimaryEmail="new@example.com"
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["Status"], str)

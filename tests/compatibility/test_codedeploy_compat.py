@@ -118,6 +118,7 @@ class TestCodedeployAutoCoverage:
         """ListDeployments returns a response."""
         resp = client.list_deployments()
         assert "deployments" in resp
+        assert isinstance(resp["deployments"], list)
 
     def test_create_and_get_deployment(self, client):
         """CreateDeployment + GetDeployment."""
@@ -274,6 +275,7 @@ class TestCodedeployAutoCoverage:
         """ListGitHubAccountTokenNames returns a response."""
         resp = client.list_git_hub_account_token_names()
         assert "tokenNameList" in resp
+        assert isinstance(resp["tokenNameList"], list)
 
     def test_create_and_delete_deployment_config(self, client):
         """CreateDeploymentConfig + GetDeploymentConfig + DeleteDeploymentConfig."""
@@ -403,6 +405,8 @@ class TestCodedeployAutoCoverage:
         client.register_application_revision(applicationName=app_name, revision=revision)
         resp = client.list_application_revisions(applicationName=app_name)
         assert "revisions" in resp
+        assert isinstance(resp["revisions"], list)
+        assert len(resp["revisions"]) >= 1
 
     def test_batch_get_deployment_groups(self, client):
         """BatchGetDeploymentGroups returns group details."""
@@ -561,6 +565,7 @@ class TestCodedeployAutoCoverage:
             deployment_id = dep_resp["deploymentId"]
             resp = client.stop_deployment(deploymentId=deployment_id)
             assert "status" in resp
+            assert resp["status"] in ("Pending", "Succeeded")
         finally:
             iam_client.delete_role(RoleName=role_name)
 
@@ -573,6 +578,7 @@ class TestCodedeployAutoCoverage:
         """DeleteGitHubAccountToken with nonexistent token."""
         resp = client.delete_git_hub_account_token(tokenName="nonexistent-token")
         assert "tokenName" in resp
+        assert resp["tokenName"] == "nonexistent-token"
 
     def test_continue_deployment_nonexistent(self, client):
         """ContinueDeployment with nonexistent deployment returns error."""

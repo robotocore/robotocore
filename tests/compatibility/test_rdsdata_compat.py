@@ -26,6 +26,21 @@ def rds_cluster_module():
         rds.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
     except Exception:
         pass  # does not exist, that is fine
+    # Also delete any automatic snapshots for this cluster — Moto creates automatic
+    # backups (rds:<cluster>-<timestamp>) when the cluster is deleted. If two test
+    # runs happen in the same minute, the second create_db_cluster fails because a
+    # snapshot with the same timestamp already exists.
+    try:
+        snaps = rds.describe_db_cluster_snapshots(DBClusterIdentifier=cluster_id)
+        for snap in snaps.get("DBClusterSnapshots", []):
+            try:
+                rds.delete_db_cluster_snapshot(
+                    DBClusterSnapshotIdentifier=snap["DBClusterSnapshotIdentifier"]
+                )
+            except Exception:
+                pass  # best-effort cleanup
+    except Exception:
+        pass  # cluster may not exist
     rds.create_db_cluster(
         DBClusterIdentifier=cluster_id,
         Engine="aurora-mysql",

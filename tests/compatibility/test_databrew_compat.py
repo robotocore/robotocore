@@ -661,6 +661,9 @@ class TestDataBrewNewOps:
         arn = f"arn:aws:databrew:us-east-1:123456789012:dataset/{dataset_name}"
         resp = databrew_client.tag_resource(ResourceArn=arn, Tags={"Env": "test"})
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify tags were applied
+        tags_resp = databrew_client.list_tags_for_resource(ResourceArn=arn)
+        assert tags_resp["Tags"]["Env"] == "test"
 
     def test_list_tags_for_resource(self, databrew_client, dataset_name):
         arn = f"arn:aws:databrew:us-east-1:123456789012:dataset/{dataset_name}"

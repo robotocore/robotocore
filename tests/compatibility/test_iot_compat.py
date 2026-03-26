@@ -2045,7 +2045,7 @@ class TestIoTMiscListOperations:
     def test_get_v2_logging_options(self, iot):
         resp = iot.get_v2_logging_options()
         # Response may have defaultLogLevel or not, but the call should succeed
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "defaultLogLevel" in resp
 
     def test_deprecate_thing_type(self, iot):
         name = _unique("ttype")
@@ -2654,7 +2654,7 @@ class TestIoTPackageOperations:
 
     def test_get_package_configuration(self, iot):
         resp = iot.get_package_configuration()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "versionUpdateByJobsConfig" in resp
 
     def test_update_package_configuration(self, iot):
         resp = iot.update_package_configuration()
@@ -3405,7 +3405,7 @@ class TestIoTNewStubOps:
             targets=["arn:aws:iot:us-east-1:123456789012:thing/test"],
             jobId="fake-job-id-stub",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "jobId" in resp
 
     def test_cancel_detect_mitigation_actions_task(self, iot):
         """CancelDetectMitigationActionsTask returns 200."""
@@ -3591,4 +3591,4 @@ class TestIoTRemainingGapOps:
             actions=["RESET_CONFIDENCE_SCORE"],
             clientRequestToken=f"token-{uuid.uuid4().hex[:8]}",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "taskId" in resp

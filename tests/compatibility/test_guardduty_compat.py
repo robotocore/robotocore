@@ -153,6 +153,8 @@ class TestGuardDutyAdministratorAccountOperations:
         result = guardduty.get_administrator_account(DetectorId=detector)
         # When no administrator is configured, the Administrator key is absent
         assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Administrator key may be absent (no admin set) or present
+        assert isinstance(result.get("Administrator", {}), dict)
 
 
 class TestGuardDutyFilterOperations:
@@ -292,6 +294,10 @@ class TestGuardDutyOrganizationAdminAccountOperations:
     def test_enable_organization_admin_account(self, guardduty):
         resp = guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify account appears in admin accounts list
+        list_resp = guardduty.list_organization_admin_accounts()
+        admin_ids = [a["AdminAccountId"] for a in list_resp["AdminAccounts"]]
+        assert "111122223333" in admin_ids
 
 
 class TestGuardDutyFilterListOperations:
@@ -718,11 +724,14 @@ class TestGuardDutyMasterAccountOperations:
     def test_get_master_account(self, guardduty, detector):
         resp = guardduty.get_master_account(DetectorId=detector)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp.get("Master", {}), dict)
 
     def test_get_master_account_no_master(self, guardduty, detector):
         """When no master is configured, response still returns 200."""
         resp = guardduty.get_master_account(DetectorId=detector)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Master key is absent when no master is set
+        assert resp.get("Master") is None or isinstance(resp["Master"], dict)
 
 
 class TestGuardDutyOrganizationConfigOperations:
@@ -782,6 +791,7 @@ class TestGuardDutyCoverageOperations:
             DetectorId=detector, StatisticsType=["COUNT_BY_RESOURCE_TYPE"]
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["CoverageStatistics"], dict)
 
 
 class TestGuardDutyUsageOperations:
@@ -802,6 +812,7 @@ class TestGuardDutyUsageOperations:
             UsageCriteria={"DataSources": ["FLOW_LOGS"]},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["UsageStatistics"], dict)
 
 
 class TestGuardDutyInvitationOperations:
@@ -859,6 +870,9 @@ class TestGuardDutySampleFindingsOperations:
             FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify findings were created
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        assert isinstance(list_resp["FindingIds"], list)
 
     def test_create_sample_findings_then_list(self, guardduty, detector):
         """After creating sample findings, ListFindings returns them."""
@@ -909,10 +923,8 @@ class TestGuardDutyMemberOperations:
             DetectorId=detector,
             AccountIds=["111111111111"],
         )
-        assert (
-            "MemberDataSourceConfigurations" in resp
-            or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_get_remaining_free_trial_days_unprocessed(self, guardduty, detector):
         """GetRemainingFreeTrialDays returns UnprocessedAccounts."""
@@ -1094,6 +1106,9 @@ class TestGuardDutyFindingsEdgeCases:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify findings were created
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        assert isinstance(list_resp["FindingIds"], list)
 
     def test_list_findings_with_sort_criteria(self, guardduty, detector):
         guardduty.create_sample_findings(
@@ -1129,7 +1144,7 @@ class TestGuardDutyMalwareEdgeCases:
     def test_describe_malware_scans_has_next_token(self, guardduty, detector):
         resp = guardduty.describe_malware_scans(DetectorId=detector)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "Scans" in resp
+        assert isinstance(resp["Scans"], list)
 
     def test_get_malware_scan_settings_structure(self, guardduty, detector):
         resp = guardduty.get_malware_scan_settings(DetectorId=detector)
