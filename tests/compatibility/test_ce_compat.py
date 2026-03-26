@@ -314,6 +314,7 @@ class TestCECostQueries:
         assert "CostCategoryNames" in resp
         assert "ReturnSize" in resp
         assert "TotalSize" in resp
+        assert isinstance(resp["ReturnSize"], int)
 
     def test_get_tags(self, ce):
         """GetTags returns tags list and size info."""
@@ -355,6 +356,7 @@ class TestCECostQueries:
         )
         assert "Total" in resp
         assert "ForecastResultsByTime" in resp
+        assert isinstance(resp["ForecastResultsByTime"], list)
 
     def test_get_cost_and_usage_with_resources(self, ce):
         """GetCostAndUsageWithResources returns ResultsByTime."""
@@ -374,6 +376,7 @@ class TestCECostQueries:
             MetricForComparison="UNBLENDED_COST",
         )
         assert "CostAndUsageComparisons" in resp
+        assert isinstance(resp["CostAndUsageComparisons"], list)
 
     def test_get_cost_comparison_drivers(self, ce):
         """GetCostComparisonDrivers returns driver data."""
@@ -383,6 +386,7 @@ class TestCECostQueries:
             MetricForComparison="UNBLENDED_COST",
         )
         assert "CostComparisonDrivers" in resp
+        assert isinstance(resp["CostComparisonDrivers"], list)
 
     def test_get_approximate_usage_records(self, ce):
         """GetApproximateUsageRecords returns service-level usage."""
@@ -392,6 +396,7 @@ class TestCECostQueries:
         )
         assert "TotalRecords" in resp
         assert "LookbackPeriod" in resp
+        assert isinstance(resp["TotalRecords"], int)
 
 
 class TestCEReservations:
@@ -445,6 +450,7 @@ class TestCESavingsPlans:
             TimePeriod={"Start": "2024-01-01", "End": "2024-01-31"},
         )
         assert "Total" in resp
+        assert isinstance(resp["Total"], dict)
 
     def test_get_savings_plans_utilization_details(self, ce):
         """GetSavingsPlansUtilizationDetails returns detail list."""
@@ -516,6 +522,7 @@ class TestCEListOperations:
         try:
             resp = ce.list_cost_category_resource_associations(CostCategoryArn=arn)
             assert "CostCategoryResourceAssociations" in resp
+            assert isinstance(resp["CostCategoryResourceAssociations"], list)
         finally:
             ce.delete_cost_category_definition(CostCategoryArn=arn)
 
@@ -714,6 +721,7 @@ class TestCERecommendationGeneration:
         assert "RecommendationId" in resp
         assert "GenerationStartedTime" in resp
         assert "EstimatedCompletionTime" in resp
+        assert isinstance(resp["RecommendationId"], str)
 
 
 class TestCEAdditionalOps:
