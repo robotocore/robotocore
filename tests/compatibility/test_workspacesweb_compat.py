@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -904,3 +905,16 @@ class TestWorkspaceswebSessionLogger:
         assert assoc["sessionLoggerArn"] == sl_arn
         disassoc = client.disassociate_session_logger(portalArn=portal_arn)
         assert disassoc["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesWebTrustStoreCertificates:
+    """Tests for trust store certificate operations."""
+
+    def test_get_trust_store_certificate_not_found(self, workspacesweb):
+        """GetTrustStoreCertificate raises ResourceNotFoundException for missing trust store."""
+        with pytest.raises(ClientError) as exc:
+            workspacesweb.get_trust_store_certificate(
+                trustStoreArn="arn:aws:workspaces-web:us-east-1:123456789012:trustStore/nonexistent",
+                thumbprint="a" * 64,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
