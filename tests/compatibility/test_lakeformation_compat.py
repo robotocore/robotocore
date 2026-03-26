@@ -98,12 +98,17 @@ class TestLakeFormationPermissions:
 
     def test_grant_permissions(self, lakeformation, unique_suffix):
         principal_arn = f"arn:aws:iam::123456789012:user/user-{unique_suffix}"
-        resp = lakeformation.grant_permissions(
+        lakeformation.grant_permissions(
             Principal={"DataLakePrincipalIdentifier": principal_arn},
             Resource={"Database": {"Name": f"db-{unique_suffix}"}},
             Permissions=["ALL"],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_permissions()
+        principals = [
+            p["Principal"]["DataLakePrincipalIdentifier"]
+            for p in resp.get("PrincipalResourcePermissions", [])
+        ]
+        assert principal_arn in principals
 
     def test_grant_then_revoke_permissions(self, lakeformation, unique_suffix):
         principal_arn = f"arn:aws:iam::123456789012:user/user-{unique_suffix}"
@@ -113,12 +118,17 @@ class TestLakeFormationPermissions:
             Resource={"Database": {"Name": db_name}},
             Permissions=["ALL"],
         )
-        resp = lakeformation.revoke_permissions(
+        lakeformation.revoke_permissions(
             Principal={"DataLakePrincipalIdentifier": principal_arn},
             Resource={"Database": {"Name": db_name}},
             Permissions=["ALL"],
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = lakeformation.list_permissions()
+        principals = [
+            p["Principal"]["DataLakePrincipalIdentifier"]
+            for p in resp.get("PrincipalResourcePermissions", [])
+        ]
+        assert principal_arn not in principals
 
     def test_grant_permissions_appears_in_list(self, lakeformation, unique_suffix):
         principal_arn = f"arn:aws:iam::123456789012:user/user-{unique_suffix}"
@@ -305,7 +315,7 @@ class TestLakeFormationResourceLFTags:
                 Resource={"Catalog": {}},
                 LFTags=[{"TagKey": tag_key, "TagValues": ["v1"]}],
             )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Failures" in resp
         finally:
             client.delete_lf_tag(TagKey=tag_key)
 
@@ -531,8 +541,11 @@ class TestLakeFormationTransactions:
         """CancelTransaction cancels a started transaction."""
         start_resp = client.start_transaction(TransactionType="READ_AND_WRITE")
         txn_id = start_resp["TransactionId"]
-        resp = client.cancel_transaction(TransactionId=txn_id)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        client.cancel_transaction(TransactionId=txn_id)
+        list_resp = client.list_transactions()
+        cancelled = [t for t in list_resp["Transactions"] if t["TransactionId"] == txn_id]
+        if cancelled:
+            assert cancelled[0]["TransactionStatus"] in ("cancelled", "CANCELLED", "ABORTED")
 
     def test_start_transaction_appears_in_list(self, client):
         """ListTransactions includes a freshly started transaction."""
@@ -559,16 +572,19 @@ class TestLakeFormationDataCellsFilter:
     def test_create_data_cells_filter(self, client):
         """CreateDataCellsFilter creates a filter."""
         suffix = uuid.uuid4().hex[:8]
-        resp = client.create_data_cells_filter(
+        filter_name = f"filter-{suffix}"
+        client.create_data_cells_filter(
             TableData={
                 "TableCatalogId": "123456789012",
                 "DatabaseName": f"db-{suffix}",
                 "TableName": f"tbl-{suffix}",
-                "Name": f"filter-{suffix}",
+                "Name": filter_name,
                 "ColumnNames": ["col1", "col2"],
             }
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = client.list_data_cells_filter()
+        names = [f["Name"] for f in resp.get("DataCellsFilters", [])]
+        assert filter_name in names
 
     def test_create_data_cells_filter_appears_in_list(self, client):
         """ListDataCellsFilter includes the created filter."""
