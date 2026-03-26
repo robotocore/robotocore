@@ -520,6 +520,7 @@ class TestS3TablesBucketSubPaths:
         s3tables.put_table_bucket_metrics_configuration(tableBucketARN=table_bucket)
         resp = s3tables.get_table_bucket_metrics_configuration(tableBucketARN=table_bucket)
         assert "tableBucketARN" in resp
+        assert resp["tableBucketARN"] == table_bucket
 
     def test_put_table_bucket_maintenance_configuration(self, s3tables, table_bucket):
         """PutTableBucketMaintenanceConfiguration sets maintenance configuration."""
@@ -569,6 +570,7 @@ class TestS3TablesStorageClassAndExpiration:
         )
         resp = s3tables.get_table_bucket_storage_class(tableBucketARN=bucket_arn)
         assert "storageClassConfiguration" in resp
+        assert isinstance(resp["storageClassConfiguration"], dict)
 
     def test_put_table_record_expiration_configuration(self, s3tables, bucket_and_table):
         """PutTableRecordExpirationConfiguration sets expiration on a table."""
