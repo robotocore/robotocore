@@ -1006,6 +1006,7 @@ class TestConsumableResources:
         try:
             resp = batch.list_jobs_by_consumable_resource(consumableResource=name)
             assert "jobs" in resp
+            assert isinstance(resp["jobs"], list)
         finally:
             batch.delete_consumable_resource(consumableResource=name)
 
@@ -1095,6 +1096,7 @@ class TestServiceJobs:
     def test_list_service_jobs(self, batch):
         resp = batch.list_service_jobs()
         assert "jobSummaryList" in resp
+        assert isinstance(resp["jobSummaryList"], list)
 
     def test_submit_service_job(self, batch, service_job_infra):
         jq_name = service_job_infra
