@@ -816,6 +816,7 @@ class TestLogsOperations:
         """DescribeQueries."""
         resp = logs.describe_queries()
         assert "queries" in resp
+        assert isinstance(resp["queries"], list)
 
     def test_start_query_and_get_results(self, logs, log_group):
         """StartQuery / GetQueryResults - Log Insights."""
@@ -1082,6 +1083,7 @@ class TestLogsExtended:
             resp = logs.describe_destinations(DestinationNamePrefix=dest_name)
             dest = [d for d in resp["destinations"] if d["destinationName"] == dest_name][0]
             assert "accessPolicy" in dest
+            assert dest["accessPolicy"]  # non-empty policy doc
         finally:
             logs.delete_destination(destinationName=dest_name)
 
@@ -1125,14 +1127,17 @@ class TestLogsGapStubs:
             anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:dummy"
         )
         assert "anomalies" in resp
+        assert isinstance(resp["anomalies"], list)
 
     def test_list_log_anomaly_detectors(self, logs):
         resp = logs.list_log_anomaly_detectors()
         assert "anomalyDetectors" in resp
+        assert isinstance(resp["anomalyDetectors"], list)
 
     def test_list_integrations(self, logs):
         resp = logs.list_integrations()
         assert "integrationSummaries" in resp
+        assert isinstance(resp["integrationSummaries"], list)
 
 
 class TestLogsAdditionalOperations:
@@ -1270,6 +1275,7 @@ class TestLogsAdditionalOperations:
                 deliveryDestinationPolicy=policy_doc,
             )
             assert "policy" in resp
+            assert resp["policy"]  # non-empty policy object
         finally:
             logs.delete_delivery_destination(name=dest_name)
 
@@ -1289,6 +1295,7 @@ class TestLogsAdditionalOperations:
                 deliveryDestinationName=dest_name,
             )
             assert "policy" in resp
+            assert isinstance(resp["policy"], dict)
         finally:
             logs.delete_delivery_destination(name=dest_name)
 
