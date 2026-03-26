@@ -433,10 +433,12 @@ class TestTranscribeGapStubs:
     def test_list_call_analytics_categories(self, transcribe):
         resp = transcribe.list_call_analytics_categories()
         assert "Categories" in resp
+        assert isinstance(resp["Categories"], list)
 
     def test_list_call_analytics_jobs(self, transcribe):
         resp = transcribe.list_call_analytics_jobs()
         assert "CallAnalyticsJobSummaries" in resp
+        assert isinstance(resp["CallAnalyticsJobSummaries"], list)
 
     def test_list_language_models(self, transcribe):
         resp = transcribe.list_language_models()
@@ -512,6 +514,7 @@ class TestTranscribeAutoCoverage:
         """ListMedicalScribeJobs returns a response."""
         resp = client.list_medical_scribe_jobs()
         assert "MedicalScribeJobSummaries" in resp
+        assert isinstance(resp["MedicalScribeJobSummaries"], list)
 
     def test_list_vocabulary_filters(self, client):
         """ListVocabularyFilters returns a response."""
@@ -951,6 +954,7 @@ class TestTranscribeMedicalScribeJobs:
         """ListMedicalScribeJobs returns MedicalScribeJobSummaries."""
         resp = transcribe.list_medical_scribe_jobs()
         assert "MedicalScribeJobSummaries" in resp
+        assert isinstance(resp["MedicalScribeJobSummaries"], list)
 
 
 class TestTranscribeVocabularyFilters:
@@ -999,6 +1003,7 @@ class TestTranscribeCallAnalyticsAndTags:
         try:
             resp = client.get_call_analytics_job(CallAnalyticsJobName=name)
             assert "CallAnalyticsJob" in resp
+            assert isinstance(resp["CallAnalyticsJob"], dict)
         finally:
             client.delete_call_analytics_job(CallAnalyticsJobName=name)
 
@@ -1013,6 +1018,7 @@ class TestTranscribeCallAnalyticsAndTags:
             arn = f"arn:aws:transcribe:us-east-1:123456789012:vocabulary/{name}"
             resp = client.list_tags_for_resource(ResourceArn=arn)
             assert "Tags" in resp
+            assert isinstance(resp["Tags"], list)
         finally:
             client.delete_vocabulary(VocabularyName=name)
 
@@ -1077,6 +1083,7 @@ class TestTranscribeRemainingGapOps:
             Settings={"ShowSpeakerLabels": True, "MaxSpeakerLabels": 2},
         )
         assert "MedicalScribeJob" in resp
+        assert isinstance(resp["MedicalScribeJob"], dict)
         try:
             client.delete_medical_scribe_job(MedicalScribeJobName=name)
         except Exception:  # noqa: BLE001
