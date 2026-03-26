@@ -209,6 +209,7 @@ class TestMemoryDBUsers:
         assert "Users" in resp
         names = [u["Name"] for u in resp["Users"]]
         assert "default" in names
+        assert len(resp["Users"]) > 0
 
     def test_create_and_delete_user(self, memorydb):
         """CreateUser creates a user, DeleteUser removes it."""
@@ -505,6 +506,7 @@ class TestMemoryDBNewStubOps:
         )
         assert "ProcessedClusters" in resp
         assert "UnprocessedClusters" in resp
+        assert isinstance(resp["UnprocessedClusters"], list)
 
     def test_purchase_reserved_nodes_offering(self, client):
         """PurchaseReservedNodesOffering with a fake offering ID returns a ReservedNode."""
@@ -512,6 +514,7 @@ class TestMemoryDBNewStubOps:
             ReservedNodesOfferingId="fake-offering-id-xyz",
         )
         assert "ReservedNode" in resp
+        assert isinstance(resp["ReservedNode"], dict)
 
 
 class TestMemoryDBNewStubMultiRegion:
@@ -528,6 +531,7 @@ class TestMemoryDBNewStubMultiRegion:
             NodeType="db.r6g.large",
         )
         assert "MultiRegionCluster" in resp
+        assert isinstance(resp["MultiRegionCluster"], dict)
 
     def test_describe_multi_region_clusters_empty(self, client):
         """DescribeMultiRegionClusters returns a list."""
@@ -539,6 +543,7 @@ class TestMemoryDBNewStubMultiRegion:
         """DeleteMultiRegionCluster returns a MultiRegionCluster object."""
         resp = client.delete_multi_region_cluster(MultiRegionClusterName="nonexistent-cluster-xyz")
         assert "MultiRegionCluster" in resp
+        assert isinstance(resp["MultiRegionCluster"], dict)
 
     def test_describe_multi_region_parameter_groups(self, client):
         """DescribeMultiRegionParameterGroups returns a list."""
@@ -557,6 +562,7 @@ class TestMemoryDBNewStubMultiRegion:
         """FailoverShard returns a Cluster object."""
         resp = client.failover_shard(ClusterName="nonexistent-cluster-xyz", ShardName="0001")
         assert "Cluster" in resp
+        assert isinstance(resp["Cluster"], dict)
 
     def test_list_allowed_multi_region_cluster_updates(self, client):
         """ListAllowedMultiRegionClusterUpdates returns HTTP 200."""
@@ -569,3 +575,4 @@ class TestMemoryDBNewStubMultiRegion:
         """UpdateMultiRegionCluster returns a MultiRegionCluster object."""
         resp = client.update_multi_region_cluster(MultiRegionClusterName="nonexistent-cluster-xyz")
         assert "MultiRegionCluster" in resp
+        assert isinstance(resp["MultiRegionCluster"], dict)
