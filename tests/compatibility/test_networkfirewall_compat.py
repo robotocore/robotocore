@@ -753,3 +753,45 @@ class TestResourcePolicyOperations:
         with pytest.raises(ClientError) as exc_info:
             nfw.describe_resource_policy(ResourceArn=arn)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestNetworkFirewallUpdateFirewallAnalysisSettings:
+    """Tests for UpdateFirewallAnalysisSettings."""
+
+    def test_update_firewall_analysis_settings_not_found(self, nfw):
+        """UpdateFirewallAnalysisSettings raises ResourceNotFoundException for unknown firewall."""
+        with pytest.raises(ClientError) as exc_info:
+            nfw.update_firewall_analysis_settings(
+                FirewallName="nonexistent-firewall",
+                EnabledAnalysisTypes=["TLS_SNI"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_firewall_analysis_settings(self, nfw):
+        """UpdateFirewallAnalysisSettings updates analysis settings on an existing firewall."""
+        name = f"test-fw-analysis-{uuid.uuid4().hex[:8]}"
+        policy_name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        policy_resp = nfw.create_firewall_policy(
+            FirewallPolicyName=policy_name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        policy_arn = policy_resp["FirewallPolicyResponse"]["FirewallPolicyArn"]
+        nfw.create_firewall(
+            FirewallName=name,
+            FirewallPolicyArn=policy_arn,
+            VpcId="vpc-12345678",
+            SubnetMappings=[{"SubnetId": "subnet-12345678"}],
+            DeleteProtection=False,
+        )
+        try:
+            resp = nfw.update_firewall_analysis_settings(
+                FirewallName=name,
+                EnabledAnalysisTypes=["TLS_SNI"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            nfw.delete_firewall(FirewallName=name)
+            nfw.delete_firewall_policy(FirewallPolicyName=policy_name)
