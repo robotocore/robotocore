@@ -2620,7 +2620,7 @@ class TestCloudFormationDriftOps:
         """DetectStackSetDrift with nonexistent stack set returns response or error."""
         try:
             resp = client.detect_stack_set_drift(StackSetName="fake-stackset-drift-nonexist")
-            assert "ResponseMetadata" in resp
+            assert "OperationId" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2630,7 +2630,7 @@ class TestCloudFormationDriftOps:
             resp = client.describe_stack_drift_detection_status(
                 StackDriftDetectionId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
-            assert "ResponseMetadata" in resp
+            assert "DetectionStatus" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2671,7 +2671,7 @@ class TestCloudFormationResourceScan:
                     }
                 ],
             )
-            assert "ResponseMetadata" in resp
+            assert "RelatedResources" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2690,7 +2690,7 @@ class TestCloudFormationMiscOps:
                 ChangeSetName="fake-changeset-nonexist",
                 StackName="fake-hooks-stack-nonexist",
             )
-            assert "ResponseMetadata" in resp
+            assert "Status" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2712,7 +2712,7 @@ class TestCloudFormationMiscOps:
                 StackInstanceRegion="us-east-1",
                 OperationId="fake-op-id",
             )
-            assert "ResponseMetadata" in resp
+            assert "Summaries" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2722,7 +2722,7 @@ class TestCloudFormationMiscOps:
             resp = client.list_stack_set_auto_deployment_targets(
                 StackSetName="fake-ss-auto-deploy-nonexist",
             )
-            assert "ResponseMetadata" in resp
+            assert "Summaries" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2734,7 +2734,7 @@ class TestCloudFormationMiscOps:
                 OperationStatus="SUCCESS",
                 CurrentOperationStatus="IN_PROGRESS",
             )
-            assert "ResponseMetadata" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2918,7 +2918,7 @@ class TestCloudFormationStackRefactorOps:
             resp = client.describe_stack_refactor(
                 StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
-            assert "ResponseMetadata" in resp
+            assert "StackRefactorId" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2928,7 +2928,7 @@ class TestCloudFormationStackRefactorOps:
             resp = client.execute_stack_refactor(
                 StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
-            assert "ResponseMetadata" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
@@ -2938,7 +2938,7 @@ class TestCloudFormationStackRefactorOps:
             resp = client.list_stack_refactor_actions(
                 StackRefactorId="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             )
-            assert "ResponseMetadata" in resp
+            assert "StackRefactorActions" in resp
         except ClientError as e:
             assert "Code" in e.response["Error"]
 
