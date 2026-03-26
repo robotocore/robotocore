@@ -187,7 +187,7 @@ class TestKMSOperations:
         key_id = key["KeyMetadata"]["KeyId"]
 
         response = kms.list_key_policies(KeyId=key_id)
-        assert "default" in response["PolicyNames"]
+        assert response["PolicyNames"] == ["default"]
 
     def test_encrypt_decrypt_with_context(self, kms):
         key = kms.create_key(Description="context enc key")
@@ -207,8 +207,8 @@ class TestKMSOperations:
         key_id = key["KeyMetadata"]["KeyId"]
 
         response = kms.generate_data_key_without_plaintext(KeyId=key_id, KeySpec="AES_256")
-        assert "CiphertextBlob" in response
-        assert "KeyId" in response
+        assert len(response["CiphertextBlob"]) > 0
+        assert key_id in response["KeyId"]
 
     def test_re_encrypt(self, kms):
         key1 = kms.create_key(Description="reencrypt src")
@@ -699,8 +699,8 @@ class TestKMSExtended:
         key_id = key["KeyMetadata"]["KeyId"]
         try:
             resp = kms.list_key_policies(KeyId=key_id)
-            assert "PolicyNames" in resp
-            assert "default" in resp["PolicyNames"]
+            assert resp["PolicyNames"] == ["default"]
+            assert len(resp["PolicyNames"]) == 1
         finally:
             kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
 
