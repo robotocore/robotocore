@@ -525,6 +525,7 @@ class TestS3AclOperations:
         response = s3.get_bucket_acl(Bucket=bucket)
         assert "Owner" in response
         assert "Grants" in response
+        assert isinstance(response["Grants"], list)
 
     def test_get_object_acl(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="acl-test.txt", Body=b"acl test")
@@ -532,6 +533,7 @@ class TestS3AclOperations:
         response = s3.get_object_acl(Bucket=bucket, Key="acl-test.txt")
         assert "Owner" in response
         assert "Grants" in response
+        assert isinstance(response["Grants"], list)
 
 
 class TestS3CopyObject:
@@ -1528,6 +1530,7 @@ class TestS3ObjectOperations:
         s3.put_object_acl(Bucket=bucket, Key="acl.txt", ACL="public-read")
         resp = s3.get_object_acl(Bucket=bucket, Key="acl.txt")
         assert "Grants" in resp
+        assert isinstance(resp["Grants"], list)
 
     def test_list_objects_v2_prefix_delimiter(self, s3, bucket):
         for key in ["dir/a.txt", "dir/b.txt", "dir/sub/c.txt", "top.txt"]:
@@ -1553,6 +1556,7 @@ class TestS3ObjectOperations:
         resp = s3.get_bucket_acl(Bucket=bucket)
         assert "Owner" in resp
         assert "Grants" in resp
+        assert isinstance(resp["Grants"], list)
 
 
 class TestS3BucketOwnershipControls:
@@ -1939,6 +1943,7 @@ class TestS3ListDirectoryBuckets:
     def test_list_directory_buckets(self, s3):
         resp = s3.list_directory_buckets()
         assert "Buckets" in resp
+        assert isinstance(resp["Buckets"], list)
 
 
 class TestS3UploadPartCopy:
@@ -1995,6 +2000,7 @@ class TestS3CreateSession:
             resp = s3.create_session(Bucket=bucket_name)
             assert "Credentials" in resp
             assert "AccessKeyId" in resp["Credentials"]
+            assert resp["Credentials"]["AccessKeyId"]  # non-empty access key
         finally:
             s3.delete_bucket(Bucket=bucket_name)
 
