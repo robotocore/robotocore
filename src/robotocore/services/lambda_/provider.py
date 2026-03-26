@@ -377,7 +377,11 @@ async def _handle_functions(
             return _json(200, {"FunctionUrlConfigs": configs})
 
         # /functions/{name}/event-invoke-config — Event invoke config
+        # Also handles /functions/{name}/event-invoke-config/list (ListFunctionEventInvokeConfigs)
         if sub == "event-invoke-config":
+            if len(parts) >= 4 and parts[3] == "list" and method == "GET":
+                configs = backend.list_function_event_invoke_configs(func_name)
+                return _json(200, configs)
             return _handle_event_invoke_config(func_name, method, body, backend, region, account_id)
 
         # /functions/{name}/provisioned-concurrency — Provisioned concurrency
