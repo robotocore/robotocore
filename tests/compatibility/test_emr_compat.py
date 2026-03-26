@@ -76,6 +76,7 @@ class TestEMRClusterOperations:
     def test_list_steps(self, emr, cluster_id):
         resp = emr.list_steps(ClusterId=cluster_id)
         assert "Steps" in resp
+        assert isinstance(resp["Steps"], list)
 
     def test_list_instance_groups(self, emr, cluster_id):
         resp = emr.list_instance_groups(ClusterId=cluster_id)

@@ -674,7 +674,8 @@ class TestXRayGapOps:
             Name="Default",
             Rule={"Probabilistic": {"DesiredSamplingPercentage": 5.0}},
         )
-        assert "IndexingRule" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["IndexingRule"], dict)
 
 
 class TestXRayNewInsightOperations:

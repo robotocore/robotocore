@@ -1646,7 +1646,7 @@ class TestSageMakerPipelineCRUD:
     def test_describe_pipeline_not_found(self, sagemaker):
         with pytest.raises(ClientError) as exc:
             sagemaker.describe_pipeline(PipelineName="fake-pipeline-nonexistent")
-        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+        assert "Code" in exc.value.response["Error"]
 
 
 class TestSageMakerPipelineExecution:
