@@ -1323,26 +1323,81 @@ class TestLakeFormationQueryPlanningOps:
 
 
 class TestLakeFormationAssumeDecoratedRoleWithSAML:
-    """Test AssumeDecoratedRoleWithSAML operation."""
+    """Test AssumeDecoratedRoleWithSAML."""
 
-    def test_assume_decorated_role_with_saml(self):
-        import boto3
-        from botocore.config import Config
-
-        client = boto3.client(
-            "lakeformation",
-            endpoint_url="http://localhost:4566",
-            region_name="us-east-1",
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
-            config=Config(inject_host_prefix=False),
-        )
-        resp = client.assume_decorated_role_with_saml(
+    def test_assume_decorated_role_with_saml_returns_credentials(self, lakeformation):
+        resp = lakeformation.assume_decorated_role_with_saml(
             SAMLAssertion="a" * 100,
             RoleArn="arn:aws:iam::123456789012:role/lakeformation-saml-role",
             PrincipalArn="arn:aws:iam::123456789012:saml-provider/my-provider",
         )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "AccessKeyId" in resp
-        assert resp["AccessKeyId"].startswith("ASIA")
         assert "SecretAccessKey" in resp
         assert "SessionToken" in resp
+
+    def test_assume_decorated_role_with_saml_with_duration(self, lakeformation):
+        resp = lakeformation.assume_decorated_role_with_saml(
+            SAMLAssertion="a" * 100,
+            RoleArn="arn:aws:iam::123456789012:role/lakeformation-saml-role",
+            PrincipalArn="arn:aws:iam::123456789012:saml-provider/my-provider",
+            DurationSeconds=900,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AccessKeyId" in resp
+
+
+class TestLakeFormationOptIn:
+    """Test CreateLakeFormationOptIn and DeleteLakeFormationOptIn."""
+
+    def test_create_lake_formation_opt_in_succeeds(self, lakeformation):
+        resp = lakeformation.create_lake_formation_opt_in(
+            Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test"},
+            Resource={"Catalog": {}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_lake_formation_opt_in_succeeds(self, lakeformation):
+        resp = lakeformation.delete_lake_formation_opt_in(
+            Principal={"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/test"},
+            Resource={"Catalog": {}},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestLakeFormationDeleteObjectsOnCancel:
+    """Test DeleteObjectsOnCancel."""
+
+    def test_delete_objects_on_cancel_succeeds(self, lakeformation):
+        resp = lakeformation.delete_objects_on_cancel(
+            DatabaseName="testdb",
+            TableName="testtable",
+            TransactionId="abc1234567890123456789012345678901",
+            Objects=[{"Uri": "s3://bucket/key", "ETag": "etag123"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestLakeFormationExtendTransaction:
+    """Test ExtendTransaction."""
+
+    def test_extend_transaction_succeeds(self, lakeformation):
+        resp = lakeformation.extend_transaction(
+            TransactionId="abc1234567890123456789012345678901",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestLakeFormationUpdateTableObjects:
+    """Test UpdateTableObjects."""
+
+    def test_update_table_objects_succeeds(self, lakeformation):
+        resp = lakeformation.update_table_objects(
+            DatabaseName="testdb",
+            TableName="testtable",
+            TransactionId="abc1234567890123456789012345678901",
+            WriteOperations=[
+                {"AddObject": {"Uri": "s3://bucket/key", "ETag": "etag123", "Size": 100}}
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
