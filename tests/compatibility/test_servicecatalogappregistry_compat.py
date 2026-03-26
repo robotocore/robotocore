@@ -307,3 +307,36 @@ class TestDisassociateResource:
                 resourceType="CFN_STACK",
                 resource="some-stack",
             )
+
+
+class TestGetAssociatedResource:
+    """Tests for GetAssociatedResource operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("servicecatalog-appregistry")
+
+    def test_get_associated_resource_not_found(self, client):
+        """GetAssociatedResource raises ResourceNotFoundException for nonexistent app."""
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_associated_resource(
+                application="nonexistent-app-xyz",
+                resourceType="CFN_STACK",
+                resource="some-stack",
+            )
+
+
+class TestSyncResource:
+    """Tests for SyncResource operation."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("servicecatalog-appregistry")
+
+    def test_sync_resource_not_found(self, client):
+        """SyncResource raises ResourceNotFoundException for nonexistent resource."""
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.sync_resource(
+                resourceType="CFN_STACK",
+                resource="nonexistent-stack-xyz",
+            )

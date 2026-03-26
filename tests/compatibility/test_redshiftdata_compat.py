@@ -111,3 +111,23 @@ class TestRedshiftDataOperations:
     def test_get_statement_result_v2_not_found(self, redshiftdata):
         with pytest.raises(redshiftdata.exceptions.ResourceNotFoundException):
             redshiftdata.get_statement_result_v2(Id=str(uuid.uuid4()))
+
+    def test_get_statement_result(self, redshiftdata):
+        exec_resp = redshiftdata.execute_statement(
+            ClusterIdentifier="test-cluster",
+            Database="dev",
+            Sql="SELECT 1",
+        )
+        stmt_id = exec_resp["Id"]
+        resp = redshiftdata.get_statement_result(Id=stmt_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Records" in resp
+
+    def test_get_statement_result_not_found(self, redshiftdata):
+        with pytest.raises(redshiftdata.exceptions.ResourceNotFoundException):
+            redshiftdata.get_statement_result(Id=str(uuid.uuid4()))
+
+    def test_cancel_statement_not_found(self, redshiftdata):
+        """CancelStatement raises ResourceNotFoundException for unknown ID."""
+        with pytest.raises(redshiftdata.exceptions.ResourceNotFoundException):
+            redshiftdata.cancel_statement(Id=str(uuid.uuid4()))
