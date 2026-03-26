@@ -3592,3 +3592,69 @@ class TestIoTRemainingGapOps:
             clientRequestToken=f"token-{uuid.uuid4().hex[:8]}",
         )
         assert "taskId" in resp
+
+
+class TestIoTMitigationActionsLifecycle:
+    """Tests for the full lifecycle of audit and detect mitigation action tasks."""
+
+    def test_audit_mitigation_task_lifecycle(self, iot):
+        """Start, describe, and cancel an audit mitigation actions task."""
+        action_name = _unique("ma")
+        iot.create_mitigation_action(
+            actionName=action_name,
+            roleArn="arn:aws:iam::123456789012:role/fake",
+            actionParams={
+                "publishFindingToSnsParams": {
+                    "topicArn": "arn:aws:sns:us-east-1:123456789012:topic"
+                }
+            },
+        )
+        task_id = _unique("audit-task")
+        start_resp = iot.start_audit_mitigation_actions_task(
+            taskId=task_id,
+            target={
+                "auditCheckToReasonCodeFilter": {
+                    "CA_CERTIFICATE_EXPIRING_CHECK": ["CERTIFICATE_APPROACHING_EXPIRATION"]
+                }
+            },
+            auditCheckToActionsMapping={"CA_CERTIFICATE_EXPIRING_CHECK": [action_name]},
+            clientRequestToken=uuid.uuid4().hex,
+        )
+        assert start_resp["taskId"] == task_id
+
+        # DescribeAuditMitigationActionsTask returns stored task
+        desc = iot.describe_audit_mitigation_actions_task(taskId=task_id)
+        assert desc["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "taskStatus" in desc
+
+        # ListAuditMitigationActionsTasks returns list (may be empty if moto doesn't store)
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=1)
+        list_resp = iot.list_audit_mitigation_actions_tasks(startTime=start, endTime=now)
+        assert "tasks" in list_resp
+
+        # CancelAuditMitigationActionsTask
+        cancel_resp = iot.cancel_audit_mitigation_actions_task(taskId=task_id)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        iot.delete_mitigation_action(actionName=action_name)
+
+    def test_detect_mitigation_task_lifecycle(self, iot):
+        """Start, list, and cancel a detect mitigation actions task."""
+        task_id = _unique("detect-task")
+        start_resp = iot.start_detect_mitigation_actions_task(
+            taskId=task_id,
+            target={"securityProfileName": "test-profile"},
+            actions=["RESET_CONFIDENCE_SCORE"],
+        )
+        assert start_resp["taskId"] == task_id
+
+        # ListDetectMitigationActionsTasks returns list
+        now = datetime.datetime.now(datetime.UTC)
+        start = now - datetime.timedelta(days=1)
+        list_resp = iot.list_detect_mitigation_actions_tasks(startTime=start, endTime=now)
+        assert "tasks" in list_resp
+
+        # CancelDetectMitigationActionsTask
+        cancel_resp = iot.cancel_detect_mitigation_actions_task(taskId=task_id)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
