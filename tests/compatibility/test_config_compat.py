@@ -479,6 +479,7 @@ class TestConfigCompliance:
             ResultToken="test-token",
         )
         assert "FailedEvaluations" in response
+        assert isinstance(response["FailedEvaluations"], list)
         config.delete_config_rule(ConfigRuleName="eval-rule")
 
     def test_describe_config_rule_evaluation_status(self, config):
@@ -495,6 +496,7 @@ class TestConfigCompliance:
             ConfigRuleNames=["eval-status-rule"]
         )
         assert "ConfigRulesEvaluationStatus" in response
+        assert isinstance(response["ConfigRulesEvaluationStatus"], list)
         config.delete_config_rule(ConfigRuleName="eval-status-rule")
 
 
@@ -666,6 +668,7 @@ class TestConfigExtended:
     def test_describe_compliance_by_resource(self, config):
         resp = config.describe_compliance_by_resource(ResourceType="AWS::S3::Bucket")
         assert "ComplianceByResources" in resp
+        assert isinstance(resp["ComplianceByResources"], list)
 
     def test_get_compliance_details_by_config_rule(self, config):
         name = "comp-detail-rule"
@@ -681,6 +684,7 @@ class TestConfigExtended:
         try:
             resp = config.get_compliance_details_by_config_rule(ConfigRuleName=name)
             assert "EvaluationResults" in resp
+            assert isinstance(resp["EvaluationResults"], list)
         finally:
             config.delete_config_rule(ConfigRuleName=name)
 
@@ -754,6 +758,7 @@ class TestConfigExtended:
         try:
             resp = config.list_discovered_resources(resourceType="AWS::S3::Bucket")
             assert "resourceIdentifiers" in resp
+            assert isinstance(resp["resourceIdentifiers"], list)
         finally:
             s3.delete_bucket(Bucket=bucket_name)
 
@@ -792,10 +797,12 @@ class TestConfigGapStubs:
     def test_describe_organization_conformance_pack_statuses(self, config):
         resp = config.describe_organization_conformance_pack_statuses()
         assert "OrganizationConformancePackStatuses" in resp
+        assert isinstance(resp["OrganizationConformancePackStatuses"], list)
 
     def test_describe_pending_aggregation_requests(self, config):
         resp = config.describe_pending_aggregation_requests()
         assert "PendingAggregationRequests" in resp
+        assert isinstance(resp["PendingAggregationRequests"], list)
 
     def test_describe_retention_configurations(self, config):
         resp = config.describe_retention_configurations()
@@ -804,6 +811,7 @@ class TestConfigGapStubs:
     def test_get_compliance_details_by_config_rule_stub(self, config):
         resp = config.get_compliance_details_by_config_rule(ConfigRuleName="dummy")
         assert "EvaluationResults" in resp
+        assert isinstance(resp["EvaluationResults"], list)
 
     def test_get_compliance_details_by_resource_stub(self, config):
         resp = config.get_compliance_details_by_resource(
@@ -814,6 +822,7 @@ class TestConfigGapStubs:
     def test_list_conformance_pack_compliance_scores(self, config):
         resp = config.list_conformance_pack_compliance_scores()
         assert "ConformancePackComplianceScores" in resp
+        assert isinstance(resp["ConformancePackComplianceScores"], list)
 
     def test_list_stored_queries(self, config):
         resp = config.list_stored_queries()
@@ -831,6 +840,7 @@ class TestConfigAutoCoverage:
         """DescribeDeliveryChannelStatus returns a response."""
         resp = client.describe_delivery_channel_status()
         assert "DeliveryChannelsStatus" in resp
+        assert isinstance(resp["DeliveryChannelsStatus"], list)
 
     def test_describe_organization_config_rule_statuses(self, client):
         """DescribeOrganizationConfigRuleStatuses returns a response."""
@@ -841,11 +851,13 @@ class TestConfigAutoCoverage:
         """GetComplianceSummaryByConfigRule returns a response."""
         resp = client.get_compliance_summary_by_config_rule()
         assert "ComplianceSummary" in resp
+        assert isinstance(resp["ComplianceSummary"], dict)
 
     def test_get_compliance_summary_by_resource_type(self, client):
         """GetComplianceSummaryByResourceType returns a response."""
         resp = client.get_compliance_summary_by_resource_type()
         assert "ComplianceSummariesByResourceType" in resp
+        assert isinstance(resp["ComplianceSummariesByResourceType"], list)
 
     def test_get_custom_rule_policy(self, client):
         """GetCustomRulePolicy returns a response for a given ConfigRuleName."""
@@ -856,6 +868,7 @@ class TestConfigAutoCoverage:
         """GetDiscoveredResourceCounts returns a response."""
         resp = client.get_discovered_resource_counts()
         assert "totalDiscoveredResources" in resp
+        assert isinstance(resp["totalDiscoveredResources"], int)
 
     def test_list_configuration_recorders(self, client):
         """ListConfigurationRecorders returns a response."""
@@ -892,6 +905,7 @@ class TestConfigBatchResourceConfig:
         )
         assert "baseConfigurationItems" in resp
         assert "unprocessedResourceKeys" in resp
+        assert isinstance(resp["unprocessedResourceKeys"], list)
 
     def test_batch_get_aggregate_resource_config(self, client):
         """BatchGetAggregateResourceConfig returns results."""
@@ -914,6 +928,7 @@ class TestConfigBatchResourceConfig:
             )
             assert "BaseConfigurationItems" in resp
             assert "UnprocessedResourceIdentifiers" in resp
+            assert isinstance(resp["UnprocessedResourceIdentifiers"], list)
         finally:
             client.delete_configuration_aggregator(ConfigurationAggregatorName=agg_name)
 
@@ -986,6 +1001,7 @@ class TestSelectResourceConfig:
             Expression="SELECT resourceId WHERE resourceType = 'AWS::S3::Bucket'",
         )
         assert "Results" in resp
+        assert isinstance(resp["Results"], list)
 
 
 class TestAggregateDiscoveredResources:
@@ -1285,6 +1301,7 @@ class TestConfigAggregationOperations:
         )
         assert "baseConfigurationItems" in resp
         assert "unprocessedResourceKeys" in resp
+        assert isinstance(resp["unprocessedResourceKeys"], list)
 
     def test_describe_conformance_pack_status_all(self, config):
         """DescribeConformancePackStatus returns list."""
@@ -1321,6 +1338,7 @@ class TestConfigAggregationOperations:
         # Verify it's discoverable
         resp = config.list_discovered_resources(resourceType="AWS::S3::Bucket")
         assert "resourceIdentifiers" in resp
+        assert isinstance(resp["resourceIdentifiers"], list)
 
         config.delete_resource_config(
             ResourceType="AWS::S3::Bucket",
@@ -1333,6 +1351,7 @@ class TestConfigAggregationOperations:
             Expression="SELECT resourceId WHERE resourceType = 'AWS::S3::Bucket'"
         )
         assert "Results" in resp
+        assert isinstance(resp["Results"], list)
 
     def test_put_retention_configuration(self, config):
         """PutRetentionConfiguration creates a configuration."""
@@ -1695,6 +1714,7 @@ class TestConfigAdditionalOps:
             EvaluationMode="PROACTIVE",
         )
         assert "ResourceEvaluationId" in resp
+        assert len(resp["ResourceEvaluationId"]) > 0
 
 
 class TestConfigAggregateResourceConfig:
@@ -1717,6 +1737,7 @@ class TestConfigAggregateResourceConfig:
                 },
             )
             assert "ConfigurationItem" in resp
+            assert isinstance(resp["ConfigurationItem"], dict)
         finally:
             config.delete_configuration_aggregator(ConfigurationAggregatorName="test-agg-resource")
 
@@ -1808,6 +1829,7 @@ class TestConfigRemediationExceptions:
                 ],
             )
             assert "FailedBatches" in del_resp
+            assert isinstance(del_resp["FailedBatches"], list)
         finally:
             config.delete_config_rule(ConfigRuleName="del-remediation-exc-rule")
 
@@ -1846,7 +1868,7 @@ class TestConfigGapOperations:
             RequesterAccountId="123456789012",
             RequesterAwsRegion="us-east-1",
         )
-        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_delete_service_linked_configuration_recorder_returns_name_arn(self, config):
         """DeleteServiceLinkedConfigurationRecorder returns Arn and Name."""
@@ -1855,6 +1877,7 @@ class TestConfigGapOperations:
         )
         assert "Arn" in resp
         assert "Name" in resp
+        assert isinstance(resp["Arn"], str)
 
     def test_deliver_config_snapshot_returns_snapshot_id(self, config):
         """DeliverConfigSnapshot returns a configSnapshotId."""
@@ -1868,6 +1891,7 @@ class TestConfigGapOperations:
             OrganizationConfigRuleName="test-rule",
         )
         assert "PolicyText" in resp
+        assert isinstance(resp["PolicyText"], str)
 
     def test_put_service_linked_configuration_recorder_returns_name_arn(self, config):
         """PutServiceLinkedConfigurationRecorder returns Arn and Name."""
@@ -1876,6 +1900,7 @@ class TestConfigGapOperations:
         )
         assert "Arn" in resp
         assert "Name" in resp
+        assert isinstance(resp["Arn"], str)
 
     def test_select_aggregate_resource_config_returns_results(self, config):
         """SelectAggregateResourceConfig returns Results and QueryInfo."""
@@ -1885,6 +1910,7 @@ class TestConfigGapOperations:
         )
         assert "Results" in resp
         assert "QueryInfo" in resp
+        assert isinstance(resp["Results"], list)
 
     def test_associate_resource_types_returns_recorder(self, config):
         """AssociateResourceTypes returns ConfigurationRecorder."""
@@ -1893,6 +1919,7 @@ class TestConfigGapOperations:
             ResourceTypes=["AWS::EC2::Instance"],
         )
         assert "ConfigurationRecorder" in resp
+        assert isinstance(resp["ConfigurationRecorder"], dict)
 
     def test_disassociate_resource_types_returns_recorder(self, config):
         """DisassociateResourceTypes returns ConfigurationRecorder."""
@@ -1901,3 +1928,4 @@ class TestConfigGapOperations:
             ResourceTypes=["AWS::EC2::Instance"],
         )
         assert "ConfigurationRecorder" in resp
+        assert isinstance(resp["ConfigurationRecorder"], dict)
