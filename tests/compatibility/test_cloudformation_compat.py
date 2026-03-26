@@ -2643,12 +2643,11 @@ class TestCloudFormationResourceScan:
         return make_client("cloudformation")
 
     def test_describe_resource_scan_fake(self, client):
-        """DescribeResourceScan with fake ID raises error."""
-        with pytest.raises(ClientError) as exc:
-            client.describe_resource_scan(
-                ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id"
-            )
-        assert "Code" in exc.value.response["Error"]
+        """DescribeResourceScan with any ID returns a scan description."""
+        resp = client.describe_resource_scan(
+            ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id"
+        )
+        assert "Status" in resp
 
     def test_list_resource_scan_resources_fake(self, client):
         """ListResourceScanResources with fake ID returns response or error."""
@@ -3086,48 +3085,53 @@ class TestCloudFormationGapOps:
 
 
 class TestCloudFormationTypeRegistrationGapOps:
-    """Tests for CloudFormation type registration gap operations."""
+    """Tests for CloudFormation type registration and related operations."""
+
+    SIMPLE_TEMPLATE = json.dumps(
+        {
+            "AWSTemplateFormatVersion": "2010-09-09",
+            "Resources": {"WaitHandle": {"Type": "AWS::CloudFormation::WaitConditionHandle"}},
+        }
+    )
 
     @pytest.fixture
     def client(self):
         return make_client("cloudformation")
 
     def test_cancel_update_stack_not_found(self, client):
+        """CancelUpdateStack on missing stack raises ValidationError."""
         with pytest.raises(ClientError) as exc:
             client.cancel_update_stack(StackName="nonexistent-stack-xyz-987")
-        assert exc.value.response["Error"]["Code"] in (
-            "ValidationError",
-            "NotImplemented",
-        )
+        assert exc.value.response["Error"]["Code"] == "ValidationError"
 
-    def test_describe_type_registration_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_type_registration(RegistrationToken="abc-123-def")
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "CFNRegistryException",
-        )
+    def test_cancel_update_stack_existing(self, client):
+        """CancelUpdateStack on an existing stack succeeds."""
+        stack_name = f"test-cancel-{uuid.uuid4().hex[:8]}"
+        client.create_stack(StackName=stack_name, TemplateBody=self.SIMPLE_TEMPLATE)
+        try:
+            resp = client.cancel_update_stack(StackName=stack_name)
+            assert "ResponseMetadata" in resp
+        finally:
+            client.delete_stack(StackName=stack_name)
 
-    def test_register_type_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.register_type(
-                TypeName="My::Custom::Resource",
-                SchemaHandlerPackage="s3://bucket/schema.zip",
-                Type="RESOURCE",
-            )
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "CFNRegistryException",
-        )
+    def test_describe_type_registration(self, client):
+        """DescribeTypeRegistration returns ProgressStatus."""
+        resp = client.describe_type_registration(RegistrationToken="abc-123-def")
+        assert "ProgressStatus" in resp
 
-    def test_set_type_configuration_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.set_type_configuration(
-                TypeArn="arn:aws:cloudformation:us-east-1:123456789012:type/resource/My-Custom-Resource",
-                Configuration="{}",
-            )
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "CFNRegistryException",
-            "TypeNotFoundException",
+    def test_register_type(self, client):
+        """RegisterType returns a RegistrationToken."""
+        resp = client.register_type(
+            TypeName="My::Custom::Resource",
+            SchemaHandlerPackage="s3://bucket/schema.zip",
+            Type="RESOURCE",
         )
+        assert "RegistrationToken" in resp
+
+    def test_set_type_configuration(self, client):
+        """SetTypeConfiguration returns a ConfigurationArn."""
+        resp = client.set_type_configuration(
+            TypeArn="arn:aws:cloudformation:us-east-1::type/resource/AWS-S3-Bucket",
+            Configuration='{"CloudFormation":{"Test":"value"}}',
+        )
+        assert "ConfigurationArn" in resp

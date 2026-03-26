@@ -1195,6 +1195,32 @@ def _execute_change_set(store: CfnStore, params: dict, region: str, account_id: 
     return {}
 
 
+def _cancel_update_stack(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("StackName", "")
+    if not name:
+        raise CfnError("ValidationError", "StackName is required")
+
+    stack = store.get_stack(name)
+    if not stack:
+        raise CfnError("ValidationError", f"Stack with id {name} does not exist")
+
+    # Transition the stack to UPDATE_ROLLBACK_IN_PROGRESS then UPDATE_ROLLBACK_COMPLETE.
+    # In a real emulator the update is synchronous so by the time we'd cancel it's
+    # already done.  Mirror the real AWS behavior: cancel moves the status to the
+    # rollback-complete terminal state so subsequent operations see a stable stack.
+    stack.status = "UPDATE_ROLLBACK_COMPLETE"
+    stack.status_reason = "User Initiated"
+    _add_event(
+        stack,
+        name,
+        "AWS::CloudFormation::Stack",
+        name,
+        "UPDATE_ROLLBACK_COMPLETE",
+        "User Initiated",
+    )
+    return {}
+
+
 def _list_exports(store: CfnStore, params: dict, region: str, account_id: str) -> dict:
     exports = []
     for export_name, export_data in store.exports.items():
@@ -1270,6 +1296,7 @@ def _error(code: str, message: str, status: int) -> Response:
 _ACTION_MAP: dict[str, Callable] = {
     "CreateStack": _create_stack,
     "UpdateStack": _update_stack,
+    "CancelUpdateStack": _cancel_update_stack,
     "DeleteStack": _delete_stack_action,
     "DescribeStacks": _describe_stacks,
     "ListStacks": _list_stacks,
