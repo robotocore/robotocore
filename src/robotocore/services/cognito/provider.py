@@ -1681,6 +1681,81 @@ def _get_user_auth_factors(store: CognitoStore, params: dict, region: str, accou
     }
 
 
+def _list_resource_servers(store: CognitoStore, params: dict, region: str, account_id: str) -> dict:
+    """List resource servers — delegate to Moto backend with error handling."""
+    pool_id = params.get("UserPoolId", "")
+    _require_pool(store, pool_id)
+    try:
+        from moto.backends import get_backend  # noqa: I001
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        pool = backend.user_pools.get(pool_id)
+        if pool is None:
+            return {"ResourceServers": []}
+        servers = pool.resource_servers.values()
+        return {
+            "ResourceServers": [
+                {"UserPoolId": s.user_pool_id, "Identifier": s.identifier, "Name": s.name}
+                for s in servers
+            ]
+        }
+    except Exception:  # noqa: BLE001
+        return {"ResourceServers": []}
+
+
+def _delete_resource_server(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    identifier = params.get("Identifier", "")
+    _require_pool(store, pool_id)
+    try:
+        from moto.backends import get_backend  # noqa: I001
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        pool = backend.user_pools.get(pool_id)
+        if pool and identifier in pool.resource_servers:
+            del pool.resource_servers[identifier]
+    except Exception:  # noqa: BLE001
+        pass
+    return {}
+
+
+def _update_resource_server(
+    store: CognitoStore, params: dict, region: str, account_id: str
+) -> dict:
+    pool_id = params.get("UserPoolId", "")
+    identifier = params.get("Identifier", "")
+    name = params.get("Name", "")
+    scopes = params.get("Scopes", [])
+    _require_pool(store, pool_id)
+    try:
+        from moto.backends import get_backend  # noqa: I001
+
+        backend = get_backend("cognito-idp")[account_id][region]
+        pool = backend.user_pools.get(pool_id)
+        if pool:
+            server = pool.resource_servers.get(identifier)
+            if server:
+                server.name = name
+                server.scopes = scopes
+                return {
+                    "ResourceServer": {
+                        "UserPoolId": pool_id,
+                        "Identifier": identifier,
+                        "Name": name,
+                        "Scopes": scopes,
+                    }
+                }
+    except Exception:  # noqa: BLE001
+        pass
+    raise CognitoError(
+        "ResourceNotFoundException",
+        f"Resource server {identifier} not found.",
+        404,
+    )
+
+
 def _admin_disable_provider_for_user(
     store: CognitoStore, params: dict, region: str, account_id: str
 ) -> dict:
@@ -2448,4 +2523,8 @@ _ACTION_MAP: dict[str, Callable] = {
     "CompleteWebAuthnRegistration": _complete_web_authn_registration,
     "DeleteWebAuthnCredential": _delete_web_authn_credential,
     "ListWebAuthnCredentials": _list_web_authn_credentials,
+    # Resource servers (native handlers to avoid Moto key errors)
+    "ListResourceServers": _list_resource_servers,
+    "DeleteResourceServer": _delete_resource_server,
+    "UpdateResourceServer": _update_resource_server,
 }

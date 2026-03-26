@@ -214,3 +214,355 @@ class TestNetworkFirewallOperations:
         configs = resp["LoggingConfiguration"]["LogDestinationConfigs"]
         assert len(configs) == 1
         assert configs[0]["LogType"] == "ALERT"
+
+
+class TestFirewallPolicyOperations:
+    def test_create_firewall_policy(self, nfw):
+        """CreateFirewallPolicy returns UpdateToken and FirewallPolicyResponse."""
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        assert "UpdateToken" in resp
+        assert "FirewallPolicyResponse" in resp
+        pr = resp["FirewallPolicyResponse"]
+        assert pr["FirewallPolicyName"] == name
+        assert pr["FirewallPolicyArn"].startswith("arn:aws:network-firewall:")
+        assert pr["FirewallPolicyStatus"] == "ACTIVE"
+
+    def test_list_firewall_policies(self, nfw):
+        """ListFirewallPolicies returns FirewallPolicies list."""
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        resp = nfw.list_firewall_policies()
+        assert "FirewallPolicies" in resp
+        names = [p["Name"] for p in resp["FirewallPolicies"]]
+        assert name in names
+
+    def test_describe_firewall_policy(self, nfw):
+        """DescribeFirewallPolicy returns UpdateToken, FirewallPolicy, and FirewallPolicyResponse."""  # noqa: E501
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        resp = nfw.describe_firewall_policy(FirewallPolicyName=name)
+        assert "UpdateToken" in resp
+        assert "FirewallPolicy" in resp
+        assert "FirewallPolicyResponse" in resp
+        assert resp["FirewallPolicyResponse"]["FirewallPolicyName"] == name
+
+    def test_update_firewall_policy(self, nfw):
+        """UpdateFirewallPolicy returns updated policy response."""
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        create_resp = nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        resp = nfw.update_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:drop"],
+                "StatelessFragmentDefaultActions": ["aws:drop"],
+            },
+            UpdateToken=create_resp["UpdateToken"],
+        )
+        assert "UpdateToken" in resp
+        assert "FirewallPolicyResponse" in resp
+
+    def test_delete_firewall_policy(self, nfw):
+        """DeleteFirewallPolicy removes the policy."""
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        resp = nfw.delete_firewall_policy(FirewallPolicyName=name)
+        assert "FirewallPolicyResponse" in resp
+
+        # Policy should not be listed after deletion
+        list_resp = nfw.list_firewall_policies()
+        names = [p["Name"] for p in list_resp["FirewallPolicies"]]
+        assert name not in names
+
+    def test_describe_firewall_policy_not_found(self, nfw):
+        """DescribeFirewallPolicy raises ResourceNotFoundException for missing policy."""
+        with pytest.raises(ClientError) as exc_info:
+            nfw.describe_firewall_policy(FirewallPolicyName=f"nonexistent-{uuid.uuid4().hex[:8]}")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestRuleGroupOperations:
+    def test_create_rule_group_stateful(self, nfw):
+        """CreateRuleGroup (STATEFUL) returns UpdateToken and RuleGroupResponse."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_rule_group(
+            RuleGroupName=name,
+            Type="STATEFUL",
+            Capacity=100,
+        )
+        assert "UpdateToken" in resp
+        assert "RuleGroupResponse" in resp
+        rg = resp["RuleGroupResponse"]
+        assert rg["RuleGroupName"] == name
+        assert rg["Type"] == "STATEFUL"
+        assert rg["Capacity"] == 100
+        assert "stateful-rulegroup" in rg["RuleGroupArn"]
+
+    def test_create_rule_group_stateless(self, nfw):
+        """CreateRuleGroup (STATELESS) returns correct type in ARN."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_rule_group(
+            RuleGroupName=name,
+            Type="STATELESS",
+            Capacity=100,
+        )
+        rg = resp["RuleGroupResponse"]
+        assert rg["Type"] == "STATELESS"
+        assert "stateless-rulegroup" in rg["RuleGroupArn"]
+
+    def test_list_rule_groups(self, nfw):
+        """ListRuleGroups returns the created rule groups."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        nfw.create_rule_group(RuleGroupName=name, Type="STATEFUL", Capacity=100)
+        resp = nfw.list_rule_groups()
+        assert "RuleGroups" in resp
+        names = [rg["Name"] for rg in resp["RuleGroups"]]
+        assert name in names
+
+    def test_describe_rule_group(self, nfw):
+        """DescribeRuleGroup returns UpdateToken, RuleGroup, and RuleGroupResponse."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        nfw.create_rule_group(RuleGroupName=name, Type="STATEFUL", Capacity=100)
+        resp = nfw.describe_rule_group(RuleGroupName=name, Type="STATEFUL")
+        assert "UpdateToken" in resp
+        assert "RuleGroup" in resp
+        assert "RuleGroupResponse" in resp
+        assert resp["RuleGroupResponse"]["RuleGroupName"] == name
+
+    def test_describe_rule_group_metadata(self, nfw):
+        """DescribeRuleGroupMetadata returns metadata fields."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        nfw.create_rule_group(RuleGroupName=name, Type="STATEFUL", Capacity=100)
+        resp = nfw.describe_rule_group_metadata(RuleGroupName=name, Type="STATEFUL")
+        assert resp["RuleGroupName"] == name
+        assert resp["Type"] == "STATEFUL"
+        assert resp["Capacity"] == 100
+
+    def test_describe_rule_group_summary(self, nfw):
+        """DescribeRuleGroupSummary returns summary fields."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        nfw.create_rule_group(RuleGroupName=name, Type="STATEFUL", Capacity=100)
+        resp = nfw.describe_rule_group_summary(RuleGroupName=name, Type="STATEFUL")
+        assert resp["RuleGroupName"] == name
+
+    def test_update_rule_group(self, nfw):
+        """UpdateRuleGroup returns updated response."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        create_resp = nfw.create_rule_group(RuleGroupName=name, Type="STATEFUL", Capacity=100)
+        resp = nfw.update_rule_group(
+            RuleGroupName=name,
+            Type="STATEFUL",
+            RuleGroup={
+                "RulesSource": {
+                    "RulesSourceList": {
+                        "Targets": ["example.com"],
+                        "TargetTypes": ["HTTP_HOST"],
+                        "GeneratedRulesType": "DENYLIST",
+                    }
+                }
+            },
+            UpdateToken=create_resp["UpdateToken"],
+        )
+        assert "UpdateToken" in resp
+        assert "RuleGroupResponse" in resp
+
+    def test_delete_rule_group(self, nfw):
+        """DeleteRuleGroup removes the rule group."""
+        name = f"test-rg-{uuid.uuid4().hex[:8]}"
+        nfw.create_rule_group(RuleGroupName=name, Type="STATEFUL", Capacity=100)
+        resp = nfw.delete_rule_group(RuleGroupName=name, Type="STATEFUL")
+        assert "RuleGroupResponse" in resp
+
+        # Should not appear in list
+        list_resp = nfw.list_rule_groups()
+        names = [rg["Name"] for rg in list_resp["RuleGroups"]]
+        assert name not in names
+
+    def test_describe_rule_group_not_found(self, nfw):
+        """DescribeRuleGroup raises ResourceNotFoundException for missing group."""
+        with pytest.raises(ClientError) as exc_info:
+            nfw.describe_rule_group(
+                RuleGroupName=f"nonexistent-{uuid.uuid4().hex[:8]}",
+                Type="STATEFUL",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestTLSInspectionConfigurationOperations:
+    def test_create_tls_inspection_configuration(self, nfw):
+        """CreateTLSInspectionConfiguration returns UpdateToken and TLSInspectionConfigurationResponse."""  # noqa: E501
+        name = f"test-tls-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_tls_inspection_configuration(
+            TLSInspectionConfigurationName=name,
+            TLSInspectionConfiguration={"ServerCertificateConfigurations": []},
+        )
+        assert "UpdateToken" in resp
+        assert "TLSInspectionConfigurationResponse" in resp
+        tls = resp["TLSInspectionConfigurationResponse"]
+        assert tls["TLSInspectionConfigurationName"] == name
+        assert tls["TLSInspectionConfigurationArn"].startswith("arn:aws:network-firewall:")
+        assert tls["TLSInspectionConfigurationStatus"] == "ACTIVE"
+
+    def test_list_tls_inspection_configurations(self, nfw):
+        """ListTLSInspectionConfigurations returns the created configs."""
+        name = f"test-tls-{uuid.uuid4().hex[:8]}"
+        nfw.create_tls_inspection_configuration(
+            TLSInspectionConfigurationName=name,
+            TLSInspectionConfiguration={"ServerCertificateConfigurations": []},
+        )
+        resp = nfw.list_tls_inspection_configurations()
+        assert "TLSInspectionConfigurations" in resp
+        names = [c["Name"] for c in resp["TLSInspectionConfigurations"]]
+        assert name in names
+
+    def test_describe_tls_inspection_configuration(self, nfw):
+        """DescribeTLSInspectionConfiguration returns configuration details."""
+        name = f"test-tls-{uuid.uuid4().hex[:8]}"
+        nfw.create_tls_inspection_configuration(
+            TLSInspectionConfigurationName=name,
+            TLSInspectionConfiguration={"ServerCertificateConfigurations": []},
+        )
+        resp = nfw.describe_tls_inspection_configuration(TLSInspectionConfigurationName=name)
+        assert "UpdateToken" in resp
+        assert "TLSInspectionConfiguration" in resp
+        assert "TLSInspectionConfigurationResponse" in resp
+        assert resp["TLSInspectionConfigurationResponse"]["TLSInspectionConfigurationName"] == name
+
+    def test_update_tls_inspection_configuration(self, nfw):
+        """UpdateTLSInspectionConfiguration returns updated response."""
+        name = f"test-tls-{uuid.uuid4().hex[:8]}"
+        create_resp = nfw.create_tls_inspection_configuration(
+            TLSInspectionConfigurationName=name,
+            TLSInspectionConfiguration={"ServerCertificateConfigurations": []},
+        )
+        resp = nfw.update_tls_inspection_configuration(
+            TLSInspectionConfigurationName=name,
+            TLSInspectionConfiguration={"ServerCertificateConfigurations": []},
+            UpdateToken=create_resp["UpdateToken"],
+        )
+        assert "UpdateToken" in resp
+        assert "TLSInspectionConfigurationResponse" in resp
+
+    def test_delete_tls_inspection_configuration(self, nfw):
+        """DeleteTLSInspectionConfiguration removes the config."""
+        name = f"test-tls-{uuid.uuid4().hex[:8]}"
+        nfw.create_tls_inspection_configuration(
+            TLSInspectionConfigurationName=name,
+            TLSInspectionConfiguration={"ServerCertificateConfigurations": []},
+        )
+        resp = nfw.delete_tls_inspection_configuration(TLSInspectionConfigurationName=name)
+        assert "TLSInspectionConfigurationResponse" in resp
+
+        # Should not appear in list
+        list_resp = nfw.list_tls_inspection_configurations()
+        names = [c["Name"] for c in list_resp["TLSInspectionConfigurations"]]
+        assert name not in names
+
+
+class TestTaggingOperations:
+    def test_tag_resource_and_list_tags(self, nfw):
+        """TagResource adds tags, ListTagsForResource returns them."""
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        arn = resp["FirewallPolicyResponse"]["FirewallPolicyArn"]
+        nfw.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "prod"}])
+        tags_resp = nfw.list_tags_for_resource(ResourceArn=arn)
+        assert "Tags" in tags_resp
+        tag_map = {t["Key"]: t["Value"] for t in tags_resp["Tags"]}
+        assert tag_map.get("env") == "prod"
+
+    def test_untag_resource(self, nfw):
+        """UntagResource removes specified tags."""
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "ops"}],
+        )
+        arn = resp["FirewallPolicyResponse"]["FirewallPolicyArn"]
+        nfw.untag_resource(ResourceArn=arn, TagKeys=["env"])
+        tags_resp = nfw.list_tags_for_resource(ResourceArn=arn)
+        keys = [t["Key"] for t in tags_resp["Tags"]]
+        assert "env" not in keys
+        assert "team" in keys
+
+
+class TestResourcePolicyOperations:
+    def test_put_and_describe_resource_policy(self, nfw):
+        """PutResourcePolicy stores policy, DescribeResourcePolicy retrieves it."""
+        import json as _json
+
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        arn = resp["FirewallPolicyResponse"]["FirewallPolicyArn"]
+        policy_doc = _json.dumps({"Version": "2012-10-17", "Statement": []})
+        nfw.put_resource_policy(ResourceArn=arn, Policy=policy_doc)
+        desc_resp = nfw.describe_resource_policy(ResourceArn=arn)
+        assert "Policy" in desc_resp
+        assert desc_resp["Policy"] == policy_doc
+
+    def test_delete_resource_policy(self, nfw):
+        """DeleteResourcePolicy removes the policy."""
+        import json as _json
+
+        name = f"test-policy-{uuid.uuid4().hex[:8]}"
+        resp = nfw.create_firewall_policy(
+            FirewallPolicyName=name,
+            FirewallPolicy={
+                "StatelessDefaultActions": ["aws:pass"],
+                "StatelessFragmentDefaultActions": ["aws:pass"],
+            },
+        )
+        arn = resp["FirewallPolicyResponse"]["FirewallPolicyArn"]
+        policy_doc = _json.dumps({"Version": "2012-10-17", "Statement": []})
+        nfw.put_resource_policy(ResourceArn=arn, Policy=policy_doc)
+        nfw.delete_resource_policy(ResourceArn=arn)
+
+        with pytest.raises(ClientError) as exc_info:
+            nfw.describe_resource_policy(ResourceArn=arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
