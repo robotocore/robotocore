@@ -227,7 +227,12 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     "kinesisvideo": ServiceInfo(
         "kinesisvideo", ServiceStatus.MOTO_BACKED, "rest-json", "Kinesis Video Streams"
     ),
-    # kinesisvideoarchivedmedia: deregistered — shares signing name with kinesisvideo, not routable
+    "kinesisvideoarchivedmedia": ServiceInfo(
+        "kinesisvideoarchivedmedia",
+        ServiceStatus.MOTO_BACKED,
+        "rest-json",
+        "Kinesis Video Archived Media (routed via path patterns)",
+    ),
     "lakeformation": ServiceInfo(
         "lakeformation", ServiceStatus.MOTO_BACKED, "rest-json", "Lake Formation"
     ),
