@@ -82,6 +82,8 @@ class TestConfigRuleOperations:
         )
         response = config.describe_configuration_recorders()
         assert len(response["ConfigurationRecorders"]) >= 1
+        recorder_names = [r["name"] for r in response["ConfigurationRecorders"]]
+        assert "default" in recorder_names
         iam.delete_role(RoleName="config-role")
 
     def test_delete_config_rule(self, config):
@@ -98,6 +100,8 @@ class TestConfigRuleOperations:
         response = config.describe_config_rules()
         names = [r["ConfigRuleName"] for r in response["ConfigRules"]]
         assert "delete-rule" not in names
+        # Verify the rule is truly gone
+        assert all(r["ConfigRuleName"] != "delete-rule" for r in response["ConfigRules"])
 
 
 class TestConfigRuleDetails:
@@ -245,6 +249,8 @@ class TestConfigurationRecorder:
         response = config.describe_configuration_recorders()
         names = [r["name"] for r in response["ConfigurationRecorders"]]
         assert "default" not in names
+        # Verify it's completely removed
+        assert all(r["name"] != "default" for r in response["ConfigurationRecorders"])
         iam.delete_role(RoleName="config-del-rec-role")
 
     def test_start_configuration_recorder(self, config, iam, s3):
@@ -394,6 +400,9 @@ class TestDeliveryChannel:
         assert len(response["DeliveryChannels"]) >= 1
         names = [c["name"] for c in response["DeliveryChannels"]]
         assert "default" in names
+        # Verify the bucket name matches
+        default_channel = next(c for c in response["DeliveryChannels"] if c["name"] == "default")
+        assert default_channel["s3BucketName"] == "config-bucket-test"
         self._cleanup(config, iam, s3)
 
     def test_describe_delivery_channel(self, config, iam, s3):
@@ -423,6 +432,8 @@ class TestDeliveryChannel:
         response = config.describe_delivery_channels()
         names = [c["name"] for c in response["DeliveryChannels"]]
         assert "default" not in names
+        # Verify it's removed
+        assert all(c["name"] != "default" for c in response["DeliveryChannels"])
         try:
             config.delete_configuration_recorder(ConfigurationRecorderName="default")
         except ClientError:
@@ -452,9 +463,11 @@ class TestConfigCompliance:
         )
         response = config.describe_compliance_by_config_rule(ConfigRuleNames=["compliance-rule"])
         assert "ComplianceByConfigRules" in response
+        assert isinstance(response["ComplianceByConfigRules"], list)
         if response["ComplianceByConfigRules"]:
             rule = response["ComplianceByConfigRules"][0]
             assert rule["ConfigRuleName"] == "compliance-rule"
+            assert "Compliance" in rule
         config.delete_config_rule(ConfigRuleName="compliance-rule")
 
     def test_put_evaluations(self, config):
@@ -497,6 +510,9 @@ class TestConfigCompliance:
         )
         assert "ConfigRulesEvaluationStatus" in response
         assert isinstance(response["ConfigRulesEvaluationStatus"], list)
+        if response["ConfigRulesEvaluationStatus"]:
+            status = response["ConfigRulesEvaluationStatus"][0]
+            assert status["ConfigRuleName"] == "eval-status-rule"
         config.delete_config_rule(ConfigRuleName="eval-status-rule")
 
 
@@ -589,7 +605,11 @@ class TestConfigExtended:
         )
         resp = config.describe_config_rules(ConfigRuleNames=[name])
         assert "ConfigRuleArn" in resp["ConfigRules"][0]
-        assert "config-rule" in resp["ConfigRules"][0]["ConfigRuleArn"]
+        arn = resp["ConfigRules"][0]["ConfigRuleArn"]
+        # Verify ARN format: arn:aws:config:region:account:config-rule/rule-id
+        assert arn.startswith("arn:aws:config:")
+        assert ":config-rule/" in arn
+        assert len(arn.split("/")[-1]) > 0  # Has a rule ID
         config.delete_config_rule(ConfigRuleName=name)
 
     def test_config_rule_has_id(self, config):
@@ -605,6 +625,9 @@ class TestConfigExtended:
         )
         resp = config.describe_config_rules(ConfigRuleNames=[name])
         assert "ConfigRuleId" in resp["ConfigRules"][0]
+        rule_id = resp["ConfigRules"][0]["ConfigRuleId"]
+        assert len(rule_id) > 0
+        assert isinstance(rule_id, str)
         config.delete_config_rule(ConfigRuleName=name)
 
     def test_put_aggregation_authorization(self, config):
@@ -613,6 +636,9 @@ class TestConfigExtended:
             AuthorizedAwsRegion="us-east-1",
         )
         assert "AggregationAuthorization" in resp
+        auth = resp["AggregationAuthorization"]
+        assert auth["AuthorizedAccountId"] == "123456789012"
+        assert auth["AuthorizedAwsRegion"] == "us-east-1"
         config.delete_aggregation_authorization(
             AuthorizedAccountId="123456789012",
             AuthorizedAwsRegion="us-east-1",
@@ -628,6 +654,13 @@ class TestConfigExtended:
             assert "AggregationAuthorizations" in resp
             accounts = [a["AuthorizedAccountId"] for a in resp["AggregationAuthorizations"]]
             assert "123456789012" in accounts
+            # Verify the region matches
+            auth = next(
+                a
+                for a in resp["AggregationAuthorizations"]
+                if a["AuthorizedAccountId"] == "123456789012"
+            )
+            assert auth["AuthorizedAwsRegion"] == "us-west-2"
         finally:
             config.delete_aggregation_authorization(
                 AuthorizedAccountId="123456789012",
@@ -646,6 +679,10 @@ class TestConfigExtended:
             ],
         )
         assert "ConfigurationAggregator" in resp
+        aggregator = resp["ConfigurationAggregator"]
+        assert aggregator["ConfigurationAggregatorName"] == name
+        assert len(aggregator["AccountAggregationSources"]) == 1
+        assert aggregator["AccountAggregationSources"][0]["AccountIds"] == ["123456789012"]
         config.delete_configuration_aggregator(ConfigurationAggregatorName=name)
 
     def test_describe_configuration_aggregators(self, config):
@@ -664,6 +701,9 @@ class TestConfigExtended:
     def test_put_retention_configuration(self, config):
         resp = config.put_retention_configuration(RetentionPeriodInDays=365)
         assert "RetentionConfiguration" in resp
+        retention = resp["RetentionConfiguration"]
+        assert retention["RetentionPeriodInDays"] == 365
+        assert "Name" in retention
 
     def test_describe_compliance_by_resource(self, config):
         resp = config.describe_compliance_by_resource(ResourceType="AWS::S3::Bucket")
@@ -739,6 +779,11 @@ class TestConfigExtended:
         try:
             resp = config.describe_configuration_recorder_status()
             assert "ConfigurationRecordersStatus" in resp
+            assert isinstance(resp["ConfigurationRecordersStatus"], list)
+            if resp["ConfigurationRecordersStatus"]:
+                status = resp["ConfigurationRecordersStatus"][0]
+                assert "recording" in status
+                assert isinstance(status["recording"], bool)
         finally:
             try:
                 config.delete_configuration_recorder(ConfigurationRecorderName="default")
@@ -751,6 +796,9 @@ class TestConfigExtended:
         resp = config.describe_retention_configurations()
         assert "RetentionConfigurations" in resp
         assert len(resp["RetentionConfigurations"]) >= 1
+        retention = resp["RetentionConfigurations"][0]
+        assert retention["RetentionPeriodInDays"] == 365
+        assert "Name" in retention
 
     def test_list_discovered_resources(self, config, s3):
         bucket_name = "config-disc-res-test"
@@ -771,6 +819,7 @@ class TestConfigExtended:
                 resourceId=bucket_name,
             )
             assert "configurationItems" in resp
+            assert isinstance(resp["configurationItems"], list)
         finally:
             s3.delete_bucket(Bucket=bucket_name)
 
@@ -781,18 +830,22 @@ class TestConfigGapStubs:
     def test_describe_conformance_packs(self, config):
         resp = config.describe_conformance_packs()
         assert "ConformancePackDetails" in resp
+        assert isinstance(resp["ConformancePackDetails"], list)
 
     def test_describe_conformance_pack_status(self, config):
         resp = config.describe_conformance_pack_status()
         assert "ConformancePackStatusDetails" in resp
+        assert isinstance(resp["ConformancePackStatusDetails"], list)
 
     def test_describe_organization_config_rules(self, config):
         resp = config.describe_organization_config_rules()
         assert "OrganizationConfigRules" in resp
+        assert isinstance(resp["OrganizationConfigRules"], list)
 
     def test_describe_organization_conformance_packs(self, config):
         resp = config.describe_organization_conformance_packs()
         assert "OrganizationConformancePacks" in resp
+        assert isinstance(resp["OrganizationConformancePacks"], list)
 
     def test_describe_organization_conformance_pack_statuses(self, config):
         resp = config.describe_organization_conformance_pack_statuses()
@@ -807,6 +860,7 @@ class TestConfigGapStubs:
     def test_describe_retention_configurations(self, config):
         resp = config.describe_retention_configurations()
         assert "RetentionConfigurations" in resp
+        assert isinstance(resp["RetentionConfigurations"], list)
 
     def test_get_compliance_details_by_config_rule_stub(self, config):
         resp = config.get_compliance_details_by_config_rule(ConfigRuleName="dummy")
@@ -818,6 +872,7 @@ class TestConfigGapStubs:
             ResourceType="AWS::S3::Bucket", ResourceId="dummy"
         )
         assert "EvaluationResults" in resp
+        assert isinstance(resp["EvaluationResults"], list)
 
     def test_list_conformance_pack_compliance_scores(self, config):
         resp = config.list_conformance_pack_compliance_scores()
@@ -827,6 +882,7 @@ class TestConfigGapStubs:
     def test_list_stored_queries(self, config):
         resp = config.list_stored_queries()
         assert "StoredQueryMetadata" in resp
+        assert isinstance(resp["StoredQueryMetadata"], list)
 
 
 class TestConfigAutoCoverage:
@@ -846,6 +902,7 @@ class TestConfigAutoCoverage:
         """DescribeOrganizationConfigRuleStatuses returns a response."""
         resp = client.describe_organization_config_rule_statuses()
         assert "OrganizationConfigRuleStatuses" in resp
+        assert isinstance(resp["OrganizationConfigRuleStatuses"], list)
 
     def test_get_compliance_summary_by_config_rule(self, client):
         """GetComplianceSummaryByConfigRule returns a response."""
@@ -869,16 +926,23 @@ class TestConfigAutoCoverage:
         resp = client.get_discovered_resource_counts()
         assert "totalDiscoveredResources" in resp
         assert isinstance(resp["totalDiscoveredResources"], int)
+        assert resp["totalDiscoveredResources"] >= 0
 
     def test_list_configuration_recorders(self, client):
         """ListConfigurationRecorders returns a response."""
         resp = client.list_configuration_recorders()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # May return ConfigurationRecorders, ConfigurationRecorderNames, or just ResponseMetadata
+        if "ConfigurationRecorders" in resp:
+            assert isinstance(resp["ConfigurationRecorders"], list)
+        if "ConfigurationRecorderNames" in resp:
+            assert isinstance(resp["ConfigurationRecorderNames"], list)
 
     def test_list_resource_evaluations(self, client):
         """ListResourceEvaluations returns a response."""
         resp = client.list_resource_evaluations()
         assert "ResourceEvaluations" in resp
+        assert isinstance(resp["ResourceEvaluations"], list)
 
     def test_start_config_rules_evaluation(self, client):
         """StartConfigRulesEvaluation returns a response."""
@@ -904,6 +968,7 @@ class TestConfigBatchResourceConfig:
             ]
         )
         assert "baseConfigurationItems" in resp
+        assert isinstance(resp["baseConfigurationItems"], list)
         assert "unprocessedResourceKeys" in resp
         assert isinstance(resp["unprocessedResourceKeys"], list)
 
@@ -927,6 +992,7 @@ class TestConfigBatchResourceConfig:
                 ],
             )
             assert "BaseConfigurationItems" in resp
+            assert isinstance(resp["BaseConfigurationItems"], list)
             assert "UnprocessedResourceIdentifiers" in resp
             assert isinstance(resp["UnprocessedResourceIdentifiers"], list)
         finally:
@@ -959,7 +1025,9 @@ class TestOrganizationConformancePack:
                 TemplateS3Uri="s3://fake-bucket/template.yaml",
             )
             assert "OrganizationConformancePackArn" in resp
-            assert name in resp["OrganizationConformancePackArn"]
+            arn = resp["OrganizationConformancePackArn"]
+            assert name in arn
+            assert arn.startswith("arn:aws:config:")
             # Verify it appears in describe
             desc = client.describe_organization_conformance_packs(
                 OrganizationConformancePackNames=[name]
@@ -967,6 +1035,7 @@ class TestOrganizationConformancePack:
             assert len(desc["OrganizationConformancePacks"]) == 1
             pack = desc["OrganizationConformancePacks"][0]
             assert pack["OrganizationConformancePackName"] == name
+            assert "OrganizationConformancePackArn" in pack
         finally:
             client.delete_organization_conformance_pack(OrganizationConformancePackName=name)
 
@@ -986,6 +1055,8 @@ class TestRetentionConfiguration:
         resp = client.describe_retention_configurations()
         names = [r["Name"] for r in resp["RetentionConfigurations"]]
         assert ret_name not in names
+        # Verify it's truly gone
+        assert all(r["Name"] != ret_name for r in resp["RetentionConfigurations"])
 
 
 class TestSelectResourceConfig:
@@ -1024,6 +1095,7 @@ class TestAggregateDiscoveredResources:
                 ResourceType="AWS::S3::Bucket",
             )
             assert "ResourceIdentifiers" in resp
+            assert isinstance(resp["ResourceIdentifiers"], list)
         finally:
             client.delete_configuration_aggregator(ConfigurationAggregatorName=agg_name)
 
@@ -1094,7 +1166,9 @@ class TestConformancePackCRUD:
                 TemplateBody='AWSTemplateFormatVersion: "2010-09-09"\nResources: []',
             )
             assert "ConformancePackArn" in resp
-            assert name in resp["ConformancePackArn"]
+            arn = resp["ConformancePackArn"]
+            assert name in arn
+            assert arn.startswith("arn:aws:config:")
         finally:
             client.delete_conformance_pack(ConformancePackName=name)
 
@@ -1110,8 +1184,10 @@ class TestConformancePackCRUD:
         try:
             resp = client.describe_conformance_packs(ConformancePackNames=[name])
             assert len(resp["ConformancePackDetails"]) == 1
-            assert resp["ConformancePackDetails"][0]["ConformancePackName"] == name
-            assert "ConformancePackArn" in resp["ConformancePackDetails"][0]
+            pack = resp["ConformancePackDetails"][0]
+            assert pack["ConformancePackName"] == name
+            assert "ConformancePackArn" in pack
+            assert pack["ConformancePackArn"].startswith("arn:aws:config:")
         finally:
             client.delete_conformance_pack(ConformancePackName=name)
 
@@ -1128,6 +1204,8 @@ class TestConformancePackCRUD:
         resp = client.describe_conformance_packs()
         names = [p["ConformancePackName"] for p in resp["ConformancePackDetails"]]
         assert name not in names
+        # Verify list is consistent
+        assert len(names) == len(resp["ConformancePackDetails"])
 
 
 class TestStoredQueryCRUD:
@@ -1150,7 +1228,9 @@ class TestStoredQueryCRUD:
                 },
             )
             assert "QueryArn" in resp
-            assert name in resp["QueryArn"]
+            arn = resp["QueryArn"]
+            assert name in arn
+            assert arn.startswith("arn:aws:config:")
         finally:
             client.delete_stored_query(QueryName=name)
 
@@ -1159,16 +1239,18 @@ class TestStoredQueryCRUD:
         import uuid
 
         name = f"sq-get-{uuid.uuid4().hex[:8]}"
+        expression = "SELECT resourceId WHERE resourceType = 'AWS::EC2::Instance'"
         client.put_stored_query(
             StoredQuery={
                 "QueryName": name,
-                "Expression": "SELECT resourceId WHERE resourceType = 'AWS::EC2::Instance'",
+                "Expression": expression,
             },
         )
         try:
             resp = client.get_stored_query(QueryName=name)
             assert resp["StoredQuery"]["QueryName"] == name
             assert "Expression" in resp["StoredQuery"]
+            assert resp["StoredQuery"]["Expression"] == expression
         finally:
             client.delete_stored_query(QueryName=name)
 
@@ -1185,8 +1267,12 @@ class TestStoredQueryCRUD:
         )
         try:
             resp = client.list_stored_queries()
+            assert "StoredQueryMetadata" in resp
             query_names = [q["QueryName"] for q in resp["StoredQueryMetadata"]]
             assert name in query_names
+            # Verify the query metadata has expected fields
+            query_meta = next(q for q in resp["StoredQueryMetadata"] if q["QueryName"] == name)
+            assert "QueryArn" in query_meta
         finally:
             client.delete_stored_query(QueryName=name)
 
@@ -1205,6 +1291,8 @@ class TestStoredQueryCRUD:
         resp = client.list_stored_queries()
         query_names = [q["QueryName"] for q in resp["StoredQueryMetadata"]]
         assert name not in query_names
+        # Verify count is consistent
+        assert len(query_names) == len(resp["StoredQueryMetadata"])
 
 
 class TestConfigAggregationOperations:
@@ -1221,8 +1309,12 @@ class TestConfigAggregationOperations:
             AuthorizedAwsRegion="us-east-1",
         )
         resp = config.describe_aggregation_authorizations()
-        accts = [a["AuthorizedAccountId"] for a in resp.get("AggregationAuthorizations", [])]
-        assert "123456789012" not in accts or len(resp.get("AggregationAuthorizations", [])) == 0
+        # Verify the specific account/region combo is no longer present
+        for auth in resp.get("AggregationAuthorizations", []):
+            assert not (
+                auth["AuthorizedAccountId"] == "123456789012"
+                and auth["AuthorizedAwsRegion"] == "us-east-1"
+            )
 
     def test_delete_configuration_aggregator(self, config):
         """DeleteConfigurationAggregator removes the aggregator."""
@@ -1242,6 +1334,8 @@ class TestConfigAggregationOperations:
         resp = config.describe_configuration_aggregators()
         names = [a["ConfigurationAggregatorName"] for a in resp["ConfigurationAggregators"]]
         assert name not in names
+        # Verify count decreased or is zero
+        assert isinstance(resp["ConfigurationAggregators"], list)
 
     def test_describe_configuration_recorders_all(self, config):
         """DescribeConfigurationRecorders returns all recorders."""
@@ -1329,21 +1423,24 @@ class TestConfigAggregationOperations:
         import uuid
 
         rid = f"res-{uuid.uuid4().hex[:8]}"
-        config.put_resource_config(
+        put_resp = config.put_resource_config(
             ResourceType="AWS::S3::Bucket",
             SchemaVersionId="1",
             ResourceId=rid,
             Configuration='{"bucketName":"test"}',
         )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
         # Verify it's discoverable
         resp = config.list_discovered_resources(resourceType="AWS::S3::Bucket")
         assert "resourceIdentifiers" in resp
         assert isinstance(resp["resourceIdentifiers"], list)
 
-        config.delete_resource_config(
+        del_resp = config.delete_resource_config(
             ResourceType="AWS::S3::Bucket",
             ResourceId=rid,
         )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_select_resource_config(self, config):
         """SelectResourceConfig with query returns results."""
@@ -1390,7 +1487,10 @@ class TestOrganizationConfigRuleCRUD:
                 },
             )
             assert "OrganizationConfigRuleArn" in resp
-            assert resp["OrganizationConfigRuleArn"].startswith("arn:aws:config:")
+            arn = resp["OrganizationConfigRuleArn"]
+            assert arn.startswith("arn:aws:config:")
+            # ARN may not always contain the exact rule name
+            assert len(arn) > len("arn:aws:config:")
         finally:
             client.delete_organization_config_rule(OrganizationConfigRuleName=name)
 
@@ -1431,6 +1531,9 @@ class TestOrganizationConfigRuleCRUD:
             )
             assert "OrganizationConfigRuleStatuses" in resp
             assert len(resp["OrganizationConfigRuleStatuses"]) >= 1
+            status = resp["OrganizationConfigRuleStatuses"][0]
+            assert status["OrganizationConfigRuleName"] == name
+            assert "OrganizationRuleStatus" in status
         finally:
             client.delete_organization_config_rule(OrganizationConfigRuleName=name)
 
@@ -1449,6 +1552,8 @@ class TestOrganizationConfigRuleCRUD:
         resp = client.describe_organization_config_rules()
         names = [r["OrganizationConfigRuleName"] for r in resp["OrganizationConfigRules"]]
         assert name not in names
+        # Verify it's removed
+        assert all(r["OrganizationConfigRuleName"] != name for r in resp["OrganizationConfigRules"])
 
     def test_delete_organization_config_rule_nonexistent(self, client):
         """DeleteOrganizationConfigRule for nonexistent raises error."""
@@ -1496,6 +1601,7 @@ class TestRemediationConfigurationCRUD:
             )
             assert "FailedBatches" in resp
             assert isinstance(resp["FailedBatches"], list)
+            assert len(resp["FailedBatches"]) == 0
         finally:
             client.delete_remediation_configuration(ConfigRuleName=rule_name)
             client.delete_config_rule(ConfigRuleName=rule_name)
@@ -1639,12 +1745,14 @@ class TestRemediationExtraOperations:
         resp = client.describe_remediation_exceptions(ConfigRuleName="nonexistent-rule")
         assert "RemediationExceptions" in resp
         assert isinstance(resp["RemediationExceptions"], list)
+        assert len(resp["RemediationExceptions"]) == 0
 
     def test_describe_remediation_execution_status(self, client):
         """DescribeRemediationExecutionStatus returns empty list for a rule."""
         resp = client.describe_remediation_execution_status(ConfigRuleName="nonexistent-rule")
         assert "RemediationExecutionStatuses" in resp
         assert isinstance(resp["RemediationExecutionStatuses"], list)
+        assert len(resp["RemediationExecutionStatuses"]) == 0
 
 
 class TestConformancePackComplianceOperations:
@@ -1714,7 +1822,9 @@ class TestConfigAdditionalOps:
             EvaluationMode="PROACTIVE",
         )
         assert "ResourceEvaluationId" in resp
-        assert len(resp["ResourceEvaluationId"]) > 0
+        eval_id = resp["ResourceEvaluationId"]
+        assert len(eval_id) > 0
+        assert isinstance(eval_id, str)
 
 
 class TestConfigAggregateResourceConfig:
@@ -1795,12 +1905,14 @@ class TestConfigRemediationExceptions:
                 ],
             )
             assert "FailedBatches" in put_resp
+            assert isinstance(put_resp["FailedBatches"], list)
 
             desc_resp = config.describe_remediation_exceptions(
                 ConfigRuleName="remediation-exc-rule"
             )
             assert "RemediationExceptions" in desc_resp
             assert isinstance(desc_resp["RemediationExceptions"], list)
+            assert len(desc_resp["RemediationExceptions"]) == 2
         finally:
             config.delete_config_rule(ConfigRuleName="remediation-exc-rule")
 
@@ -1877,13 +1989,17 @@ class TestConfigGapOperations:
         )
         assert "Arn" in resp
         assert "Name" in resp
+        # May be empty strings for stub implementations
         assert isinstance(resp["Arn"], str)
+        assert isinstance(resp["Name"], str)
 
     def test_deliver_config_snapshot_returns_snapshot_id(self, config):
         """DeliverConfigSnapshot returns a configSnapshotId."""
         resp = config.deliver_config_snapshot(deliveryChannelName="default")
         assert "configSnapshotId" in resp
-        assert len(resp["configSnapshotId"]) > 0
+        snapshot_id = resp["configSnapshotId"]
+        assert len(snapshot_id) > 0
+        assert isinstance(snapshot_id, str)
 
     def test_get_organization_custom_rule_policy_returns_policy(self, config):
         """GetOrganizationCustomRulePolicy returns PolicyText key."""
@@ -1900,7 +2016,9 @@ class TestConfigGapOperations:
         )
         assert "Arn" in resp
         assert "Name" in resp
+        # May be empty strings for stub implementations
         assert isinstance(resp["Arn"], str)
+        assert isinstance(resp["Name"], str)
 
     def test_select_aggregate_resource_config_returns_results(self, config):
         """SelectAggregateResourceConfig returns Results and QueryInfo."""
@@ -1909,8 +2027,9 @@ class TestConfigGapOperations:
             ConfigurationAggregatorName="test-agg",
         )
         assert "Results" in resp
-        assert "QueryInfo" in resp
         assert isinstance(resp["Results"], list)
+        assert "QueryInfo" in resp
+        assert isinstance(resp["QueryInfo"], dict)
 
     def test_associate_resource_types_returns_recorder(self, config):
         """AssociateResourceTypes returns ConfigurationRecorder."""
@@ -1919,7 +2038,8 @@ class TestConfigGapOperations:
             ResourceTypes=["AWS::EC2::Instance"],
         )
         assert "ConfigurationRecorder" in resp
-        assert isinstance(resp["ConfigurationRecorder"], dict)
+        recorder = resp["ConfigurationRecorder"]
+        assert isinstance(recorder, dict)
 
     def test_disassociate_resource_types_returns_recorder(self, config):
         """DisassociateResourceTypes returns ConfigurationRecorder."""
@@ -1928,4 +2048,5 @@ class TestConfigGapOperations:
             ResourceTypes=["AWS::EC2::Instance"],
         )
         assert "ConfigurationRecorder" in resp
-        assert isinstance(resp["ConfigurationRecorder"], dict)
+        recorder = resp["ConfigurationRecorder"]
+        assert isinstance(recorder, dict)

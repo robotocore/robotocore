@@ -19,16 +19,17 @@ COPY .git/ .git/
 COPY pyproject.toml uv.lock* README.md ./
 
 # Rewrite moto source from git remote to local vendor copy (avoids ~123MB clone)
+# Re-lock only moto (keeps all other packages at lockfile-pinned versions)
 RUN sed -i 's|^moto = .*|moto = { path = "vendor/moto" }|' pyproject.toml \
-    && rm -f uv.lock
+    && uv lock --upgrade-package moto
 
-# Install dependencies from local moto + PyPI
-RUN uv sync --no-dev --no-install-project \
+# Install dependencies from local moto + PyPI (frozen = use exact lockfile versions)
+RUN uv sync --frozen --no-dev --no-install-project \
     && uv cache clean
 
 # Copy source and install the project itself
 COPY src/ src/
-RUN uv sync --no-dev
+RUN uv sync --frozen --no-dev
 
 # Strip build artifacts and unused transitive deps (~90MB savings)
 RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \

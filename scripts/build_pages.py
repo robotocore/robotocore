@@ -88,6 +88,20 @@ def main() -> None:
                 shutil.copy2(src, out / asset)
             print(f"  → {out / asset}", flush=True)
 
+    # 7. Generate quality dashboard
+    print("Generating quality dashboard…", flush=True)
+    quality_script = str(ROOT / "scripts" / "generate_quality_dashboard.py")
+    quality_out = out / "quality.html"
+    result = subprocess.run(
+        [sys.executable, quality_script, "--output", str(quality_out)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"Warning: Quality dashboard generation failed: {result.stderr}", file=sys.stderr)
+    else:
+        print(f"  → {quality_out}", flush=True)
+
     print(f"\nSite built in {out}/  ({len(list(out.iterdir()))} files)")
 
 

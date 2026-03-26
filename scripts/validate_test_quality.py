@@ -6,6 +6,14 @@ Catches these classes of bad tests:
 2. Tests with no assertions (catch-all exception handlers)
 3. Tests that would pass against a stopped server
 
+Also provides behavioral coverage tracking to detect CRUD patterns:
+- CREATE: Calls Create*/Put* operations
+- RETRIEVE: Calls Get*/Describe* with ID
+- LIST: Calls List*/Describe* (plural)
+- UPDATE: Calls Update*/Modify*/Set*
+- DELETE: Calls Delete*/Remove*
+- ERROR: Uses pytest.raises or catches ClientError
+
 Usage:
     # Full report
     uv run python scripts/validate_test_quality.py
@@ -21,15 +29,32 @@ Usage:
 
     # Show only problems
     uv run python scripts/validate_test_quality.py --problems-only
+
+    # Behavioral coverage report
+    uv run python scripts/validate_test_quality.py --behavioral
+
+    # Behavioral coverage for a specific service
+    uv run python scripts/validate_test_quality.py --behavioral --file tests/compatibility/test_sqs_compat.py
 """
 
 import argparse
 import ast
 import json
+import re
 import sys
 from pathlib import Path
 
 TESTS_DIR = Path("tests/compatibility")
+
+# Behavioral pattern detection - method prefixes for each pattern
+BEHAVIORAL_PATTERNS = {
+    "CREATE": ["Create", "Put", "Add", "Register", "Start", "Run", "Send", "Publish"],
+    "RETRIEVE": ["Get", "Describe"],
+    "LIST": ["List"],
+    "UPDATE": ["Update", "Modify", "Set", "Change", "Enable", "Disable", "Tag", "Untag"],
+    "DELETE": ["Delete", "Remove", "Terminate", "Stop", "Deregister", "Purge"],
+    "ERROR": [],  # Detected via pytest.raises or ClientError handling
+}
 
 
 def _is_key_presence_assert(node: ast.Assert) -> bool:
@@ -54,6 +79,85 @@ def _is_key_presence_assert(node: ast.Assert) -> bool:
     if not isinstance(test.left, ast.Constant) or not isinstance(test.left.value, str):
         return False
     return True
+
+
+def _snake_to_pascal(name: str) -> str:
+    """Convert snake_case to PascalCase.
+
+    Examples:
+        create_queue -> CreateQueue
+        send_message_batch -> SendMessageBatch
+        get_queue_url -> GetQueueUrl
+    """
+    return "".join(word.capitalize() for word in name.split("_"))
+
+
+def _detect_behavioral_patterns(node: ast.FunctionDef) -> dict[str, bool]:
+    """Detect which behavioral patterns a test covers.
+
+    Returns a dict with keys: CREATE, RETRIEVE, LIST, UPDATE, DELETE, ERROR
+    Each value is True if the test covers that pattern.
+    """
+    patterns = {
+        "CREATE": False,
+        "RETRIEVE": False,
+        "LIST": False,
+        "UPDATE": False,
+        "DELETE": False,
+        "ERROR": False,
+    }
+
+    for child in ast.walk(node):
+        # Check for method calls that match pattern prefixes
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute):
+            method_name = child.func.attr
+            # Convert snake_case (boto3) to PascalCase (AWS operation name)
+            pascal_name = _snake_to_pascal(method_name)
+
+            for pattern, prefixes in BEHAVIORAL_PATTERNS.items():
+                if pattern == "ERROR":
+                    continue  # Handled separately
+                for prefix in prefixes:
+                    if pascal_name.startswith(prefix):
+                        # Special case: Describe* plural is LIST, singular is RETRIEVE
+                        if prefix == "Describe":
+                            # Check if it's plural (ends in 's' or 'es')
+                            noun = pascal_name[len(prefix) :]
+                            if noun.endswith("s") or noun.endswith("es"):
+                                patterns["LIST"] = True
+                            else:
+                                patterns["RETRIEVE"] = True
+                        else:
+                            patterns[pattern] = True
+                        break
+
+        # Check for pytest.raises (error handling)
+        if isinstance(child, ast.Attribute) and child.attr == "raises":
+            patterns["ERROR"] = True
+
+        # Check for try/except ClientError
+        if isinstance(child, ast.Try):
+            for handler in child.handlers:
+                if handler.type is not None:
+                    if (
+                        isinstance(handler.type, ast.Attribute)
+                        and handler.type.attr == "ClientError"
+                    ):
+                        patterns["ERROR"] = True
+                    elif isinstance(handler.type, ast.Name) and handler.type.id == "ClientError":
+                        patterns["ERROR"] = True
+
+    return patterns
+
+
+def _calculate_behavioral_score(patterns: dict[str, bool]) -> tuple[int, int]:
+    """Calculate behavioral coverage score.
+
+    Returns (covered_count, total_count).
+    """
+    covered = sum(1 for v in patterns.values() if v)
+    total = len(patterns)
+    return covered, total
 
 
 class TestQualityVisitor(ast.NodeVisitor):
@@ -182,6 +286,10 @@ class TestQualityVisitor(ast.NodeVisitor):
             quality = "unknown"
             reason = "could not classify"
 
+        # Detect behavioral patterns
+        behavioral_patterns = _detect_behavioral_patterns(node)
+        covered, total = _calculate_behavioral_score(behavioral_patterns)
+
         return {
             "quality": quality,
             "reason": reason,
@@ -191,6 +299,9 @@ class TestQualityVisitor(ast.NodeVisitor):
             "catches_client_error": catches_client_error,
             "all_excepts_pass": all_excepts_pass,
             "has_response_capture": has_response_capture,
+            "behavioral_patterns": behavioral_patterns,
+            "behavioral_score": covered,
+            "behavioral_total": total,
         }
 
 
@@ -207,6 +318,120 @@ def analyze_file(filepath: Path) -> list[dict]:
     for t in visitor.tests:
         t["file"] = str(filepath)
     return visitor.tests
+
+
+def _get_behavioral_report(all_tests: list[dict], single_file: str | None) -> dict:
+    """Generate behavioral coverage report data.
+
+    Returns dict with behavioral coverage info.
+    """
+    # Extract service name from file path
+    if single_file:
+        match = re.search(r"test_(\w+)_compat\.py", single_file)
+        service = match.group(1) if match else "unknown"
+    else:
+        service = "all services"
+
+    # Calculate pattern coverage across all tests
+    pattern_coverage = {p: 0 for p in BEHAVIORAL_PATTERNS}
+    total_tests = len(all_tests)
+    total_score = 0
+    max_score = 0
+
+    for test in all_tests:
+        patterns = test.get("behavioral_patterns", {})
+        for pattern, covered in patterns.items():
+            if covered:
+                pattern_coverage[pattern] += 1
+        total_score += test.get("behavioral_score", 0)
+        max_score += test.get("behavioral_total", 6)
+
+    return {
+        "behavioral_service": service,
+        "overall_behavioral_coverage_pct": round(total_score / max_score * 100, 1)
+        if max_score
+        else 0,
+        "pattern_coverage": {
+            p: {"count": c, "pct": round(c / total_tests * 100, 1) if total_tests else 0}
+            for p, c in pattern_coverage.items()
+        },
+        "behavioral_tests": [
+            {
+                "name": t["name"],
+                "patterns": t.get("behavioral_patterns", {}),
+                "score": t.get("behavioral_score", 0),
+                "score_pct": round(
+                    t.get("behavioral_score", 0) / t.get("behavioral_total", 6) * 100
+                )
+                if t.get("behavioral_total", 0)
+                else 0,
+            }
+            for t in all_tests
+        ],
+    }
+
+
+def _print_behavioral_report(all_tests: list[dict], single_file: str | None):
+    """Print behavioral coverage report to stdout.
+
+    Shows which CRUD patterns each test covers and calculates overall coverage.
+    """
+    report = _get_behavioral_report(all_tests, single_file)
+    service = report["behavioral_service"]
+    total_tests = len(all_tests)
+    pattern_coverage = {p: d["count"] for p, d in report["pattern_coverage"].items()}
+
+    print()
+    print(f"Behavioral Coverage Report: {service}")
+    print("=" * 70)
+    print()
+
+    # Overall summary
+    overall_pct = report["overall_behavioral_coverage_pct"]
+    total_score = sum(t.get("behavioral_score", 0) for t in all_tests)
+    max_score = sum(t.get("behavioral_total", 6) for t in all_tests)
+    print(f"Overall behavioral coverage: {overall_pct}% ({total_score}/{max_score} patterns)")
+    print()
+
+    # Pattern coverage summary
+    print("Pattern coverage across all tests:")
+    for pattern, count in pattern_coverage.items():
+        pct = round(count / total_tests * 100, 1) if total_tests else 0
+        bar = "█" * int(pct / 5) + "░" * (20 - int(pct / 5))
+        emoji = "✅" if pct >= 50 else "⚠️ " if pct >= 25 else "❌"
+        print(f"  {pattern:<8s} {bar} {pct:>5.1f}% ({count}/{total_tests} tests) {emoji}")
+    print()
+
+    # Per-test breakdown (top 20 by score, then bottom 10)
+    sorted_tests = sorted(all_tests, key=lambda t: t.get("behavioral_score", 0), reverse=True)
+
+    print("Top tests by behavioral coverage:")
+    for test in sorted_tests[:10]:
+        patterns = test.get("behavioral_patterns", {})
+        score = test.get("behavioral_score", 0)
+        total = test.get("behavioral_total", 6)
+        pct = round(score / total * 100) if total else 0
+        pattern_str = "".join(f"{'✅' if patterns.get(p) else '❌'}" for p in BEHAVIORAL_PATTERNS)
+        print(f"  {test['name']:<55s} {pattern_str} {pct:>3d}% ({score}/{total})")
+    print()
+
+    # Tests needing improvement (lowest scores)
+    low_score_tests = [t for t in sorted_tests if t.get("behavioral_score", 0) <= 2]
+    if low_score_tests:
+        print(f"Tests needing improvement ({len(low_score_tests)} with <=2 patterns):")
+        for test in sorted(low_score_tests, key=lambda t: t.get("behavioral_score", 0))[:15]:
+            patterns = test.get("behavioral_patterns", {})
+            score = test.get("behavioral_score", 0)
+            total = test.get("behavioral_total", 6)
+            pct = round(score / total * 100) if total else 0
+            pattern_str = "".join(
+                f"{'✅' if patterns.get(p) else '❌'}" for p in BEHAVIORAL_PATTERNS
+            )
+            print(f"  {test['name']:<55s} {pattern_str} {pct:>3d}% ({score}/{total})")
+        print()
+
+    # Pattern legend
+    print("Pattern legend: C=CREATE R=RETRIEVE L=LIST U=UPDATE D=DELETE E=ERROR")
 
 
 def main():
@@ -231,6 +456,11 @@ def main():
         type=float,
         default=0,
         help="Fail if weak-assertion tests exceed this percentage (0=no check)",
+    )
+    parser.add_argument(
+        "--behavioral",
+        action="store_true",
+        help="Show behavioral coverage report (CREATE, RETRIEVE, LIST, UPDATE, DELETE, ERROR patterns)",
     )
     args = parser.parse_args()
 
@@ -280,6 +510,10 @@ def main():
                 {"file": t["file"], "line": t["line"], "name": t["name"], "reason": t["reason"]}
                 for t in problems
             ]
+        # Add behavioral data if requested
+        if args.behavioral:
+            behavioral_data = _get_behavioral_report(all_tests, args.file)
+            summary.update(behavioral_data)
         print(json.dumps(summary, indent=2))
     else:
         print("Compat Test Quality Report")
@@ -325,6 +559,10 @@ def main():
                     total_bad = sum(counts.values())
                     fname = Path(f).name
                     print(f"  {fname:<50s} {total_bad:>4d} non-effective")
+
+    # Behavioral coverage report (non-JSON output)
+    if args.behavioral and not args.json:
+        _print_behavioral_report(all_tests, args.file)
 
     # CI gate
     exit_code = 0

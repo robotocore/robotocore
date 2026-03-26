@@ -25,3 +25,7 @@ probe_stderr.log
 .robotocore-ports/
 logs/
 .claude/worktrees/
+
+# Generated files
+docs/quality/
+site/
