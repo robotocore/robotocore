@@ -67,6 +67,7 @@ class TestS3TablesOperations:
     def test_list_table_buckets_empty(self, s3tables):
         resp = s3tables.list_table_buckets()
         assert "tableBuckets" in resp
+        assert isinstance(resp["tableBuckets"], list)
 
     def test_create_table_bucket(self, s3tables):
         name = _bucket_name()
@@ -130,17 +131,20 @@ class TestS3TablesOperations:
     def test_get_table_bucket_encryption(self, s3tables, table_bucket):
         resp = s3tables.get_table_bucket_encryption(tableBucketARN=table_bucket)
         assert "encryptionConfiguration" in resp
+        assert isinstance(resp["encryptionConfiguration"], dict)
 
     # --- GetTableBucketMaintenanceConfiguration ---
     def test_get_table_bucket_maintenance_configuration(self, s3tables, table_bucket):
         resp = s3tables.get_table_bucket_maintenance_configuration(tableBucketARN=table_bucket)
         assert "tableBucketARN" in resp
         assert "configuration" in resp
+        assert resp["tableBucketARN"] == table_bucket
 
     # --- GetTableBucketMetricsConfiguration ---
     def test_get_table_bucket_metrics_configuration(self, s3tables, table_bucket):
         resp = s3tables.get_table_bucket_metrics_configuration(tableBucketARN=table_bucket)
         assert "tableBucketARN" in resp
+        assert resp["tableBucketARN"] == table_bucket
 
     # --- GetTableBucketPolicy ---
     def test_get_table_bucket_policy_not_found(self, s3tables, table_bucket):
@@ -164,11 +168,13 @@ class TestS3TablesOperations:
     def test_get_table_bucket_storage_class(self, s3tables, table_bucket):
         resp = s3tables.get_table_bucket_storage_class(tableBucketARN=table_bucket)
         assert "storageClassConfiguration" in resp
+        assert isinstance(resp["storageClassConfiguration"], dict)
 
     # --- ListNamespaces ---
     def test_list_namespaces(self, s3tables, table_bucket):
         resp = s3tables.list_namespaces(tableBucketARN=table_bucket)
         assert "namespaces" in resp
+        assert isinstance(resp["namespaces"], list)
 
     # --- ListTables ---
     def test_list_tables(self, s3tables, table_with_ns):
@@ -188,6 +194,7 @@ class TestS3TablesOperations:
         bucket_arn, ns, tbl, _table_arn = table_with_ns
         resp = s3tables.get_table_encryption(tableBucketARN=bucket_arn, namespace=ns, name=tbl)
         assert "encryptionConfiguration" in resp
+        assert isinstance(resp["encryptionConfiguration"], dict)
 
     # --- GetTableMaintenanceConfiguration ---
     def test_get_table_maintenance_configuration(self, s3tables, table_with_ns):
@@ -212,6 +219,7 @@ class TestS3TablesOperations:
             tableBucketARN=bucket_arn, namespace=ns, name=tbl
         )
         assert "warehouseLocation" in resp
+        assert isinstance(resp["warehouseLocation"], str)
 
     # --- GetTablePolicy ---
     def test_get_table_policy_not_found(self, s3tables, table_with_ns):
@@ -255,6 +263,7 @@ class TestS3TablesOperations:
         bucket_arn, ns, tbl, _table_arn = table_with_ns
         resp = s3tables.get_table_storage_class(tableBucketARN=bucket_arn, namespace=ns, name=tbl)
         assert "storageClassConfiguration" in resp
+        assert isinstance(resp["storageClassConfiguration"], dict)
 
     # --- GetTable ---
     def test_get_table(self, s3tables, table_with_ns):
@@ -286,6 +295,7 @@ class TestS3TablesOperations:
             )
             assert "tableARN" in resp
             assert "versionToken" in resp
+            assert isinstance(resp["tableARN"], str)
         finally:
             try:
                 s3tables.delete_table(tableBucketARN=table_bucket, namespace=ns, name=tbl)
@@ -443,6 +453,7 @@ class TestS3TablesOperations:
         )
         resp = s3tables.get_table_policy(tableBucketARN=bucket_arn, namespace=ns, name=tbl)
         assert "resourcePolicy" in resp
+        assert isinstance(resp["resourcePolicy"], str)
 
     # --- RenameTable ---
     def test_rename_table(self, s3tables, table_bucket):
@@ -492,6 +503,7 @@ class TestS3TablesBucketSubPaths:
         )
         resp = s3tables.get_table_bucket_policy(tableBucketARN=table_bucket)
         assert "resourcePolicy" in resp
+        assert isinstance(resp["resourcePolicy"], str)
 
     def test_put_table_bucket_encryption(self, s3tables, table_bucket):
         """PutTableBucketEncryption sets encryption configuration."""
@@ -501,6 +513,7 @@ class TestS3TablesBucketSubPaths:
         )
         resp = s3tables.get_table_bucket_encryption(tableBucketARN=table_bucket)
         assert "encryptionConfiguration" in resp
+        assert isinstance(resp["encryptionConfiguration"], dict)
 
     def test_put_table_bucket_metrics_configuration(self, s3tables, table_bucket):
         """PutTableBucketMetricsConfiguration sets metrics configuration."""
