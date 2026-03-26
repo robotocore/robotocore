@@ -229,9 +229,9 @@ class TestAttributeGroupAssociations:
 
     @pytest.fixture
     def app_and_ag(self, client):
-        app = client.create_application(
-            name=_uid("app"), clientToken=uuid.uuid4().hex
-        )["application"]
+        app = client.create_application(name=_uid("app"), clientToken=uuid.uuid4().hex)[
+            "application"
+        ]
         ag = client.create_attribute_group(
             name=_uid("ag"),
             attributes='{"env": "test"}',
@@ -241,29 +241,21 @@ class TestAttributeGroupAssociations:
 
     def test_associate_attribute_group(self, client, app_and_ag):
         app, ag = app_and_ag
-        resp = client.associate_attribute_group(
-            application=app["id"], attributeGroup=ag["id"]
-        )
+        resp = client.associate_attribute_group(application=app["id"], attributeGroup=ag["id"])
         assert "applicationArn" in resp
         assert "attributeGroupArn" in resp
 
     def test_list_associated_attribute_groups(self, client, app_and_ag):
         app, ag = app_and_ag
-        client.associate_attribute_group(
-            application=app["id"], attributeGroup=ag["id"]
-        )
+        client.associate_attribute_group(application=app["id"], attributeGroup=ag["id"])
         resp = client.list_associated_attribute_groups(application=app["id"])
         assert "attributeGroups" in resp
         assert ag["arn"] in resp["attributeGroups"]
 
     def test_disassociate_attribute_group(self, client, app_and_ag):
         app, ag = app_and_ag
-        client.associate_attribute_group(
-            application=app["id"], attributeGroup=ag["id"]
-        )
-        resp = client.disassociate_attribute_group(
-            application=app["id"], attributeGroup=ag["id"]
-        )
+        client.associate_attribute_group(application=app["id"], attributeGroup=ag["id"])
+        resp = client.disassociate_attribute_group(application=app["id"], attributeGroup=ag["id"])
         assert "applicationArn" in resp
         # Verify removed
         list_resp = client.list_associated_attribute_groups(application=app["id"])
@@ -271,9 +263,7 @@ class TestAttributeGroupAssociations:
 
     def test_list_attribute_groups_for_application(self, client, app_and_ag):
         app, ag = app_and_ag
-        client.associate_attribute_group(
-            application=app["id"], attributeGroup=ag["id"]
-        )
+        client.associate_attribute_group(application=app["id"], attributeGroup=ag["id"])
         resp = client.list_attribute_groups_for_application(application=app["id"])
         assert "attributeGroupsDetails" in resp
         ids = [d["id"] for d in resp["attributeGroupsDetails"]]
@@ -288,9 +278,9 @@ class TestTaggingOperations:
         return make_client("servicecatalog-appregistry")
 
     def test_tag_and_list_and_untag_resource(self, client):
-        app = client.create_application(
-            name=_uid("app"), clientToken=uuid.uuid4().hex
-        )["application"]
+        app = client.create_application(name=_uid("app"), clientToken=uuid.uuid4().hex)[
+            "application"
+        ]
         arn = app["arn"]
         client.tag_resource(resourceArn=arn, tags={"env": "test", "project": "demo"})
         resp = client.list_tags_for_resource(resourceArn=arn)
