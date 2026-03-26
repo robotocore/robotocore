@@ -45,6 +45,7 @@ class TestSESv2EmailIdentityCRUD:
         email = f"{_uid('id')}@example.com"
         resp = sesv2.create_email_identity(EmailIdentity=email)
         assert "IdentityType" in resp
+        assert resp["IdentityType"] == "EMAIL_ADDRESS"
         try:
             got = sesv2.get_email_identity(EmailIdentity=email)
             assert got["IdentityType"] == "EMAIL_ADDRESS"
@@ -944,6 +945,7 @@ class TestSesv2AutoCoverage:
         resp = client.create_email_identity(EmailIdentity=domain)
         try:
             assert "DkimAttributes" in resp
+            assert isinstance(resp["DkimAttributes"], dict)
         finally:
             client.delete_email_identity(EmailIdentity=domain)
 
@@ -951,7 +953,9 @@ class TestSesv2AutoCoverage:
         """GetAccount returns account-level SES details."""
         resp = client.get_account()
         assert "SendQuota" in resp
+        assert isinstance(resp["SendQuota"], dict)
         assert "SendingEnabled" in resp
+        assert isinstance(resp["SendingEnabled"], bool)
         assert "EnforcementStatus" in resp
         assert "DedicatedIpAutoWarmupEnabled" in resp
 
