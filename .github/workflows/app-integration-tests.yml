@@ -35,7 +35,7 @@ jobs:
           - serverless_api
           - user_auth
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: astral-sh/setup-uv@v7
