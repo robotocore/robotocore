@@ -1348,8 +1348,8 @@ class TestPresignedUrlProvider:
         mock_forward.return_value = Response(content=b"object-data", status_code=200)
         qs = (
             b"X-Amz-Algorithm=AWS4-HMAC-SHA256"
-            b"&X-Amz-Credential=AKID/20260101/us-east-1/s3/aws4_request"
-            b"&X-Amz-Date=20260101T000000Z"
+            b"&X-Amz-Credential=AKID/20990101/us-east-1/s3/aws4_request"
+            b"&X-Amz-Date=20990101T000000Z"
             b"&X-Amz-Expires=3600"
             b"&X-Amz-SignedHeaders=host"
             b"&X-Amz-Signature=abc123"

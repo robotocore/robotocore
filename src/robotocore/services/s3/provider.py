@@ -110,14 +110,12 @@ def _check_presigned_expiration(query_params: QueryParams) -> Response | None:
         expires_str = query_params.get("X-Amz-Expires", "")
         if date_str and expires_str:
             try:
-                sign_time = calendar.timegm(
-                    time.strptime(date_str, "%Y%m%dT%H%M%SZ")
-                )
+                sign_time = calendar.timegm(time.strptime(date_str, "%Y%m%dT%H%M%SZ"))
                 expires_seconds = int(expires_str)
                 if time.time() > sign_time + expires_seconds:
                     return _expired_presigned_response()
             except (ValueError, OverflowError):
-                pass
+                pass  # malformed date/expires — let Moto reject it
     elif "Signature" in query_params:
         # SigV2: Expires is a unix timestamp
         expires_str = query_params.get("Expires", "")
@@ -126,7 +124,7 @@ def _check_presigned_expiration(query_params: QueryParams) -> Response | None:
                 if time.time() > int(expires_str):
                     return _expired_presigned_response()
             except (ValueError, OverflowError):
-                pass
+                pass  # malformed Expires — let Moto reject it
     return None
 
 
