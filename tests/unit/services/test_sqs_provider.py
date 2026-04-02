@@ -153,9 +153,7 @@ class TestResponseHelpers:
             ),
         ],
     )
-    def test_message_attributes_md5_matches_aws_encoding_rules(
-        self, message_attributes, expected
-    ):
+    def test_message_attributes_md5_matches_aws_encoding_rules(self, message_attributes, expected):
         assert _expected_message_attributes_md5(message_attributes) == expected
         assert _md5_message_attributes(message_attributes) == expected
 
