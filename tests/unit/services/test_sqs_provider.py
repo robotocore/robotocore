@@ -1,6 +1,8 @@
 """Unit tests for SQS provider request handling."""
 
+import hashlib
 import json
+import struct
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlencode
 
@@ -22,8 +24,10 @@ from robotocore.services.sqs.provider import (
     _list_queue_tags,
     _list_queues,
     _md5,
+    _md5_message_attributes,
     _parse_message_attributes,
     _purge_queue,
+    _receive_message,
     _resolve_queue,
     _send_message,
     _send_message_batch,
@@ -69,6 +73,34 @@ def _store_with_queue(name="test-queue"):
     return store
 
 
+def _expected_message_attributes_md5(message_attributes: dict) -> str | None:
+    if not message_attributes:
+        return None
+
+    encoded = bytearray()
+    for name in sorted(message_attributes):
+        details = message_attributes[name]
+        encoded.extend(_encode_string_piece(name))
+        encoded.extend(_encode_string_piece(details["DataType"]))
+        if details["DataType"].startswith("Binary"):
+            encoded.extend(b"\x02")
+            encoded.extend(_encode_binary_piece(details["BinaryValue"]))
+        else:
+            encoded.extend(b"\x01")
+            encoded.extend(_encode_string_piece(details["StringValue"]))
+
+    return hashlib.md5(encoded).hexdigest()
+
+
+def _encode_string_piece(value: str) -> bytes:
+    encoded = value.encode("utf-8")
+    return struct.pack(">I", len(encoded)) + encoded
+
+
+def _encode_binary_piece(value: bytes) -> bytes:
+    return struct.pack(">I", len(value)) + value
+
+
 class TestResponseHelpers:
     def test_json_response(self):
         resp = _json_response({"QueueUrl": "http://localhost/q"})
@@ -95,10 +127,37 @@ class TestResponseHelpers:
         assert b"<Code>NonExistentQueue</Code>" in resp.body
 
     def test_md5_helper(self):
-        import hashlib
-
         expected = hashlib.md5(b"hello").hexdigest()
         assert _md5("hello") == expected
+
+    @pytest.mark.parametrize(
+        ("message_attributes", "expected"),
+        [
+            (
+                {"alpha": {"DataType": "String", "StringValue": "hello"}},
+                "91ee26032a192ab3cbd3d29cea276597",
+            ),
+            (
+                {
+                    "priority": {"DataType": "Number.int", "StringValue": "42"},
+                    "status": {"DataType": "String", "StringValue": "ok"},
+                },
+                "5d2ab12c0f0e22cdf690d6325e192aa4",
+            ),
+            (
+                {
+                    "blob": {"DataType": "Binary.png", "BinaryValue": b"\x00\xff"},
+                    "name": {"DataType": "String", "StringValue": "robotocore"},
+                },
+                "d98ac606c97ae982b07df88b73d77022",
+            ),
+        ],
+    )
+    def test_message_attributes_md5_matches_aws_encoding_rules(
+        self, message_attributes, expected
+    ):
+        assert _expected_message_attributes_md5(message_attributes) == expected
+        assert _md5_message_attributes(message_attributes) == expected
 
 
 class TestResolveQueue:
@@ -214,6 +273,139 @@ class TestActions:
         assert "MessageId" in result
         assert "MD5OfMessageBody" in result
 
+    def test_send_message_with_message_attributes_returns_attribute_md5(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        message_attributes = {
+            "color": {"DataType": "String", "StringValue": "blue"},
+            "count": {"DataType": "Number.int", "StringValue": "42"},
+        }
+        result = _send_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MessageBody": "hello world",
+                "MessageAttributes": message_attributes,
+            },
+            "us-east-1",
+            "123",
+            mock_req,
+        )
+        assert result["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+            message_attributes
+        )
+
+    def test_receive_message_with_message_attributes_returns_attribute_md5(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        message_attributes = {
+            "blob": {"DataType": "Binary", "BinaryValue": b"\x01\x02"},
+            "label": {"DataType": "String.custom", "StringValue": "tag"},
+        }
+        _send_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MessageBody": "hello world",
+                "MessageAttributes": message_attributes,
+            },
+            "us-east-1",
+            "123",
+            mock_req,
+        )
+
+        result = _receive_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MaxNumberOfMessages": "1",
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+
+        message = result["Messages"][0]
+        assert message["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+            message_attributes
+        )
+        assert message["MessageAttributes"] == message_attributes
+
+    def test_receive_message_without_message_attributes_omits_attribute_md5(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        _send_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MessageBody": "hello world",
+            },
+            "us-east-1",
+            "123",
+            mock_req,
+        )
+
+        result = _receive_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MaxNumberOfMessages": "1",
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+
+        assert "MD5OfMessageAttributes" not in result["Messages"][0]
+
+    def test_send_message_batch_with_message_attributes_returns_attribute_md5(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        message_attributes = {
+            "priority": {"DataType": "Number.int", "StringValue": "7"},
+            "status": {"DataType": "String", "StringValue": "queued"},
+        }
+        result = _send_message_batch(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "Entries": [
+                    {
+                        "Id": "msg1",
+                        "MessageBody": "batch message",
+                        "MessageAttributes": message_attributes,
+                    }
+                ],
+            },
+            "us-east-1",
+            "123",
+            mock_req,
+        )
+
+        expected_md5 = _expected_message_attributes_md5(message_attributes)
+        assert result["Successful"][0]["MD5OfMessageAttributes"] == expected_md5
+
+    def test_send_message_batch_without_message_attributes_omits_attribute_md5(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        result = _send_message_batch(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "Entries": [{"Id": "msg1", "MessageBody": "batch message"}],
+            },
+            "us-east-1",
+            "123",
+            mock_req,
+        )
+
+        assert "MD5OfMessageAttributes" not in result["Successful"][0]
+
     def test_get_queue_attributes(self):
         store = _store_with_queue()
         mock_req = MagicMock()
@@ -268,6 +460,75 @@ class TestHandleSqsRequest:
 
         assert resp.status_code == 200
         assert b"CreateQueueResult" in resp.body
+
+    async def test_json_protocol_send_message_returns_attribute_md5(self):
+        store = _store_with_queue()
+        body = json.dumps(
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MessageBody": "hello",
+                "MessageAttributes": {
+                    "color": {"DataType": "String", "StringValue": "blue"},
+                },
+            }
+        ).encode()
+        headers = {
+            "content-type": "application/x-amz-json-1.0",
+            "x-amz-target": "AmazonSQS.SendMessage",
+        }
+        req = _make_request(body=body, headers=headers)
+
+        with (
+            patch("robotocore.services.sqs.provider._get_store", return_value=store),
+            patch("robotocore.services.sqs.provider._ensure_worker"),
+        ):
+            resp = await handle_sqs_request(req, "us-east-1", "123456789012")
+
+        data = json.loads(resp.body)
+        assert data["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+            {"color": {"DataType": "String", "StringValue": "blue"}}
+        )
+
+    async def test_json_protocol_receive_message_returns_attribute_md5_when_present(self):
+        store = _store_with_queue()
+        mock_req = MagicMock()
+        mock_req.url.path = "/123456789012/test-queue"
+        message_attributes = {
+            "color": {"DataType": "String", "StringValue": "blue"},
+        }
+        _send_message(
+            store,
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MessageBody": "hello",
+                "MessageAttributes": message_attributes,
+            },
+            "us-east-1",
+            "123456789012",
+            mock_req,
+        )
+        body = json.dumps(
+            {
+                "QueueUrl": "http://localhost:4566/123456789012/test-queue",
+                "MaxNumberOfMessages": 1,
+            }
+        ).encode()
+        headers = {
+            "content-type": "application/x-amz-json-1.0",
+            "x-amz-target": "AmazonSQS.ReceiveMessage",
+        }
+        req = _make_request(body=body, headers=headers)
+
+        with (
+            patch("robotocore.services.sqs.provider._get_store", return_value=store),
+            patch("robotocore.services.sqs.provider._ensure_worker"),
+        ):
+            resp = await handle_sqs_request(req, "us-east-1", "123456789012")
+
+        data = json.loads(resp.body)
+        assert data["Messages"][0]["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+            message_attributes
+        )
 
     async def test_sqs_error_handling(self):
         body = json.dumps({"QueueName": "nonexistent"}).encode()

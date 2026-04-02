@@ -1,7 +1,9 @@
 """SQS compatibility tests — verify robotocore matches AWS behavior."""
 
+import hashlib
 import json
 import os
+import struct
 import time
 import uuid
 
@@ -14,6 +16,34 @@ ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 def _qname(base: str) -> str:
     """Generate a unique queue name per invocation to avoid QueueDeletedRecently collisions."""
     return f"{base}-{uuid.uuid4().hex[:8]}"
+
+
+def _expected_message_attributes_md5(message_attributes: dict) -> str | None:
+    if not message_attributes:
+        return None
+
+    encoded = bytearray()
+    for name in sorted(message_attributes):
+        details = message_attributes[name]
+        encoded.extend(_encode_string_piece(name))
+        encoded.extend(_encode_string_piece(details["DataType"]))
+        if details["DataType"].startswith("Binary"):
+            encoded.extend(b"\x02")
+            encoded.extend(_encode_binary_piece(details["BinaryValue"]))
+        else:
+            encoded.extend(b"\x01")
+            encoded.extend(_encode_string_piece(details["StringValue"]))
+
+    return hashlib.md5(encoded).hexdigest()
+
+
+def _encode_string_piece(value: str) -> bytes:
+    encoded = value.encode("utf-8")
+    return struct.pack(">I", len(encoded)) + encoded
+
+
+def _encode_binary_piece(value: bytes) -> bytes:
+    return struct.pack(">I", len(value)) + value
 
 
 @pytest.fixture
@@ -119,18 +149,23 @@ class TestSQSBasicOperations:
         assert response["Attributes"]["VisibilityTimeout"] == "60"
 
     def test_message_attributes(self, sqs, queue_url):
-        sqs.send_message(
+        message_attributes = {
+            "color": {"DataType": "String", "StringValue": "blue"},
+        }
+        response = sqs.send_message(
             QueueUrl=queue_url,
             MessageBody="with attrs",
-            MessageAttributes={
-                "color": {"DataType": "String", "StringValue": "blue"},
-            },
+            MessageAttributes=message_attributes,
+        )
+        assert response["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+            message_attributes
         )
         response = sqs.receive_message(
             QueueUrl=queue_url,
             MessageAttributeNames=["All"],
         )
         msg = response["Messages"][0]
+        assert msg["MD5OfMessageAttributes"] == _expected_message_attributes_md5(message_attributes)
         assert msg["MessageAttributes"]["color"]["StringValue"] == "blue"
 
     def test_receive_message_attributes(self, sqs, queue_url):
@@ -1073,14 +1108,19 @@ class TestSQSSystemAttributes:
 
     def test_md5_of_body(self, sqs, queue_url):
         """MD5OfBody is returned on send and receive."""
-        import hashlib
-
         body = "md5-test-body"
         send_resp = sqs.send_message(QueueUrl=queue_url, MessageBody=body)
         expected_md5 = hashlib.md5(body.encode()).hexdigest()
         assert send_resp["MD5OfMessageBody"] == expected_md5
         recv = sqs.receive_message(QueueUrl=queue_url)
         assert recv["Messages"][0]["MD5OfBody"] == expected_md5
+
+    def test_md5_of_message_attributes_absent_without_attributes(self, sqs, queue_url):
+        send_resp = sqs.send_message(QueueUrl=queue_url, MessageBody="plain-body")
+        assert "MD5OfMessageAttributes" not in send_resp
+
+        recv = sqs.receive_message(QueueUrl=queue_url)
+        assert "MD5OfMessageAttributes" not in recv["Messages"][0]
 
     def test_list_dead_letter_source_queues(self, sqs):
         import json
@@ -1140,8 +1180,6 @@ class TestSQSBatchOperationsExtended:
             sqs.delete_queue(QueueUrl=url)
 
     def test_send_message_batch_md5(self, sqs):
-        import hashlib
-
         url = sqs.create_queue(QueueName=_qname("batch-md5-q"))["QueueUrl"]
         try:
             resp = sqs.send_message_batch(
@@ -1150,6 +1188,41 @@ class TestSQSBatchOperationsExtended:
             )
             expected = hashlib.md5(b"hello-batch").hexdigest()
             assert resp["Successful"][0]["MD5OfMessageBody"] == expected
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+
+    def test_send_message_batch_attribute_md5(self, sqs):
+        url = sqs.create_queue(QueueName=_qname("batch-attrs-md5-q"))["QueueUrl"]
+        entries = [
+            {
+                "Id": "m1",
+                "MessageBody": "hello-batch",
+                "MessageAttributes": {
+                    "color": {"DataType": "String", "StringValue": "blue"},
+                },
+            },
+            {
+                "Id": "m2",
+                "MessageBody": "binary-batch",
+                "MessageAttributes": {
+                    "blob": {"DataType": "Binary", "BinaryValue": b"\x00\x01"},
+                },
+            },
+            {
+                "Id": "m3",
+                "MessageBody": "no-attrs",
+            },
+        ]
+        try:
+            resp = sqs.send_message_batch(QueueUrl=url, Entries=entries)
+            successful = {entry["Id"]: entry for entry in resp["Successful"]}
+            assert successful["m1"]["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+                entries[0]["MessageAttributes"]
+            )
+            assert successful["m2"]["MD5OfMessageAttributes"] == _expected_message_attributes_md5(
+                entries[1]["MessageAttributes"]
+            )
+            assert "MD5OfMessageAttributes" not in successful["m3"]
         finally:
             sqs.delete_queue(QueueUrl=url)
 

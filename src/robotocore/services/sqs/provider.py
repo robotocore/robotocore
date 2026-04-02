@@ -4,9 +4,11 @@ Uses JSON protocol (application/x-amz-json-1.0) as used by modern boto3.
 Falls back to query protocol parsing for legacy clients.
 """
 
+import base64
 import hashlib
 import json
 import logging
+import struct
 import threading
 import time
 import uuid
@@ -71,6 +73,49 @@ def _background_worker():
 
 def _md5(s: str) -> str:
     return hashlib.md5(s.encode()).hexdigest()
+
+
+def _md5_message_attributes(message_attributes: dict) -> str | None:
+    if not message_attributes:
+        return None
+
+    encoded = bytearray()
+    for name in sorted(message_attributes):
+        details = message_attributes[name]
+        data_type = str(details["DataType"])
+        encoded.extend(_encode_md5_string_piece(name))
+        encoded.extend(_encode_md5_string_piece(data_type))
+        if data_type.startswith("Binary"):
+            encoded.extend(struct.pack("B", 0x02))
+            encoded.extend(_encode_md5_binary_piece(details["BinaryValue"]))
+        else:
+            encoded.extend(struct.pack("B", 0x01))
+            encoded.extend(_encode_md5_string_piece(str(details["StringValue"])))
+
+    return hashlib.md5(encoded).hexdigest()
+
+
+def _encode_md5_string_piece(piece: str) -> bytes:
+    encoded = piece.encode("utf-8")
+    return struct.pack(">I", len(encoded)) + encoded
+
+
+def _encode_md5_binary_piece(piece: bytes | bytearray | memoryview | str) -> bytes:
+    value = _normalize_binary_attribute_value(piece)
+    return struct.pack(">I", len(value)) + value
+
+
+def _normalize_binary_attribute_value(piece: bytes | bytearray | memoryview | str) -> bytes:
+    if isinstance(piece, memoryview):
+        return piece.tobytes()
+    if isinstance(piece, bytearray):
+        return bytes(piece)
+    if isinstance(piece, str):
+        try:
+            return base64.b64decode(piece, validate=True)
+        except (ValueError, TypeError):
+            return piece.encode("utf-8")
+    return piece
 
 
 def _new_id() -> str:
@@ -244,6 +289,7 @@ def _send_message(
     )
     _parse_message_attributes(params, msg)
     _parse_system_attributes(params, msg)
+    accepted_msg = msg
 
     if queue.is_fifo:
         if not params.get("MessageGroupId"):
@@ -259,13 +305,16 @@ def _send_message(
                 "The queue should either have ContentBasedDeduplication enabled or "
                 "MessageDeduplicationId provided explicitly.",
             )
-        result = queue.put(msg)
-        message_id = result.message_id
-        md5_body = result.md5_of_body
+        accepted_msg = queue.put(msg)
+        message_id = accepted_msg.message_id
+        md5_body = accepted_msg.md5_of_body
     else:
         queue.put(msg)
 
     resp = {"MessageId": message_id, "MD5OfMessageBody": md5_body}
+    md5_attrs = _md5_message_attributes(accepted_msg.message_attributes)
+    if md5_attrs is not None:
+        resp["MD5OfMessageAttributes"] = md5_attrs
     if msg.sequence_number:
         resp["SequenceNumber"] = msg.sequence_number
     return resp
@@ -334,6 +383,7 @@ def _receive_message(
             for k, v in msg.system_attributes.items():
                 m["Attributes"][k] = v.get("StringValue", "") if isinstance(v, dict) else str(v)
         if msg.message_attributes:
+            m["MD5OfMessageAttributes"] = _md5_message_attributes(msg.message_attributes)
             m["MessageAttributes"] = msg.message_attributes
         messages.append(m)
 
@@ -452,17 +502,30 @@ def _send_message_batch(
             message_group_id=entry.get("MessageGroupId"),
             message_deduplication_id=entry.get("MessageDeduplicationId"),
         )
-        result = queue.put(msg)
-        if queue.is_fifo and result is not None:
-            msg_id = result.message_id
-            md5_body = result.md5_of_body
-        successful.append(
-            {
-                "Id": entry.get("Id", ""),
-                "MessageId": msg_id,
-                "MD5OfMessageBody": md5_body,
-            }
+        _parse_message_attributes(entry, msg)
+        _parse_message_attributes(
+            params,
+            msg,
+            prefix=f"SendMessageBatchRequestEntry.{len(successful) + 1}.MessageAttribute.",
         )
+        _parse_system_attributes(entry, msg)
+        accepted_msg = msg
+        if queue.is_fifo:
+            accepted_msg = queue.put(msg)
+            msg_id = accepted_msg.message_id
+            md5_body = accepted_msg.md5_of_body
+        else:
+            queue.put(msg)
+        md5_attrs = _md5_message_attributes(accepted_msg.message_attributes)
+
+        success = {
+            "Id": entry.get("Id", ""),
+            "MessageId": msg_id,
+            "MD5OfMessageBody": md5_body,
+        }
+        if md5_attrs is not None:
+            success["MD5OfMessageAttributes"] = md5_attrs
+        successful.append(success)
 
     return {"Successful": successful, "Failed": []}
 
@@ -725,13 +788,23 @@ def _move_to_dlq(store: SqsStore, queue: StandardQueue, msg: SqsMessage) -> None
     msg.deleted = True
 
 
-def _parse_message_attributes(params: dict, msg: SqsMessage) -> None:
+def _parse_message_attributes(
+    params: dict, msg: SqsMessage, prefix: str = "MessageAttribute."
+) -> None:
     i = 1
-    while f"MessageAttribute.{i}.Name" in params:
-        name = params[f"MessageAttribute.{i}.Name"]
-        data_type = params.get(f"MessageAttribute.{i}.Value.DataType", "String")
-        string_value = params.get(f"MessageAttribute.{i}.Value.StringValue", "")
-        msg.message_attributes[name] = {"DataType": data_type, "StringValue": string_value}
+    while f"{prefix}{i}.Name" in params:
+        name = params[f"{prefix}{i}.Name"]
+        data_type = params.get(f"{prefix}{i}.Value.DataType", "String")
+        if data_type.startswith("Binary"):
+            msg.message_attributes[name] = {
+                "DataType": data_type,
+                "BinaryValue": _normalize_binary_attribute_value(
+                    params.get(f"{prefix}{i}.Value.BinaryValue", b"")
+                ),
+            }
+        else:
+            string_value = params.get(f"{prefix}{i}.Value.StringValue", "")
+            msg.message_attributes[name] = {"DataType": data_type, "StringValue": string_value}
         i += 1
     if "MessageAttributes" in params:
         msg.message_attributes.update(params["MessageAttributes"])
