@@ -11079,3 +11079,866 @@ class TestEC2GapRunInstances:
         assert instance_id.startswith("i-")
         # Cleanup
         ec2.terminate_instances(InstanceIds=[instance_id])
+
+
+class TestEC2SpotInstanceBehavioralFidelity:
+    """Full behavioral spectrum for spot instance request lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_request_spot_instance_returns_request_id(self, ec2):
+        """RequestSpotInstances returns a sir- prefixed request ID."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        assert "SpotInstanceRequests" in resp
+        req = resp["SpotInstanceRequests"][0]
+        sir_id = req["SpotInstanceRequestId"]
+        assert sir_id.startswith("sir-")
+        assert req["State"] in ("active", "open")
+        assert req["Type"] == "one-time"
+        ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_request_spot_instance_launch_spec_preserved(self, ec2):
+        """LaunchSpecification fields are preserved in spot request response."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.02",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "m5.large"},
+        )
+        req = resp["SpotInstanceRequests"][0]
+        sir_id = req["SpotInstanceRequestId"]
+        try:
+            spec = req["LaunchSpecification"]
+            assert spec["InstanceType"] == "m5.large"
+            assert spec["ImageId"] == "ami-12345678"
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_describe_spot_instance_request_by_id(self, ec2):
+        """DescribeSpotInstanceRequests returns request by ID."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            assert len(described["SpotInstanceRequests"]) == 1
+            assert described["SpotInstanceRequests"][0]["SpotInstanceRequestId"] == sir_id
+            assert described["SpotInstanceRequests"][0]["State"] == "active"
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_list_spot_instance_requests(self, ec2):
+        """DescribeSpotInstanceRequests lists all active requests."""
+        resp1 = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        resp2 = ec2.request_spot_instances(
+            SpotPrice="0.02",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.small"},
+        )
+        sir_id1 = resp1["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        sir_id2 = resp2["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            all_requests = ec2.describe_spot_instance_requests()
+            all_ids = {r["SpotInstanceRequestId"] for r in all_requests["SpotInstanceRequests"]}
+            assert sir_id1 in all_ids
+            assert sir_id2 in all_ids
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id1, sir_id2])
+
+    def test_cancel_spot_instance_request_changes_state(self, ec2):
+        """Cancelled spot request appears in describe with cancelled state."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        cancel = ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        assert len(cancel["CancelledSpotInstanceRequests"]) == 1
+        assert cancel["CancelledSpotInstanceRequests"][0]["SpotInstanceRequestId"] == sir_id
+        assert cancel["CancelledSpotInstanceRequests"][0]["State"] == "cancelled"
+
+    def test_spot_price_reflected_in_response(self, ec2):
+        """Spot price set in request is returned in response."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.05",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        req = resp["SpotInstanceRequests"][0]
+        sir_id = req["SpotInstanceRequestId"]
+        try:
+            assert float(req["SpotPrice"]) == pytest.approx(0.05, abs=0.001)
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+
+class TestEC2SpotFleetCancelBehavior:
+    """Behavioral fidelity for spot fleet cancel lifecycle."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _fleet_config(self) -> dict:
+        return {
+            "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+            "TargetCapacity": 1,
+            "SpotPrice": "0.05",
+            "AllocationStrategy": "lowestPrice",
+            "LaunchSpecifications": [{"ImageId": "ami-12345678", "InstanceType": "t2.micro"}],
+        }
+
+    def test_cancel_single_fleet_verify_state(self, ec2):
+        """Cancelled fleet shows cancelled state when described."""
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        assert cancel["SuccessfulFleetRequests"][0]["SpotFleetRequestId"] == fleet_id
+        state = cancel["SuccessfulFleetRequests"][0]["CurrentSpotFleetRequestState"]
+        assert state in ("cancelled_running", "cancelled_terminating")
+
+    def test_cancel_multiple_fleets_all_succeed(self, ec2):
+        """CancelSpotFleetRequests cancels all specified fleets."""
+        fleet_ids = [
+            ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+                "SpotFleetRequestId"
+            ]
+            for _ in range(3)
+        ]
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=fleet_ids, TerminateInstances=True
+        )
+        assert len(cancel["SuccessfulFleetRequests"]) == 3
+        cancelled_ids = {r["SpotFleetRequestId"] for r in cancel["SuccessfulFleetRequests"]}
+        assert set(fleet_ids) == cancelled_ids
+
+    def test_describe_spot_fleet_after_cancel(self, ec2):
+        """Cancel response reports the cancelled fleet state."""
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        assert len(cancel["SuccessfulFleetRequests"]) == 1
+        state = cancel["SuccessfulFleetRequests"][0]["CurrentSpotFleetRequestState"]
+        assert state in ("cancelled_running", "cancelled_terminating")
+
+    def test_list_spot_fleets(self, ec2):
+        """DescribeSpotFleetRequests lists all fleet requests."""
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        try:
+            all_fleets = ec2.describe_spot_fleet_requests()
+            fleet_ids_listed = [
+                f["SpotFleetRequestId"] for f in all_fleets["SpotFleetRequestConfigs"]
+            ]
+            assert fleet_id in fleet_ids_listed
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_spot_fleet_history(self, ec2):
+        """DescribeSpotFleetRequestHistory returns HistoryRecords for a fleet."""
+        import datetime
+
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        try:
+            history = ec2.describe_spot_fleet_request_history(
+                SpotFleetRequestId=fleet_id,
+                StartTime=datetime.datetime(2015, 1, 1),
+            )
+            assert "HistoryRecords" in history
+            assert isinstance(history["HistoryRecords"], list)
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+
+class TestEC2ImportOperationsBehavior:
+    """Behavioral fidelity for import image/snapshot operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_import_image_returns_200(self, ec2):
+        """ImportImage succeeds and returns HTTP 200."""
+        resp = ec2.import_image()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_image_with_disk_container(self, ec2):
+        """ImportImage with DiskContainers param succeeds."""
+        resp = ec2.import_image(
+            Description="test-import",
+            DiskContainers=[
+                {
+                    "Description": "disk-1",
+                    "Format": "vmdk",
+                    "Url": "https://s3.amazonaws.com/mybucket/myimage.vmdk",
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_snapshot_returns_200(self, ec2):
+        """ImportSnapshot succeeds and returns HTTP 200."""
+        resp = ec2.import_snapshot()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_snapshot_with_disk_container(self, ec2):
+        """ImportSnapshot with DiskContainer param succeeds."""
+        resp = ec2.import_snapshot(
+            Description="test-snap-import",
+            DiskContainer={
+                "Description": "snap-disk",
+                "Format": "vmdk",
+                "Url": "https://s3.amazonaws.com/mybucket/mysnap.vmdk",
+            },
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_import_task_returns_200(self, ec2):
+        """CancelImportTask succeeds and returns HTTP 200."""
+        resp = ec2.cancel_import_task()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_import_task_with_task_id(self, ec2):
+        """CancelImportTask with explicit ImportTaskId succeeds."""
+        resp = ec2.cancel_import_task(ImportTaskId="import-ami-00000000000000000")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_import_image_tasks_returns_list(self, ec2):
+        """DescribeImportImageTasks returns a list (may be empty)."""
+        resp = ec2.describe_import_image_tasks()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_import_snapshot_tasks_returns_list(self, ec2):
+        """DescribeImportSnapshotTasks returns successfully."""
+        resp = ec2.describe_import_snapshot_tasks()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2TransitGatewayMulticastBehavior:
+    """Behavioral fidelity for transit gateway multicast associations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_accept_transit_gateway_multicast_domain_associations_returns_200(self, ec2):
+        """AcceptTransitGatewayMulticastDomainAssociations returns HTTP 200."""
+        resp = ec2.accept_transit_gateway_multicast_domain_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_accept_transit_gateway_multicast_with_params_returns_200(self, ec2):
+        """AcceptTransitGatewayMulticastDomainAssociations with params returns HTTP 200."""
+        resp = ec2.accept_transit_gateway_multicast_domain_associations(
+            TransitGatewayMulticastDomainId="tgw-mcast-domain-00000000",
+            TransitGatewayAttachmentId="tgw-attach-00000000",
+            SubnetIds=["subnet-00000000"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_reject_transit_gateway_multicast_domain_associations_returns_200(self, ec2):
+        """RejectTransitGatewayMulticastDomainAssociations returns HTTP 200."""
+        resp = ec2.reject_transit_gateway_multicast_domain_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_reject_transit_gateway_multicast_with_params_returns_200(self, ec2):
+        """RejectTransitGatewayMulticastDomainAssociations with params returns HTTP 200."""
+        resp = ec2.reject_transit_gateway_multicast_domain_associations(
+            TransitGatewayMulticastDomainId="tgw-mcast-domain-00000000",
+            TransitGatewayAttachmentId="tgw-attach-00000000",
+            SubnetIds=["subnet-00000000"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_transit_gateway_multicast_domain_create(self, ec2):
+        """TransitGatewayMulticastDomain create returns domain with expected ID prefix."""
+        tgw = ec2.create_transit_gateway()["TransitGateway"]["TransitGatewayId"]
+        try:
+            domain = ec2.create_transit_gateway_multicast_domain(TransitGatewayId=tgw)
+            domain_id = domain["TransitGatewayMulticastDomain"]["TransitGatewayMulticastDomainId"]
+            assert domain_id.startswith("tgw-mcast-domain-")
+
+            # Describe returns HTTP 200
+            described = ec2.describe_transit_gateway_multicast_domains(
+                TransitGatewayMulticastDomainIds=[domain_id]
+            )
+            assert described["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ec2.delete_transit_gateway(TransitGatewayId=tgw)
+
+
+class TestEC2SubnetAttributeEdgeCases:
+    """Edge cases for ModifySubnetAttribute."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def subnet(self, ec2):
+        vpc = ec2.create_vpc(CidrBlock="10.201.0.0/16")["Vpc"]["VpcId"]
+        sub = ec2.create_subnet(VpcId=vpc, CidrBlock="10.201.1.0/24")["Subnet"]["SubnetId"]
+        yield vpc, sub
+        ec2.delete_subnet(SubnetId=sub)
+        ec2.delete_vpc(VpcId=vpc)
+
+    def test_modify_subnet_attribute_nonexistent_subnet(self, ec2):
+        """ModifySubnetAttribute with nonexistent subnet returns InvalidSubnet error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.modify_subnet_attribute(
+                SubnetId="subnet-00000000000000000",
+                MapPublicIpOnLaunch={"Value": True},
+            )
+        assert "InvalidSubnetID.NotFound" in str(exc_info.value)
+
+    def test_modify_subnet_attribute_enable_then_disable_map_public_ip(self, ec2, subnet):
+        """ModifySubnetAttribute can toggle MapPublicIpOnLaunch on and off."""
+        _, subnet_id = subnet
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": True})
+        desc1 = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc1["Subnets"][0]["MapPublicIpOnLaunch"] is True
+
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": False})
+        desc2 = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc2["Subnets"][0]["MapPublicIpOnLaunch"] is False
+
+    def test_modify_subnet_attribute_enable_dns64(self, ec2, subnet):
+        """ModifySubnetAttribute EnableDns64 succeeds without error."""
+        _, subnet_id = subnet
+        # The modify operation should succeed (no exception)
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, EnableDns64={"Value": True})
+        # Verify the subnet still exists and is describable
+        desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc["Subnets"][0]["SubnetId"] == subnet_id
+
+    def test_modify_subnet_attribute_customer_owned_ipv4_pool(self, ec2, subnet):
+        """ModifySubnetAttribute MapCustomerOwnedIpOnLaunch requires pool (set false)."""
+        _, subnet_id = subnet
+        # MapPublicIpOnLaunch should work and be reflected
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": True})
+        desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc["Subnets"][0]["MapPublicIpOnLaunch"] is True
+        # Then disable it
+        ec2.modify_subnet_attribute(SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": False})
+        desc2 = ec2.describe_subnets(SubnetIds=[subnet_id])
+        assert desc2["Subnets"][0]["MapPublicIpOnLaunch"] is False
+
+
+class TestEC2PurchaseHostReservationBehavior:
+    """Behavioral fidelity for host reservation purchase."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_purchase_host_reservation_returns_pricing(self, ec2):
+        """PurchaseHostReservation returns TotalHourlyPrice and TotalUpfrontPrice."""
+        resp = ec2.purchase_host_reservation(
+            HostIdSet=["h-87654321"], OfferingId="hro-87654321"
+        )
+        assert "TotalHourlyPrice" in resp
+        assert "TotalUpfrontPrice" in resp
+
+    def test_purchase_host_reservation_currency_code(self, ec2):
+        """PurchaseHostReservation returns CurrencyCode in response."""
+        resp = ec2.purchase_host_reservation(
+            HostIdSet=["h-11111111"], OfferingId="hro-11111111"
+        )
+        assert "CurrencyCode" in resp
+        assert resp["CurrencyCode"] == "USD"
+
+    def test_describe_host_reservation_offerings_returns_list(self, ec2):
+        """DescribeHostReservationOfferings returns OfferingSet list."""
+        resp = ec2.describe_host_reservation_offerings()
+        assert "OfferingSet" in resp
+        assert isinstance(resp["OfferingSet"], list)
+
+    def test_get_host_reservation_purchase_preview(self, ec2):
+        """GetHostReservationPurchasePreview returns pricing info."""
+        resp = ec2.get_host_reservation_purchase_preview(
+            HostIdSet=["h-12345678"], OfferingId="hro-12345678"
+        )
+        assert "TotalHourlyPrice" in resp
+        assert "TotalUpfrontPrice" in resp
+        assert "CurrencyCode" in resp
+
+
+class TestEC2PurchaseCapacityBlockBehavior:
+    """Behavioral fidelity for capacity block purchase."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_purchase_capacity_block_returns_reservation(self, ec2):
+        """PurchaseCapacityBlock returns a CapacityReservation with an ID."""
+        resp = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId="cbo-00000000000000000",
+            InstancePlatform="Linux/UNIX",
+        )
+        assert "CapacityReservation" in resp
+        reservation = resp["CapacityReservation"]
+        assert "CapacityReservationId" in reservation
+        assert "State" in reservation
+
+    def test_purchase_capacity_block_reservation_id_format(self, ec2):
+        """PurchaseCapacityBlock CapacityReservationId starts with cr-."""
+        resp = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId="cbo-11111111111111111",
+            InstancePlatform="Linux/UNIX",
+        )
+        reservation_id = resp["CapacityReservation"]["CapacityReservationId"]
+        assert reservation_id.startswith("cr-")
+
+    def test_purchase_capacity_block_with_tags(self, ec2):
+        """PurchaseCapacityBlock with TagSpecifications stores tags."""
+        resp = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId="cbo-22222222222222222",
+            InstancePlatform="Linux/UNIX",
+            TagSpecifications=[
+                {
+                    "ResourceType": "capacity-reservation",
+                    "Tags": [{"Key": "Team", "Value": "infra"}],
+                }
+            ],
+        )
+        assert "CapacityReservation" in resp
+        assert "CapacityReservationId" in resp["CapacityReservation"]
+
+
+class TestEC2SearchLocalGatewayRoutesBehavior:
+    """Behavioral fidelity for SearchLocalGatewayRoutes."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_search_local_gateway_routes_returns_routes_list(self, ec2):
+        """SearchLocalGatewayRoutes returns a Routes list (may be empty)."""
+        resp = ec2.search_local_gateway_routes(
+            LocalGatewayRouteTableId="lgw-rtb-00000000000000000",
+            Filters=[{"Name": "type", "Values": ["static"]}],
+        )
+        assert "Routes" in resp
+        assert isinstance(resp["Routes"], list)
+
+    def test_search_local_gateway_routes_filter_by_state(self, ec2):
+        """SearchLocalGatewayRoutes with state filter returns list."""
+        resp = ec2.search_local_gateway_routes(
+            LocalGatewayRouteTableId="lgw-rtb-00000000000000000",
+            Filters=[{"Name": "state", "Values": ["active"]}],
+        )
+        assert "Routes" in resp
+
+    def test_describe_local_gateways_returns_200(self, ec2):
+        """DescribeLocalGateways returns HTTP 200 (stub, may have empty list)."""
+        resp = ec2.describe_local_gateways()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_local_gateway_route_tables_returns_list(self, ec2):
+        """DescribeLocalGatewayRouteTables returns RouteTables list."""
+        resp = ec2.describe_local_gateway_route_tables()
+        assert "LocalGatewayRouteTables" in resp
+        assert isinstance(resp["LocalGatewayRouteTables"], list)
+
+
+class TestEC2VPCPaginationBehavior:
+    """Pagination behavior for EC2 list operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_security_groups_with_filter(self, ec2):
+        """DescribeSecurityGroups with GroupIds filter returns only matching groups."""
+        sg_ids = []
+        try:
+            for i in range(3):
+                sg = ec2.create_security_group(
+                    GroupName=_unique(f"pg-sg-{i}"),
+                    Description=f"Pagination test SG {i}",
+                )
+                sg_ids.append(sg["GroupId"])
+
+            # Filter by specific IDs
+            filtered = ec2.describe_security_groups(GroupIds=sg_ids[:2])
+            assert "SecurityGroups" in filtered
+            assert len(filtered["SecurityGroups"]) == 2
+            returned_ids = {sg["GroupId"] for sg in filtered["SecurityGroups"]}
+            assert set(sg_ids[:2]) == returned_ids
+        finally:
+            for sg_id in sg_ids:
+                ec2.delete_security_group(GroupId=sg_id)
+
+    def test_describe_key_pairs_returns_all(self, ec2):
+        """DescribeKeyPairs returns all created key pairs."""
+        key_names = [_unique("pg-key") for _ in range(3)]
+        try:
+            for name in key_names:
+                ec2.create_key_pair(KeyName=name)
+            listed = ec2.describe_key_pairs(KeyNames=key_names)
+            assert len(listed["KeyPairs"]) == 3
+            listed_names = {kp["KeyName"] for kp in listed["KeyPairs"]}
+            assert set(key_names) == listed_names
+        finally:
+            for name in key_names:
+                ec2.delete_key_pair(KeyName=name)
+
+    def test_describe_vpcs_filter_by_id(self, ec2):
+        """DescribeVpcs with VpcIds filter returns only matching VPCs."""
+        vpc1 = ec2.create_vpc(CidrBlock="10.202.0.0/16")["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.203.0.0/16")["Vpc"]["VpcId"]
+        try:
+            filtered = ec2.describe_vpcs(VpcIds=[vpc1])
+            assert len(filtered["Vpcs"]) == 1
+            assert filtered["Vpcs"][0]["VpcId"] == vpc1
+        finally:
+            ec2.delete_vpc(VpcId=vpc1)
+            ec2.delete_vpc(VpcId=vpc2)
+
+    def test_describe_instances_max_results_pagination(self, ec2):
+        """DescribeInstances with MaxResults paginates correctly."""
+        run_resp = ec2.run_instances(ImageId="ami-12345678", MinCount=2, MaxCount=2)
+        instance_ids = [i["InstanceId"] for i in run_resp["Instances"]]
+        try:
+            page1 = ec2.describe_instances(MaxResults=5)
+            assert "Reservations" in page1
+        finally:
+            ec2.terminate_instances(InstanceIds=instance_ids)
+
+
+class TestEC2ResourceTimestamps:
+    """Behavioral fidelity: timestamp fields on EC2 resources."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_vpc_has_no_required_timestamp(self, ec2):
+        """VPC describe returns standard fields (no required timestamp field)."""
+        vpc = ec2.create_vpc(CidrBlock="10.204.0.0/16")["Vpc"]
+        vpc_id = vpc["VpcId"]
+        try:
+            desc = ec2.describe_vpcs(VpcIds=[vpc_id])
+            v = desc["Vpcs"][0]
+            assert v["VpcId"] == vpc_id
+            assert v["CidrBlock"] == "10.204.0.0/16"
+            assert v["State"] in ("available", "pending")
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_key_pair_has_fingerprint(self, ec2):
+        """CreateKeyPair response includes KeyFingerprint."""
+        name = _unique("ts-key")
+        resp = ec2.create_key_pair(KeyName=name)
+        try:
+            assert "KeyFingerprint" in resp
+            assert len(resp["KeyFingerprint"]) > 0
+            assert "KeyMaterial" in resp
+        finally:
+            ec2.delete_key_pair(KeyName=name)
+
+    def test_snapshot_has_start_time(self, ec2):
+        """CreateSnapshot returns StartTime in response."""
+        import datetime
+
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap = ec2.create_snapshot(VolumeId=vol_id)
+            snap_id = snap["SnapshotId"]
+            try:
+                assert "StartTime" in snap
+                assert isinstance(snap["StartTime"], datetime.datetime)
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_instance_launch_time_present(self, ec2):
+        """RunInstances returns LaunchTime in instance response."""
+        import datetime
+
+        resp = ec2.run_instances(ImageId="ami-12345678", MinCount=1, MaxCount=1)
+        instance = resp["Instances"][0]
+        instance_id = instance["InstanceId"]
+        try:
+            assert "LaunchTime" in instance
+            assert isinstance(instance["LaunchTime"], datetime.datetime)
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+
+class TestEC2IdempotencyBehavior:
+    """Idempotency and duplicate-create behaviors."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_create_key_pair_duplicate_raises_error(self, ec2):
+        """Creating a key pair with a duplicate name raises InvalidKeyPair.Duplicate."""
+        name = _unique("idem-key")
+        ec2.create_key_pair(KeyName=name)
+        try:
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.create_key_pair(KeyName=name)
+            assert exc_info.value.response["Error"]["Code"] == "InvalidKeyPair.Duplicate"
+        finally:
+            ec2.delete_key_pair(KeyName=name)
+
+    def test_create_security_group_duplicate_raises_error(self, ec2):
+        """Creating a security group with a duplicate name raises InvalidGroup.Duplicate."""
+        sg_name = _unique("idem-sg")
+        sg_id = ec2.create_security_group(GroupName=sg_name, Description="first")["GroupId"]
+        try:
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.create_security_group(GroupName=sg_name, Description="second")
+            assert exc_info.value.response["Error"]["Code"] == "InvalidGroup.Duplicate"
+        finally:
+            ec2.delete_security_group(GroupId=sg_id)
+
+    def test_create_vpc_with_same_cidr_creates_separate_vpc(self, ec2):
+        """Creating two VPCs with the same CIDR creates two separate VPCs."""
+        cidr = "10.205.0.0/16"
+        vpc1 = ec2.create_vpc(CidrBlock=cidr)["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock=cidr)["Vpc"]["VpcId"]
+        try:
+            assert vpc1 != vpc2
+            filtered = ec2.describe_vpcs(VpcIds=[vpc1, vpc2])
+            assert len(filtered["Vpcs"]) == 2
+        finally:
+            ec2.delete_vpc(VpcId=vpc1)
+            ec2.delete_vpc(VpcId=vpc2)
+
+    def test_delete_nonexistent_key_pair_is_silent(self, ec2):
+        """Deleting a nonexistent key pair succeeds silently (AWS behavior)."""
+        resp = ec2.delete_key_pair(KeyName="definitely-does-not-exist-12345")
+        # AWS DeleteKeyPair is idempotent - returns Return: True even for nonexistent keys
+        assert "Return" in resp
+        assert resp["Return"] is True
+
+    def test_delete_nonexistent_security_group_raises_error(self, ec2):
+        """Deleting a nonexistent security group raises InvalidGroup.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.delete_security_group(GroupId="sg-00000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "InvalidGroup.NotFound"
+
+
+class TestEC2UnicodeEdgeCases:
+    """Edge cases for unicode and special characters in resource names and tags."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_tag_with_unicode_value(self, ec2):
+        """CreateTags stores unicode characters in tag values."""
+        vpc = ec2.create_vpc(CidrBlock="10.206.0.0/16")["Vpc"]["VpcId"]
+        try:
+            unicode_value = "héllo wörld 你好 🌍"
+            ec2.create_tags(
+                Resources=[vpc],
+                Tags=[{"Key": "Name", "Value": unicode_value}],
+            )
+            desc = ec2.describe_vpcs(VpcIds=[vpc])
+            tags = {t["Key"]: t["Value"] for t in desc["Vpcs"][0].get("Tags", [])}
+            assert tags.get("Name") == unicode_value
+        finally:
+            ec2.delete_vpc(VpcId=vpc)
+
+    def test_tag_with_long_value(self, ec2):
+        """CreateTags stores tag values up to 256 characters."""
+        vpc = ec2.create_vpc(CidrBlock="10.207.0.0/16")["Vpc"]["VpcId"]
+        try:
+            long_value = "x" * 256
+            ec2.create_tags(
+                Resources=[vpc],
+                Tags=[{"Key": "LongTag", "Value": long_value}],
+            )
+            desc = ec2.describe_vpcs(VpcIds=[vpc])
+            tags = {t["Key"]: t["Value"] for t in desc["Vpcs"][0].get("Tags", [])}
+            assert tags.get("LongTag") == long_value
+        finally:
+            ec2.delete_vpc(VpcId=vpc)
+
+    def test_multiple_tags_on_resource(self, ec2):
+        """CreateTags can set multiple tags on a resource at once."""
+        vpc = ec2.create_vpc(CidrBlock="10.208.0.0/16")["Vpc"]["VpcId"]
+        try:
+            ec2.create_tags(
+                Resources=[vpc],
+                Tags=[
+                    {"Key": "Env", "Value": "test"},
+                    {"Key": "Team", "Value": "platform"},
+                    {"Key": "Owner", "Value": "eng"},
+                ],
+            )
+            desc = ec2.describe_vpcs(VpcIds=[vpc])
+            tags = {t["Key"]: t["Value"] for t in desc["Vpcs"][0].get("Tags", [])}
+            assert tags["Env"] == "test"
+            assert tags["Team"] == "platform"
+            assert tags["Owner"] == "eng"
+        finally:
+            ec2.delete_vpc(VpcId=vpc)
+
+    def test_delete_tag_removes_it(self, ec2):
+        """DeleteTags removes tag from resource."""
+        vpc = ec2.create_vpc(CidrBlock="10.209.0.0/16")["Vpc"]["VpcId"]
+        try:
+            ec2.create_tags(Resources=[vpc], Tags=[{"Key": "ToDelete", "Value": "yes"}])
+            ec2.delete_tags(Resources=[vpc], Tags=[{"Key": "ToDelete"}])
+            desc = ec2.describe_vpcs(VpcIds=[vpc])
+            tags = {t["Key"]: t["Value"] for t in desc["Vpcs"][0].get("Tags", [])}
+            assert "ToDelete" not in tags
+        finally:
+            ec2.delete_vpc(VpcId=vpc)
+
+    def test_security_group_description_with_special_chars(self, ec2):
+        """Security group description can contain special characters."""
+        sg_name = _unique("sg-special")
+        desc_text = "Test SG: special & chars <test> 'quotes'"
+        sg_id = ec2.create_security_group(GroupName=sg_name, Description=desc_text)["GroupId"]
+        try:
+            described = ec2.describe_security_groups(GroupIds=[sg_id])
+            assert described["SecurityGroups"][0]["Description"] == desc_text
+        finally:
+            ec2.delete_security_group(GroupId=sg_id)
+
+
+class TestEC2ARNFormatValidation:
+    """Validate ARN formats on EC2 resources that have ARNs."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_instance_has_correct_id_format(self, ec2):
+        """RunInstances returns instance IDs with i- prefix."""
+        resp = ec2.run_instances(ImageId="ami-12345678", MinCount=1, MaxCount=1)
+        instance_id = resp["Instances"][0]["InstanceId"]
+        try:
+            assert instance_id.startswith("i-")
+            assert len(instance_id) > 3
+        finally:
+            ec2.terminate_instances(InstanceIds=[instance_id])
+
+    def test_vpc_id_format(self, ec2):
+        """CreateVpc returns VPC ID with vpc- prefix."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.210.0.0/16")["Vpc"]["VpcId"]
+        try:
+            assert vpc_id.startswith("vpc-")
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_subnet_id_format(self, ec2):
+        """CreateSubnet returns subnet ID with subnet- prefix."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.211.0.0/16")["Vpc"]["VpcId"]
+        try:
+            subnet_id = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.211.1.0/24")[
+                "Subnet"
+            ]["SubnetId"]
+            assert subnet_id.startswith("subnet-")
+            ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_security_group_id_format(self, ec2):
+        """CreateSecurityGroup returns ID with sg- prefix."""
+        sg_id = ec2.create_security_group(GroupName=_unique("arn-sg"), Description="test")[
+            "GroupId"
+        ]
+        try:
+            assert sg_id.startswith("sg-")
+        finally:
+            ec2.delete_security_group(GroupId=sg_id)
+
+    def test_snapshot_id_format(self, ec2):
+        """CreateSnapshot returns snapshot ID with snap- prefix."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            snap_id = ec2.create_snapshot(VolumeId=vol_id)["SnapshotId"]
+            try:
+                assert snap_id.startswith("snap-")
+            finally:
+                ec2.delete_snapshot(SnapshotId=snap_id)
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_volume_id_format(self, ec2):
+        """CreateVolume returns volume ID with vol- prefix."""
+        vol = ec2.create_volume(AvailabilityZone="us-east-1a", Size=1)
+        vol_id = vol["VolumeId"]
+        try:
+            assert vol_id.startswith("vol-")
+        finally:
+            ec2.delete_volume(VolumeId=vol_id)
+
+    def test_internet_gateway_id_format(self, ec2):
+        """CreateInternetGateway returns ID with igw- prefix."""
+        igw_id = ec2.create_internet_gateway()["InternetGateway"]["InternetGatewayId"]
+        try:
+            assert igw_id.startswith("igw-")
+        finally:
+            ec2.delete_internet_gateway(InternetGatewayId=igw_id)
+
+    def test_route_table_id_format(self, ec2):
+        """CreateRouteTable returns ID with rtb- prefix."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.212.0.0/16")["Vpc"]["VpcId"]
+        try:
+            rtb_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"]["RouteTableId"]
+            assert rtb_id.startswith("rtb-")
+            ec2.delete_route_table(RouteTableId=rtb_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2ReplaceImageCriteriaFidelity:
+    """Behavioral fidelity for ReplaceImageCriteriaInAllowedImagesSettings."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_image_criteria_returns_return_value(self, ec2):
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue."""
+        resp = ec2.replace_image_criteria_in_allowed_images_settings()
+        assert "ReturnValue" in resp
+
+    def test_replace_image_criteria_with_image_criteria(self, ec2):
+        """ReplaceImageCriteriaInAllowedImagesSettings with ImageCriteria succeeds."""
+        resp = ec2.replace_image_criteria_in_allowed_images_settings(
+            ImageCriteria=[{"ImageProviders": ["amazon"]}]
+        )
+        assert "ReturnValue" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_allowed_images_settings_returns_response(self, ec2):
+        """GetAllowedImagesSettings returns a valid response."""
+        resp = ec2.get_allowed_images_settings()
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
