@@ -13,7 +13,7 @@ An MIT-licensed, open-source AWS emulator built on top of Moto. Runs as a single
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
+┌──────────────────────────────────────────────┐
 │              Docker Container                │
 │                                              │
 │  ┌────────────────────────────────────────┐  │
@@ -40,7 +40,7 @@ An MIT-licensed, open-source AWS emulator built on top of Moto. Runs as a single
 │  │  │  (per-account, per-region)       │  │  │
 │  │  └─────────────────────────────────-┘  │  │
 │  └────────────────────────────────────────┘  │
-└─────────────────────────────────────────────┘
+└──────────────────────────────────────────────┘
 ```
 
 ## Project Layout

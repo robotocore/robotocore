@@ -400,7 +400,7 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 │  │   ┌──────────┴──────────────┐               │  │
 │  │   │                         │               │  │
 │  │   ▼                         ▼               │  │
-│  │  Native Providers         Moto Bridge        │  │
+│  │  Native Providers         Moto Bridge       │  │
 │  │  (46 services —           (~112 services —  │  │
 │  │   full fidelity)           Moto backends)   │  │
 │  │                                             │  │
