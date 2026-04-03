@@ -704,3 +704,714 @@ class TestPersonalizeListFilters:
         assert "metricAttributions" in resp
         assert isinstance(resp["metricAttributions"], list)
         client.delete_dataset_group(datasetGroupArn=arn)
+
+
+class TestPersonalizeCampaignCRUD:
+    """Full CRUD lifecycle for Campaign resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    SOL_VERSION_ARN = f"{BASE_ARN}:solution/test-sol/solutionVersion/abc123"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_delete_campaign(self, client):
+        r = client.create_campaign(name="test-camp-crud", solutionVersionArn=self.SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        assert "campaign" in arn
+        assert "test-camp-crud" in arn
+
+        desc = client.describe_campaign(campaignArn=arn)
+        camp = desc["campaign"]
+        assert camp["name"] == "test-camp-crud"
+        assert camp["campaignArn"] == arn
+        assert camp["status"] == "ACTIVE"
+
+        client.delete_campaign(campaignArn=arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_campaign(campaignArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_campaign_update_returns_arn(self, client):
+        r = client.create_campaign(name="test-camp-update", solutionVersionArn=self.SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        upd = client.update_campaign(campaignArn=arn, minProvisionedTPS=5)
+        assert upd["campaignArn"] == arn
+        client.delete_campaign(campaignArn=arn)
+
+    def test_list_campaigns_includes_created(self, client):
+        r = client.create_campaign(name="test-camp-list-check", solutionVersionArn=self.SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        resp = client.list_campaigns()
+        arns = [c["campaignArn"] for c in resp["campaigns"]]
+        assert arn in arns
+        client.delete_campaign(campaignArn=arn)
+
+    def test_list_campaigns_entry_has_correct_keys(self, client):
+        r = client.create_campaign(name="test-camp-keys", solutionVersionArn=self.SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        resp = client.list_campaigns()
+        matching = [c for c in resp["campaigns"] if c["campaignArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "campaignArn" in entry
+        assert "name" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+        assert entry["name"] == "test-camp-keys"
+        client.delete_campaign(campaignArn=arn)
+
+    def test_campaign_describe_has_timestamps(self, client):
+        r = client.create_campaign(name="test-camp-ts", solutionVersionArn=self.SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        desc = client.describe_campaign(campaignArn=arn)["campaign"]
+        assert "creationDateTime" in desc
+        assert "lastUpdatedDateTime" in desc
+        assert desc["creationDateTime"] is not None
+        client.delete_campaign(campaignArn=arn)
+
+    def test_delete_nonexistent_campaign_raises(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_campaign(campaignArn=f"{self.BASE_ARN}:campaign/nonexistent-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_campaigns_after_delete_excludes_deleted(self, client):
+        r = client.create_campaign(name="test-camp-del-list", solutionVersionArn=self.SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        client.delete_campaign(campaignArn=arn)
+        resp = client.list_campaigns()
+        arns = [c["campaignArn"] for c in resp["campaigns"]]
+        assert arn not in arns
+
+
+class TestPersonalizeSolutionCRUD:
+    """Full CRUD lifecycle for Solution resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_delete_solution(self, client):
+        r = client.create_solution(name="test-sol-crud", datasetGroupArn=self.DG_ARN)
+        arn = r["solutionArn"]
+        assert "solution" in arn
+        assert "test-sol-crud" in arn
+
+        desc = client.describe_solution(solutionArn=arn)
+        sol = desc["solution"]
+        assert sol["name"] == "test-sol-crud"
+        assert sol["solutionArn"] == arn
+        assert sol["status"] == "ACTIVE"
+
+        client.delete_solution(solutionArn=arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution(solutionArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_solution_update_returns_arn(self, client):
+        r = client.create_solution(name="test-sol-update", datasetGroupArn=self.DG_ARN)
+        arn = r["solutionArn"]
+        upd = client.update_solution(solutionArn=arn, performAutoTraining=True)
+        assert upd["solutionArn"] == arn
+        client.delete_solution(solutionArn=arn)
+
+    def test_list_solutions_includes_created(self, client):
+        r = client.create_solution(name="test-sol-list-check", datasetGroupArn=self.DG_ARN)
+        arn = r["solutionArn"]
+        resp = client.list_solutions()
+        arns = [s["solutionArn"] for s in resp["solutions"]]
+        assert arn in arns
+        client.delete_solution(solutionArn=arn)
+
+    def test_list_solutions_entry_has_correct_keys(self, client):
+        r = client.create_solution(name="test-sol-keys", datasetGroupArn=self.DG_ARN)
+        arn = r["solutionArn"]
+        resp = client.list_solutions()
+        matching = [s for s in resp["solutions"] if s["solutionArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "solutionArn" in entry
+        assert "name" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+        client.delete_solution(solutionArn=arn)
+
+    def test_delete_nonexistent_solution_raises(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_solution(solutionArn=f"{self.BASE_ARN}:solution/nonexistent-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_solution_arn_format(self, client):
+        r = client.create_solution(name="test-sol-arn-fmt", datasetGroupArn=self.DG_ARN)
+        arn = r["solutionArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "personalize"
+        assert "solution" in arn
+        assert "test-sol-arn-fmt" in arn
+        client.delete_solution(solutionArn=arn)
+
+
+class TestPersonalizeSolutionVersionCRUD:
+    """CRUD lifecycle for SolutionVersion resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    @pytest.fixture
+    def solution_arn(self, client):
+        r = client.create_solution(name="test-sol-for-ver", datasetGroupArn=self.DG_ARN)
+        yield r["solutionArn"]
+        try:
+            client.delete_solution(solutionArn=r["solutionArn"])
+        except ClientError:
+            pass
+
+    def test_create_describe_solution_version(self, client, solution_arn):
+        r = client.create_solution_version(solutionArn=solution_arn)
+        sv_arn = r["solutionVersionArn"]
+        assert "solutionVersion" in sv_arn or "solution" in sv_arn
+
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        sv = desc["solutionVersion"]
+        assert sv["solutionVersionArn"] == sv_arn
+        assert sv["status"] == "ACTIVE"
+
+    def test_list_solution_versions_includes_created(self, client, solution_arn):
+        r = client.create_solution_version(solutionArn=solution_arn)
+        sv_arn = r["solutionVersionArn"]
+        resp = client.list_solution_versions()
+        arns = [sv["solutionVersionArn"] for sv in resp["solutionVersions"]]
+        assert sv_arn in arns
+
+    def test_list_solution_versions_entry_has_correct_keys(self, client, solution_arn):
+        r = client.create_solution_version(solutionArn=solution_arn)
+        sv_arn = r["solutionVersionArn"]
+        resp = client.list_solution_versions()
+        matching = [sv for sv in resp["solutionVersions"] if sv["solutionVersionArn"] == sv_arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "solutionVersionArn" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+
+
+class TestPersonalizeFilterCRUD:
+    """Full CRUD lifecycle for Filter resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+    FILTER_EXPR = "EXCLUDE itemId WHERE Items.genre IN ($GENRES)"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_delete_filter(self, client):
+        r = client.create_filter(
+            name="test-filter-crud",
+            datasetGroupArn=self.DG_ARN,
+            filterExpression=self.FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        assert "filter" in arn
+        assert "test-filter-crud" in arn
+
+        desc = client.describe_filter(filterArn=arn)
+        f = desc["filter"]
+        assert f["name"] == "test-filter-crud"
+        assert f["filterArn"] == arn
+        assert f["status"] == "ACTIVE"
+
+        client.delete_filter(filterArn=arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_filter(filterArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_filters_includes_created(self, client):
+        r = client.create_filter(
+            name="test-filter-list-check",
+            datasetGroupArn=self.DG_ARN,
+            filterExpression=self.FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        resp = client.list_filters()
+        arns = [f["filterArn"] for f in resp["Filters"]]
+        assert arn in arns
+        client.delete_filter(filterArn=arn)
+
+    def test_list_filters_entry_has_correct_keys(self, client):
+        r = client.create_filter(
+            name="test-filter-keys",
+            datasetGroupArn=self.DG_ARN,
+            filterExpression=self.FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        resp = client.list_filters()
+        matching = [f for f in resp["Filters"] if f["filterArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "filterArn" in entry
+        assert "name" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+        client.delete_filter(filterArn=arn)
+
+    def test_filter_describe_has_timestamps(self, client):
+        r = client.create_filter(
+            name="test-filter-ts",
+            datasetGroupArn=self.DG_ARN,
+            filterExpression=self.FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        desc = client.describe_filter(filterArn=arn)["filter"]
+        assert "creationDateTime" in desc
+        assert "lastUpdatedDateTime" in desc
+        client.delete_filter(filterArn=arn)
+
+    def test_delete_nonexistent_filter_raises(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_filter(filterArn=f"{self.BASE_ARN}:filter/test-dg/nonexistent-xyz")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_filters_after_delete_excludes_deleted(self, client):
+        r = client.create_filter(
+            name="test-filter-del-list",
+            datasetGroupArn=self.DG_ARN,
+            filterExpression=self.FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        client.delete_filter(filterArn=arn)
+        resp = client.list_filters()
+        arns = [f["filterArn"] for f in resp["Filters"]]
+        assert arn not in arns
+
+
+class TestPersonalizeEventTrackerCRUD:
+    """Full CRUD lifecycle for EventTracker resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_delete_event_tracker(self, client):
+        r = client.create_event_tracker(name="test-et-crud", datasetGroupArn=self.DG_ARN)
+        arn = r["eventTrackerArn"]
+        tracking_id = r["trackingId"]
+        assert "event-tracker" in arn
+        assert tracking_id is not None
+
+        desc = client.describe_event_tracker(eventTrackerArn=arn)
+        et = desc["eventTracker"]
+        assert et["name"] == "test-et-crud"
+        assert et["eventTrackerArn"] == arn
+        assert et["status"] == "ACTIVE"
+        assert et.get("trackingId") == tracking_id
+
+        client.delete_event_tracker(eventTrackerArn=arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_event_tracker(eventTrackerArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_event_tracker_create_returns_tracking_id(self, client):
+        r = client.create_event_tracker(name="test-et-tracking", datasetGroupArn=self.DG_ARN)
+        assert "trackingId" in r
+        assert r["trackingId"] is not None and r["trackingId"] != ""
+        client.delete_event_tracker(eventTrackerArn=r["eventTrackerArn"])
+
+    def test_list_event_trackers_includes_created(self, client):
+        r = client.create_event_tracker(name="test-et-list-check", datasetGroupArn=self.DG_ARN)
+        arn = r["eventTrackerArn"]
+        resp = client.list_event_trackers()
+        arns = [et["eventTrackerArn"] for et in resp["eventTrackers"]]
+        assert arn in arns
+        client.delete_event_tracker(eventTrackerArn=arn)
+
+    def test_list_event_trackers_entry_has_correct_keys(self, client):
+        r = client.create_event_tracker(name="test-et-keys", datasetGroupArn=self.DG_ARN)
+        arn = r["eventTrackerArn"]
+        resp = client.list_event_trackers()
+        matching = [et for et in resp["eventTrackers"] if et["eventTrackerArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "eventTrackerArn" in entry
+        assert "name" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+        client.delete_event_tracker(eventTrackerArn=arn)
+
+    def test_delete_nonexistent_event_tracker_raises(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_event_tracker(
+                eventTrackerArn=f"{self.BASE_ARN}:event-tracker/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_event_trackers_after_delete_excludes_deleted(self, client):
+        r = client.create_event_tracker(name="test-et-del-list", datasetGroupArn=self.DG_ARN)
+        arn = r["eventTrackerArn"]
+        client.delete_event_tracker(eventTrackerArn=arn)
+        resp = client.list_event_trackers()
+        arns = [et["eventTrackerArn"] for et in resp["eventTrackers"]]
+        assert arn not in arns
+
+
+class TestPersonalizeRecommenderCRUD:
+    """Full CRUD lifecycle for Recommender resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+    RECIPE_ARN = "arn:aws:personalize:::recipe/aws-ecomm-popular-items-by-purchases"
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_delete_recommender(self, client):
+        r = client.create_recommender(
+            name="test-rec-crud",
+            datasetGroupArn=self.DG_ARN,
+            recipeArn=self.RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        assert "recommender" in arn
+        assert "test-rec-crud" in arn
+
+        desc = client.describe_recommender(recommenderArn=arn)
+        rec = desc["recommender"]
+        assert rec["name"] == "test-rec-crud"
+        assert rec["recommenderArn"] == arn
+        assert rec["status"] == "ACTIVE"
+
+        client.delete_recommender(recommenderArn=arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_recommender(recommenderArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_recommender_update_returns_arn(self, client):
+        r = client.create_recommender(
+            name="test-rec-update",
+            datasetGroupArn=self.DG_ARN,
+            recipeArn=self.RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        upd = client.update_recommender(recommenderArn=arn, recommenderConfig={"minRecommendationRequestsPerSecond": 2})
+        assert upd["recommenderArn"] == arn
+        client.delete_recommender(recommenderArn=arn)
+
+    def test_recommender_start_stop(self, client):
+        r = client.create_recommender(
+            name="test-rec-startstop",
+            datasetGroupArn=self.DG_ARN,
+            recipeArn=self.RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        stop_r = client.stop_recommender(recommenderArn=arn)
+        assert stop_r["recommenderArn"] == arn
+
+        desc = client.describe_recommender(recommenderArn=arn)
+        assert desc["recommender"]["status"] == "INACTIVE"
+
+        start_r = client.start_recommender(recommenderArn=arn)
+        assert start_r["recommenderArn"] == arn
+
+        desc2 = client.describe_recommender(recommenderArn=arn)
+        assert desc2["recommender"]["status"] == "ACTIVE"
+
+        client.delete_recommender(recommenderArn=arn)
+
+    def test_list_recommenders_includes_created(self, client):
+        r = client.create_recommender(
+            name="test-rec-list-check",
+            datasetGroupArn=self.DG_ARN,
+            recipeArn=self.RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        resp = client.list_recommenders()
+        arns = [rec["recommenderArn"] for rec in resp["recommenders"]]
+        assert arn in arns
+        client.delete_recommender(recommenderArn=arn)
+
+    def test_list_recommenders_entry_has_correct_keys(self, client):
+        r = client.create_recommender(
+            name="test-rec-keys",
+            datasetGroupArn=self.DG_ARN,
+            recipeArn=self.RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        resp = client.list_recommenders()
+        matching = [rec for rec in resp["recommenders"] if rec["recommenderArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "recommenderArn" in entry
+        assert "name" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+        client.delete_recommender(recommenderArn=arn)
+
+    def test_delete_nonexistent_recommender_raises(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_recommender(
+                recommenderArn=f"{self.BASE_ARN}:recommender/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPersonalizeMetricAttributionCRUD:
+    """Full CRUD lifecycle for MetricAttribution resources."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+    ROLE_ARN = f"{BASE_ARN.replace('personalize', 'iam')}:role/PersonalizeRole"
+    METRICS_OUTPUT = {
+        "s3DataDestination": {"path": "s3://bucket/prefix/"},
+        "roleArn": "arn:aws:iam::123456789012:role/PersonalizeRole",
+    }
+    METRICS = [{"eventType": "click", "expression": "SUM(DatasetType.INTERACTIONS)", "metricName": "click-metric"}]
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_delete_metric_attribution(self, client):
+        r = client.create_metric_attribution(
+            name="test-ma-crud",
+            datasetGroupArn=self.DG_ARN,
+            metrics=self.METRICS,
+            metricsOutputConfig=self.METRICS_OUTPUT,
+        )
+        arn = r["metricAttributionArn"]
+        assert "metric-attribution" in arn
+        assert "test-ma-crud" in arn
+
+        desc = client.describe_metric_attribution(metricAttributionArn=arn)
+        ma = desc["metricAttribution"]
+        assert ma["name"] == "test-ma-crud"
+        assert ma["metricAttributionArn"] == arn
+        assert ma["status"] == "ACTIVE"
+
+        client.delete_metric_attribution(metricAttributionArn=arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_metric_attribution(metricAttributionArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_metric_attribution_update_returns_arn(self, client):
+        r = client.create_metric_attribution(
+            name="test-ma-update",
+            datasetGroupArn=self.DG_ARN,
+            metrics=self.METRICS,
+            metricsOutputConfig=self.METRICS_OUTPUT,
+        )
+        arn = r["metricAttributionArn"]
+        upd = client.update_metric_attribution(
+            metricAttributionArn=arn,
+            metricsOutputConfig=self.METRICS_OUTPUT,
+        )
+        assert upd["metricAttributionArn"] == arn
+        client.delete_metric_attribution(metricAttributionArn=arn)
+
+    def test_list_metric_attributions_includes_created(self, client):
+        r = client.create_metric_attribution(
+            name="test-ma-list-check",
+            datasetGroupArn=self.DG_ARN,
+            metrics=self.METRICS,
+            metricsOutputConfig=self.METRICS_OUTPUT,
+        )
+        arn = r["metricAttributionArn"]
+        resp = client.list_metric_attributions()
+        arns = [ma["metricAttributionArn"] for ma in resp["metricAttributions"]]
+        assert arn in arns
+        client.delete_metric_attribution(metricAttributionArn=arn)
+
+    def test_list_metric_attributions_entry_has_correct_keys(self, client):
+        r = client.create_metric_attribution(
+            name="test-ma-keys",
+            datasetGroupArn=self.DG_ARN,
+            metrics=self.METRICS,
+            metricsOutputConfig=self.METRICS_OUTPUT,
+        )
+        arn = r["metricAttributionArn"]
+        resp = client.list_metric_attributions()
+        matching = [ma for ma in resp["metricAttributions"] if ma["metricAttributionArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "metricAttributionArn" in entry
+        assert "name" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+        client.delete_metric_attribution(metricAttributionArn=arn)
+
+    def test_delete_nonexistent_metric_attribution_raises(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_metric_attribution(
+                metricAttributionArn=f"{self.BASE_ARN}:metric-attribution/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPersonalizeBatchJobsCRUD:
+    """CRUD lifecycle for BatchInferenceJob, BatchSegmentJob, and DataDeletionJob."""
+
+    BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+    SOL_VERSION_ARN = f"{BASE_ARN}:solution/test-sol/solutionVersion/abc123"
+    ROLE_ARN = "arn:aws:iam::123456789012:role/PersonalizeRole"
+    DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+    JOB_INPUT = {"s3DataSource": {"path": "s3://bucket/input/"}}
+    JOB_OUTPUT = {"s3DataDestination": {"path": "s3://bucket/output/"}}
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_create_describe_batch_inference_job(self, client):
+        r = client.create_batch_inference_job(
+            jobName="test-bij-crud",
+            solutionVersionArn=self.SOL_VERSION_ARN,
+            jobInput=self.JOB_INPUT,
+            jobOutput=self.JOB_OUTPUT,
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["batchInferenceJobArn"]
+        assert "batch-inference-job" in arn
+
+        desc = client.describe_batch_inference_job(batchInferenceJobArn=arn)
+        job = desc["batchInferenceJob"]
+        assert job["jobName"] == "test-bij-crud"
+        assert job["batchInferenceJobArn"] == arn
+        assert job["status"] == "ACTIVE"
+
+    def test_list_batch_inference_jobs_includes_created(self, client):
+        r = client.create_batch_inference_job(
+            jobName="test-bij-list",
+            solutionVersionArn=self.SOL_VERSION_ARN,
+            jobInput=self.JOB_INPUT,
+            jobOutput=self.JOB_OUTPUT,
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["batchInferenceJobArn"]
+        resp = client.list_batch_inference_jobs()
+        arns = [j["batchInferenceJobArn"] for j in resp["batchInferenceJobs"]]
+        assert arn in arns
+
+    def test_list_batch_inference_jobs_entry_has_correct_keys(self, client):
+        r = client.create_batch_inference_job(
+            jobName="test-bij-keys",
+            solutionVersionArn=self.SOL_VERSION_ARN,
+            jobInput=self.JOB_INPUT,
+            jobOutput=self.JOB_OUTPUT,
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["batchInferenceJobArn"]
+        resp = client.list_batch_inference_jobs()
+        matching = [j for j in resp["batchInferenceJobs"] if j["batchInferenceJobArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "batchInferenceJobArn" in entry
+        assert "jobName" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+
+    def test_create_describe_batch_segment_job(self, client):
+        r = client.create_batch_segment_job(
+            jobName="test-bsj-crud",
+            solutionVersionArn=self.SOL_VERSION_ARN,
+            jobInput=self.JOB_INPUT,
+            jobOutput=self.JOB_OUTPUT,
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["batchSegmentJobArn"]
+        assert "batch-segment-job" in arn
+
+        desc = client.describe_batch_segment_job(batchSegmentJobArn=arn)
+        job = desc["batchSegmentJob"]
+        assert job["jobName"] == "test-bsj-crud"
+        assert job["batchSegmentJobArn"] == arn
+        assert job["status"] == "ACTIVE"
+
+    def test_list_batch_segment_jobs_includes_created(self, client):
+        r = client.create_batch_segment_job(
+            jobName="test-bsj-list",
+            solutionVersionArn=self.SOL_VERSION_ARN,
+            jobInput=self.JOB_INPUT,
+            jobOutput=self.JOB_OUTPUT,
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["batchSegmentJobArn"]
+        resp = client.list_batch_segment_jobs()
+        arns = [j["batchSegmentJobArn"] for j in resp["batchSegmentJobs"]]
+        assert arn in arns
+
+    def test_list_batch_segment_jobs_entry_has_correct_keys(self, client):
+        r = client.create_batch_segment_job(
+            jobName="test-bsj-keys",
+            solutionVersionArn=self.SOL_VERSION_ARN,
+            jobInput=self.JOB_INPUT,
+            jobOutput=self.JOB_OUTPUT,
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["batchSegmentJobArn"]
+        resp = client.list_batch_segment_jobs()
+        matching = [j for j in resp["batchSegmentJobs"] if j["batchSegmentJobArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "batchSegmentJobArn" in entry
+        assert "jobName" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
+
+    def test_create_describe_data_deletion_job(self, client):
+        r = client.create_data_deletion_job(
+            jobName="test-ddj-crud",
+            datasetGroupArn=self.DG_ARN,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["dataDeletionJobArn"]
+        assert "data-deletion-job" in arn
+
+        desc = client.describe_data_deletion_job(dataDeletionJobArn=arn)
+        job = desc["dataDeletionJob"]
+        assert job["jobName"] == "test-ddj-crud"
+        assert job["dataDeletionJobArn"] == arn
+        assert job["status"] == "ACTIVE"
+
+    def test_list_data_deletion_jobs_includes_created(self, client):
+        r = client.create_data_deletion_job(
+            jobName="test-ddj-list",
+            datasetGroupArn=self.DG_ARN,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["dataDeletionJobArn"]
+        resp = client.list_data_deletion_jobs()
+        arns = [j["dataDeletionJobArn"] for j in resp["dataDeletionJobs"]]
+        assert arn in arns
+
+    def test_list_data_deletion_jobs_entry_has_correct_keys(self, client):
+        r = client.create_data_deletion_job(
+            jobName="test-ddj-keys",
+            datasetGroupArn=self.DG_ARN,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=self.ROLE_ARN,
+        )
+        arn = r["dataDeletionJobArn"]
+        resp = client.list_data_deletion_jobs()
+        matching = [j for j in resp["dataDeletionJobs"] if j["dataDeletionJobArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert "dataDeletionJobArn" in entry
+        assert "jobName" in entry
+        assert "status" in entry
+        assert "creationDateTime" in entry
