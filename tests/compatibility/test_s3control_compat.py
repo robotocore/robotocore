@@ -3751,3 +3751,516 @@ class TestS3ControlIdentityCenterAndNewStubs:
         """ListCallerAccessGrants returns CallerAccessGrantsList."""
         resp = client.list_caller_access_grants(AccountId=self.ACCOUNT_ID)
         assert "CallerAccessGrantsList" in resp
+
+
+class TestS3ControlEdgeCases:
+    """Edge case and behavioral fidelity tests for s3control."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("s3control")
+
+    @pytest.fixture
+    def s3(self):
+        return make_client("s3")
+
+    # ── Submit MRAP Routes ────────────────────────────────────────────────────
+
+    def test_submit_mrap_routes_reflected_in_get(self, client, s3):
+        """SubmitMultiRegionAccessPointRoutes change is visible via GetRoutes."""
+        bucket = f"mrap-rt2-{_uid()}"
+        mrap_name = f"mrap-rt2-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        client.create_multi_region_access_point(
+            AccountId=ACCOUNT_ID,
+            Details={"Name": mrap_name, "Regions": [{"Bucket": bucket}]},
+        )
+        try:
+            client.submit_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID,
+                Mrap=mrap_name,
+                RouteUpdates=[
+                    {"Bucket": bucket, "Region": "us-east-1", "TrafficDialPercentage": 50}
+                ],
+            )
+            resp = client.get_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID, Mrap=mrap_name
+            )
+            assert "Routes" in resp
+            assert isinstance(resp["Routes"], list)
+            assert len(resp["Routes"]) >= 1
+            # Verify route has the expected bucket
+            route_buckets = [r["Bucket"] for r in resp["Routes"]]
+            assert bucket in route_buckets
+        finally:
+            try:
+                client.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_submit_mrap_routes_error_nonexistent(self, client):
+        """SubmitMultiRegionAccessPointRoutes for nonexistent MRAP raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.submit_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID,
+                Mrap=f"nonexistent-{_uid()}",
+                RouteUpdates=[
+                    {"Bucket": "any-bucket", "Region": "us-east-1", "TrafficDialPercentage": 100}
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+
+    def test_submit_mrap_routes_multiple_traffic_dial(self, client, s3):
+        """SubmitMultiRegionAccessPointRoutes with TrafficDialPercentage=0 is valid."""
+        bucket = f"mrap-rt3-{_uid()}"
+        mrap_name = f"mrap-rt3-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        client.create_multi_region_access_point(
+            AccountId=ACCOUNT_ID,
+            Details={"Name": mrap_name, "Regions": [{"Bucket": bucket}]},
+        )
+        try:
+            resp = client.submit_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID,
+                Mrap=mrap_name,
+                RouteUpdates=[
+                    {"Bucket": bucket, "Region": "us-east-1", "TrafficDialPercentage": 0}
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # ── Identity Center Associate/Dissociate ──────────────────────────────────
+
+    def test_associate_dissociate_identity_center_roundtrip(self, client):
+        """Associate then dissociate identity center succeeds."""
+        resp = client.associate_access_grants_identity_center(
+            AccountId=ACCOUNT_ID,
+            IdentityCenterArn="arn:aws:sso:::instance/ssoins-test123",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Dissociate should also succeed
+        resp2 = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_dissociate_identity_center_idempotent(self, client):
+        """DissociateAccessGrantsIdentityCenter succeeds even if not associated."""
+        resp = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── List Access Points empty response fields ──────────────────────────────
+
+    def test_list_access_points_empty_has_required_fields(self, client):
+        """ListAccessPoints empty response contains AccessPointList key."""
+        resp = client.list_access_points(
+            AccountId=ACCOUNT_ID, Bucket=f"bucket-that-does-not-exist-{_uid()}"
+        )
+        assert "AccessPointList" in resp
+        assert isinstance(resp["AccessPointList"], list)
+        assert len(resp["AccessPointList"]) == 0
+
+    def test_list_access_points_empty_no_next_token(self, client):
+        """ListAccessPoints returns no NextToken when empty."""
+        resp = client.list_access_points(
+            AccountId=ACCOUNT_ID, Bucket=f"bucket-that-does-not-exist-{_uid()}"
+        )
+        assert resp.get("NextToken") is None or "NextToken" not in resp
+
+    # ── Delete Access Point idempotency ───────────────────────────────────────
+
+    def test_delete_access_point_idempotent_twice(self, client, s3):
+        """Deleting a nonexistent access point twice both succeed."""
+        name = f"ap-idem-{_uid()}"
+        resp1 = client.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
+        assert resp1["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        resp2 = client.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+
+    def test_delete_access_point_then_get_error_code(self, client, s3):
+        """After deleting access point, get returns NoSuchAccessPoint."""
+        bucket = f"ap-delget-{_uid()}"
+        ap_name = f"ap-delget-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            client.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            client.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            with pytest.raises(ClientError) as exc:
+                client.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert exc.value.response["Error"]["Code"] == "NoSuchAccessPoint"
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # ── List MRAP empty response fields ──────────────────────────────────────
+
+    def test_list_multi_region_access_points_empty_structure(self, client):
+        """ListMultiRegionAccessPoints has AccessPoints list even when empty."""
+        resp = client.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+        assert "AccessPoints" in resp
+        assert isinstance(resp["AccessPoints"], list)
+
+    def test_list_multi_region_access_points_no_next_token_when_empty(self, client):
+        """ListMultiRegionAccessPoints has no NextToken when result is empty."""
+        resp = client.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+        # If list is empty, NextToken should not be present
+        if not resp["AccessPoints"]:
+            assert resp.get("NextToken") is None or "NextToken" not in resp
+
+    # ── Tag resource behavioral fidelity ─────────────────────────────────────
+
+    def test_tag_resource_then_list_tags(self, client, s3):
+        """TagResource then ListTagsForResource returns the set tags."""
+        bucket_name = f"tag-list-{_uid()}"
+        s3.create_bucket(Bucket=bucket_name)
+        arn = f"arn:aws:s3:::{bucket_name}"
+        try:
+            client.tag_resource(
+                AccountId=ACCOUNT_ID,
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "staging"}, {"Key": "version", "Value": "2"}],
+            )
+            resp = client.list_tags_for_resource(AccountId=ACCOUNT_ID, ResourceArn=arn)
+            assert "Tags" in resp
+            tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tag_map["env"] == "staging"
+            assert tag_map["version"] == "2"
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_tag_resource_overwrite_updates_value(self, client, s3):
+        """TagResource with same key updates the value."""
+        bucket_name = f"tag-upd-{_uid()}"
+        s3.create_bucket(Bucket=bucket_name)
+        arn = f"arn:aws:s3:::{bucket_name}"
+        try:
+            client.tag_resource(
+                AccountId=ACCOUNT_ID,
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "dev"}],
+            )
+            client.tag_resource(
+                AccountId=ACCOUNT_ID,
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "prod"}],
+            )
+            resp = client.list_tags_for_resource(AccountId=ACCOUNT_ID, ResourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in resp["Tags"]}
+            assert tag_map["env"] == "prod"
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_untag_resource_then_list_empty(self, client, s3):
+        """UntagResource then ListTagsForResource returns empty list."""
+        bucket_name = f"tag-del-{_uid()}"
+        s3.create_bucket(Bucket=bucket_name)
+        arn = f"arn:aws:s3:::{bucket_name}"
+        try:
+            client.tag_resource(
+                AccountId=ACCOUNT_ID,
+                ResourceArn=arn,
+                Tags=[{"Key": "k1", "Value": "v1"}],
+            )
+            client.untag_resource(
+                AccountId=ACCOUNT_ID,
+                ResourceArn=arn,
+                TagKeys=["k1"],
+            )
+            resp = client.list_tags_for_resource(AccountId=ACCOUNT_ID, ResourceArn=arn)
+            tag_keys = [t["Key"] for t in resp["Tags"]]
+            assert "k1" not in tag_keys
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # ── List Jobs field assertions ────────────────────────────────────────────
+
+    def test_list_jobs_empty_has_jobs_key(self, client):
+        """ListJobs returns Jobs list even when empty."""
+        resp = client.list_jobs(AccountId=ACCOUNT_ID)
+        assert "Jobs" in resp
+        assert isinstance(resp["Jobs"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_jobs_after_create(self, client, s3):
+        """ListJobs includes newly created job with expected fields."""
+        bucket = f"job-list2-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        resp = client.create_job(
+            AccountId=ACCOUNT_ID,
+            Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+            Report={"Enabled": False},
+            ClientRequestToken=str(uuid.uuid4()),
+            Priority=5,
+            RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+            ConfirmationRequired=False,
+            ManifestGenerator={
+                "S3JobManifestGenerator": {
+                    "SourceBucket": f"arn:aws:s3:::{bucket}",
+                    "EnableManifestOutput": False,
+                }
+            },
+        )
+        job_id = resp["JobId"]
+        try:
+            list_resp = client.list_jobs(AccountId=ACCOUNT_ID)
+            job_ids = [j["JobId"] for j in list_resp["Jobs"]]
+            assert job_id in job_ids
+            # Verify job entry has expected fields
+            job_entry = next(j for j in list_resp["Jobs"] if j["JobId"] == job_id)
+            assert "Status" in job_entry
+            assert "Priority" in job_entry
+        finally:
+            try:
+                client.update_job_status(
+                    AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # ── Access Grants list after create ──────────────────────────────────────
+
+    def test_list_access_grants_instances_after_create(self, client):
+        """ListAccessGrantsInstances includes newly created instance."""
+        try:
+            client.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            pass  # may already exist
+        try:
+            resp = client.list_access_grants_instances(AccountId=ACCOUNT_ID)
+            assert "AccessGrantsInstancesList" in resp
+            assert len(resp["AccessGrantsInstancesList"]) >= 1
+            instance = resp["AccessGrantsInstancesList"][0]
+            assert "AccessGrantsInstanceArn" in instance
+            assert "CreatedAt" in instance
+        finally:
+            try:
+                client.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_access_grants_instances_empty_fields(self, client):
+        """ListAccessGrantsInstances empty response has required structure."""
+        # Delete any existing instance first
+        try:
+            client.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+        except Exception:
+            pass  # best-effort cleanup
+        resp = client.list_access_grants_instances(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstancesList" in resp
+        assert isinstance(resp["AccessGrantsInstancesList"], list)
+
+    def test_list_access_grants_empty_structure(self, client):
+        """ListAccessGrants empty response has AccessGrantsList key."""
+        resp = client.list_access_grants(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsList" in resp
+        assert isinstance(resp["AccessGrantsList"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_access_grants_locations_empty_structure(self, client):
+        """ListAccessGrantsLocations empty response has AccessGrantsLocationsList key."""
+        resp = client.list_access_grants_locations(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsLocationsList" in resp
+        assert isinstance(resp["AccessGrantsLocationsList"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── Bucket Policy/Lifecycle/Replication roundtrips ────────────────────────
+
+    def test_get_bucket_policy_after_put(self, client, s3):
+        """GetBucketPolicy returns the policy after PutBucketPolicy."""
+        bucket = f"bkt-pol2-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": f"arn:aws:s3:::{bucket}/*",
+                        }
+                    ],
+                }
+            )
+            client.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy)
+            resp = client.get_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "Policy" in resp
+            parsed = json.loads(resp["Policy"])
+            assert parsed["Version"] == "2012-10-17"
+        finally:
+            try:
+                client.delete_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_get_bucket_lifecycle_after_put(self, client, s3):
+        """PutBucketLifecycleConfiguration accepts rules; GetBucketLifecycleConfiguration responds."""
+        bucket = f"bkt-lc2-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            put_resp = client.put_bucket_lifecycle_configuration(
+                AccountId=ACCOUNT_ID,
+                Bucket=bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "test-rule",
+                            "Status": "Enabled",
+                            "Filter": {"Prefix": "logs/"},
+                        }
+                    ]
+                },
+            )
+            assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # GET returns a response with Rules key (server stub: may be empty)
+            resp = client.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+            assert "Rules" in resp
+            assert isinstance(resp["Rules"], list)
+        finally:
+            try:
+                client.delete_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_get_bucket_replication_after_put(self, client, s3):
+        """PutBucketReplication accepts config; GetBucketReplication responds with 200."""
+        bucket = f"bkt-repl2-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            put_resp = client.put_bucket_replication(
+                AccountId=ACCOUNT_ID,
+                Bucket=bucket,
+                ReplicationConfiguration={
+                    "Role": f"arn:aws:iam::{ACCOUNT_ID}:role/repl-role",
+                    "Rules": [
+                        {
+                            "ID": "repl-rule-1",
+                            "Status": "Enabled",
+                            "Priority": 1,
+                            "Bucket": f"arn:aws:s3:::{bucket}",
+                            "Filter": {"Prefix": ""},
+                            "Destination": {
+                                "Bucket": f"arn:aws:s3:::{bucket}",
+                                "Account": ACCOUNT_ID,
+                            },
+                            "DeleteMarkerReplication": {"Status": "Disabled"},
+                        }
+                    ],
+                },
+            )
+            assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            resp = client.get_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # ── Delete access point policy behavioral fidelity ────────────────────────
+
+    def test_delete_access_point_policy_verify_then_error(self, client, s3):
+        """Full lifecycle: create AP, set policy, verify it, delete it, verify gone."""
+        bucket = f"ap-fullpol-{_uid()}"
+        ap_name = f"ap-fullpol-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            client.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            policy = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": "s3:GetObject",
+                            "Resource": (
+                                f"arn:aws:s3:us-east-1:{ACCOUNT_ID}:accesspoint/{ap_name}/object/*"
+                            ),
+                        }
+                    ],
+                }
+            )
+            # Set the policy
+            client.put_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name, Policy=policy)
+            # Verify it was set
+            get_resp = client.get_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert "Policy" in get_resp
+            parsed = json.loads(get_resp["Policy"])
+            assert parsed["Version"] == "2012-10-17"
+            # Update it with a new statement
+            policy2 = json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": "*",
+                            "Action": "s3:PutObject",
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+            client.put_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name, Policy=policy2)
+            get_resp2 = client.get_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
+            parsed2 = json.loads(get_resp2["Policy"])
+            assert parsed2["Statement"][0]["Effect"] == "Deny"
+            # Delete and verify gone
+            client.delete_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
+            with pytest.raises(ClientError) as exc:
+                client.get_access_point_policy(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert exc.value.response["Error"]["Code"] == "NoSuchAccessPointPolicy"
+        finally:
+            try:
+                client.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
