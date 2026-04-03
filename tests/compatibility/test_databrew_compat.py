@@ -473,8 +473,10 @@ class TestDataBrewDatasetEdgeCases:
         assert created_dataset in resp["ResourceArn"]
 
     def test_describe_dataset_has_timestamps(self, databrew_client, created_dataset):
+        import datetime
         resp = databrew_client.describe_dataset(Name=created_dataset)
         assert "CreateDate" in resp
+        assert isinstance(resp["CreateDate"], datetime.datetime)
 
     def test_create_dataset_duplicate_raises(self, databrew_client, created_dataset):
         from botocore.exceptions import ClientError
@@ -740,6 +742,321 @@ class TestDataBrewJobEdgeCases:
             assert name in job_names
         finally:
             databrew_client.delete_job(Name=name)
+
+
+class TestDataBrewTagsOnCreate:
+    """Tags specified at creation time persist and are retrievable."""
+
+    def test_create_dataset_with_tags_preserved(self, databrew_client):
+        name = f"ds-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_dataset(
+            Name=name,
+            Input={"S3InputDefinition": {"Bucket": "my-bucket", "Key": "data.csv"}},
+            Tags={"env": "staging", "team": "data"},
+        )
+        try:
+            resp = databrew_client.describe_dataset(Name=name)
+            assert resp["Tags"]["env"] == "staging"
+            assert resp["Tags"]["team"] == "data"
+        finally:
+            databrew_client.delete_dataset(Name=name)
+
+    def test_create_recipe_job_with_tags_preserved(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            Tags={"env": "test", "version": "1"},
+        )
+        try:
+            resp = databrew_client.describe_job(Name=name)
+            assert resp["Tags"]["env"] == "test"
+            assert resp["Tags"]["version"] == "1"
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_create_ruleset_with_tags_preserved(self, databrew_client):
+        name = f"rs-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_ruleset(
+            Name=name,
+            Description="tagged ruleset",
+            TargetArn="arn:aws:databrew:us-east-1:123456789012:dataset/dummy",
+            Rules=[
+                {
+                    "Name": "rule1",
+                    "Disabled": False,
+                    "CheckExpression": "IS_NOT_NULL(:col)",
+                    "SubstitutionMap": {":col": "col1"},
+                }
+            ],
+            Tags={"env": "prod", "criticality": "high"},
+        )
+        try:
+            resp = databrew_client.describe_ruleset(Name=name)
+            assert resp["Tags"]["env"] == "prod"
+            assert resp["Tags"]["criticality"] == "high"
+        finally:
+            databrew_client.delete_ruleset(Name=name)
+
+    def test_create_profile_job_with_tags_preserved(self, databrew_client, created_dataset):
+        name = f"pjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_profile_job(
+            DatasetName=created_dataset,
+            Name=name,
+            OutputLocation={"Bucket": "my-bucket"},
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            Tags={"project": "analytics"},
+        )
+        try:
+            resp = databrew_client.describe_job(Name=name)
+            assert resp["Tags"]["project"] == "analytics"
+        finally:
+            databrew_client.delete_job(Name=name)
+
+
+class TestDataBrewJobBehavior:
+    """Behavioral fidelity tests for DataBrew jobs."""
+
+    def test_recipe_job_has_arn(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = databrew_client.describe_job(Name=name)
+            assert "ResourceArn" in resp
+            assert "databrew" in resp["ResourceArn"]
+            assert name in resp["ResourceArn"]
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_job_has_createdate(self, databrew_client):
+        import datetime
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = databrew_client.describe_job(Name=name)
+            assert "CreateDate" in resp
+            assert isinstance(resp["CreateDate"], datetime.datetime)
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_job_role_arn_persists(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        role = "arn:aws:iam::123456789012:role/my-specific-role"
+        databrew_client.create_recipe_job(Name=name, RoleArn=role)
+        try:
+            resp = databrew_client.describe_job(Name=name)
+            assert resp["RoleArn"] == role
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_update_recipe_job_role_persists(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/original-role",
+        )
+        try:
+            new_role = "arn:aws:iam::123456789012:role/updated-role"
+            databrew_client.update_recipe_job(Name=name, RoleArn=new_role)
+            resp = databrew_client.describe_job(Name=name)
+            assert resp["RoleArn"] == new_role
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_create_duplicate_job_raises(self, databrew_client):
+        name = f"rjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe_job(
+            Name=name,
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            with pytest.raises(databrew_client.exceptions.ClientError) as exc_info:
+                databrew_client.create_recipe_job(
+                    Name=name,
+                    RoleArn="arn:aws:iam::123456789012:role/test-role",
+                )
+            assert exc_info.value.response["Error"]["Code"] in (
+                "ConflictException",
+                "AlreadyExistsException",
+            )
+        finally:
+            databrew_client.delete_job(Name=name)
+
+    def test_list_jobs_filter_by_dataset(self, databrew_client, created_dataset):
+        name = f"pjob-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_profile_job(
+            DatasetName=created_dataset,
+            Name=name,
+            OutputLocation={"Bucket": "my-bucket"},
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = databrew_client.list_jobs(DatasetName=created_dataset)
+            job_names = [j["Name"] for j in resp["Jobs"]]
+            assert name in job_names
+        finally:
+            databrew_client.delete_job(Name=name)
+
+
+class TestDataBrewDatasetBehavioral:
+    """Behavioral fidelity tests for DataBrew datasets."""
+
+    def test_list_datasets_returns_created_order(self, databrew_client):
+        names = [f"ord-{uuid.uuid4().hex[:6]}" for _ in range(3)]
+        for n in names:
+            databrew_client.create_dataset(
+                Name=n,
+                Input={"S3InputDefinition": {"Bucket": "my-bucket", "Key": "data.csv"}},
+            )
+        try:
+            resp = databrew_client.list_datasets()
+            listed = [d["Name"] for d in resp["Datasets"] if d["Name"] in set(names)]
+            assert listed == names
+        finally:
+            for n in names:
+                try:
+                    databrew_client.delete_dataset(Name=n)
+                except Exception:
+                    pass
+
+    def test_describe_dataset_has_createdate(self, databrew_client, created_dataset):
+        import datetime
+        resp = databrew_client.describe_dataset(Name=created_dataset)
+        assert "CreateDate" in resp
+        assert isinstance(resp["CreateDate"], datetime.datetime)
+
+    def test_dataset_arn_format(self, databrew_client, created_dataset):
+        resp = databrew_client.describe_dataset(Name=created_dataset)
+        arn = resp["ResourceArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[2] == "databrew"
+        assert created_dataset in arn
+
+    def test_create_dataset_with_pipe_delimiter(self, databrew_client):
+        name = f"ds-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_dataset(
+            Name=name,
+            Input={"S3InputDefinition": {"Bucket": "my-bucket", "Key": "data.csv"}},
+            FormatOptions={"Csv": {"Delimiter": "|"}},
+        )
+        try:
+            resp = databrew_client.describe_dataset(Name=name)
+            assert resp["FormatOptions"]["Csv"]["Delimiter"] == "|"
+        finally:
+            databrew_client.delete_dataset(Name=name)
+
+    def test_delete_dataset_removes_from_list(self, databrew_client):
+        name = f"ds-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_dataset(
+            Name=name,
+            Input={"S3InputDefinition": {"Bucket": "my-bucket", "Key": "data.csv"}},
+        )
+        databrew_client.delete_dataset(Name=name)
+        resp = databrew_client.list_datasets()
+        names = [d["Name"] for d in resp["Datasets"]]
+        assert name not in names
+
+
+class TestDataBrewRecipeBehavioral:
+    """Behavioral fidelity tests for DataBrew recipes."""
+
+    def test_describe_recipe_has_createdate(self, databrew_client, created_recipe):
+        import datetime
+        resp = databrew_client.describe_recipe(Name=created_recipe, RecipeVersion="LATEST_WORKING")
+        assert "CreateDate" in resp
+        assert isinstance(resp["CreateDate"], datetime.datetime)
+
+    def test_list_recipes_shows_version_number(self, databrew_client, created_recipe):
+        resp = databrew_client.list_recipes(RecipeVersion="LATEST_WORKING")
+        recipes = {r["Name"]: r for r in resp["Recipes"]}
+        assert created_recipe in recipes
+        assert "RecipeVersion" in recipes[created_recipe]
+
+    def test_publish_recipe_increments_version(self, databrew_client):
+        name = f"recipe-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe(
+            Name=name,
+            Steps=[{"Action": {"Operation": "UPPER_CASE", "Parameters": {"sourceColumn": "col1"}}}],
+        )
+        databrew_client.publish_recipe(Name=name)
+        databrew_client.update_recipe(
+            Name=name,
+            Steps=[{"Action": {"Operation": "LOWER_CASE", "Parameters": {"sourceColumn": "col1"}}}],
+        )
+        databrew_client.publish_recipe(Name=name)
+        resp = databrew_client.list_recipe_versions(Name=name)
+        versions = [r["RecipeVersion"] for r in resp["Recipes"] if r.get("RecipeVersion") not in (None, "LATEST_WORKING")]
+        assert "1.0" in versions
+        assert "2.0" in versions
+
+    def test_describe_recipe_not_found(self, databrew_client):
+        with pytest.raises(databrew_client.exceptions.ResourceNotFoundException):
+            databrew_client.describe_recipe(Name="no-such-recipe", RecipeVersion="LATEST_WORKING")
+
+    def test_list_recipes_reflects_deletion(self, databrew_client):
+        name = f"recipe-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_recipe(
+            Name=name,
+            Steps=[{"Action": {"Operation": "UPPER_CASE", "Parameters": {"sourceColumn": "c"}}}],
+        )
+        resp = databrew_client.list_recipes(RecipeVersion="LATEST_WORKING")
+        assert name in [r["Name"] for r in resp["Recipes"]]
+        databrew_client.delete_recipe_version(Name=name, RecipeVersion="LATEST_WORKING")
+        resp = databrew_client.list_recipes(RecipeVersion="LATEST_WORKING")
+        assert name not in [r["Name"] for r in resp["Recipes"]]
+
+
+class TestDataBrewRulesetBehavioral:
+    """Behavioral fidelity tests for DataBrew rulesets."""
+
+    def test_describe_ruleset_has_createdate(self, databrew_client, created_ruleset):
+        import datetime
+        resp = databrew_client.describe_ruleset(Name=created_ruleset)
+        assert "CreateDate" in resp
+        assert isinstance(resp["CreateDate"], datetime.datetime)
+
+    def test_describe_ruleset_shows_description(self, databrew_client, created_ruleset):
+        resp = databrew_client.describe_ruleset(Name=created_ruleset)
+        assert resp["Description"] == "test ruleset"
+
+    def test_list_rulesets_shows_target_arn(self, databrew_client, created_ruleset):
+        resp = databrew_client.list_rulesets()
+        rs = next((r for r in resp["Rulesets"] if r["Name"] == created_ruleset), None)
+        assert rs is not None
+        assert "TargetArn" in rs
+
+    def test_delete_ruleset_removes_from_list(self, databrew_client):
+        name = f"rs-{uuid.uuid4().hex[:8]}"
+        databrew_client.create_ruleset(
+            Name=name,
+            Description="temp",
+            TargetArn="arn:aws:databrew:us-east-1:123456789012:dataset/dummy",
+            Rules=[
+                {
+                    "Name": "r1",
+                    "Disabled": False,
+                    "CheckExpression": "IS_NOT_NULL(:col)",
+                    "SubstitutionMap": {":col": "col1"},
+                }
+            ],
+        )
+        databrew_client.delete_ruleset(Name=name)
+        resp = databrew_client.list_rulesets()
+        names = [r["Name"] for r in resp["Rulesets"]]
+        assert name not in names
+
+    def test_describe_ruleset_rule_substitution_map(self, databrew_client, created_ruleset):
+        resp = databrew_client.describe_ruleset(Name=created_ruleset)
+        rule = resp["Rules"][0]
+        assert "SubstitutionMap" in rule
+        assert rule["SubstitutionMap"][":col"] == "col1"
 
 
 @pytest.fixture
