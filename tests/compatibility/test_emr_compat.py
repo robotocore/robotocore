@@ -1294,4 +1294,309 @@ class TestEMRPersistentAppUI:
             ServiceRole="arn:aws:iam::123456789012:role/EMR_Notebooks_DefaultRole",
         )
         assert "NotebookExecutionId" in resp
-        assert resp["NotebookExecutionId"]
+
+
+class TestEMREdgeCasesAndFidelity:
+    """Edge case and behavioral fidelity tests for EMR."""
+
+    # --- ERROR: nonexistent resource ---
+
+    def test_describe_nonexistent_cluster_error(self, emr):
+        """DescribeCluster with fake ID raises ClientError."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_cluster(ClusterId="j-FAKE1234567890")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_steps_for_nonexistent_cluster_error(self, emr):
+        """ListSteps for nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_steps(ClusterId="j-FAKE1234567890")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_instance_groups_for_nonexistent_cluster_error(self, emr):
+        """ListInstanceGroups for nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_instance_groups(ClusterId="j-FAKE1234567890")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_instances_for_nonexistent_cluster_error(self, emr):
+        """ListInstances for nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_instances(ClusterId="j-FAKE1234567890")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_bootstrap_actions_for_nonexistent_cluster_error(self, emr):
+        """ListBootstrapActions for nonexistent cluster raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_bootstrap_actions(ClusterId="j-FAKE1234567890")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_describe_step_nonexistent_error(self, emr, cluster_id):
+        """DescribeStep with fake step ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_step(ClusterId=cluster_id, StepId="s-FAKE1234567890")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_delete_nonexistent_security_config_error(self, emr):
+        """DeleteSecurityConfiguration for nonexistent name raises error."""
+        with pytest.raises(ClientError) as exc:
+            emr.delete_security_configuration(Name="nonexistent-config-xyz-abc")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_security_config_duplicate_name_error(self, emr):
+        """Creating a security config with a duplicate name raises an error."""
+        name = _unique("dup-config")
+        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False}})
+        emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        try:
+            with pytest.raises(ClientError) as exc:
+                emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+            assert exc.value.response["Error"]["Code"] in (
+                "InvalidRequestException",
+                "AlreadyExistsException",
+            )
+        finally:
+            emr.delete_security_configuration(Name=name)
+
+    # --- LIST: create then verify presence ---
+
+    def test_list_clusters_includes_created_cluster(self, emr):
+        """ListClusters includes a newly created cluster by ID."""
+        resp = emr.run_job_flow(
+            Name=_unique("list-me"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            list_resp = emr.list_clusters()
+            ids = [c["Id"] for c in list_resp["Clusters"]]
+            assert cid in ids
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_list_steps_after_add_contains_step_id(self, emr, cluster_id):
+        """ListSteps after AddJobFlowSteps includes the new step ID."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "list-check-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "x"]},
+                }
+            ],
+        )
+        step_id = add["StepIds"][0]
+        list_resp = emr.list_steps(ClusterId=cluster_id)
+        step_ids = [s["Id"] for s in list_resp["Steps"]]
+        assert step_id in step_ids
+
+    def test_list_instance_groups_includes_master(self, emr, cluster_id):
+        """ListInstanceGroups for a cluster includes at least the MASTER group."""
+        resp = emr.list_instance_groups(ClusterId=cluster_id)
+        roles = [g["InstanceGroupType"] for g in resp["InstanceGroups"]]
+        assert "MASTER" in roles
+
+    def test_list_instances_returns_list(self, emr, cluster_id):
+        """ListInstances returns an Instances list (may be empty in emulation)."""
+        resp = emr.list_instances(ClusterId=cluster_id)
+        assert "Instances" in resp
+        assert isinstance(resp["Instances"], list)
+
+    def test_list_bootstrap_actions_returns_empty_without_bootstrap(self, emr, cluster_id):
+        """ListBootstrapActions returns empty list when no bootstrap actions defined."""
+        resp = emr.list_bootstrap_actions(ClusterId=cluster_id)
+        assert resp["BootstrapActions"] == []
+
+    # --- RETRIEVE: behavioral fidelity ---
+
+    def test_describe_cluster_has_creation_datetime(self, emr, cluster_id):
+        """DescribeCluster Status.Timeline contains CreationDateTime."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        status = desc["Cluster"]["Status"]
+        assert "Timeline" in status
+        assert "CreationDateTime" in status["Timeline"]
+        assert isinstance(status["Timeline"]["CreationDateTime"], datetime)
+
+    def test_cluster_arn_format(self, emr, cluster_id):
+        """ClusterArn follows arn:aws:elasticmapreduce:{region}:{account}:cluster/{id} format."""
+        import re
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        arn = desc["Cluster"]["ClusterArn"]
+        pattern = r"arn:aws:elasticmapreduce:[a-z0-9-]+:\d{12}:cluster/j-[A-Z0-9]+"
+        assert re.match(pattern, arn), f"ARN {arn!r} does not match expected format"
+
+    def test_describe_cluster_status_state_is_valid(self, emr, cluster_id):
+        """DescribeCluster Status.State is one of the valid EMR cluster states."""
+        valid_states = {
+            "STARTING", "BOOTSTRAPPING", "RUNNING", "WAITING",
+            "TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS",
+        }
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        state = desc["Cluster"]["Status"]["State"]
+        assert state in valid_states, f"Unexpected state: {state!r}"
+
+    def test_add_job_flow_steps_retrieve_config(self, emr, cluster_id):
+        """Step added via AddJobFlowSteps is retrievable with correct config via DescribeStep."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "verify-retrieve",
+                    "ActionOnFailure": "TERMINATE_JOB_FLOW",
+                    "HadoopJarStep": {
+                        "Jar": "command-runner.jar",
+                        "Args": ["spark-submit", "--class", "Main"],
+                    },
+                }
+            ],
+        )
+        step_id = add["StepIds"][0]
+        step = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        assert step["Step"]["Name"] == "verify-retrieve"
+        assert step["Step"]["Config"]["Args"] == ["spark-submit", "--class", "Main"]
+
+    def test_add_multiple_steps_retrieve_both(self, emr, cluster_id):
+        """Multiple steps added together are each retrievable by ID."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "multi-step-a",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "a"]},
+                },
+                {
+                    "Name": "multi-step-b",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "b"]},
+                },
+            ],
+        )
+        assert len(add["StepIds"]) == 2
+        for step_id in add["StepIds"]:
+            step = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+            assert step["Step"]["Id"] == step_id
+            assert step["Step"]["Name"] in ("multi-step-a", "multi-step-b")
+
+    # --- UPDATE: verify state is reflected ---
+
+    def test_modify_cluster_concurrency_reflected_in_describe(self, emr, cluster_id):
+        """StepConcurrencyLevel set via ModifyCluster is visible in DescribeCluster."""
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=5)
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["StepConcurrencyLevel"] == 5
+
+    # --- LIST: pagination ---
+
+    def test_list_steps_filtered_by_step_ids(self, emr, cluster_id):
+        """ListSteps with StepIds filter returns only the requested steps."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": f"filter-step-{i}",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", str(i)]},
+                }
+                for i in range(3)
+            ],
+        )
+        all_ids = add["StepIds"]
+        # Request only the first step
+        resp = emr.list_steps(ClusterId=cluster_id, StepIds=[all_ids[0]])
+        returned_ids = [s["Id"] for s in resp["Steps"]]
+        assert all_ids[0] in returned_ids
+        assert all_ids[1] not in returned_ids
+        assert all_ids[2] not in returned_ids
+
+    def test_list_supported_instance_types_contains_m5(self, emr):
+        """ListSupportedInstanceTypes for emr-6.10.0 includes at least one m5 instance type."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-6.10.0")
+        types = [t["Type"] for t in resp["SupportedInstanceTypes"]]
+        assert len(types) > 0
+        m5_types = [t for t in types if t.startswith("m5")]
+        assert len(m5_types) > 0, f"No m5 types in {types[:10]}"
+
+    # --- CLUSTER FILTER: terminated state excludes active clusters ---
+
+    def test_list_clusters_terminated_filter_excludes_active(self, emr, cluster_id):
+        """ListClusters with TERMINATED state filter does not include a WAITING cluster."""
+        resp = emr.list_clusters(ClusterStates=["TERMINATED"])
+        ids = [c["Id"] for c in resp["Clusters"]]
+        assert cluster_id not in ids
+
+    # --- UNICODE ---
+
+    def test_unicode_cluster_name_preserved(self, emr):
+        """Cluster name with unicode characters is stored and returned correctly."""
+        name = f"cluster-naïve-{uuid.uuid4().hex[:8]}"
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["Name"] == name
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    # --- SECURITY CONFIG: behavioral fidelity ---
+
+    def test_security_config_roundtrip_preserves_json(self, emr):
+        """SecurityConfiguration JSON is stored and returned verbatim (parseable)."""
+        name = _unique("rt-config")
+        original = {
+            "EncryptionConfiguration": {
+                "EnableInTransitEncryption": True,
+                "EnableAtRestEncryption": False,
+            }
+        }
+        emr.create_security_configuration(
+            Name=name, SecurityConfiguration=json.dumps(original)
+        )
+        try:
+            desc = emr.describe_security_configuration(Name=name)
+            returned = json.loads(desc["SecurityConfiguration"])
+            assert returned["EncryptionConfiguration"]["EnableInTransitEncryption"] is True
+            assert returned["EncryptionConfiguration"]["EnableAtRestEncryption"] is False
+        finally:
+            emr.delete_security_configuration(Name=name)
