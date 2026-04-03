@@ -11942,3 +11942,313 @@ class TestEC2ReplaceImageCriteriaFidelity:
         resp = ec2.get_allowed_images_settings()
         assert "ResponseMetadata" in resp
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2SpotInstanceRequestEdgeCases:
+    """Edge case tests for Spot Instance Request operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_spot_instance_request_after_creation(self, ec2):
+        """Describe a spot instance request after creation returns active state with SpotPrice."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.05",
+            LaunchSpecification={
+                "ImageId": "ami-12345678",
+                "InstanceType": "t2.micro",
+            },
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            desc = ec2.describe_spot_instance_requests(
+                SpotInstanceRequestIds=[sir_id]
+            )
+            req = desc["SpotInstanceRequests"][0]
+            assert req["State"] == "active"
+            assert "SpotPrice" in req
+            assert float(req["SpotPrice"]) == pytest.approx(0.05, abs=0.001)
+            assert "LaunchSpecification" in req
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_describe_spot_instance_requests_no_args(self, ec2):
+        """DescribeSpotInstanceRequests with no args returns SpotInstanceRequests list."""
+        resp = ec2.describe_spot_instance_requests()
+        assert "SpotInstanceRequests" in resp
+        assert isinstance(resp["SpotInstanceRequests"], list)
+
+    def test_cancel_then_describe_spot_instance_request(self, ec2):
+        """After cancelling a spot instance request, it disappears from describe results."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.05",
+            LaunchSpecification={
+                "ImageId": "ami-12345678",
+                "InstanceType": "t2.micro",
+            },
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        cancel = ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        cancelled = cancel["CancelledSpotInstanceRequests"]
+        assert len(cancelled) == 1
+        assert cancelled[0]["SpotInstanceRequestId"] == sir_id
+        assert cancelled[0]["State"] == "cancelled"
+        # After cancellation, the request no longer appears in describe results
+        desc = ec2.describe_spot_instance_requests(
+            SpotInstanceRequestIds=[sir_id]
+        )
+        assert desc["SpotInstanceRequests"] == []
+
+    def test_cancel_nonexistent_spot_instance_request_raises(self, ec2):
+        """Cancelling a nonexistent spot instance request raises an error."""
+        with pytest.raises(Exception):
+            ec2.cancel_spot_instance_requests(
+                SpotInstanceRequestIds=["sir-00000000000000000"]
+            )
+
+
+class TestEC2SpotFleetEdgeCases:
+    """Edge case tests for Spot Fleet Request operations."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _create_fleet(self, ec2):
+        resp = ec2.request_spot_fleet(
+            SpotFleetRequestConfig={
+                "SpotPrice": "0.05",
+                "TargetCapacity": 1,
+                "IamFleetRole": "arn:aws:iam::123456789012:role/spot-fleet-role",
+                "LaunchSpecifications": [
+                    {
+                        "ImageId": "ami-12345678",
+                        "InstanceType": "t2.micro",
+                    }
+                ],
+            }
+        )
+        return resp["SpotFleetRequestId"]
+
+    def test_cancel_fleet_then_describe_returns_empty(self, ec2):
+        """After cancelling a spot fleet, describe returns empty configs list."""
+        fleet_id = self._create_fleet(ec2)
+        ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        desc = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert desc["SpotFleetRequestConfigs"] == []
+
+    def test_cancel_spot_fleet_with_fake_id_raises(self, ec2):
+        """Cancelling a spot fleet with a fake ID raises an error."""
+        with pytest.raises(Exception):
+            ec2.cancel_spot_fleet_requests(
+                SpotFleetRequestIds=["sfr-00000000000000000"],
+                TerminateInstances=True,
+            )
+
+    def test_cancel_spot_fleet_returns_previous_state_active(self, ec2):
+        """Cancelling a newly-created spot fleet shows PreviousSpotFleetRequestState='active'."""
+        fleet_id = self._create_fleet(ec2)
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        successful = cancel["SuccessfulFleetRequests"]
+        assert len(successful) == 1
+        assert successful[0]["PreviousSpotFleetRequestState"] == "active"
+        assert successful[0]["SpotFleetRequestId"] == fleet_id
+
+
+class TestEC2PurchaseHostReservationEdgeCases:
+    """Edge case tests for PurchaseHostReservation."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_purchase_host_reservation_returns_purchase_list(self, ec2):
+        """PurchaseHostReservation returns a Purchase list with reservation details."""
+        host_resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a",
+            InstanceType="m5.large",
+            Quantity=1,
+            AutoPlacement="on",
+        )
+        host_id = host_resp["HostIds"][0]
+        try:
+            offerings = ec2.describe_host_reservation_offerings(MaxResults=5)
+            assert len(offerings["OfferingSet"]) > 0
+            offering_id = offerings["OfferingSet"][0]["OfferingId"]
+            purchase = ec2.purchase_host_reservation(
+                HostIdSet=[host_id], OfferingId=offering_id
+            )
+            assert isinstance(purchase["Purchase"], list)
+            assert len(purchase["Purchase"]) == 1
+        finally:
+            ec2.release_hosts(HostIds=[host_id])
+
+    def test_purchase_host_reservation_id_starts_with_hr(self, ec2):
+        """PurchaseHostReservation returns HostReservationId starting with 'hr-'."""
+        host_resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a",
+            InstanceType="m5.large",
+            Quantity=1,
+            AutoPlacement="on",
+        )
+        host_id = host_resp["HostIds"][0]
+        try:
+            offerings = ec2.describe_host_reservation_offerings(MaxResults=5)
+            offering_id = offerings["OfferingSet"][0]["OfferingId"]
+            purchase = ec2.purchase_host_reservation(
+                HostIdSet=[host_id], OfferingId=offering_id
+            )
+            reservation_id = purchase["Purchase"][0]["HostReservationId"]
+            assert reservation_id.startswith("hr-")
+        finally:
+            ec2.release_hosts(HostIds=[host_id])
+
+    def test_purchase_host_reservation_currency_code_usd(self, ec2):
+        """PurchaseHostReservation returns CurrencyCode='USD'."""
+        host_resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a",
+            InstanceType="m5.large",
+            Quantity=1,
+            AutoPlacement="on",
+        )
+        host_id = host_resp["HostIds"][0]
+        try:
+            offerings = ec2.describe_host_reservation_offerings(MaxResults=5)
+            offering_id = offerings["OfferingSet"][0]["OfferingId"]
+            purchase = ec2.purchase_host_reservation(
+                HostIdSet=[host_id], OfferingId=offering_id
+            )
+            assert purchase["CurrencyCode"] == "USD"
+        finally:
+            ec2.release_hosts(HostIds=[host_id])
+
+
+class TestEC2PurchaseCapacityBlockEdgeCases:
+    """Edge case tests for PurchaseCapacityBlock."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _get_offering_id(self, ec2):
+        offerings = ec2.describe_capacity_block_offerings(
+            InstanceType="m5.large",
+            InstanceCount=1,
+            CapacityDurationHours=24,
+        )
+        assert len(offerings["CapacityBlockOfferings"]) > 0
+        return offerings["CapacityBlockOfferings"][0]["CapacityBlockOfferingId"]
+
+    def test_purchase_capacity_block_reservation_id_format(self, ec2):
+        """PurchaseCapacityBlock returns CapacityReservationId starting with 'cr-'."""
+        offering_id = self._get_offering_id(ec2)
+        purchase = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId=offering_id,
+            InstancePlatform="Linux/UNIX",
+        )
+        reservation_id = purchase["CapacityReservation"]["CapacityReservationId"]
+        assert reservation_id.startswith("cr-")
+
+    def test_purchase_capacity_block_instance_platform_preserved(self, ec2):
+        """PurchaseCapacityBlock returns InstancePlatform matching the input."""
+        offering_id = self._get_offering_id(ec2)
+        purchase = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId=offering_id,
+            InstancePlatform="Linux/UNIX",
+        )
+        assert purchase["CapacityReservation"]["InstancePlatform"] == "Linux/UNIX"
+
+    def test_purchase_capacity_block_state_is_string(self, ec2):
+        """PurchaseCapacityBlock returns a non-empty State string."""
+        offering_id = self._get_offering_id(ec2)
+        purchase = ec2.purchase_capacity_block(
+            CapacityBlockOfferingId=offering_id,
+            InstancePlatform="Linux/UNIX",
+        )
+        state = purchase["CapacityReservation"]["State"]
+        assert isinstance(state, str)
+        assert len(state) > 0
+
+
+class TestEC2ReplaceImageCriteriaEdgeCases:
+    """Edge case tests for ReplaceImageCriteriaInAllowedImagesSettings."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_image_criteria_return_value_is_bool_true(self, ec2):
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue as bool True."""
+        resp = ec2.replace_image_criteria_in_allowed_images_settings()
+        assert resp["ReturnValue"] is True
+        assert isinstance(resp["ReturnValue"], bool)
+
+    def test_replace_image_criteria_with_empty_list_returns_return_value(self, ec2):
+        """ReplaceImageCriteriaInAllowedImagesSettings with empty ImageCriteria returns ReturnValue."""
+        resp = ec2.replace_image_criteria_in_allowed_images_settings(ImageCriteria=[])
+        assert "ReturnValue" in resp
+        assert resp["ReturnValue"] is True
+
+    def test_get_allowed_images_settings_after_replace(self, ec2):
+        """GetAllowedImagesSettings can be called after replace and returns HTTP 200."""
+        ec2.replace_image_criteria_in_allowed_images_settings()
+        resp = ec2.get_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2SubnetAttributeDefaultState:
+    """Tests for subnet attribute default state and modification."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_new_subnet_has_map_public_ip_false_by_default(self, ec2):
+        """A newly created subnet has MapPublicIpOnLaunch=False by default."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.220.0.0/16")["Vpc"]["VpcId"]
+        try:
+            subnet_id = ec2.create_subnet(
+                VpcId=vpc_id, CidrBlock="10.220.1.0/24"
+            )["Subnet"]["SubnetId"]
+            try:
+                desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+                assert desc["Subnets"][0]["MapPublicIpOnLaunch"] is False
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_modify_subnet_attribute_enables_map_public_ip(self, ec2):
+        """ModifySubnetAttribute enables MapPublicIpOnLaunch on a subnet."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.221.0.0/16")["Vpc"]["VpcId"]
+        try:
+            subnet_id = ec2.create_subnet(
+                VpcId=vpc_id, CidrBlock="10.221.1.0/24"
+            )["Subnet"]["SubnetId"]
+            try:
+                ec2.modify_subnet_attribute(
+                    SubnetId=subnet_id, MapPublicIpOnLaunch={"Value": True}
+                )
+                desc = ec2.describe_subnets(SubnetIds=[subnet_id])
+                assert desc["Subnets"][0]["MapPublicIpOnLaunch"] is True
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_modify_subnet_attribute_nonexistent_subnet_raises(self, ec2):
+        """ModifySubnetAttribute on a nonexistent subnet raises ClientError."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.modify_subnet_attribute(
+                SubnetId="subnet-00000000000000000",
+                MapPublicIpOnLaunch={"Value": True},
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidSubnetID.NotFound",
+            "InvalidSubnetId.NotFound",
+        )
