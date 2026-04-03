@@ -35,50 +35,105 @@ class TestForecastGapListOps:
     def test_list_datasets(self, client):
         resp = client.list_datasets()
         assert "Datasets" in resp
+        assert isinstance(resp["Datasets"], list)
+
+    def test_list_datasets_contains_created(self, client):
+        schema = {
+            "Attributes": [
+                {"AttributeName": "item_id", "AttributeType": "string"},
+                {"AttributeName": "timestamp", "AttributeType": "timestamp"},
+                {"AttributeName": "target_value", "AttributeType": "float"},
+            ]
+        }
+        r = client.create_dataset(
+            DatasetName="test-list-ds-verify",
+            Domain="RETAIL",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema=schema,
+        )
+        arn = r["DatasetArn"]
+        try:
+            list_resp = client.list_datasets()
+            arns = [ds["DatasetArn"] for ds in list_resp["Datasets"]]
+            assert arn in arns
+        finally:
+            client.delete_dataset(DatasetArn=arn)
 
     def test_list_dataset_import_jobs(self, client):
         resp = client.list_dataset_import_jobs()
         assert "DatasetImportJobs" in resp
+        assert isinstance(resp["DatasetImportJobs"], list)
+
+    def test_list_dataset_import_jobs_no_next_token_when_empty(self, client):
+        resp = client.list_dataset_import_jobs()
+        assert "DatasetImportJobs" in resp
+        # When empty, NextToken should not be present or should be None
+        assert resp.get("NextToken") is None or "NextToken" not in resp
 
     def test_list_forecasts(self, client):
         resp = client.list_forecasts()
         assert "Forecasts" in resp
+        assert isinstance(resp["Forecasts"], list)
 
     def test_list_forecast_export_jobs(self, client):
         resp = client.list_forecast_export_jobs()
         assert "ForecastExportJobs" in resp
+        assert isinstance(resp["ForecastExportJobs"], list)
 
     def test_list_predictors(self, client):
         resp = client.list_predictors()
         assert "Predictors" in resp
+        assert isinstance(resp["Predictors"], list)
 
     def test_list_predictor_backtest_export_jobs(self, client):
         resp = client.list_predictor_backtest_export_jobs()
         assert "PredictorBacktestExportJobs" in resp
+        assert isinstance(resp["PredictorBacktestExportJobs"], list)
 
     def test_list_explainabilities(self, client):
         resp = client.list_explainabilities()
         assert "Explainabilities" in resp
+        assert isinstance(resp["Explainabilities"], list)
 
     def test_list_explainability_exports(self, client):
         resp = client.list_explainability_exports()
         assert "ExplainabilityExports" in resp
+        assert isinstance(resp["ExplainabilityExports"], list)
 
     def test_list_monitors(self, client):
         resp = client.list_monitors()
         assert "Monitors" in resp
+        assert isinstance(resp["Monitors"], list)
 
     def test_list_what_if_analyses(self, client):
         resp = client.list_what_if_analyses()
         assert "WhatIfAnalyses" in resp
+        assert isinstance(resp["WhatIfAnalyses"], list)
 
     def test_list_what_if_forecasts(self, client):
         resp = client.list_what_if_forecasts()
         assert "WhatIfForecasts" in resp
+        assert isinstance(resp["WhatIfForecasts"], list)
 
     def test_list_what_if_forecast_exports(self, client):
         resp = client.list_what_if_forecast_exports()
         assert "WhatIfForecastExports" in resp
+        assert isinstance(resp["WhatIfForecastExports"], list)
+
+    def test_list_dataset_groups_with_content(self, client):
+        # Create a group then verify list returns it with correct structure
+        r = client.create_dataset_group(DatasetGroupName="test-gap-list-dsg", Domain="RETAIL")
+        arn = r["DatasetGroupArn"]
+        try:
+            resp = client.list_dataset_groups()
+            groups = resp["DatasetGroups"]
+            match = next((g for g in groups if g["DatasetGroupArn"] == arn), None)
+            assert match is not None
+            assert match["DatasetGroupName"] == "test-gap-list-dsg"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
 
     def test_list_tags_for_resource(self, client):
         arn = "arn:aws:forecast:us-east-1:123456789012:dataset-group/test"
@@ -139,6 +194,89 @@ class TestForecastDatasetGroupCRUD:
         assert dsg_arn in arns
 
         client.delete_dataset_group(DatasetGroupArn=dsg_arn)
+
+    def test_dataset_group_arn_format(self, client):
+        resp = client.create_dataset_group(DatasetGroupName="test-dsg-arn", Domain="RETAIL")
+        arn = resp["DatasetGroupArn"]
+        # arn:aws:forecast:<region>:<account>:dataset-group/<name>
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "forecast"
+        assert "dataset-group/test-dsg-arn" in arn
+        client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_dataset_group_timestamps_present(self, client):
+        resp = client.create_dataset_group(DatasetGroupName="test-dsg-ts", Domain="RETAIL")
+        arn = resp["DatasetGroupArn"]
+        desc = client.describe_dataset_group(DatasetGroupArn=arn)
+        assert "CreationTime" in desc
+        assert "LastModificationTime" in desc
+        client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_dataset_group_idempotent_create_error(self, client):
+        resp = client.create_dataset_group(DatasetGroupName="test-dsg-idem", Domain="RETAIL")
+        arn = resp["DatasetGroupArn"]
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_dataset_group(DatasetGroupName="test-dsg-idem", Domain="RETAIL")
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceAlreadyExistsException",
+                "AlreadyExistsException",
+            )
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_delete_nonexistent_dataset_group(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_dataset_group(
+                DatasetGroupArn="arn:aws:forecast:us-east-1:123456789012:dataset-group/no-such"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_dataset_groups_pagination(self, client):
+        arns = []
+        for i in range(3):
+            r = client.create_dataset_group(
+                DatasetGroupName=f"test-dsg-page-{i}", Domain="RETAIL"
+            )
+            arns.append(r["DatasetGroupArn"])
+        try:
+            page1 = client.list_dataset_groups(MaxResults=2)
+            assert "DatasetGroups" in page1
+            assert len(page1["DatasetGroups"]) <= 2
+            if "NextToken" in page1:
+                page2 = client.list_dataset_groups(MaxResults=2, NextToken=page1["NextToken"])
+                assert "DatasetGroups" in page2
+                all_page1 = {dg["DatasetGroupArn"] for dg in page1["DatasetGroups"]}
+                all_page2 = {dg["DatasetGroupArn"] for dg in page2["DatasetGroups"]}
+                assert all_page1.isdisjoint(all_page2)
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_dataset_group(DatasetGroupArn=arn)
+                except ClientError:
+                    pass
+
+    def test_dataset_group_multiple_tags(self, client):
+        resp = client.create_dataset_group(DatasetGroupName="test-dsg-multitag", Domain="RETAIL")
+        arn = resp["DatasetGroupArn"]
+        try:
+            client.tag_resource(
+                ResourceArn=arn,
+                Tags=[{"Key": "env", "Value": "test"}, {"Key": "owner", "Value": "team"}],
+            )
+            tag_resp = client.list_tags_for_resource(ResourceArn=arn)
+            keys = {t["Key"] for t in tag_resp["Tags"]}
+            assert "env" in keys
+            assert "owner" in keys
+            client.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            tag_resp2 = client.list_tags_for_resource(ResourceArn=arn)
+            keys2 = {t["Key"] for t in tag_resp2["Tags"]}
+            assert "env" not in keys2
+            assert "owner" in keys2
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
 
 
 class TestForecastCRUDOps:
@@ -374,4 +512,93 @@ class TestForecastCRUDOps:
         assert exc.value.response["Error"]["Code"] in (
             "ResourceNotFoundException",
             "InvalidInputException",
+        )
+
+    def test_dataset_arn_format(self, client):
+        r = client.create_dataset(
+            DatasetName="test-ds-arnfmt",
+            Domain="RETAIL",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema=self.SCHEMA,
+        )
+        arn = r["DatasetArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "forecast"
+        assert "dataset/test-ds-arnfmt" in arn
+        client.delete_dataset(DatasetArn=arn)
+
+    def test_dataset_describe_timestamps_present(self, client):
+        r = client.create_dataset(
+            DatasetName="test-ds-tscheck",
+            Domain="RETAIL",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema=self.SCHEMA,
+        )
+        arn = r["DatasetArn"]
+        desc = client.describe_dataset(DatasetArn=arn)
+        assert "CreationTime" in desc
+        assert "LastModificationTime" in desc
+        client.delete_dataset(DatasetArn=arn)
+
+    def test_dataset_idempotent_create_error(self, client):
+        r = client.create_dataset(
+            DatasetName="test-ds-idem",
+            Domain="RETAIL",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema=self.SCHEMA,
+        )
+        arn = r["DatasetArn"]
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_dataset(
+                    DatasetName="test-ds-idem",
+                    Domain="RETAIL",
+                    DatasetType="TARGET_TIME_SERIES",
+                    Schema=self.SCHEMA,
+                )
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceAlreadyExistsException",
+                "AlreadyExistsException",
+            )
+        finally:
+            client.delete_dataset(DatasetArn=arn)
+
+    def test_delete_nonexistent_dataset(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.delete_dataset(
+                DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/no-such"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_auto_predictor_not_found_error_code(self, client):
+        """Verify ResourceNotFoundException error structure includes Message."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_auto_predictor(
+                PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/no-exist"
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err or "message" in err
+
+    def test_resume_resource_not_found_error_code(self, client):
+        """Verify ResumeResource returns a recognized error code."""
+        with pytest.raises(ClientError) as exc:
+            client.resume_resource(
+                ResourceArn="arn:aws:forecast:us-east-1:123456789012:monitor/no-exist"
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InvalidInputException",
+        )
+        # Error response must have a Message field
+        assert "Message" in exc.value.response["Error"] or "message" in exc.value.response["Error"]
+
+    def test_list_dataset_groups_empty_returns_list(self, client):
+        """list_dataset_groups always returns DatasetGroups key as list."""
+        resp = client.list_dataset_groups()
+        assert isinstance(resp["DatasetGroups"], list)
+        assert resp.get("NextToken") is None or "NextToken" not in resp or isinstance(
+            resp["NextToken"], str
         )
