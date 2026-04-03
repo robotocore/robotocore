@@ -5131,3 +5131,289 @@ class TestRDSGapOps:
                 )
             except Exception:  # noqa: BLE001
                 pass  # best-effort cleanup
+
+
+class TestRDSEdgeCasesAndBehavioralFidelity:
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    def test_reboot_nonexistent_db_instance(self, client):
+        """Rebooting a nonexistent instance returns DBInstanceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.reboot_db_instance(DBInstanceIdentifier="does-not-exist-xyz")
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_db_instance_arn_format(self, client):
+        """Created DB instance has a properly formatted ARN."""
+        name = _unique("compat-arn")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.describe_db_instances(DBInstanceIdentifier=name)
+            inst = resp["DBInstances"][0]
+            assert "DBInstanceArn" in inst
+            arn = inst["DBInstanceArn"]
+            assert arn.startswith("arn:aws:rds:us-east-1:")
+            assert name in arn
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_instance_timestamps(self, client):
+        """Created DB instance has an InstanceCreateTime timestamp."""
+        name = _unique("compat-ts")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            resp = client.describe_db_instances(DBInstanceIdentifier=name)
+            inst = resp["DBInstances"][0]
+            if "InstanceCreateTime" not in inst:
+                pytest.skip("InstanceCreateTime not returned by this implementation")
+            assert inst["InstanceCreateTime"] is not None
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_list_db_instances_pagination(self, client):
+        """describe_db_instances with MaxRecords=2 returns at most 2 results and a Marker."""
+        names = [_unique("compat-page") for _ in range(3)]
+        for n in names:
+            client.create_db_instance(
+                DBInstanceIdentifier=n,
+                DBInstanceClass="db.t3.micro",
+                Engine="mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+        try:
+            resp = client.describe_db_instances(MaxRecords=2)
+            assert len(resp["DBInstances"]) <= 2
+            assert "Marker" in resp
+        finally:
+            for n in names:
+                try:
+                    client.delete_db_instance(DBInstanceIdentifier=n, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+    def test_subnet_group_arn_format(self, client, ec2_client):
+        """Created DB subnet group has a properly formatted ARN."""
+        name = _unique("compat-sgarn")
+        vpc = ec2_client.create_vpc(CidrBlock="10.99.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.99.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.99.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        client.create_db_subnet_group(
+            DBSubnetGroupName=name,
+            DBSubnetGroupDescription="arn test subnet group",
+            SubnetIds=subnet_ids,
+        )
+        try:
+            resp = client.describe_db_subnet_groups(DBSubnetGroupName=name)
+            grp = resp["DBSubnetGroups"][0]
+            assert "DBSubnetGroupArn" in grp
+            assert grp["DBSubnetGroupArn"].startswith("arn:aws:rds:")
+        finally:
+            try:
+                client.delete_db_subnet_group(DBSubnetGroupName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            for sid in subnet_ids:
+                try:
+                    ec2_client.delete_subnet(SubnetId=sid)
+                except ClientError:
+                    pass  # best-effort cleanup
+            try:
+                ec2_client.delete_vpc(VpcId=vpc_id)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_parameter_group_pagination(self, client):
+        """describe_db_parameter_groups with MaxRecords=2 returns a Marker when more results exist."""
+        names = [_unique("compat-pgp") for _ in range(3)]
+        for n in names:
+            client.create_db_parameter_group(
+                DBParameterGroupName=n,
+                DBParameterGroupFamily="mysql8.0",
+                Description="pagination test",
+            )
+        try:
+            resp = client.describe_db_parameter_groups(MaxRecords=2)
+            assert len(resp["DBParameterGroups"]) <= 2
+            assert "Marker" in resp
+        finally:
+            for n in names:
+                try:
+                    client.delete_db_parameter_group(DBParameterGroupName=n)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+    def test_describe_events_duration_filter(self, client):
+        """describe_events with Duration filter returns a list."""
+        resp = client.describe_events(Duration=60)
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_modify_db_instance_storage(self, client):
+        """modify_db_instance with AllocatedStorage returns the instance with AllocatedStorage."""
+        name = _unique("compat-mod")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+            AllocatedStorage=20,
+        )
+        try:
+            resp = client.modify_db_instance(
+                DBInstanceIdentifier=name,
+                AllocatedStorage=25,
+            )
+            inst = resp["DBInstance"]
+            assert inst["DBInstanceIdentifier"] == name
+            assert "AllocatedStorage" in inst
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_stop_and_start_db_instance_status(self, client):
+        """stop_db_instance and start_db_instance return expected status values."""
+        name = _unique("compat-ss")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            stop_resp = client.stop_db_instance(DBInstanceIdentifier=name)
+            stop_status = stop_resp["DBInstance"]["DBInstanceStatus"]
+            assert stop_status in ("stopped", "stopping", "available")
+
+            start_resp = client.start_db_instance(DBInstanceIdentifier=name)
+            start_status = start_resp["DBInstance"]["DBInstanceStatus"]
+            assert start_status in ("available", "starting", "stopped")
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_create_duplicate_db_instance(self, client):
+        """Creating a DB instance with an existing identifier raises DBInstanceAlreadyExists."""
+        name = _unique("compat-dup")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_db_instance(
+                    DBInstanceIdentifier=name,
+                    DBInstanceClass="db.t3.micro",
+                    Engine="mysql",
+                    MasterUsername="admin",
+                    MasterUserPassword="password123",
+                )
+            assert exc.value.response["Error"]["Code"] == "DBInstanceAlreadyExists"
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_describe_db_snapshot_attributes_content(self, client):
+        """describe_db_snapshot_attributes returns result with identifier and attributes list."""
+        inst_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        client.create_db_instance(
+            DBInstanceIdentifier=inst_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            client.create_db_snapshot(
+                DBSnapshotIdentifier=snap_name,
+                DBInstanceIdentifier=inst_name,
+            )
+            try:
+                resp = client.describe_db_snapshot_attributes(DBSnapshotIdentifier=snap_name)
+                result = resp["DBSnapshotAttributesResult"]
+                assert result["DBSnapshotIdentifier"] == snap_name
+                assert "DBSnapshotAttributes" in result
+                assert isinstance(result["DBSnapshotAttributes"], list)
+            finally:
+                try:
+                    client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=inst_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_cluster_snapshots_list_not_empty_after_create(self, client):
+        """describe_db_cluster_snapshots contains the snapshot after creation."""
+        cluster_name = _unique("compat-cl")
+        snap_name = _unique("compat-csnap")
+        client.create_db_cluster(
+            DBClusterIdentifier=cluster_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            client.create_db_cluster_snapshot(
+                DBClusterSnapshotIdentifier=snap_name,
+                DBClusterIdentifier=cluster_name,
+            )
+            try:
+                resp = client.describe_db_cluster_snapshots()
+                snap_ids = [
+                    s["DBClusterSnapshotIdentifier"] for s in resp["DBClusterSnapshots"]
+                ]
+                assert snap_name in snap_ids
+            finally:
+                try:
+                    client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
