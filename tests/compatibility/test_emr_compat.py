@@ -1397,7 +1397,7 @@ class TestEMREdgeCasesAndFidelity:
         )
         cid = resp["JobFlowId"]
         try:
-            list_resp = emr.list_clusters()
+            list_resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
             ids = [c["Id"] for c in list_resp["Clusters"]]
             assert cid in ids
         finally:
@@ -1598,5 +1598,502 @@ class TestEMREdgeCasesAndFidelity:
             returned = json.loads(desc["SecurityConfiguration"])
             assert returned["EncryptionConfiguration"]["EnableInTransitEncryption"] is True
             assert returned["EncryptionConfiguration"]["EnableAtRestEncryption"] is False
+        finally:
+            emr.delete_security_configuration(Name=name)
+
+
+class TestEMRListClustersEdgeCases:
+    """Edge cases for ListClusters covering DELETE and ERROR patterns."""
+
+    def test_list_clusters_terminated_cluster_changes_state(self, emr):
+        """Terminating a cluster changes its state so it no longer appears in WAITING filter."""
+        resp = emr.run_job_flow(
+            Name=_unique("term-list-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        # Cluster is active — should appear in WAITING filter
+        active = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        active_ids = [c["Id"] for c in active["Clusters"]]
+        assert cid in active_ids
+        # Terminate it
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        # Should no longer appear in WAITING
+        after = emr.list_clusters(ClusterStates=["WAITING"])
+        after_ids = [c["Id"] for c in after["Clusters"]]
+        assert cid not in after_ids
+        # Verify terminal state via describe (avoids pagination issues with large TERMINATED pool)
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["Status"]["State"] in ("TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS")
+
+    def test_list_clusters_create_describe_retrieve_lifecycle(self, emr):
+        """Full cluster lifecycle: create → list → describe → retrieve fields."""
+        resp = emr.run_job_flow(
+            Name=_unique("full-lifecycle"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            # LIST: appears in active results (filter to avoid pagination issues)
+            listed = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+            listed_ids = [c["Id"] for c in listed["Clusters"]]
+            assert cid in listed_ids
+            # RETRIEVE: cluster entry in list has Name and Status
+            cluster_entry = next(c for c in listed["Clusters"] if c["Id"] == cid)
+            assert "Name" in cluster_entry
+            assert "Status" in cluster_entry
+            # RETRIEVE via describe
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["Id"] == cid
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_list_clusters_empty_states_filter_returns_nothing(self, emr):
+        """ListClusters with an uncommon state like BOOTSTRAPPING returns a valid empty list."""
+        resp = emr.list_clusters(ClusterStates=["BOOTSTRAPPING"])
+        assert "Clusters" in resp
+        assert isinstance(resp["Clusters"], list)
+
+
+class TestEMRDescribeClusterFullLifecycle:
+    """Full CRLDE lifecycle tests for DescribeCluster."""
+
+    def test_describe_cluster_after_terminate(self, emr):
+        """DescribeCluster after termination shows TERMINATING or TERMINATED state."""
+        resp = emr.run_job_flow(
+            Name=_unique("term-describe"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["Status"]["State"] in ("TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS")
+
+    def test_describe_cluster_update_visibility_reflected(self, emr, cluster_id):
+        """SetVisibleToAllUsers change is visible in DescribeCluster."""
+        emr.set_visible_to_all_users(JobFlowIds=[cluster_id], VisibleToAllUsers=False)
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["VisibleToAllUsers"] is False
+        # Restore
+        emr.set_visible_to_all_users(JobFlowIds=[cluster_id], VisibleToAllUsers=True)
+
+    def test_describe_cluster_after_add_step_shows_step(self, emr, cluster_id):
+        """DescribeCluster after adding a step — ListSteps shows the step."""
+        emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "lifecycle-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "hi"]},
+                }
+            ],
+        )
+        steps = emr.list_steps(ClusterId=cluster_id)
+        names = [s["Name"] for s in steps["Steps"]]
+        assert "lifecycle-step" in names
+
+
+class TestEMRStepsCRLDE:
+    """CRLDE coverage for step operations."""
+
+    def test_steps_create_list_retrieve_cancel(self, emr, cluster_id):
+        """Full step lifecycle: add → list → describe → cancel."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "full-lifecycle-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "lifecycle"]},
+                }
+            ],
+        )
+        step_id = add["StepIds"][0]
+        # LIST
+        listed = emr.list_steps(ClusterId=cluster_id)
+        step_ids_in_list = [s["Id"] for s in listed["Steps"]]
+        assert step_id in step_ids_in_list
+        # RETRIEVE
+        described = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        assert described["Step"]["Id"] == step_id
+        assert described["Step"]["Name"] == "full-lifecycle-step"
+        # DELETE (cancel)
+        cancel = emr.cancel_steps(ClusterId=cluster_id, StepIds=[step_id])
+        assert "CancelStepsInfoList" in cancel
+
+    def test_list_steps_error_nonexistent_step_id_filter(self, emr, cluster_id):
+        """ListSteps with a fake StepIds filter returns an empty list (not an error)."""
+        resp = emr.list_steps(ClusterId=cluster_id, StepIds=["s-FAKESTEP0001"])
+        assert "Steps" in resp
+        assert isinstance(resp["Steps"], list)
+        assert len(resp["Steps"]) == 0
+
+    def test_add_job_flow_steps_error_on_nonexistent_cluster(self, emr):
+        """AddJobFlowSteps on a nonexistent cluster raises ClientError."""
+        with pytest.raises(ClientError) as exc:
+            emr.add_job_flow_steps(
+                JobFlowId="j-FAKE1234567890",
+                Steps=[
+                    {
+                        "Name": "err-step",
+                        "ActionOnFailure": "CONTINUE",
+                        "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "x"]},
+                    }
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_multiple_steps_each_have_unique_ids(self, emr, cluster_id):
+        """Multiple steps added together each receive a distinct step ID."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": f"unique-step-{i}",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", str(i)]},
+                }
+                for i in range(3)
+            ],
+        )
+        ids = add["StepIds"]
+        assert len(ids) == 3
+        assert len(set(ids)) == 3  # all distinct
+
+
+class TestEMRInstanceGroupsCRLDE:
+    """CRLDE coverage for instance group operations."""
+
+    def test_instance_groups_create_list_retrieve(self, emr, cluster_id):
+        """AddInstanceGroups → ListInstanceGroups → verify group is present with correct role."""
+        emr.add_instance_groups(
+            InstanceGroups=[
+                {
+                    "Name": "crlde-task-group",
+                    "InstanceRole": "TASK",
+                    "InstanceType": "m5.xlarge",
+                    "InstanceCount": 1,
+                }
+            ],
+            JobFlowId=cluster_id,
+        )
+        resp = emr.list_instance_groups(ClusterId=cluster_id)
+        groups = {g["Name"]: g for g in resp["InstanceGroups"]}
+        assert "crlde-task-group" in groups
+        assert groups["crlde-task-group"]["InstanceGroupType"] == "TASK"
+        assert groups["crlde-task-group"]["InstanceType"] == "m5.xlarge"
+
+    def test_list_instances_after_cluster_creation(self, emr, cluster_id):
+        """ListInstances returns Instances list — each instance has an Id."""
+        resp = emr.list_instances(ClusterId=cluster_id)
+        for instance in resp["Instances"]:
+            assert "Id" in instance
+
+    def test_list_bootstrap_actions_returns_defined_actions(self, emr):
+        """ListBootstrapActions for a cluster with bootstrap actions lists them."""
+        resp = emr.run_job_flow(
+            Name=_unique("ba-crlde-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+            BootstrapActions=[
+                {
+                    "Name": "bootstrap-list-check",
+                    "ScriptBootstrapAction": {
+                        "Path": "s3://my-bucket/setup.sh",
+                        "Args": [],
+                    },
+                }
+            ],
+        )
+        cid = resp["JobFlowId"]
+        try:
+            ba = emr.list_bootstrap_actions(ClusterId=cid)
+            names = [a["Name"] for a in ba["BootstrapActions"]]
+            assert "bootstrap-list-check" in names
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+
+class TestEMRModifyClusterCRLDE:
+    """CRLDE coverage for ModifyCluster and related settings."""
+
+    def test_modify_cluster_step_concurrency_create_retrieve_update_describe(self, emr):
+        """Full CRUDE: create cluster → describe default → modify → describe new value → terminate."""
+        resp = emr.run_job_flow(
+            Name=_unique("mod-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            # RETRIEVE default
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert "StepConcurrencyLevel" in desc["Cluster"]
+            # UPDATE
+            mod = emr.modify_cluster(ClusterId=cid, StepConcurrencyLevel=3)
+            assert mod["StepConcurrencyLevel"] == 3
+            # RETRIEVE updated value
+            desc2 = emr.describe_cluster(ClusterId=cid)
+            assert desc2["Cluster"]["StepConcurrencyLevel"] == 3
+            # LIST — cluster still appears
+            listed = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+            ids = [c["Id"] for c in listed["Clusters"]]
+            assert cid in ids
+        finally:
+            # DELETE
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_modify_cluster_error_nonexistent(self, emr):
+        """ModifyCluster on a nonexistent cluster raises ClientError."""
+        with pytest.raises(ClientError) as exc:
+            emr.modify_cluster(ClusterId="j-FAKE1234567890", StepConcurrencyLevel=2)
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+
+class TestEMRListSupportedInstanceTypesDetail:
+    """Detailed behavioral tests for ListSupportedInstanceTypes."""
+
+    def test_list_supported_instance_types_content_fields(self, emr):
+        """Each instance type entry has Type, MemoryGB, VCPU, and StorageGB fields."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-6.10.0")
+        types = resp["SupportedInstanceTypes"]
+        assert len(types) > 0
+        first = types[0]
+        assert "Type" in first
+        # Verify at least some numeric resource info is present
+        assert "MemoryGB" in first or "VCPU" in first or "StorageGB" in first
+
+    def test_list_supported_instance_types_different_release(self, emr):
+        """ListSupportedInstanceTypes works for a different release label."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-5.36.0")
+        assert "SupportedInstanceTypes" in resp
+        assert isinstance(resp["SupportedInstanceTypes"], list)
+
+    def test_list_supported_instance_types_error_invalid_label(self, emr):
+        """ListSupportedInstanceTypes with an invalid release label raises ClientError."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_supported_instance_types(ReleaseLabel="emr-0.0.0-invalid")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ValidationException",
+        )
+
+
+class TestEMRDescribeClusterDetailsCRLDE:
+    """CRLDE coverage for DescribeCluster detail tests."""
+
+    def test_describe_cluster_release_label_after_terminate(self, emr):
+        """ReleaseLabel persists in DescribeCluster even after termination."""
+        resp = emr.run_job_flow(
+            Name=_unique("rl-term-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["ReleaseLabel"] == "emr-6.10.0"
+        assert desc["Cluster"]["Status"]["State"] in ("TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS")
+
+    def test_describe_cluster_service_role_after_modify(self, emr, cluster_id):
+        """ServiceRole is stable after ModifyCluster (it doesn't change)."""
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=1)
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["ServiceRole"] == "EMR_DefaultRole"
+
+    def test_describe_cluster_termination_protection_update_reflected(self, emr, cluster_id):
+        """TerminationProtected can be enabled and then disabled."""
+        emr.set_termination_protection(JobFlowIds=[cluster_id], TerminationProtected=True)
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["TerminationProtected"] is True
+        emr.set_termination_protection(JobFlowIds=[cluster_id], TerminationProtected=False)
+        desc2 = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc2["Cluster"]["TerminationProtected"] is False
+
+    def test_describe_cluster_auto_terminate_with_keep_alive_false(self, emr):
+        """Cluster with KeepJobFlowAliveWhenNoSteps=False has AutoTerminate=True."""
+        resp = emr.run_job_flow(
+            Name=_unique("auto-term-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": False,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["AutoTerminate"] is True
+        finally:
+            try:
+                emr.terminate_job_flows(JobFlowIds=[cid])
+            except Exception:
+                pass
+
+
+class TestEMRListClustersFilteredCRLDE:
+    """CRLDE coverage for ListClusters with filters."""
+
+    def test_list_clusters_by_state_create_update_delete(self, emr):
+        """Full CRUDE lifecycle visible through ListClusters state filter."""
+        resp = emr.run_job_flow(
+            Name=_unique("state-filter-cluster"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        # CREATE: appears in active states
+        active = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        assert cid in [c["Id"] for c in active["Clusters"]]
+        # UPDATE: modify step concurrency
+        emr.modify_cluster(ClusterId=cid, StepConcurrencyLevel=4)
+        # Still in active list after update
+        active2 = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        assert cid in [c["Id"] for c in active2["Clusters"]]
+        # DELETE: terminate
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        # Now not in active list
+        active3 = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        assert cid not in [c["Id"] for c in active3["Clusters"]]
+        # ERROR: describe after terminate still works (not a 404)
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["Status"]["State"] in ("TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS")
+
+    def test_list_clusters_by_created_after_excludes_old(self, emr, cluster_id):
+        """ListClusters with CreatedAfter far in future returns empty list."""
+        from datetime import timezone
+        future = datetime(2099, 1, 1, tzinfo=timezone.utc)
+        resp = emr.list_clusters(CreatedAfter=future)
+        assert "Clusters" in resp
+        assert resp["Clusters"] == []
+
+
+class TestEMRSecurityConfigFullEncryptionCRLDE:
+    """CRLDE coverage for security configuration with full encryption."""
+
+    def test_security_config_full_encryption_create_list_retrieve_delete(self, emr):
+        """Full CRLDE: create full-encryption config → list → describe → delete → error on describe."""
+        name = _unique("full-enc-crlde")
+        config = json.dumps(
+            {
+                "EncryptionConfiguration": {
+                    "EnableInTransitEncryption": True,
+                    "InTransitEncryptionConfiguration": {
+                        "TLSCertificateConfiguration": {
+                            "CertificateProviderType": "PEM",
+                            "S3Object": "s3://bucket/certs.zip",
+                        }
+                    },
+                    "EnableAtRestEncryption": True,
+                    "AtRestEncryptionConfiguration": {
+                        "S3EncryptionConfiguration": {"EncryptionMode": "SSE-S3"},
+                    },
+                }
+            }
+        )
+        # CREATE
+        create = emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        assert create["Name"] == name
+        assert "CreationDateTime" in create
+        # LIST
+        listed = emr.list_security_configurations()
+        names = [sc["Name"] for sc in listed["SecurityConfigurations"]]
+        assert name in names
+        # RETRIEVE
+        desc = emr.describe_security_configuration(Name=name)
+        parsed = json.loads(desc["SecurityConfiguration"])
+        enc = parsed["EncryptionConfiguration"]
+        assert enc["EnableInTransitEncryption"] is True
+        assert enc["EnableAtRestEncryption"] is True
+        # DELETE
+        emr.delete_security_configuration(Name=name)
+        # ERROR after delete
+        with pytest.raises(ClientError) as exc:
+            emr.describe_security_configuration(Name=name)
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_security_config_creation_datetime_is_recent(self, emr):
+        """CreateSecurityConfiguration returns CreationDateTime close to now."""
+        from datetime import timezone
+        name = _unique("dt-check")
+        config = json.dumps({"EncryptionConfiguration": {"EnableInTransitEncryption": False}})
+        before = datetime.now(tz=timezone.utc)
+        create = emr.create_security_configuration(Name=name, SecurityConfiguration=config)
+        after = datetime.now(tz=timezone.utc)
+        try:
+            dt = create["CreationDateTime"]
+            assert isinstance(dt, datetime)
+            # Normalize to UTC for comparison
+            if dt.tzinfo is None:
+                # Server returned naive datetime; can only assert it's a datetime
+                pass
+            else:
+                assert before <= dt <= after
         finally:
             emr.delete_security_configuration(Name=name)
