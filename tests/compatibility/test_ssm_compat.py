@@ -3623,3 +3623,410 @@ class TestSSMGapOps:
         )
         assert "Summary" in resp
         assert isinstance(resp["Summary"], list)
+
+
+class TestSSMBehavioralFidelityEdgeCases:
+    """Behavioral fidelity and edge case tests for SSM operations.
+
+    Tests CREATE, RETRIEVE, UPDATE, DELETE, and ERROR patterns for operations
+    that previously only had LIST coverage.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return make_client("ssm")
+
+    # ---------------------------------------------------------------------------
+    # Associations
+    # ---------------------------------------------------------------------------
+
+    def test_list_associations_finds_created(self, client):
+        """ListAssociations returns a newly-created association."""
+        resp = client.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            Parameters={"commands": ["echo test"]},
+        )
+        aid = resp["AssociationDescription"]["AssociationId"]
+        try:
+            la = client.list_associations()
+            assert "Associations" in la
+            found = [a for a in la["Associations"] if a.get("AssociationId") == aid]
+            assert len(found) == 1
+            assert found[0]["Name"] == "AWS-RunShellScript"
+        finally:
+            client.delete_association(AssociationId=aid)
+
+    def test_list_associations_after_delete_gone(self, client):
+        """Association removed via DeleteAssociation no longer appears in ListAssociations."""
+        resp = client.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000001"]}],
+        )
+        aid = resp["AssociationDescription"]["AssociationId"]
+        client.delete_association(AssociationId=aid)
+        la = client.list_associations()
+        found = [a for a in la["Associations"] if a.get("AssociationId") == aid]
+        assert len(found) == 0
+
+    def test_describe_association_nonexistent_raises_error(self, client):
+        """DescribeAssociation for a nonexistent ID raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_association(AssociationId="fake-id-xyz-does-not-exist")
+        assert exc.value.response["Error"]["Code"] in (
+            "AssociationDoesNotExist",
+            "DoesNotExistException",
+        )
+
+    # ---------------------------------------------------------------------------
+    # Automation executions
+    # ---------------------------------------------------------------------------
+
+    def test_describe_automation_executions_finds_execution(self, client):
+        """DescribeAutomationExecutions with ExecutionId filter returns the started execution."""
+        resp = client.start_automation_execution(
+            DocumentName="AWS-RestartEC2Instance",
+            Parameters={"InstanceId": ["i-00000000"]},
+        )
+        exec_id = resp["AutomationExecutionId"]
+        described = client.describe_automation_executions(
+            Filters=[{"Key": "ExecutionId", "Values": [exec_id]}]
+        )
+        assert "AutomationExecutionMetadataList" in described
+        items = described["AutomationExecutionMetadataList"]
+        assert len(items) >= 1
+        exec_ids = [e.get("AutomationExecutionId") for e in items]
+        assert exec_id in exec_ids
+
+    def test_describe_automation_executions_returns_list(self, client):
+        """DescribeAutomationExecutions without filter returns a list (may include prior runs)."""
+        # Start one execution so the list is non-empty
+        client.start_automation_execution(
+            DocumentName="AWS-RestartEC2Instance",
+            Parameters={"InstanceId": ["i-00000000"]},
+        )
+        resp = client.describe_automation_executions()
+        assert "AutomationExecutionMetadataList" in resp
+        assert isinstance(resp["AutomationExecutionMetadataList"], list)
+        assert len(resp["AutomationExecutionMetadataList"]) >= 1
+
+    # ---------------------------------------------------------------------------
+    # Compliance items (put + list structure)
+    # ---------------------------------------------------------------------------
+
+    def test_list_compliance_items_returns_structure(self, client):
+        """put_compliance_items succeeds and list_compliance_items returns expected structure."""
+        from datetime import datetime
+
+        client.put_compliance_items(
+            ResourceId="i-1234567890abcdef0",
+            ResourceType="ManagedInstance",
+            ComplianceType="Custom:Test",
+            ExecutionSummary={"ExecutionTime": datetime(2026, 1, 1)},
+            Items=[{"Severity": "MEDIUM", "Status": "COMPLIANT", "Id": "item1"}],
+        )
+        resp = client.list_compliance_items()
+        assert "ComplianceItems" in resp
+        assert isinstance(resp["ComplianceItems"], list)
+
+    def test_list_compliance_summaries_returns_structure(self, client):
+        """put_compliance_items succeeds and list_compliance_summaries returns expected structure."""
+        from datetime import datetime
+
+        client.put_compliance_items(
+            ResourceId="i-abcdef1234567890",
+            ResourceType="ManagedInstance",
+            ComplianceType="Custom:Test",
+            ExecutionSummary={"ExecutionTime": datetime(2026, 1, 1)},
+            Items=[{"Severity": "HIGH", "Status": "NON_COMPLIANT", "Id": "item2"}],
+        )
+        resp = client.list_compliance_summaries()
+        assert "ComplianceSummaryItems" in resp
+        assert isinstance(resp["ComplianceSummaryItems"], list)
+
+    def test_list_resource_compliance_summaries_returns_structure(self, client):
+        """put_compliance_items succeeds and list_resource_compliance_summaries returns expected structure."""
+        from datetime import datetime
+
+        client.put_compliance_items(
+            ResourceId="i-resource1234567890",
+            ResourceType="ManagedInstance",
+            ComplianceType="Custom:Resource",
+            ExecutionSummary={"ExecutionTime": datetime(2026, 1, 1)},
+            Items=[{"Severity": "LOW", "Status": "COMPLIANT", "Id": "item3"}],
+        )
+        resp = client.list_resource_compliance_summaries()
+        assert "ResourceComplianceSummaryItems" in resp
+        assert isinstance(resp["ResourceComplianceSummaryItems"], list)
+
+    # ---------------------------------------------------------------------------
+    # OpsItems
+    # ---------------------------------------------------------------------------
+
+    def test_describe_ops_items_create_find(self, client):
+        """CreateOpsItem then describe by OpsItemId filter returns the item."""
+        title = "EdgeCase-" + _unique("ops")
+        resp = client.create_ops_item(
+            Description="Test ops item for edge case",
+            Source="test",
+            Title=title,
+            OpsItemType="/aws/insight",
+        )
+        ops_id = resp["OpsItemId"]
+        described = client.describe_ops_items(
+            OpsItemFilters=[
+                {"Key": "OpsItemId", "Values": [ops_id], "Operator": "Equal"}
+            ]
+        )
+        assert "OpsItemSummaries" in described
+        assert len(described["OpsItemSummaries"]) >= 1
+        found = [s for s in described["OpsItemSummaries"] if s.get("OpsItemId") == ops_id]
+        assert len(found) >= 1
+        assert found[0]["Title"] == title
+
+    def test_describe_ops_items_status_filter(self, client):
+        """CreateOpsItem (Open) then describe with Status=Open filter finds it."""
+        resp = client.create_ops_item(
+            Description="Open ops item",
+            Source="test",
+            Title="OpenItem-" + _unique("ops"),
+            OpsItemType="/aws/insight",
+        )
+        ops_id = resp["OpsItemId"]
+        described = client.describe_ops_items(
+            OpsItemFilters=[
+                {"Key": "Status", "Values": ["Open"], "Operator": "Equal"}
+            ]
+        )
+        assert "OpsItemSummaries" in described
+        item_ids = [s.get("OpsItemId") for s in described["OpsItemSummaries"]]
+        assert ops_id in item_ids
+
+    def test_list_ops_item_events_for_real_item(self, client):
+        """ListOpsItemEvents with a valid OpsItemId filter returns Summaries (may be empty)."""
+        resp = client.create_ops_item(
+            Description="Ops item for events test",
+            Source="test",
+            Title="EventsItem-" + _unique("ops"),
+            OpsItemType="/aws/insight",
+        )
+        ops_id = resp["OpsItemId"]
+        events = client.list_ops_item_events(
+            Filters=[{"Key": "OpsItemId", "Values": [ops_id], "Operator": "Equal"}]
+        )
+        assert "Summaries" in events
+        assert isinstance(events["Summaries"], list)
+
+    # ---------------------------------------------------------------------------
+    # Patch groups and available patches
+    # ---------------------------------------------------------------------------
+
+    def test_describe_patch_groups_returns_list(self, client):
+        """describe_patch_groups returns a list structure (stubs return empty)."""
+        resp = client.describe_patch_groups()
+        assert "Mappings" in resp
+        assert isinstance(resp["Mappings"], list)
+
+    def test_describe_available_patches_with_filter_returns_list(self, client):
+        """describe_available_patches with product filter returns list structure."""
+        resp = client.describe_available_patches(
+            Filters=[{"Key": "PRODUCT", "Values": ["WindowsServer2019"]}]
+        )
+        assert "Patches" in resp
+        assert isinstance(resp["Patches"], list)
+
+    # ---------------------------------------------------------------------------
+    # Inventory
+    # ---------------------------------------------------------------------------
+
+    def test_get_inventory_after_put_returns_structure(self, client):
+        """put_inventory succeeds and get_inventory returns Entities structure."""
+        client.put_inventory(
+            InstanceId="i-test01",
+            Items=[
+                {
+                    "TypeName": "AWS:InstanceInformation",
+                    "SchemaVersion": "1.0",
+                    "CaptureTime": "2026-01-01T00:00:00Z",
+                    "ContentHash": "abc123",
+                    "Content": [{"InstanceId": "i-test01", "PlatformType": "Linux"}],
+                }
+            ],
+        )
+        resp = client.get_inventory(
+            Filters=[
+                {
+                    "Key": "AWS:InstanceInformation.InstanceId",
+                    "Type": "Equal",
+                    "Values": ["i-test01"],
+                }
+            ]
+        )
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_get_inventory_schema_returns_structure(self, client):
+        """GetInventorySchema returns expected structure."""
+        resp = client.get_inventory_schema(TypeName="AWS:InstanceInformation")
+        assert "Schemas" in resp
+        assert isinstance(resp["Schemas"], list)
+        if len(resp["Schemas"]) > 0:
+            assert "TypeName" in resp["Schemas"][0]
+
+    # ---------------------------------------------------------------------------
+    # Resource data sync
+    # ---------------------------------------------------------------------------
+
+    def test_list_resource_data_sync_after_create(self, client):
+        """CreateResourceDataSync then list returns the sync name."""
+        sync_name = _unique("sync")
+        try:
+            client.create_resource_data_sync(
+                SyncName=sync_name,
+                S3Destination={
+                    "BucketName": "my-test-bucket",
+                    "SyncFormat": "JsonSerDe",
+                    "Region": "us-east-1",
+                },
+            )
+            resp = client.list_resource_data_sync()
+            assert "ResourceDataSyncItems" in resp
+            names = [s.get("SyncName") for s in resp["ResourceDataSyncItems"]]
+            assert sync_name in names
+        finally:
+            client.delete_resource_data_sync(SyncName=sync_name)
+
+    def test_list_resource_data_sync_after_delete(self, client):
+        """DeleteResourceDataSync removes the sync from the list."""
+        sync_name = _unique("sync-del")
+        client.create_resource_data_sync(
+            SyncName=sync_name,
+            S3Destination={
+                "BucketName": "my-test-bucket",
+                "SyncFormat": "JsonSerDe",
+                "Region": "us-east-1",
+            },
+        )
+        client.delete_resource_data_sync(SyncName=sync_name)
+        resp = client.list_resource_data_sync()
+        names = [s.get("SyncName") for s in resp["ResourceDataSyncItems"]]
+        assert sync_name not in names
+
+    # ---------------------------------------------------------------------------
+    # OpsMetadata
+    # ---------------------------------------------------------------------------
+
+    def test_list_ops_metadata_after_create(self, client):
+        """CreateOpsMetadata then list_ops_metadata returns the resource."""
+        resource_id = "/aws/ssm/test/" + _unique("meta")
+        resp = client.create_ops_metadata(ResourceId=resource_id)
+        arn = resp["OpsMetadataArn"]
+        listed = client.list_ops_metadata()
+        assert "OpsMetadataList" in listed
+        resource_ids = [m.get("ResourceId") for m in listed["OpsMetadataList"]]
+        assert resource_id in resource_ids
+        assert arn is not None
+
+    def test_list_ops_metadata_multiple(self, client):
+        """Create several OpsMetadata entries and list_ops_metadata returns all."""
+        resource_ids = ["/aws/ssm/test/" + _unique("meta") for _ in range(3)]
+        for rid in resource_ids:
+            client.create_ops_metadata(ResourceId=rid)
+        resp = client.list_ops_metadata()
+        assert "OpsMetadataList" in resp
+        listed_ids = [m.get("ResourceId") for m in resp["OpsMetadataList"]]
+        for rid in resource_ids:
+            assert rid in listed_ids
+
+    # ---------------------------------------------------------------------------
+    # Activations
+    # ---------------------------------------------------------------------------
+
+    def test_describe_activations_finds_created(self, client):
+        """CreateActivation then describe with ActivationIds filter returns it with correct IamRole."""
+        iam_role = "arn:aws:iam::123456789012:role/SSMRole"
+        resp = client.create_activation(IamRole=iam_role, RegistrationLimit=5)
+        activation_id = resp["ActivationId"]
+        try:
+            described = client.describe_activations(
+                Filters=[
+                    {"FilterKey": "ActivationIds", "FilterValues": [activation_id]}
+                ]
+            )
+            assert "ActivationList" in described
+            assert len(described["ActivationList"]) >= 1
+            found = [a for a in described["ActivationList"] if a.get("ActivationId") == activation_id]
+            assert len(found) >= 1
+            assert found[0]["IamRole"] == iam_role
+        finally:
+            client.delete_activation(ActivationId=activation_id)
+
+    def test_describe_activations_multiple(self, client):
+        """Create 3 activations and describe_activations returns all of them."""
+        iam_role = "arn:aws:iam::123456789012:role/SSMRole"
+        ids = []
+        for _ in range(3):
+            resp = client.create_activation(IamRole=iam_role, RegistrationLimit=1)
+            ids.append(resp["ActivationId"])
+        try:
+            described = client.describe_activations()
+            assert "ActivationList" in described
+            listed_ids = [a.get("ActivationId") for a in described["ActivationList"]]
+            for aid in ids:
+                assert aid in listed_ids
+        finally:
+            for aid in ids:
+                client.delete_activation(ActivationId=aid)
+
+    # ---------------------------------------------------------------------------
+    # Inventory deletions
+    # ---------------------------------------------------------------------------
+
+    def test_describe_inventory_deletions_after_delete(self, client):
+        """delete_inventory succeeds and describe_inventory_deletions returns expected structure."""
+        resp = client.delete_inventory(TypeName="Custom:TestInventory")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        deletion_id = resp.get("DeletionId")
+        assert deletion_id is not None
+        described = client.describe_inventory_deletions(DeletionId=deletion_id)
+        assert "InventoryDeletions" in described
+        assert isinstance(described["InventoryDeletions"], list)
+
+    # ---------------------------------------------------------------------------
+    # Association update + error
+    # ---------------------------------------------------------------------------
+
+    def test_association_update_schedule(self, client):
+        """UpdateAssociation can change the schedule and DescribeAssociation reflects the change."""
+        resp = client.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000000"]}],
+            Parameters={"commands": ["echo test"]},
+            ScheduleExpression="rate(1 day)",
+        )
+        aid = resp["AssociationDescription"]["AssociationId"]
+        try:
+            update_resp = client.update_association(
+                AssociationId=aid,
+                ScheduleExpression="rate(2 hours)",
+            )
+            assert (
+                update_resp["AssociationDescription"]["ScheduleExpression"]
+                == "rate(2 hours)"
+            )
+            # Verify via describe
+            desc = client.describe_association(AssociationId=aid)
+            assert (
+                desc["AssociationDescription"]["ScheduleExpression"] == "rate(2 hours)"
+            )
+        finally:
+            client.delete_association(AssociationId=aid)
+
+    def test_describe_association_nonexistent_error(self, client):
+        """DescribeAssociation for a fake ID raises the correct error code."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_association(AssociationId="fake-id-xyz-not-real")
+        assert exc.value.response["Error"]["Code"] in (
+            "AssociationDoesNotExist",
+            "DoesNotExistException",
+        )
