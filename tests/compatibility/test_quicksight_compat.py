@@ -2882,3 +2882,506 @@ class TestQuickSightRemainingGapOps:
             },
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestQuickSightAccountSettingsFidelity:
+    """Behavioral fidelity for account settings: field content and update persistence."""
+
+    def test_describe_account_settings_has_expected_fields(self, quicksight):
+        resp = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        settings = resp["AccountSettings"]
+        assert "DefaultNamespace" in settings
+        assert "Edition" in settings
+        assert "PublicSharingEnabled" in settings
+        assert isinstance(settings["PublicSharingEnabled"], bool)
+        assert isinstance(settings["DefaultNamespace"], str)
+
+    def test_update_account_settings_notification_email_persists(self, quicksight):
+        quicksight.update_account_settings(
+            AwsAccountId=ACCOUNT_ID,
+            DefaultNamespace="default",
+            NotificationEmail="fidelity-test@example.com",
+        )
+        resp = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert resp["AccountSettings"]["NotificationEmail"] == "fidelity-test@example.com"
+
+    def test_public_sharing_toggle_persists_in_account_settings(self, quicksight):
+        quicksight.update_public_sharing_settings(
+            AwsAccountId=ACCOUNT_ID, PublicSharingEnabled=True
+        )
+        resp = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert resp["AccountSettings"]["PublicSharingEnabled"] is True
+
+        quicksight.update_public_sharing_settings(
+            AwsAccountId=ACCOUNT_ID, PublicSharingEnabled=False
+        )
+        resp = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert resp["AccountSettings"]["PublicSharingEnabled"] is False
+
+
+class TestQuickSightEmbedUrlFidelity:
+    """Behavioral fidelity: embed URLs return non-empty strings."""
+
+    def test_generate_embed_url_for_anonymous_user_returns_nonempty_url(self, quicksight):
+        resp = quicksight.generate_embed_url_for_anonymous_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            AuthorizedResourceArns=[
+                f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dashboard/fake"
+            ],
+            ExperienceConfiguration={"Dashboard": {"InitialDashboardId": "fake"}},
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["EmbedUrl"], str)
+        assert len(resp["EmbedUrl"]) > 0
+
+    def test_generate_embed_url_for_registered_user_returns_nonempty_url(self, quicksight):
+        resp = quicksight.generate_embed_url_for_registered_user(
+            AwsAccountId=ACCOUNT_ID,
+            UserArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:user/default/fake",
+            ExperienceConfiguration={"Dashboard": {"InitialDashboardId": "fake"}},
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["EmbedUrl"], str)
+        assert len(resp["EmbedUrl"]) > 0
+
+    def test_generate_embed_url_for_registered_user_with_identity_returns_nonempty_url(
+        self, quicksight
+    ):
+        resp = quicksight.generate_embed_url_for_registered_user_with_identity(
+            AwsAccountId=ACCOUNT_ID,
+            ExperienceConfiguration={"Dashboard": {"InitialDashboardId": "fake"}},
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["EmbedUrl"], str)
+        assert len(resp["EmbedUrl"]) > 0
+
+    def test_generate_embed_url_has_request_id(self, quicksight):
+        resp = quicksight.generate_embed_url_for_registered_user(
+            AwsAccountId=ACCOUNT_ID,
+            UserArn=f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:user/default/fake",
+            ExperienceConfiguration={"QuickSightConsole": {"InitialPath": "/start"}},
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
+
+
+class TestQuickSightPredictQaFidelity:
+    """Behavioral fidelity for predict_qa_results."""
+
+    def test_predict_qa_results_returns_status_200(self, quicksight):
+        resp = quicksight.predict_qa_results(
+            AwsAccountId=ACCOUNT_ID, QueryText="what is total revenue?"
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
+
+    def test_predict_qa_results_with_different_queries(self, quicksight):
+        for query in ["show sales by region", "total orders last month", "top customers"]:
+            resp = quicksight.predict_qa_results(AwsAccountId=ACCOUNT_ID, QueryText=query)
+            assert resp["Status"] == 200
+
+
+class TestQuickSightGroupPagination:
+    """Behavioral fidelity: group listing pagination."""
+
+    def test_list_groups_pagination_with_max_results(self, quicksight):
+        group_names = [f"paggrp-{uuid.uuid4().hex[:8]}" for _ in range(4)]
+        for name in group_names:
+            quicksight.create_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=name
+            )
+        try:
+            resp = quicksight.list_groups(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, MaxResults=2
+            )
+            assert resp["Status"] == 200
+            assert len(resp["GroupList"]) <= 2
+            assert "NextToken" in resp
+        finally:
+            for name in group_names:
+                quicksight.delete_group(
+                    AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=name
+                )
+
+    def test_list_groups_pagination_yields_all_results(self, quicksight):
+        group_names = [f"paggrp2-{uuid.uuid4().hex[:8]}" for _ in range(3)]
+        for name in group_names:
+            quicksight.create_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=name
+            )
+        try:
+            collected = []
+            resp = quicksight.list_groups(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, MaxResults=2
+            )
+            collected.extend(resp["GroupList"])
+            while "NextToken" in resp:
+                resp = quicksight.list_groups(
+                    AwsAccountId=ACCOUNT_ID,
+                    Namespace=NAMESPACE,
+                    MaxResults=2,
+                    NextToken=resp["NextToken"],
+                )
+                collected.extend(resp["GroupList"])
+            all_names = [g["GroupName"] for g in collected]
+            for name in group_names:
+                assert name in all_names
+        finally:
+            for name in group_names:
+                quicksight.delete_group(
+                    AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=name
+                )
+
+
+class TestQuickSightUserPagination:
+    """Behavioral fidelity: user listing pagination."""
+
+    def test_list_users_pagination_with_max_results(self, quicksight):
+        user_names = [f"paguser-{uuid.uuid4().hex[:8]}" for _ in range(3)]
+        for name in user_names:
+            quicksight.register_user(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                Email=f"{name}@example.com",
+                IdentityType="QUICKSIGHT",
+                UserRole="READER",
+                UserName=name,
+            )
+        try:
+            resp = quicksight.list_users(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, MaxResults=2
+            )
+            assert resp["Status"] == 200
+            assert len(resp["UserList"]) <= 2
+        finally:
+            for name in user_names:
+                quicksight.delete_user(
+                    AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=name
+                )
+
+
+class TestQuickSightGroupSearchEdgeCases:
+    """Edge cases for search_groups."""
+
+    def test_search_groups_no_results_for_nonmatching_prefix(self, quicksight):
+        resp = quicksight.search_groups(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Filters=[
+                {
+                    "Operator": "StartsWith",
+                    "Name": "GROUP_NAME",
+                    "Value": "zzz-nonexistent-prefix-xyz-",
+                }
+            ],
+        )
+        assert resp["Status"] == 200
+        assert isinstance(resp["GroupList"], list)
+        assert len(resp["GroupList"]) == 0
+
+    def test_search_groups_deleted_group_not_in_results(self, quicksight):
+        group_name = f"searchdel-{uuid.uuid4().hex[:8]}"
+        quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        # Verify it appears in search
+        resp = quicksight.search_groups(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Filters=[{"Operator": "StartsWith", "Name": "GROUP_NAME", "Value": group_name}],
+        )
+        assert any(g["GroupName"] == group_name for g in resp["GroupList"])
+
+        # Delete it and verify it's gone from search
+        quicksight.delete_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        resp2 = quicksight.search_groups(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Filters=[{"Operator": "StartsWith", "Name": "GROUP_NAME", "Value": group_name}],
+        )
+        assert all(g["GroupName"] != group_name for g in resp2["GroupList"])
+
+    def test_search_groups_returns_arn(self, quicksight):
+        group_name = f"searcharn-{uuid.uuid4().hex[:8]}"
+        quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        try:
+            resp = quicksight.search_groups(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                Filters=[
+                    {"Operator": "StartsWith", "Name": "GROUP_NAME", "Value": group_name}
+                ],
+            )
+            assert len(resp["GroupList"]) >= 1
+            group = next(g for g in resp["GroupList"] if g["GroupName"] == group_name)
+            assert "Arn" in group
+            assert ACCOUNT_ID in group["Arn"]
+            assert group_name in group["Arn"]
+        finally:
+            quicksight.delete_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+
+
+class TestQuickSightArnFormat:
+    """Verify ARN formats match expected patterns."""
+
+    def test_group_arn_contains_account_and_name(self, quicksight):
+        group_name = f"arntest-{uuid.uuid4().hex[:8]}"
+        resp = quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        arn = resp["Group"]["Arn"]
+        assert "arn:aws:quicksight:" in arn
+        assert ACCOUNT_ID in arn
+        assert group_name in arn
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+
+    def test_user_arn_contains_account_and_username(self, quicksight):
+        user_name = f"arnuser-{uuid.uuid4().hex[:8]}"
+        resp = quicksight.register_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Email=f"{user_name}@example.com",
+            IdentityType="QUICKSIGHT",
+            UserRole="READER",
+            UserName=user_name,
+        )
+        arn = resp["User"]["Arn"]
+        assert "arn:aws:quicksight:" in arn
+        assert ACCOUNT_ID in arn
+        assert user_name in arn
+        quicksight.delete_user(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name)
+
+    def test_data_source_arn_contains_account_and_id(self, quicksight):
+        ds_id = _unique("ds")
+        resp = quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID,
+            DataSourceId=ds_id,
+            Name="ARN Test DS",
+            Type="S3",
+            DataSourceParameters={
+                "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+            },
+        )
+        arn = resp["Arn"]
+        assert "arn:aws:quicksight:" in arn
+        assert ACCOUNT_ID in arn
+        assert ds_id in arn
+        quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+
+
+class TestQuickSightDashboardListFidelity:
+    """Behavioral fidelity: dashboards appear in list after creation."""
+
+    def test_list_dashboards_includes_created(self, quicksight):
+        dash_id = _unique("dash")
+        quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name="List Fidelity Dashboard",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        resp = quicksight.list_dashboards(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        ids = [d["DashboardId"] for d in resp["DashboardSummaryList"]]
+        assert dash_id in ids
+
+    def test_list_dashboards_summary_has_expected_fields(self, quicksight):
+        dash_id = _unique("dash")
+        quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name="Fields Check Dashboard",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        resp = quicksight.list_dashboards(AwsAccountId=ACCOUNT_ID)
+        summaries = {d["DashboardId"]: d for d in resp["DashboardSummaryList"]}
+        assert dash_id in summaries
+        summary = summaries[dash_id]
+        assert "Arn" in summary
+        assert "Name" in summary
+        assert summary["Name"] == "Fields Check Dashboard"
+
+
+class TestQuickSightListAnalysesFidelity:
+    """Behavioral fidelity: analyses appear in list after creation."""
+
+    def test_list_analyses_includes_created(self, quicksight):
+        aid = _unique("analysis")
+        quicksight.create_analysis(
+            AwsAccountId=ACCOUNT_ID,
+            AnalysisId=aid,
+            Name="List Test Analysis",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        resp = quicksight.list_analyses(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        ids = [a["AnalysisId"] for a in resp["AnalysisSummaryList"]]
+        assert aid in ids
+
+
+class TestQuickSightListDataSetsFidelity:
+    """Behavioral fidelity: datasets appear in list after creation."""
+
+    def test_list_data_sets_includes_created(self, quicksight):
+        ds_id = _unique("ds")
+        dset_id = _unique("dset")
+        quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID,
+            DataSourceId=ds_id,
+            Name="DS for list test",
+            Type="S3",
+            DataSourceParameters={
+                "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+            },
+        )
+        quicksight.create_data_set(
+            AwsAccountId=ACCOUNT_ID,
+            DataSetId=dset_id,
+            Name="List Test Dataset",
+            PhysicalTableMap={
+                "t1": {
+                    "S3Source": {
+                        "DataSourceArn": (
+                            f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:datasource/{ds_id}"
+                        ),
+                        "InputColumns": [{"Name": "col1", "Type": "STRING"}],
+                    }
+                }
+            },
+            ImportMode="SPICE",
+        )
+        try:
+            resp = quicksight.list_data_sets(AwsAccountId=ACCOUNT_ID)
+            assert resp["Status"] == 200
+            ids = [d["DataSetId"] for d in resp["DataSetSummaries"]]
+            assert dset_id in ids
+        finally:
+            quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+
+
+class TestQuickSightListFoldersFidelity:
+    """Behavioral fidelity: folders appear in list after creation."""
+
+    def test_list_folders_includes_created(self, quicksight):
+        folder_id = _unique("folder")
+        quicksight.create_folder(
+            AwsAccountId=ACCOUNT_ID,
+            FolderId=folder_id,
+            Name="List Test Folder",
+            FolderType="SHARED",
+        )
+        resp = quicksight.list_folders(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        ids = [f["FolderId"] for f in resp["FolderSummaryList"]]
+        assert folder_id in ids
+
+    def test_list_folders_summary_has_arn(self, quicksight):
+        folder_id = _unique("folder")
+        quicksight.create_folder(
+            AwsAccountId=ACCOUNT_ID,
+            FolderId=folder_id,
+            Name="ARN Check Folder",
+            FolderType="SHARED",
+        )
+        resp = quicksight.list_folders(AwsAccountId=ACCOUNT_ID)
+        summaries = {f["FolderId"]: f for f in resp["FolderSummaryList"]}
+        assert folder_id in summaries
+        assert "Arn" in summaries[folder_id]
+
+
+class TestQuickSightListTemplatesFidelity:
+    """Behavioral fidelity: templates appear in list after creation."""
+
+    def test_list_templates_includes_created(self, quicksight):
+        tmpl_id = _unique("tmpl")
+        quicksight.create_template(
+            AwsAccountId=ACCOUNT_ID,
+            TemplateId=tmpl_id,
+            Name="List Test Template",
+            SourceEntity={
+                "SourceAnalysis": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:analysis/fake",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        resp = quicksight.list_templates(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        ids = [t["TemplateId"] for t in resp["TemplateSummaryList"]]
+        assert tmpl_id in ids
+
+
+class TestQuickSightListThemesFidelity:
+    """Behavioral fidelity: themes appear in list after creation."""
+
+    def test_list_themes_includes_created(self, quicksight):
+        theme_id = _unique("theme")
+        quicksight.create_theme(
+            AwsAccountId=ACCOUNT_ID,
+            ThemeId=theme_id,
+            Name="List Test Theme",
+            BaseThemeId="CLASSIC",
+            Configuration={"DataColorPalette": {"Colors": ["#FF0000"]}},
+        )
+        resp = quicksight.list_themes(AwsAccountId=ACCOUNT_ID)
+        assert resp["Status"] == 200
+        ids = [t["ThemeId"] for t in resp["ThemeSummaryList"]]
+        assert theme_id in ids
+
+    def test_list_themes_summary_has_name(self, quicksight):
+        theme_id = _unique("theme")
+        quicksight.create_theme(
+            AwsAccountId=ACCOUNT_ID,
+            ThemeId=theme_id,
+            Name="Named List Theme",
+            BaseThemeId="CLASSIC",
+            Configuration={"DataColorPalette": {"Colors": ["#00FF00"]}},
+        )
+        resp = quicksight.list_themes(AwsAccountId=ACCOUNT_ID)
+        summaries = {t["ThemeId"]: t for t in resp["ThemeSummaryList"]}
+        assert theme_id in summaries
+        assert summaries[theme_id]["Name"] == "Named List Theme"
