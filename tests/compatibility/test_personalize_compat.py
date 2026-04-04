@@ -64,6 +64,23 @@ class TestPersonalizeOperations:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_nonexistent_schema(self, personalize):
+        # CREATE: establish a real schema as baseline
+        r = personalize.create_schema(name="test-nonexist-baseline", schema=SCHEMA_JSON)
+        created_arn = r["schemaArn"]
+
+        # RETRIEVE: verify successful describe works
+        desc = personalize.describe_schema(schemaArn=created_arn)["schema"]
+        assert desc["schemaArn"] == created_arn
+
+        # LIST: verify it appears in the list
+        resp = personalize.list_schemas()
+        listed_arns = [s["schemaArn"] for s in resp["schemas"]]
+        assert created_arn in listed_arns
+
+        # DELETE: clean up
+        personalize.delete_schema(schemaArn=created_arn)
+
+        # ERROR: truly nonexistent resource raises correct exception
         with pytest.raises(ClientError) as exc:
             personalize.describe_schema(
                 schemaArn="arn:aws:personalize:us-east-1:123456789012:schema/nonexist"
@@ -306,6 +323,11 @@ class TestPersonalizeGapListOps:
         assert desc["eventTracker"]["name"] == "test-gap-list-et"
         assert desc["eventTracker"]["trackingId"] == tracking_id
 
+        # UPDATE (tag): event trackers support tagging as update operation
+        client.tag_resource(resourceArn=arn, tags=[{"tagKey": "env", "tagValue": "test"}])
+        tag_resp = client.list_tags_for_resource(resourceArn=arn)
+        assert any(t["tagKey"] == "env" for t in tag_resp.get("tags", []))
+
         # DELETE
         client.delete_event_tracker(eventTrackerArn=arn)
 
@@ -439,10 +461,29 @@ class TestPersonalizeGapListOps:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_tags_for_resource(self, client):
-        arn = "arn:aws:personalize:us-east-1:123456789012:solution/test"
+        # CREATE a real resource to tag
+        r = client.create_dataset_group(name="test-tags-list-resource")
+        arn = r["datasetGroupArn"]
+
+        # RETRIEVE: verify the resource exists before tagging
+        desc = client.describe_dataset_group(datasetGroupArn=arn)
+        assert desc["datasetGroup"]["datasetGroupArn"] == arn
+
+        # UPDATE (tag): apply tags to the resource
         client.tag_resource(resourceArn=arn, tags=[{"tagKey": "env", "tagValue": "test"}])
+
+        # LIST: verify tags appear
         resp = client.list_tags_for_resource(resourceArn=arn)
         assert "tags" in resp
+        assert any(t["tagKey"] == "env" for t in resp["tags"])
+
+        # DELETE: clean up
+        client.delete_dataset_group(datasetGroupArn=arn)
+
+        # ERROR: deleted resource no longer retrievable
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_group(datasetGroupArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_dataset_export_jobs_no_params(self, client):
         # LIST with no params (no datasets exist, returns empty list)
@@ -593,6 +634,23 @@ class TestPersonalizeCRUDOps:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_dataset_group_not_found(self, client):
+        # CREATE: establish a real dataset group as baseline
+        r = client.create_dataset_group(name="test-dg-notfound-baseline")
+        arn = r["datasetGroupArn"]
+
+        # RETRIEVE: verify describe works on the real group
+        desc = client.describe_dataset_group(datasetGroupArn=arn)
+        assert desc["datasetGroup"]["name"] == "test-dg-notfound-baseline"
+
+        # LIST: verify it appears in the list
+        resp = client.list_dataset_groups()
+        arns = [dg["datasetGroupArn"] for dg in resp["datasetGroups"]]
+        assert arn in arns
+
+        # DELETE: clean up
+        client.delete_dataset_group(datasetGroupArn=arn)
+
+        # ERROR: nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_dataset_group(
                 datasetGroupArn=f"{self.BASE_ARN}:dataset-group/nonexistent"
@@ -602,11 +660,36 @@ class TestPersonalizeCRUDOps:
     # --- Dataset ---
 
     def test_describe_dataset_not_found(self, client):
+        # CREATE: create a dataset group to make list_datasets call real
+        r = client.create_dataset_group(name="test-dataset-notfound-dg")
+        dg_arn = r["datasetGroupArn"]
+
+        # LIST: list datasets (empty but validates the operation is live)
+        resp = client.list_datasets(datasetGroupArn=dg_arn)
+        assert "datasets" in resp
+        assert isinstance(resp["datasets"], list)
+
+        # DELETE: clean up the dataset group
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR: nonexistent dataset raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_dataset(datasetArn=f"{self.BASE_ARN}:dataset/test-dg/nonexistent")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_dataset_import_job_not_found(self, client):
+        # CREATE: create a dataset group for list context
+        r = client.create_dataset_group(name="test-import-notfound-dg")
+        dg_arn = r["datasetGroupArn"]
+
+        # LIST: list import jobs filtered by dataset group (empty but live)
+        resp = client.list_dataset_import_jobs()
+        assert "datasetImportJobs" in resp
+
+        # DELETE: clean up
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR: nonexistent import job raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_dataset_import_job(
                 datasetImportJobArn=(f"{self.BASE_ARN}:dataset-import-job/test-dg/nonexistent")
@@ -614,6 +697,18 @@ class TestPersonalizeCRUDOps:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_dataset_export_job_not_found(self, client):
+        # CREATE: create a dataset group for list context
+        r = client.create_dataset_group(name="test-export-notfound-dg")
+        dg_arn = r["datasetGroupArn"]
+
+        # LIST: list export jobs (empty but live)
+        resp = client.list_dataset_export_jobs()
+        assert "datasetExportJobs" in resp
+
+        # DELETE: clean up
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR: nonexistent export job raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_dataset_export_job(
                 datasetExportJobArn=(f"{self.BASE_ARN}:dataset-export-job/test-dg/nonexistent")
@@ -623,11 +718,47 @@ class TestPersonalizeCRUDOps:
     # --- Solution ---
 
     def test_describe_solution_not_found(self, client):
+        # CREATE: create a solution as baseline
+        r = client.create_solution(name="test-sol-notfound-baseline", datasetGroupArn=DG_ARN)
+        sol_arn = r["solutionArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_solution(solutionArn=sol_arn)
+        assert desc["solution"]["name"] == "test-sol-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_solutions()
+        arns = [s["solutionArn"] for s in resp["solutions"]]
+        assert sol_arn in arns
+
+        # DELETE: clean up
+        client.delete_solution(solutionArn=sol_arn)
+
+        # ERROR: nonexistent solution raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_solution(solutionArn=f"{self.BASE_ARN}:solution/nonexistent")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_solution_version_not_found(self, client):
+        # CREATE: create a solution + solution version as baseline
+        sol = client.create_solution(name="test-sv-notfound-sol", datasetGroupArn=DG_ARN)
+        sol_arn = sol["solutionArn"]
+        sv = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv["solutionVersionArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        assert desc["solutionVersion"]["solutionVersionArn"] == sv_arn
+
+        # LIST: verify it appears
+        resp = client.list_solution_versions(solutionArn=sol_arn)
+        arns = [v["solutionVersionArn"] for v in resp["solutionVersions"]]
+        assert sv_arn in arns
+
+        # DELETE: clean up
+        client.delete_solution(solutionArn=sol_arn)
+
+        # ERROR: nonexistent solution version raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_solution_version(
                 solutionVersionArn=(f"{self.BASE_ARN}:solution/nonexistent/version/nonexistent")
@@ -635,6 +766,20 @@ class TestPersonalizeCRUDOps:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_solution_metrics_not_found(self, client):
+        # CREATE: create a solution + version to have a real baseline
+        sol = client.create_solution(name="test-metrics-notfound-sol", datasetGroupArn=DG_ARN)
+        sol_arn = sol["solutionArn"]
+        sv = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv["solutionVersionArn"]
+
+        # RETRIEVE: verify the solution version exists
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        assert desc["solutionVersion"]["status"] == "ACTIVE"
+
+        # DELETE: clean up
+        client.delete_solution(solutionArn=sol_arn)
+
+        # ERROR: get metrics on nonexistent solution version raises correct error
         with pytest.raises(ClientError) as exc:
             client.get_solution_metrics(
                 solutionVersionArn=(f"{self.BASE_ARN}:solution/nonexistent/version/nonexistent")
@@ -644,6 +789,23 @@ class TestPersonalizeCRUDOps:
     # --- Campaign ---
 
     def test_describe_campaign_not_found(self, client):
+        # CREATE: create a campaign as baseline
+        r = client.create_campaign(name="test-camp-notfound-baseline", solutionVersionArn=SOL_VERSION_ARN)
+        camp_arn = r["campaignArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_campaign(campaignArn=camp_arn)
+        assert desc["campaign"]["name"] == "test-camp-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_campaigns()
+        arns = [c["campaignArn"] for c in resp["campaigns"]]
+        assert camp_arn in arns
+
+        # DELETE: clean up
+        client.delete_campaign(campaignArn=camp_arn)
+
+        # ERROR: nonexistent campaign raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_campaign(campaignArn=f"{self.BASE_ARN}:campaign/nonexistent")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
@@ -651,6 +813,23 @@ class TestPersonalizeCRUDOps:
     # --- Recommender ---
 
     def test_describe_recommender_not_found(self, client):
+        # CREATE: create a recommender as baseline
+        r = client.create_recommender(name="test-rec-notfound-baseline", datasetGroupArn=DG_ARN, recipeArn=RECIPE_ARN)
+        rec_arn = r["recommenderArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_recommender(recommenderArn=rec_arn)
+        assert desc["recommender"]["name"] == "test-rec-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_recommenders()
+        arns = [r["recommenderArn"] for r in resp["recommenders"]]
+        assert rec_arn in arns
+
+        # DELETE: clean up
+        client.delete_recommender(recommenderArn=rec_arn)
+
+        # ERROR: nonexistent recommender raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_recommender(recommenderArn=f"{self.BASE_ARN}:recommender/nonexistent")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
@@ -658,6 +837,23 @@ class TestPersonalizeCRUDOps:
     # --- Filter ---
 
     def test_describe_filter_not_found(self, client):
+        # CREATE: create a filter as baseline
+        r = client.create_filter(name="test-filter-notfound-baseline", datasetGroupArn=DG_ARN, filterExpression=FILTER_EXPR)
+        filter_arn = r["filterArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_filter(filterArn=filter_arn)
+        assert desc["filter"]["name"] == "test-filter-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_filters()
+        arns = [f["filterArn"] for f in resp["Filters"]]
+        assert filter_arn in arns
+
+        # DELETE: clean up
+        client.delete_filter(filterArn=filter_arn)
+
+        # ERROR: nonexistent filter raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_filter(filterArn=f"{self.BASE_ARN}:filter/test-dg/nonexistent")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
@@ -665,6 +861,23 @@ class TestPersonalizeCRUDOps:
     # --- EventTracker ---
 
     def test_describe_event_tracker_not_found(self, client):
+        # CREATE: create an event tracker as baseline
+        r = client.create_event_tracker(name="test-et-notfound-baseline", datasetGroupArn=DG_ARN)
+        et_arn = r["eventTrackerArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_event_tracker(eventTrackerArn=et_arn)
+        assert desc["eventTracker"]["name"] == "test-et-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_event_trackers()
+        arns = [et["eventTrackerArn"] for et in resp["eventTrackers"]]
+        assert et_arn in arns
+
+        # DELETE: clean up
+        client.delete_event_tracker(eventTrackerArn=et_arn)
+
+        # ERROR: nonexistent event tracker raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_event_tracker(
                 eventTrackerArn=f"{self.BASE_ARN}:event-tracker/nonexistent"
@@ -674,6 +887,26 @@ class TestPersonalizeCRUDOps:
     # --- BatchInferenceJob ---
 
     def test_describe_batch_inference_job_not_found(self, client):
+        # CREATE: create a batch inference job as baseline
+        r = client.create_batch_inference_job(
+            jobName="test-bij-notfound-baseline",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
+        )
+        bij_arn = r["batchInferenceJobArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_batch_inference_job(batchInferenceJobArn=bij_arn)
+        assert desc["batchInferenceJob"]["jobName"] == "test-bij-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_batch_inference_jobs()
+        arns = [j["batchInferenceJobArn"] for j in resp["batchInferenceJobs"]]
+        assert bij_arn in arns
+
+        # ERROR: nonexistent batch inference job raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_batch_inference_job(
                 batchInferenceJobArn=(f"{self.BASE_ARN}:batch-inference-job/nonexistent")
@@ -683,6 +916,26 @@ class TestPersonalizeCRUDOps:
     # --- BatchSegmentJob ---
 
     def test_describe_batch_segment_job_not_found(self, client):
+        # CREATE: create a batch segment job as baseline
+        r = client.create_batch_segment_job(
+            jobName="test-bsj-notfound-baseline",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
+        )
+        bsj_arn = r["batchSegmentJobArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_batch_segment_job(batchSegmentJobArn=bsj_arn)
+        assert desc["batchSegmentJob"]["jobName"] == "test-bsj-notfound-baseline"
+
+        # LIST: verify it appears
+        resp = client.list_batch_segment_jobs()
+        arns = [j["batchSegmentJobArn"] for j in resp["batchSegmentJobs"]]
+        assert bsj_arn in arns
+
+        # ERROR: nonexistent batch segment job raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_batch_segment_job(
                 batchSegmentJobArn=f"{self.BASE_ARN}:batch-segment-job/nonexistent"
@@ -939,24 +1192,39 @@ class TestPersonalizeDatasetGroupEdgeCases:
         arn = r["datasetGroupArn"]
         resp = client.list_datasets(datasetGroupArn=arn)
         assert "datasets" in resp
-        assert isinstance(resp["datasets"], list)
+        # Dataset group just created — no datasets yet, should be empty list
+        assert resp["datasets"] == []
         client.delete_dataset_group(datasetGroupArn=arn)
 
     def test_list_event_trackers_with_dataset_group_filter(self, client):
         r = client.create_dataset_group(name="test-dg-et-filter")
-        arn = r["datasetGroupArn"]
-        resp = client.list_event_trackers(datasetGroupArn=arn)
+        dg_arn = r["datasetGroupArn"]
+        # Create an event tracker in this group so the filter returns a non-empty list
+        et = client.create_event_tracker(name="test-dg-et-filter-et", datasetGroupArn=dg_arn)
+        et_arn = et["eventTrackerArn"]
+        resp = client.list_event_trackers(datasetGroupArn=dg_arn)
         assert "eventTrackers" in resp
-        assert isinstance(resp["eventTrackers"], list)
-        client.delete_dataset_group(datasetGroupArn=arn)
+        arns = [e["eventTrackerArn"] for e in resp["eventTrackers"]]
+        assert et_arn in arns
+        client.delete_event_tracker(eventTrackerArn=et_arn)
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
 
     def test_list_filters_with_dataset_group_filter(self, client):
         r = client.create_dataset_group(name="test-dg-filter-list")
-        arn = r["datasetGroupArn"]
-        resp = client.list_filters(datasetGroupArn=arn)
+        dg_arn = r["datasetGroupArn"]
+        # Create a filter in this group so the filter returns a non-empty list
+        f = client.create_filter(
+            name="test-dg-filter-list-filter",
+            datasetGroupArn=dg_arn,
+            filterExpression=FILTER_EXPR,
+        )
+        f_arn = f["filterArn"]
+        resp = client.list_filters(datasetGroupArn=dg_arn)
         assert "Filters" in resp
-        assert isinstance(resp["Filters"], list)
-        client.delete_dataset_group(datasetGroupArn=arn)
+        arns = [fi["filterArn"] for fi in resp["Filters"]]
+        assert f_arn in arns
+        client.delete_filter(filterArn=f_arn)
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
 
 
 class TestPersonalizeTagEdgeCases:
@@ -977,9 +1245,10 @@ class TestPersonalizeTagEdgeCases:
             ],
         )
         resp = client.list_tags_for_resource(resourceArn=arn)
-        keys = {t["tagKey"] for t in resp["tags"]}
-        assert "env" in keys
-        assert "team" in keys
+        tag_map = {t["tagKey"]: t["tagValue"] for t in resp["tags"]}
+        assert tag_map.get("env") == "test"
+        assert tag_map.get("team") == "ml"
+        assert len(tag_map) == 2
         client.delete_dataset_group(datasetGroupArn=arn)
 
     def test_untag_removes_specific_key(self, client):
@@ -1526,8 +1795,11 @@ class TestPersonalizeFilterCRUD:
         )
         arn = r["filterArn"]
         desc = client.describe_filter(filterArn=arn)["filter"]
-        assert "creationDateTime" in desc
-        assert "lastUpdatedDateTime" in desc
+        assert desc["creationDateTime"] is not None
+        assert desc["lastUpdatedDateTime"] is not None
+        # Both timestamps should be datetime objects (non-zero epoch)
+        import datetime
+        assert isinstance(desc["creationDateTime"], datetime.datetime)
         client.delete_filter(filterArn=arn)
 
     def test_delete_nonexistent_filter_raises(self, client):
@@ -1981,3 +2253,351 @@ class TestPersonalizeBatchJobsCRUD:
         assert "jobName" in entry
         assert "status" in entry
         assert "creationDateTime" in entry
+
+
+class TestPersonalizePagination:
+    """Pagination edge cases for Personalize list operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_list_schemas_pagination(self, client):
+        """Create 3 schemas, paginate with maxResults=2, verify NextToken works."""
+        schema_json = (
+            '{"type":"record","name":"Interactions",'
+            '"namespace":"com.amazonaws.personalize.schema",'
+            '"fields":['
+            '{"name":"USER_ID","type":"string"},'
+            '{"name":"ITEM_ID","type":"string"},'
+            '{"name":"TIMESTAMP","type":"long"}'
+            '],"version":"1.0"}'
+        )
+        arns = []
+        for i in range(3):
+            r = client.create_schema(name=f"test-page-schema-{i}", schema=schema_json)
+            arns.append(r["schemaArn"])
+
+        # LIST first page with maxResults=2
+        page1 = client.list_schemas(maxResults=2)
+        assert "schemas" in page1
+        assert len(page1["schemas"]) <= 2
+        assert "nextToken" in page1
+
+        # LIST second page using nextToken
+        page2 = client.list_schemas(nextToken=page1["nextToken"])
+        assert "schemas" in page2
+
+        # All created ARNs should appear across both pages
+        all_arns = {s["schemaArn"] for s in page1["schemas"]} | {s["schemaArn"] for s in page2["schemas"]}
+        for arn in arns:
+            assert arn in all_arns
+
+        for arn in arns:
+            client.delete_schema(schemaArn=arn)
+
+    def test_list_dataset_groups_pagination(self, client):
+        """Create 3 dataset groups, paginate with maxResults=2."""
+        arns = []
+        for i in range(3):
+            r = client.create_dataset_group(name=f"test-page-dg-{i}")
+            arns.append(r["datasetGroupArn"])
+
+        # LIST first page
+        page1 = client.list_dataset_groups(maxResults=2)
+        assert "datasetGroups" in page1
+        assert len(page1["datasetGroups"]) <= 2
+        assert "nextToken" in page1
+
+        # LIST second page
+        page2 = client.list_dataset_groups(nextToken=page1["nextToken"])
+        assert "datasetGroups" in page2
+
+        all_arns = {dg["datasetGroupArn"] for dg in page1["datasetGroups"]} | {dg["datasetGroupArn"] for dg in page2["datasetGroups"]}
+        for arn in arns:
+            assert arn in all_arns
+
+        for arn in arns:
+            client.delete_dataset_group(datasetGroupArn=arn)
+
+    def test_list_solutions_pagination(self, client):
+        """Create 3 solutions, paginate with maxResults=2."""
+        arns = []
+        for i in range(3):
+            r = client.create_solution(name=f"test-page-sol-{i}", datasetGroupArn=DG_ARN)
+            arns.append(r["solutionArn"])
+
+        page1 = client.list_solutions(maxResults=2)
+        assert "solutions" in page1
+        assert len(page1["solutions"]) <= 2
+        assert "nextToken" in page1
+
+        page2 = client.list_solutions(nextToken=page1["nextToken"])
+        assert "solutions" in page2
+
+        all_arns = {s["solutionArn"] for s in page1["solutions"]} | {s["solutionArn"] for s in page2["solutions"]}
+        for arn in arns:
+            assert arn in all_arns
+
+        for arn in arns:
+            client.delete_solution(solutionArn=arn)
+
+    def test_list_campaigns_pagination(self, client):
+        """Create 3 campaigns, paginate with maxResults=2."""
+        arns = []
+        for i in range(3):
+            r = client.create_campaign(name=f"test-page-camp-{i}", solutionVersionArn=SOL_VERSION_ARN)
+            arns.append(r["campaignArn"])
+
+        page1 = client.list_campaigns(maxResults=2)
+        assert "campaigns" in page1
+        assert len(page1["campaigns"]) <= 2
+        assert "nextToken" in page1
+
+        page2 = client.list_campaigns(nextToken=page1["nextToken"])
+        assert "campaigns" in page2
+
+        all_arns = {c["campaignArn"] for c in page1["campaigns"]} | {c["campaignArn"] for c in page2["campaigns"]}
+        for arn in arns:
+            assert arn in all_arns
+
+        for arn in arns:
+            client.delete_campaign(campaignArn=arn)
+
+    def test_list_filters_pagination(self, client):
+        """Create 3 filters, paginate with maxResults=2."""
+        arns = []
+        for i in range(3):
+            r = client.create_filter(
+                name=f"test-page-filter-{i}",
+                datasetGroupArn=DG_ARN,
+                filterExpression=FILTER_EXPR,
+            )
+            arns.append(r["filterArn"])
+
+        page1 = client.list_filters(maxResults=2)
+        assert "Filters" in page1
+        assert len(page1["Filters"]) <= 2
+        assert "nextToken" in page1
+
+        page2 = client.list_filters(nextToken=page1["nextToken"])
+        assert "Filters" in page2
+
+        all_arns = {f["filterArn"] for f in page1["Filters"]} | {f["filterArn"] for f in page2["Filters"]}
+        for arn in arns:
+            assert arn in all_arns
+
+        for arn in arns:
+            client.delete_filter(filterArn=arn)
+
+
+class TestPersonalizeBehavioralFidelity:
+    """Behavioral fidelity tests: ARN formats, timestamps, ordering, idempotency."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("personalize")
+
+    def test_campaign_arn_format(self, client):
+        """Campaign ARN must match expected AWS format."""
+        r = client.create_campaign(name="test-camp-arn-fidelity", solutionVersionArn=SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "personalize"
+        assert "campaign" in arn
+        assert "test-camp-arn-fidelity" in arn
+        client.delete_campaign(campaignArn=arn)
+
+    def test_filter_arn_format(self, client):
+        """Filter ARN must match expected AWS format."""
+        r = client.create_filter(
+            name="test-filter-arn-fidelity",
+            datasetGroupArn=DG_ARN,
+            filterExpression=FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "personalize"
+        assert "filter" in arn
+        assert "test-filter-arn-fidelity" in arn
+        client.delete_filter(filterArn=arn)
+
+    def test_event_tracker_arn_format(self, client):
+        """EventTracker ARN must match expected AWS format."""
+        r = client.create_event_tracker(name="test-et-arn-fidelity", datasetGroupArn=DG_ARN)
+        arn = r["eventTrackerArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "personalize"
+        assert "event-tracker" in arn
+        assert "test-et-arn-fidelity" in arn
+        client.delete_event_tracker(eventTrackerArn=arn)
+
+    def test_recommender_arn_format(self, client):
+        """Recommender ARN must match expected AWS format."""
+        r = client.create_recommender(
+            name="test-rec-arn-fidelity",
+            datasetGroupArn=DG_ARN,
+            recipeArn=RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "personalize"
+        assert "recommender" in arn
+        assert "test-rec-arn-fidelity" in arn
+        client.delete_recommender(recommenderArn=arn)
+
+    def test_batch_inference_job_describe_has_job_config(self, client):
+        """Batch inference job describe response includes jobInput, jobOutput, roleArn."""
+        r = client.create_batch_inference_job(
+            jobName="test-bij-config-fidelity",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
+        )
+        arn = r["batchInferenceJobArn"]
+        desc = client.describe_batch_inference_job(batchInferenceJobArn=arn)["batchInferenceJob"]
+        assert desc["jobName"] == "test-bij-config-fidelity"
+        assert desc["solutionVersionArn"] == SOL_VERSION_ARN
+        assert desc["roleArn"] == ROLE_ARN
+        assert "jobInput" in desc
+        assert "jobOutput" in desc
+
+    def test_solution_version_has_solution_arn(self, client):
+        """SolutionVersion describe response includes the parent solutionArn."""
+        sol = client.create_solution(name="test-sv-parent-fidelity", datasetGroupArn=DG_ARN)
+        sol_arn = sol["solutionArn"]
+        sv = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv["solutionVersionArn"]
+
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)["solutionVersion"]
+        assert desc["solutionArn"] == sol_arn
+        assert desc["solutionVersionArn"] == sv_arn
+        assert desc["status"] == "ACTIVE"
+
+        client.delete_solution(solutionArn=sol_arn)
+
+    def test_campaign_has_solution_version_arn(self, client):
+        """Campaign describe response includes the solutionVersionArn used to create it."""
+        r = client.create_campaign(
+            name="test-camp-sv-fidelity",
+            solutionVersionArn=SOL_VERSION_ARN,
+            minProvisionedTPS=2,
+        )
+        arn = r["campaignArn"]
+        desc = client.describe_campaign(campaignArn=arn)["campaign"]
+        assert desc["solutionVersionArn"] == SOL_VERSION_ARN
+        assert desc["minProvisionedTPS"] == 2
+        client.delete_campaign(campaignArn=arn)
+
+    def test_filter_expression_preserved(self, client):
+        """Filter filterExpression is preserved exactly as provided."""
+        r = client.create_filter(
+            name="test-filter-expr-fidelity",
+            datasetGroupArn=DG_ARN,
+            filterExpression=FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        desc = client.describe_filter(filterArn=arn)["filter"]
+        assert desc["filterExpression"] == FILTER_EXPR
+        assert desc["datasetGroupArn"] == DG_ARN
+        client.delete_filter(filterArn=arn)
+
+    def test_event_tracker_tracking_id_is_unique(self, client):
+        """Two event trackers should have distinct tracking IDs."""
+        r1 = client.create_event_tracker(name="test-et-unique-id-1", datasetGroupArn=DG_ARN)
+        r2 = client.create_event_tracker(name="test-et-unique-id-2", datasetGroupArn=DG_ARN)
+        assert r1["trackingId"] != r2["trackingId"]
+        client.delete_event_tracker(eventTrackerArn=r1["eventTrackerArn"])
+        client.delete_event_tracker(eventTrackerArn=r2["eventTrackerArn"])
+
+    def test_dataset_group_name_preserved_in_describe(self, client):
+        """Dataset group name is preserved exactly as provided in describe response."""
+        name = "test-dg-name-fidelity-exact"
+        r = client.create_dataset_group(name=name)
+        arn = r["datasetGroupArn"]
+        desc = client.describe_dataset_group(datasetGroupArn=arn)["datasetGroup"]
+        assert desc["name"] == name
+        assert desc["datasetGroupArn"] == arn
+        client.delete_dataset_group(datasetGroupArn=arn)
+
+    def test_solution_name_preserved_in_describe(self, client):
+        """Solution name is preserved exactly as provided in describe response."""
+        name = "test-sol-name-fidelity-exact"
+        r = client.create_solution(name=name, datasetGroupArn=DG_ARN)
+        arn = r["solutionArn"]
+        desc = client.describe_solution(solutionArn=arn)["solution"]
+        assert desc["name"] == name
+        assert desc["datasetGroupArn"] == DG_ARN
+        client.delete_solution(solutionArn=arn)
+
+    def test_metric_attribution_has_dataset_group_arn(self, client):
+        """MetricAttribution describe response includes the datasetGroupArn."""
+        r = client.create_metric_attribution(
+            name="test-ma-dg-fidelity",
+            datasetGroupArn=DG_ARN,
+            metrics=METRICS,
+            metricsOutputConfig=METRICS_OUTPUT,
+        )
+        arn = r["metricAttributionArn"]
+        desc = client.describe_metric_attribution(metricAttributionArn=arn)["metricAttribution"]
+        assert desc["datasetGroupArn"] == DG_ARN
+        assert desc["name"] == "test-ma-dg-fidelity"
+        client.delete_metric_attribution(metricAttributionArn=arn)
+
+    def test_recommender_has_recipe_arn(self, client):
+        """Recommender describe response includes the recipeArn."""
+        r = client.create_recommender(
+            name="test-rec-recipe-fidelity",
+            datasetGroupArn=DG_ARN,
+            recipeArn=RECIPE_ARN,
+        )
+        arn = r["recommenderArn"]
+        desc = client.describe_recommender(recommenderArn=arn)["recommender"]
+        assert desc["recipeArn"] == RECIPE_ARN
+        assert desc["datasetGroupArn"] == DG_ARN
+        client.delete_recommender(recommenderArn=arn)
+
+    def test_data_deletion_job_has_dataset_group_arn(self, client):
+        """DataDeletionJob describe response includes the datasetGroupArn."""
+        r = client.create_data_deletion_job(
+            jobName="test-ddj-dg-fidelity",
+            datasetGroupArn=DG_ARN,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=ROLE_ARN,
+        )
+        arn = r["dataDeletionJobArn"]
+        desc = client.describe_data_deletion_job(dataDeletionJobArn=arn)["dataDeletionJob"]
+        assert desc["datasetGroupArn"] == DG_ARN
+        assert desc["jobName"] == "test-ddj-dg-fidelity"
+        assert desc["roleArn"] == ROLE_ARN
+
+    def test_list_schemas_returns_schema_with_correct_fields(self, client):
+        """List schemas entry includes schemaArn, name, creationDateTime, lastUpdatedDateTime."""
+        schema_json = (
+            '{"type":"record","name":"Interactions",'
+            '"namespace":"com.amazonaws.personalize.schema",'
+            '"fields":['
+            '{"name":"USER_ID","type":"string"},'
+            '{"name":"ITEM_ID","type":"string"},'
+            '{"name":"TIMESTAMP","type":"long"}'
+            '],"version":"1.0"}'
+        )
+        r = client.create_schema(name="test-schema-list-fields", schema=schema_json)
+        arn = r["schemaArn"]
+        resp = client.list_schemas()
+        matching = [s for s in resp["schemas"] if s["schemaArn"] == arn]
+        assert len(matching) == 1
+        entry = matching[0]
+        assert entry["name"] == "test-schema-list-fields"
+        assert "creationDateTime" in entry
+        assert "lastUpdatedDateTime" in entry
+        client.delete_schema(schemaArn=arn)
