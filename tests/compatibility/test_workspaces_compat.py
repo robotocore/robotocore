@@ -99,6 +99,7 @@ class TestWorkSpacesDirectoryOperations:
         result = workspaces.describe_workspace_directories()
         assert "Directories" in result
         assert isinstance(result["Directories"], list)
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestWorkSpacesOperations:
@@ -109,6 +110,7 @@ class TestWorkSpacesOperations:
         result = workspaces.describe_workspaces()
         assert "Workspaces" in result
         assert isinstance(result["Workspaces"], list)
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_workspaces_invalid_directory(self, workspaces):
         """Creating a workspace with a nonexistent directory returns a FailedRequest."""
@@ -123,13 +125,17 @@ class TestWorkSpacesOperations:
         )
         assert len(result["FailedRequests"]) == 1
         assert len(result["PendingRequests"]) == 0
-        assert "ErrorCode" in result["FailedRequests"][0]
+        failed = result["FailedRequests"][0]
+        assert "ErrorCode" in failed
+        assert "ErrorMessage" in failed
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_workspace_images_empty(self, workspaces):
         """Describing workspace images returns an empty list when none exist."""
         result = workspaces.describe_workspace_images()
         assert "Images" in result
         assert isinstance(result["Images"], list)
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestWorkSpacesImagePermissions:
@@ -156,24 +162,28 @@ class TestWorkSpacesFiltering:
         result = workspaces.describe_workspaces(WorkspaceIds=["ws-nonexistent123"])
         assert "Workspaces" in result
         assert result["Workspaces"] == []
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_workspaces_by_bundle_id_nonexistent(self, workspaces):
         """Filtering by nonexistent BundleId returns empty list."""
         result = workspaces.describe_workspaces(BundleId="wsb-nonexistent123")
         assert "Workspaces" in result
         assert result["Workspaces"] == []
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_workspaces_by_directory_and_username_nonexistent(self, workspaces):
         """Filtering by nonexistent DirectoryId+UserName returns empty list."""
         result = workspaces.describe_workspaces(DirectoryId="d-nonexistent1234", UserName="nobody")
         assert "Workspaces" in result
         assert result["Workspaces"] == []
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_workspace_images_by_ids_nonexistent(self, workspaces):
         """Filtering images by nonexistent ImageIds returns empty list."""
         result = workspaces.describe_workspace_images(ImageIds=["wsi-nonexistent123"])
         assert "Images" in result
         assert result["Images"] == []
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestWorkSpacesClientProperties:
@@ -184,6 +194,7 @@ class TestWorkSpacesClientProperties:
         result = workspaces.describe_client_properties(ResourceIds=["d-9267462133"])
         assert "ClientPropertiesList" in result
         assert isinstance(result["ClientPropertiesList"], list)
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestWorkSpacesImageOperations:
@@ -212,8 +223,11 @@ class TestWorkSpacesTermination:
         )
         assert "FailedRequests" in result
         assert len(result["FailedRequests"]) == 1
-        assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
-        assert result["FailedRequests"][0]["ErrorCode"] == "400"
+        failed = result["FailedRequests"][0]
+        assert failed["WorkspaceId"] == "ws-nonexistent123"
+        assert failed["ErrorCode"] == "400"
+        assert "ErrorMessage" in failed
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestWorkSpacesDirectoryValidation:
@@ -243,10 +257,17 @@ class TestWorkSpacesAccountOperations:
     """Tests for WorkSpaces account-level operations."""
 
     def test_describe_account(self, workspaces):
-        """DescribeAccount returns account info."""
+        """DescribeAccount returns account info with expected fields."""
         resp = workspaces.describe_account()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        assert "DedicatedTenancySupport" in resp or "DedicatedTenancyManagementCidrRange" in resp
+        # Response should contain tenancy fields (may be null/missing if not configured)
+        assert isinstance(resp, dict)
+        # At least one tenancy field should be present in the response
+        has_tenancy_field = (
+            "DedicatedTenancySupport" in resp
+            or "DedicatedTenancyManagementCidrRange" in resp
+        )
+        assert has_tenancy_field
 
     def test_describe_account_modifications(self, workspaces):
         """DescribeAccountModifications returns list of modifications."""
@@ -254,39 +275,51 @@ class TestWorkSpacesAccountOperations:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "AccountModifications" in resp
         assert isinstance(resp["AccountModifications"], list)
+        # If any modifications exist, they should have expected fields
+        for mod in resp["AccountModifications"]:
+            assert "ModificationState" in mod
 
 
 class TestWorkSpacesBundleOperations:
     """Tests for WorkSpaces bundle operations."""
 
     def test_describe_workspace_bundles(self, workspaces):
-        """DescribeWorkspaceBundles returns available bundles."""
+        """DescribeWorkspaceBundles returns available bundles with expected fields."""
         resp = workspaces.describe_workspace_bundles()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "Bundles" in resp
         assert isinstance(resp["Bundles"], list)
+        # If any bundles exist, verify structure
+        for bundle in resp["Bundles"]:
+            assert "BundleId" in bundle
 
 
 class TestWorkSpacesIpGroupOperations:
     """Tests for WorkSpaces IP group operations."""
 
     def test_describe_ip_groups(self, workspaces):
-        """DescribeIpGroups returns IP groups (possibly empty)."""
+        """DescribeIpGroups returns IP groups (possibly empty) with correct structure."""
         resp = workspaces.describe_ip_groups()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "Result" in resp
         assert isinstance(resp["Result"], list)
+        # If any groups exist, verify structure
+        for group in resp["Result"]:
+            assert "groupId" in group
 
 
 class TestWorkSpacesConnectionAliasOperations:
     """Tests for WorkSpaces connection alias operations."""
 
     def test_describe_connection_aliases(self, workspaces):
-        """DescribeConnectionAliases returns aliases (possibly empty)."""
+        """DescribeConnectionAliases returns aliases (possibly empty) with correct structure."""
         resp = workspaces.describe_connection_aliases()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "ConnectionAliases" in resp
         assert isinstance(resp["ConnectionAliases"], list)
+        # If any aliases exist, verify structure
+        for alias in resp["ConnectionAliases"]:
+            assert "AliasId" in alias
 
 
 class TestWorkSpacesPoolOperations:
@@ -449,12 +482,15 @@ class TestWorkSpacesConnectionAliasPermissionOperations:
     """Tests for WorkSpaces connection alias permission operations."""
 
     def test_describe_connection_alias_permissions_nonexistent(self, workspaces):
-        """DescribeConnectionAliasPermissions raises ResourceNotFoundException."""
+        """DescribeConnectionAliasPermissions raises ResourceNotFoundException with details."""
         from botocore.exceptions import ClientError
 
         with pytest.raises(ClientError) as exc:
             workspaces.describe_connection_alias_permissions(AliasId="wsca-fake12345")
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err
+        assert exc.value.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404)
 
 
 class TestWorkSpacesCustomImageImportOperations:
@@ -1459,3 +1495,523 @@ class TestWorkspacesImagePermissionGapOps:
                 "ResourceNotFoundException",
                 "InternalError",
             )
+
+
+class TestWorkSpacesIpGroupLifecycle:
+    """Edge cases and behavioral fidelity for IP group CRUD lifecycle."""
+
+    def test_ip_group_create_and_list(self, workspaces):
+        """Created IP group appears in DescribeIpGroups list."""
+        name = _unique("ipgrp-list")
+        create_resp = workspaces.create_ip_group(GroupName=name, GroupDesc="list test")
+        group_id = create_resp["GroupId"]
+
+        list_resp = workspaces.describe_ip_groups()
+        group_ids = [g["groupId"] for g in list_resp["Result"]]
+        assert group_id in group_ids
+
+    def test_ip_group_id_format(self, workspaces):
+        """IP group IDs follow the wsipg- prefix convention."""
+        resp = workspaces.create_ip_group(GroupName=_unique("ipgrp-fmt"), GroupDesc="format test")
+        assert resp["GroupId"].startswith("wsipg-")
+        assert len(resp["GroupId"]) > len("wsipg-")
+
+    def test_ip_group_create_with_rules(self, workspaces):
+        """Creating IP group with initial rules stores them."""
+        name = _unique("ipgrp-rules")
+        resp = workspaces.create_ip_group(
+            GroupName=name,
+            GroupDesc="rules test",
+            UserRules=[
+                {"ipRule": "10.0.0.0/8", "ruleDesc": "private-a"},
+                {"ipRule": "172.16.0.0/12", "ruleDesc": "private-b"},
+            ],
+        )
+        group_id = resp["GroupId"]
+
+        list_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        assert len(list_resp["Result"]) == 1
+        group = list_resp["Result"][0]
+        assert group["groupId"] == group_id
+        assert group["groupName"] == name
+        rules = group.get("userRules", [])
+        assert len(rules) == 2
+
+    def test_ip_group_authorize_then_describe(self, workspaces):
+        """Authorized IP rules appear in describe response."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-auth-desc"), GroupDesc="auth+desc"
+        )
+        group_id = create_resp["GroupId"]
+
+        workspaces.authorize_ip_rules(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "192.168.1.0/24", "ruleDesc": "office"}],
+        )
+
+        desc_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        group = desc_resp["Result"][0]
+        rules = group.get("userRules", [])
+        cidrs = [r["ipRule"] for r in rules]
+        assert "192.168.1.0/24" in cidrs
+
+    def test_ip_group_revoke_rule(self, workspaces):
+        """Revoking a rule removes it from the group."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-revoke"), GroupDesc="revoke test"
+        )
+        group_id = create_resp["GroupId"]
+
+        workspaces.authorize_ip_rules(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "to-remove"}],
+        )
+
+        revoke_resp = workspaces.revoke_ip_rules(
+            GroupId=group_id, UserRules=["10.0.0.0/8"]
+        )
+        assert revoke_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        desc_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        group = desc_resp["Result"][0]
+        rules = group.get("userRules", [])
+        cidrs = [r["ipRule"] for r in rules]
+        assert "10.0.0.0/8" not in cidrs
+
+    def test_ip_group_update_rules(self, workspaces):
+        """UpdateRulesOfIpGroup replaces all rules in the group."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-update"), GroupDesc="update test"
+        )
+        group_id = create_resp["GroupId"]
+
+        workspaces.authorize_ip_rules(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "old"}],
+        )
+
+        update_resp = workspaces.update_rules_of_ip_group(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "172.16.0.0/12", "ruleDesc": "new"}],
+        )
+        assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        desc_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        group = desc_resp["Result"][0]
+        rules = group.get("userRules", [])
+        cidrs = [r["ipRule"] for r in rules]
+        assert "172.16.0.0/12" in cidrs
+
+    def test_ip_group_delete_then_describe(self, workspaces):
+        """Deleted IP group no longer appears in DescribeIpGroups."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-del-desc"), GroupDesc="del then desc"
+        )
+        group_id = create_resp["GroupId"]
+
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        desc_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        group_ids = [g["groupId"] for g in desc_resp["Result"]]
+        assert group_id not in group_ids
+
+    def test_ip_group_describe_by_id_filter(self, workspaces):
+        """DescribeIpGroups filtered by GroupIds returns only that group."""
+        resp1 = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-a"), GroupDesc="group A"
+        )
+        resp2 = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-b"), GroupDesc="group B"
+        )
+        id_a = resp1["GroupId"]
+        id_b = resp2["GroupId"]
+
+        filtered = workspaces.describe_ip_groups(GroupIds=[id_a])
+        result_ids = [g["groupId"] for g in filtered["Result"]]
+        assert id_a in result_ids
+        assert id_b not in result_ids
+
+
+class TestWorkSpacesConnectionAliasLifecycle:
+    """Edge cases and behavioral fidelity for connection alias lifecycle."""
+
+    def test_connection_alias_id_format(self, workspaces):
+        """Connection alias IDs follow the wsca- prefix convention."""
+        resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-fmt')}.example.com",
+        )
+        assert resp["AliasId"].startswith("wsca-")
+        assert len(resp["AliasId"]) > len("wsca-")
+
+    def test_connection_alias_create_and_list(self, workspaces):
+        """Created connection alias appears in DescribeConnectionAliases."""
+        resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-list')}.example.com",
+        )
+        alias_id = resp["AliasId"]
+
+        list_resp = workspaces.describe_connection_aliases()
+        alias_ids = [a["AliasId"] for a in list_resp["ConnectionAliases"]]
+        assert alias_id in alias_ids
+
+    def test_connection_alias_has_state(self, workspaces):
+        """Created connection alias has a State field."""
+        resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-state')}.example.com",
+        )
+        alias_id = resp["AliasId"]
+
+        list_resp = workspaces.describe_connection_aliases()
+        alias = next(a for a in list_resp["ConnectionAliases"] if a["AliasId"] == alias_id)
+        assert "State" in alias
+        assert "ConnectionString" in alias
+
+    def test_connection_alias_delete(self, workspaces):
+        """Deleted connection alias no longer appears in describe."""
+        resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-del')}.example.com",
+        )
+        alias_id = resp["AliasId"]
+
+        del_resp = workspaces.delete_connection_alias(AliasId=alias_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        list_resp = workspaces.describe_connection_aliases()
+        alias_ids = [a["AliasId"] for a in list_resp["ConnectionAliases"]]
+        assert alias_id not in alias_ids
+
+
+class TestWorkSpacesImageEdgeCases:
+    """Edge cases for workspace image operations."""
+
+    def test_import_image_unicode_name(self, workspaces):
+        """Import image with unicode characters in name."""
+        name = _unique("img-ünïcödé")
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-unicode12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=name,
+            ImageDescription="test with ünïcödé chars",
+        )
+        assert "ImageId" in resp
+        image_id = resp["ImageId"]
+
+        desc_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert len(desc_resp["Images"]) == 1
+        assert desc_resp["Images"][0]["Name"] == name
+
+    def test_import_image_long_description(self, workspaces):
+        """Import image with a long description string."""
+        long_desc = "A" * 256
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-longdesc12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img-longdesc"),
+            ImageDescription=long_desc,
+        )
+        assert "ImageId" in resp
+        image_id = resp["ImageId"]
+
+        desc_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert desc_resp["Images"][0]["Description"] == long_desc
+
+    def test_delete_nonexistent_image_idempotent(self, workspaces):
+        """Deleting a nonexistent image succeeds (idempotent)."""
+        resp = workspaces.delete_workspace_image(ImageId="wsi-doesnotexist999")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_image_state_field(self, workspaces):
+        """Imported image has a State field in describe response."""
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-state12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img-state"),
+            ImageDescription="state check",
+        )
+        image_id = resp["ImageId"]
+
+        desc_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        img = desc_resp["Images"][0]
+        assert "State" in img
+        assert "Name" in img
+
+
+class TestWorkSpacesPoolEdgeCases:
+    """Edge cases for workspace pool operations."""
+
+    def test_create_pool_response_fields(self, workspaces):
+        """Created pool has expected fields in response."""
+        resp = workspaces.create_workspaces_pool(
+            PoolName=_unique("pool-fields"),
+            BundleId="wsb-fake12345",
+            DirectoryId="d-fake12345",
+            Description="field check",
+            Capacity={"DesiredUserSessions": 2},
+        )
+        pool = resp["WorkspacesPool"]
+        assert "PoolId" in pool
+        assert "PoolName" in pool
+        assert "State" in pool
+        assert "CapacityStatus" in pool
+
+    def test_describe_pools_empty_list(self, workspaces):
+        """DescribeWorkspacesPools returns empty list when filtered by nonexistent pool."""
+        resp = workspaces.describe_workspaces_pools(
+            Filters=[{"Name": "PoolName", "Values": ["nonexistent-pool-xyz"], "Operator": "EQUALS"}]
+        )
+        assert "WorkspacesPools" in resp
+        assert isinstance(resp["WorkspacesPools"], list)
+
+
+class TestWorkSpacesBundleEdgeCases:
+    """Edge cases for workspace bundle operations."""
+
+    def test_create_bundle_response_fields(self, workspaces):
+        """Created bundle has expected fields."""
+        resp = workspaces.create_workspace_bundle(
+            BundleName=_unique("bundle-fields"),
+            BundleDescription="field check bundle",
+            ImageId="wsi-fake12345",
+            ComputeType={"Name": "VALUE"},
+            UserStorage={"Capacity": "10"},
+        )
+        bundle = resp["WorkspaceBundle"]
+        assert "BundleId" in bundle
+        assert bundle["BundleId"].startswith("wsb-")
+
+    def test_create_bundle_unicode_name(self, workspaces):
+        """Created bundle with unicode in name stores it correctly."""
+        name = _unique("bundle-日本語")
+        resp = workspaces.create_workspace_bundle(
+            BundleName=name,
+            BundleDescription="unicode bundle test",
+            ImageId="wsi-fake12345",
+            ComputeType={"Name": "STANDARD"},
+            UserStorage={"Capacity": "50"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "WorkspaceBundle" in resp
+
+
+class TestWorkSpacesTagLifecycle:
+    """Tests for tag create/describe/delete lifecycle on real resources."""
+
+    def test_tag_ip_group_lifecycle(self, workspaces):
+        """Create tags on an IP group, describe them, then delete them."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-tag"),
+            GroupDesc="tag lifecycle test",
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "platform"}],
+        )
+        group_id = create_resp["GroupId"]
+
+        # Describe tags
+        tag_resp = workspaces.describe_tags(ResourceId=group_id)
+        assert "TagList" in tag_resp
+        tag_keys = [t["Key"] for t in tag_resp["TagList"]]
+        assert "env" in tag_keys
+        assert "team" in tag_keys
+
+        # Delete one tag
+        del_resp = workspaces.delete_tags(ResourceId=group_id, TagKeys=["env"])
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify tag was removed
+        tag_resp2 = workspaces.describe_tags(ResourceId=group_id)
+        tag_keys2 = [t["Key"] for t in tag_resp2["TagList"]]
+        assert "env" not in tag_keys2
+        assert "team" in tag_keys2
+
+    def test_create_tags_on_connection_alias(self, workspaces):
+        """Create and describe tags on a connection alias."""
+        alias_resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-tag')}.example.com",
+            Tags=[{"Key": "purpose", "Value": "testing"}],
+        )
+        alias_id = alias_resp["AliasId"]
+
+        tag_resp = workspaces.describe_tags(ResourceId=alias_id)
+        assert "TagList" in tag_resp
+        tag_keys = [t["Key"] for t in tag_resp["TagList"]]
+        assert "purpose" in tag_keys
+
+    def test_add_tags_after_creation(self, workspaces):
+        """Add tags to a resource after initial creation."""
+        create_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-addtag"), GroupDesc="add tag test"
+        )
+        group_id = create_resp["GroupId"]
+
+        # Add tags
+        workspaces.create_tags(
+            ResourceId=group_id,
+            Tags=[{"Key": "added", "Value": "later"}],
+        )
+
+        tag_resp = workspaces.describe_tags(ResourceId=group_id)
+        tag_keys = [t["Key"] for t in tag_resp["TagList"]]
+        assert "added" in tag_keys
+
+
+class TestWorkSpacesMultipleCreatesEdge:
+    """Tests for creating multiple resources and batch operations."""
+
+    def test_create_multiple_ip_groups(self, workspaces):
+        """Create 3 IP groups and verify all appear in list."""
+        created_ids = []
+        for i in range(3):
+            resp = workspaces.create_ip_group(
+                GroupName=_unique(f"ipgrp-multi{i}"), GroupDesc=f"multi {i}"
+            )
+            created_ids.append(resp["GroupId"])
+
+        list_resp = workspaces.describe_ip_groups()
+        listed_ids = [g["groupId"] for g in list_resp["Result"]]
+        for gid in created_ids:
+            assert gid in listed_ids
+
+    def test_terminate_multiple_nonexistent_workspaces(self, workspaces):
+        """Terminating multiple nonexistent workspaces returns all as failed."""
+        result = workspaces.terminate_workspaces(
+            TerminateWorkspaceRequests=[
+                {"WorkspaceId": "ws-batchfail001"},
+                {"WorkspaceId": "ws-batchfail002"},
+                {"WorkspaceId": "ws-batchfail003"},
+            ]
+        )
+        assert len(result["FailedRequests"]) == 3
+        failed_ids = [f["WorkspaceId"] for f in result["FailedRequests"]]
+        assert "ws-batchfail001" in failed_ids
+        assert "ws-batchfail002" in failed_ids
+        assert "ws-batchfail003" in failed_ids
+
+
+class TestWorkSpacesAccountLinkEdgeCases:
+    """Edge cases for account link operations."""
+
+    def test_create_account_link_response_fields(self, workspaces):
+        """CreateAccountLinkInvitation response has expected fields."""
+        resp = workspaces.create_account_link_invitation(
+            TargetAccountId="333344445555",
+        )
+        link = resp["AccountLink"]
+        assert "AccountLinkId" in link
+        assert "AccountLinkStatus" in link
+        assert link["AccountLinkId"].startswith("wsal-")
+
+    def test_list_account_links_empty(self, workspaces):
+        """ListAccountLinks with a filter returns empty or valid list."""
+        resp = workspaces.list_account_links(
+            LinkStatusFilter=["LINKED"],
+        )
+        assert "AccountLinks" in resp
+        assert isinstance(resp["AccountLinks"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesModifyAccountEdgeCases:
+    """Edge cases for ModifyAccount and DescribeAccount interaction."""
+
+    def test_modify_then_describe_account(self, workspaces):
+        """ModifyAccount then DescribeAccount reflects the change."""
+        workspaces.modify_account(
+            DedicatedTenancySupport="ENABLED",
+            DedicatedTenancyManagementCidrRange="10.0.0.0/16",
+        )
+
+        resp = workspaces.describe_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # After modifying, DedicatedTenancySupport should be present
+        assert "DedicatedTenancySupport" in resp
+
+
+class TestWorkSpacesConnectAddInEdgeCases:
+    """Edge cases for Connect Client Add-In operations."""
+
+    def test_create_add_in_response_fields(self, workspaces):
+        """CreateConnectClientAddIn response has AddInId field."""
+        resp = workspaces.create_connect_client_add_in(
+            ResourceId="d-fake12345",
+            Name=_unique("addin-fields"),
+            URL="https://example.com/connect",
+        )
+        assert "AddInId" in resp
+        # Add-in IDs are UUIDs
+        assert len(resp["AddInId"]) > 10
+
+    def test_describe_add_ins_for_nonexistent_directory(self, workspaces):
+        """DescribeConnectClientAddIns for fake directory returns empty list."""
+        resp = workspaces.describe_connect_client_add_ins(ResourceId="d-doesnotexist9")
+        assert "AddIns" in resp
+        assert isinstance(resp["AddIns"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesManagementCidrEdgeCases:
+    """Edge cases for management CIDR operations."""
+
+    def test_list_cidr_ranges_different_constraints(self, workspaces):
+        """ListAvailableManagementCidrRanges works with different CIDR constraints."""
+        resp = workspaces.list_available_management_cidr_ranges(
+            ManagementCidrRangeConstraint="172.16.0.0/12"
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ManagementCidrRanges" in resp
+        assert isinstance(resp["ManagementCidrRanges"], list)
+        # All returned ranges should be strings
+        for cidr in resp["ManagementCidrRanges"]:
+            assert isinstance(cidr, str)
+
+
+class TestWorkSpacesWorkspaceLifecycleEdgeCases:
+    """Edge cases for workspace create/describe lifecycle using the workspace fixture."""
+
+    def test_workspace_id_format(self, workspace, workspaces):
+        """Workspace IDs follow the ws- prefix convention."""
+        assert workspace.startswith("ws-")
+        assert len(workspace) > len("ws-")
+
+    def test_workspace_has_state_field(self, workspace, workspaces):
+        """Created workspace has a State field."""
+        result = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        ws = result["Workspaces"][0]
+        assert "State" in ws
+
+    def test_workspace_has_bundle_id(self, workspace, workspaces):
+        """Created workspace has a BundleId matching what was requested."""
+        result = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        ws = result["Workspaces"][0]
+        assert "BundleId" in ws
+        assert ws["BundleId"] == "wsb-test123"
+
+    def test_terminate_workspace_succeeds(self, workspace, workspaces):
+        """Terminating an existing workspace returns no FailedRequests."""
+        result = workspaces.terminate_workspaces(
+            TerminateWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 0
+
+    def test_start_workspace(self, workspace, workspaces):
+        """Starting an existing workspace returns no FailedRequests."""
+        result = workspaces.start_workspaces(
+            StartWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 0
+
+    def test_stop_workspace(self, workspace, workspaces):
+        """Stopping an existing workspace returns no FailedRequests."""
+        result = workspaces.stop_workspaces(
+            StopWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 0
+
+    def test_workspace_connection_status(self, workspace, workspaces):
+        """DescribeWorkspacesConnectionStatus returns status for existing workspace."""
+        result = workspaces.describe_workspaces_connection_status(
+            WorkspaceIds=[workspace]
+        )
+        assert "WorkspacesConnectionStatus" in result
+        assert isinstance(result["WorkspacesConnectionStatus"], list)
