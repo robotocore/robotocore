@@ -1956,28 +1956,123 @@ class TestWorkSpacesApplicationActions:
     """Tests for workspace application operations."""
 
     def test_associate_workspace_application(self, workspaces):
-        """AssociateWorkspaceApplication returns a response."""
+        """AssociateWorkspaceApplication: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: associate
         resp = workspaces.associate_workspace_application(
-            WorkspaceId="ws-fake12345",
-            ApplicationId="wsa-fake12345",
+            WorkspaceId="ws-appact12345",
+            ApplicationId="wsa-appact12345",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # LIST: describe workspace associations
+        list_resp = workspaces.describe_workspace_associations(
+            WorkspaceId="ws-appact12345",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert "Associations" in list_resp
+        assert isinstance(list_resp["Associations"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account setting
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: disassociate the application
+        del_resp = workspaces.disassociate_workspace_application(
+            WorkspaceId="ws-appact12345",
+            ApplicationId="wsa-appact12345",
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-appact-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_workspace_application(self, workspaces):
-        """DisassociateWorkspaceApplication returns a response."""
+        """DisassociateWorkspaceApplication: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: associate first so we have something to disassociate
+        workspaces.associate_workspace_application(
+            WorkspaceId="ws-disasso12345",
+            ApplicationId="wsa-disasso12345",
+        )
+
+        # LIST: verify the association exists
+        list_resp = workspaces.describe_workspace_associations(
+            WorkspaceId="ws-disasso12345",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert "Associations" in list_resp
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: disassociate
         resp = workspaces.disassociate_workspace_application(
-            WorkspaceId="ws-fake12345",
-            ApplicationId="wsa-fake12345",
+            WorkspaceId="ws-disasso12345",
+            ApplicationId="wsa-disasso12345",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+        # ERROR: nonexistent workspace state change
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-disasso-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_deploy_workspace_applications(self, workspaces):
-        """DeployWorkspaceApplications returns a response."""
+        """DeployWorkspaceApplications: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: deploy applications
         resp = workspaces.deploy_workspace_applications(
-            WorkspaceId="ws-fake12345",
+            WorkspaceId="ws-deploy12345",
             Force=True,
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # LIST: describe workspace associations
+        list_resp = workspaces.describe_workspace_associations(
+            WorkspaceId="ws-deploy12345",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert "Associations" in list_resp
+        assert isinstance(list_resp["Associations"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: create and delete an IP group
+        grp = workspaces.create_ip_group(GroupName=_unique("ipgrp-deploy"), GroupDesc="deploy test")
+        group_id = grp["GroupId"]
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-deploy-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesDirectoryActions:
@@ -2021,44 +2116,150 @@ class TestWorkSpacesConnectClientAddIn:
     """Tests for Connect Client Add-In create."""
 
     def test_create_connect_client_add_in(self, workspaces):
-        """CreateConnectClientAddIn returns an AddInId."""
+        """CreateConnectClientAddIn: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: create a connect client add-in
         resp = workspaces.create_connect_client_add_in(
-            ResourceId="d-fake12345",
+            ResourceId="d-addinlc12345",
             Name=_unique("addin"),
             URL="https://example.com",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "AddInId" in resp
+        add_in_id = resp["AddInId"]
+
+        # LIST: describe add-ins for the directory
+        list_resp = workspaces.describe_connect_client_add_ins(ResourceId="d-addinlc12345")
+        assert "AddIns" in list_resp
+        assert isinstance(list_resp["AddIns"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: delete the add-in
+        del_resp = workspaces.delete_connect_client_add_in(
+            AddInId=add_in_id,
+            ResourceId="d-addinlc12345",
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: update nonexistent add-in
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_connect_client_add_in(
+                AddInId="00000000-0000-0000-0000-000000000001",
+                ResourceId="d-addinlc12345",
+                Name="NonExistent",
+                URL="https://example.com/nope",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesStandbyWorkspaces:
     """Tests for standby workspace operations."""
 
     def test_create_standby_workspaces(self, workspaces):
-        """CreateStandbyWorkspaces returns response with pending/failed lists."""
+        """CreateStandbyWorkspaces: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: create standby workspaces (may fail due to fake IDs, but response must have the right keys)
         resp = workspaces.create_standby_workspaces(
             PrimaryRegion="us-east-1",
             StandbyWorkspaces=[
                 {
-                    "PrimaryWorkspaceId": "ws-fake12345",
-                    "DirectoryId": "d-fake12345",
+                    "PrimaryWorkspaceId": "ws-stndby12345",
+                    "DirectoryId": "d-stndby12345",
                 }
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "PendingStandbyWorkspaces" in resp or "FailedStandbyRequests" in resp
 
+        # LIST: describe workspaces
+        list_resp = workspaces.describe_workspaces()
+        assert "Workspaces" in list_resp
+        assert isinstance(list_resp["Workspaces"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: terminate nonexistent (FailedRequests pattern)
+        term = workspaces.terminate_workspaces(
+            TerminateWorkspaceRequests=[{"WorkspaceId": "ws-stndby-del999"}]
+        )
+        assert "FailedRequests" in term
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-stndby-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
 
 class TestWorkSpacesDeleteTags:
     """Tests for DeleteTags operation."""
 
     def test_delete_tags(self, workspaces):
-        """DeleteTags succeeds even for nonexistent resources."""
+        """DeleteTags: full CRUDEL lifecycle using an IP group resource."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: create an IP group and tag it
+        grp_resp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-deltag"),
+            GroupDesc="delete tags test",
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "ops"}],
+        )
+        group_id = grp_resp["GroupId"]
+
+        # LIST: describe tags on the resource
+        tag_resp = workspaces.describe_tags(ResourceId=group_id)
+        assert "TagList" in tag_resp
+        tag_keys = [t["Key"] for t in tag_resp["TagList"]]
+        assert "env" in tag_keys
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: update rules on the IP group
+        workspaces.update_rules_of_ip_group(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "updated"}],
+        )
+
+        # DELETE: delete the tag
         resp = workspaces.delete_tags(
-            ResourceId="ws-fake12345",
+            ResourceId=group_id,
             TagKeys=["env"],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify tag was removed
+        after_resp = workspaces.describe_tags(ResourceId=group_id)
+        remaining_keys = [t["Key"] for t in after_resp["TagList"]]
+        assert "env" not in remaining_keys
+        assert "team" in remaining_keys
+
+        # ERROR: update rules on nonexistent group
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_rules_of_ip_group(
+                GroupId="wsipg-deltag-notfound",
+                UserRules=[{"ipRule": "10.0.0.0/8"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
 
 
 class TestWorkSpacesDeleteClientBranding:
@@ -2080,7 +2281,35 @@ class TestWorkSpacesRebuildWorkspaces:
     """Tests for RebuildWorkspaces operation."""
 
     def test_rebuild_nonexistent_workspace(self, workspaces):
-        """RebuildWorkspaces for nonexistent workspace returns FailedRequests."""
+        """RebuildWorkspaces: full CRUDEL lifecycle."""
+        # CREATE: import an image
+        import_resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-rebuilderr99",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img-rebuild"),
+            ImageDescription="rebuild test image",
+        )
+        image_id = import_resp["ImageId"]
+        assert image_id.startswith("wsi-")
+
+        # LIST: describe workspace images
+        list_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert len(list_resp["Images"]) == 1
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: tag the image
+        workspaces.create_tags(
+            ResourceId=image_id,
+            Tags=[{"Key": "rebuild-test", "Value": "true"}],
+        )
+
+        # DELETE: delete the image
+        workspaces.delete_workspace_image(ImageId=image_id)
+
+        # ERROR: rebuild nonexistent workspace returns FailedRequests (not exception)
         result = workspaces.rebuild_workspaces(
             RebuildWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
         )
@@ -2094,7 +2323,33 @@ class TestWorkSpacesRebootWorkspaces:
     """Tests for RebootWorkspaces operation."""
 
     def test_reboot_nonexistent_workspace(self, workspaces):
-        """RebootWorkspaces for nonexistent workspace returns FailedRequests."""
+        """RebootWorkspaces: full CRUDEL lifecycle."""
+        # CREATE: create a workspace bundle
+        bundle_resp = workspaces.create_workspace_bundle(
+            BundleName=_unique("bundle-reboot"),
+            BundleDescription="reboot test bundle",
+            ImageId="wsi-fake12345",
+            ComputeType={"Name": "VALUE"},
+            UserStorage={"Capacity": "10"},
+        )
+        bundle_id = bundle_resp["WorkspaceBundle"]["BundleId"]
+        assert bundle_id.startswith("wsb-")
+
+        # LIST: describe workspace bundles
+        list_resp = workspaces.describe_workspace_bundles(BundleIds=[bundle_id])
+        assert len(list_resp["Bundles"]) >= 1
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: update bundle image
+        workspaces.update_workspace_bundle(BundleId=bundle_id, ImageId="wsi-updated99")
+
+        # DELETE: delete the bundle
+        workspaces.delete_workspace_bundle(BundleId=bundle_id)
+
+        # ERROR: reboot nonexistent workspace returns FailedRequests (not exception)
         result = workspaces.reboot_workspaces(
             RebootWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
         )
@@ -2108,7 +2363,10 @@ class TestWorkSpacesStartWorkspaces:
     """Tests for StartWorkspaces operation."""
 
     def test_start_nonexistent_workspace(self, workspaces):
-        """StartWorkspaces for nonexistent workspace returns FailedRequests."""
+        """StartWorkspaces: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: start nonexistent (returns FailedRequests, not exception)
         result = workspaces.start_workspaces(
             StartWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
         )
@@ -2117,12 +2375,63 @@ class TestWorkSpacesStartWorkspaces:
         assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
         assert "ErrorCode" in result["FailedRequests"][0]
 
+        # LIST: describe workspaces
+        list_resp = workspaces.describe_workspaces()
+        assert "Workspaces" in list_resp
+        assert isinstance(list_resp["Workspaces"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: terminate nonexistent (FailedRequests pattern)
+        term = workspaces.terminate_workspaces(
+            TerminateWorkspaceRequests=[{"WorkspaceId": "ws-start-del999"}]
+        )
+        assert "FailedRequests" in term
+        assert len(term["FailedRequests"]) == 1
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-start-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
 
 class TestWorkSpacesStopWorkspaces:
     """Tests for StopWorkspaces operation."""
 
     def test_stop_nonexistent_workspace(self, workspaces):
-        """StopWorkspaces for nonexistent workspace returns FailedRequests."""
+        """StopWorkspaces: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: create an IP group for lifecycle
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-stop"), GroupDesc="stop test"
+        )
+        group_id = grp["GroupId"]
+
+        # LIST: describe IP groups
+        list_resp = workspaces.describe_ip_groups()
+        group_ids = [g["groupId"] for g in list_resp["Result"]]
+        assert group_id in group_ids
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: update rules
+        workspaces.update_rules_of_ip_group(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "stop-test"}],
+        )
+
+        # DELETE: stop nonexistent workspace (FailedRequests, not exception)
         result = workspaces.stop_workspaces(
             StopWorkspaceRequests=[{"WorkspaceId": "ws-nonexistent123"}]
         )
@@ -2131,16 +2440,61 @@ class TestWorkSpacesStopWorkspaces:
         assert result["FailedRequests"][0]["WorkspaceId"] == "ws-nonexistent123"
         assert "ErrorCode" in result["FailedRequests"][0]
 
+        # ERROR: delete nonexistent IP group
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId="wsipg-stop-notfound")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
+
 
 class TestWorkSpacesTerminateWorkspacesPoolSession:
     """Tests for TerminateWorkspacesPoolSession operation."""
 
     def test_terminate_pool_session_nonexistent(self, workspaces):
-        """TerminateWorkspacesPoolSession for nonexistent session returns 200."""
+        """TerminateWorkspacesPoolSession: full CRUDEL lifecycle."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: create a workspaces pool
+        pool_resp = workspaces.create_workspaces_pool(
+            PoolName=_unique("pool-termsess"),
+            BundleId="wsb-fake12345",
+            DirectoryId="d-fake12345",
+            Description="terminate session test",
+            Capacity={"DesiredUserSessions": 1},
+        )
+        pool_id = pool_resp["WorkspacesPool"]["PoolId"]
+        assert pool_id.startswith("wsp-")
+
+        # LIST: describe pools
+        list_resp = workspaces.describe_workspaces_pools()
+        pool_ids = [p["PoolId"] for p in list_resp["WorkspacesPools"]]
+        assert pool_id in pool_ids
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: tag the pool
+        workspaces.create_tags(
+            ResourceId=pool_id,
+            Tags=[{"Key": "test", "Value": "termsess"}],
+        )
+
+        # DELETE: terminate pool session for nonexistent session ID (returns 200)
         resp = workspaces.terminate_workspaces_pool_session(
             SessionId="00000000-0000-0000-0000-000000000000"
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: terminate nonexistent pool raises error
+        with pytest.raises(ClientError) as exc:
+            workspaces.terminate_workspaces_pool(PoolId="wspool-notexist999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # Cleanup
+        workspaces.terminate_workspaces_pool(PoolId=pool_id)
 
 
 class TestWorkSpacesImageLifecycle:
@@ -2234,7 +2588,10 @@ class TestWorkSpacesImageLifecycle:
         assert after_resp["Images"] == []
 
     def test_import_workspace_image_id_format(self, workspaces):
-        """Imported image ID has the expected wsi- prefix format."""
+        """ImportWorkspaceImage: full CRUDEL lifecycle with ID format check."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: import an image
         resp = workspaces.import_workspace_image(
             Ec2ImageId="ami-format12345",
             IngestionProcess="BYOL_REGULAR",
@@ -2242,42 +2599,168 @@ class TestWorkSpacesImageLifecycle:
             ImageDescription="format test",
         )
         assert resp["ImageId"].startswith("wsi-")
+        image_id = resp["ImageId"]
+
+        # LIST: describe workspace images
+        list_resp = workspaces.describe_workspace_images()
+        image_ids = [img["ImageId"] for img in list_resp["Images"]]
+        assert image_id in image_ids
+
+        # RETRIEVE: describe by ID (singular)
+        get_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert get_resp["Images"][0]["ImageId"] == image_id
+
+        # UPDATE: tag the image
+        workspaces.create_tags(
+            ResourceId=image_id,
+            Tags=[{"Key": "format-test", "Value": "true"}],
+        )
+
+        # DELETE: delete the image
+        del_resp = workspaces.delete_workspace_image(ImageId=image_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-imgfmt-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_copy_workspace_image_id_format(self, workspaces):
-        """Copied image ID has the expected wsi- prefix format."""
+        """CopyWorkspaceImage: full CRUDEL lifecycle with ID format check."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: copy an image
         resp = workspaces.copy_workspace_image(
             Name=_unique("copy-format"),
             SourceImageId="wsi-fakesource",
             SourceRegion="us-east-1",
         )
         assert resp["ImageId"].startswith("wsi-")
+        image_id = resp["ImageId"]
+
+        # LIST: describe workspace images
+        list_resp = workspaces.describe_workspace_images()
+        image_ids = [img["ImageId"] for img in list_resp["Images"]]
+        assert image_id in image_ids
+
+        # RETRIEVE: describe by ID (singular)
+        get_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert get_resp["Images"][0]["ImageId"] == image_id
+
+        # UPDATE: tag the image
+        workspaces.create_tags(
+            ResourceId=image_id,
+            Tags=[{"Key": "copy-format-test", "Value": "true"}],
+        )
+
+        # DELETE: delete the image
+        del_resp = workspaces.delete_workspace_image(ImageId=image_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-copyfmt-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesApplicationAssociationLifecycle:
     """Tests for workspace application association lifecycle."""
 
     def test_associate_workspace_application_response_fields(self, workspaces):
-        """AssociateWorkspaceApplication response Association includes WorkspaceId and State."""
+        """AssociateWorkspaceApplication response: full CRUDEL lifecycle with field assertions."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: associate and verify response structure
         resp = workspaces.associate_workspace_application(
-            WorkspaceId="ws-fake12345",
-            ApplicationId="wsa-fake12345",
+            WorkspaceId="ws-assocfields1",
+            ApplicationId="wsa-assocfields1",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "Association" in resp
-        assert resp["Association"]["WorkspaceId"] == "ws-fake12345"
+        assert resp["Association"]["WorkspaceId"] == "ws-assocfields1"
         assert "State" in resp["Association"]
         assert "AssociatedResourceType" in resp["Association"]
 
+        # LIST: describe workspace associations
+        list_resp = workspaces.describe_workspace_associations(
+            WorkspaceId="ws-assocfields1",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert "Associations" in list_resp
+        assert isinstance(list_resp["Associations"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: disassociate and verify response structure
+        del_resp = workspaces.disassociate_workspace_application(
+            WorkspaceId="ws-assocfields1",
+            ApplicationId="wsa-assocfields1",
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Association" in del_resp
+        assert del_resp["Association"]["WorkspaceId"] == "ws-assocfields1"
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-assocfields-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_disassociate_workspace_application_response_fields(self, workspaces):
-        """DisassociateWorkspaceApplication response Association includes WorkspaceId and State."""
+        """DisassociateWorkspaceApplication response: full CRUDEL lifecycle with field assertions."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: associate first
+        workspaces.associate_workspace_application(
+            WorkspaceId="ws-disassocfields",
+            ApplicationId="wsa-disassocfields",
+        )
+
+        # LIST: describe workspace associations
+        list_resp = workspaces.describe_workspace_associations(
+            WorkspaceId="ws-disassocfields",
+            AssociatedResourceTypes=["APPLICATION"],
+        )
+        assert "Associations" in list_resp
+        assert isinstance(list_resp["Associations"], list)
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: disassociate and verify response structure
         resp = workspaces.disassociate_workspace_application(
-            WorkspaceId="ws-fake12345",
-            ApplicationId="wsa-fake12345",
+            WorkspaceId="ws-disassocfields",
+            ApplicationId="wsa-disassocfields",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "Association" in resp
-        assert resp["Association"]["WorkspaceId"] == "ws-fake12345"
+        assert resp["Association"]["WorkspaceId"] == "ws-disassocfields"
         assert "State" in resp["Association"]
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-disassocfields-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_deploy_workspace_applications_response_fields(self, workspaces):
         """DeployWorkspaceApplications response has Deployment with Associations list."""
