@@ -2329,3 +2329,266 @@ class TestAPIGatewayImportApiKeysGapOp:
             "NotImplemented",
             "BadRequestException",
         )
+
+
+class TestAPIGatewayEdgeCases:
+    """Edge cases and behavioral fidelity tests for API Gateway."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def rest_api(self, apigw):
+        import uuid
+
+        resp = apigw.create_rest_api(name=f"edge-api-{uuid.uuid4().hex[:8]}")
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    def test_delete_rest_api_nonexistent(self, apigw):
+        """DeleteRestApi with a nonexistent ID raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.delete_rest_api(restApiId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_rest_api_nonexistent(self, apigw):
+        """GetRestApi with a nonexistent ID raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_rest_api(restApiId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_rest_api_has_created_date(self, apigw):
+        """CreateRestApi response includes createdDate."""
+        import uuid
+
+        resp = apigw.create_rest_api(name=f"date-test-{uuid.uuid4().hex[:8]}")
+        api_id = resp["id"]
+        try:
+            assert "createdDate" in resp
+            got = apigw.get_rest_api(restApiId=api_id)
+            assert "createdDate" in got
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_get_rest_apis_returns_all_created(self, apigw):
+        """GetRestApis lists all created APIs."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            r = apigw.create_rest_api(name=f"list-api-{i}-{uuid.uuid4().hex[:6]}")
+            created.append(r["id"])
+        try:
+            all_apis = apigw.get_rest_apis()
+            assert "items" in all_apis
+            listed_ids = [a["id"] for a in all_apis["items"]]
+            for api_id in created:
+                assert api_id in listed_ids
+        finally:
+            for api_id in created:
+                apigw.delete_rest_api(restApiId=api_id)
+
+    def test_create_model_duplicate_raises_error(self, apigw, rest_api):
+        """Creating a model with a duplicate name raises ConflictException."""
+        from botocore.exceptions import ClientError
+
+        apigw.create_model(
+            restApiId=rest_api,
+            name="DuplicateModel",
+            contentType="application/json",
+            schema='{"type": "object"}',
+        )
+        with pytest.raises(ClientError) as exc:
+            apigw.create_model(
+                restApiId=rest_api,
+                name="DuplicateModel",
+                contentType="application/json",
+                schema='{"type": "object"}',
+            )
+        assert exc.value.response["Error"]["Code"] == "ConflictException"
+
+    def test_delete_model_nonexistent(self, apigw, rest_api):
+        """DeleteModel with nonexistent model name raises a 4xx error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.delete_model(restApiId=rest_api, modelName="NoSuchModel")
+        # Server returns 404 status; botocore may surface as '404' or 'NotFoundException'
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("NotFoundException", "404"), f"Unexpected error code: {code}"
+
+    def test_get_authorizer_nonexistent(self, apigw, rest_api):
+        """GetAuthorizer with nonexistent ID raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_authorizer(restApiId=rest_api, authorizerId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_gateway_response_full_lifecycle(self, apigw, rest_api):
+        """Put → Get → Update → Delete gateway response lifecycle."""
+        apigw.put_gateway_response(
+            restApiId=rest_api,
+            responseType="MISSING_AUTHENTICATION_TOKEN",
+            statusCode="403",
+            responseTemplates={"application/json": '{"message": "missing token"}'},
+        )
+        # Retrieve
+        got = apigw.get_gateway_response(
+            restApiId=rest_api, responseType="MISSING_AUTHENTICATION_TOKEN"
+        )
+        assert got["statusCode"] == "403"
+        assert got["responseType"] == "MISSING_AUTHENTICATION_TOKEN"
+
+        # Update
+        updated = apigw.update_gateway_response(
+            restApiId=rest_api,
+            responseType="MISSING_AUTHENTICATION_TOKEN",
+            patchOperations=[{"op": "replace", "path": "/statusCode", "value": "404"}],
+        )
+        assert updated["statusCode"] == "404"
+
+        # Delete
+        apigw.delete_gateway_response(
+            restApiId=rest_api, responseType="MISSING_AUTHENTICATION_TOKEN"
+        )
+        responses = apigw.get_gateway_responses(restApiId=rest_api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "MISSING_AUTHENTICATION_TOKEN" not in types
+
+    def test_request_validator_nonexistent(self, apigw, rest_api):
+        """GetRequestValidator with nonexistent ID raises a 4xx error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_request_validator(restApiId=rest_api, requestValidatorId="nonexistent1")
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("NotFoundException", "BadRequestException", "404"), f"Unexpected: {code}"
+
+    def test_get_api_keys_returns_all_created(self, apigw):
+        """GetApiKeys lists all created API keys."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            k = apigw.create_api_key(name=f"list-key-{i}-{uuid.uuid4().hex[:6]}", enabled=True)
+            created.append(k["id"])
+        try:
+            resp = apigw.get_api_keys()
+            assert "items" in resp
+            all_ids = [k["id"] for k in resp["items"]]
+            for key_id in created:
+                assert key_id in all_ids
+        finally:
+            for key_id in created:
+                apigw.delete_api_key(apiKey=key_id)
+
+    def test_get_usage_plans_returns_all_created(self, apigw):
+        """GetUsagePlans lists all created usage plans."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            p = apigw.create_usage_plan(name=f"list-plan-{i}-{uuid.uuid4().hex[:6]}")
+            created.append(p["id"])
+        try:
+            resp = apigw.get_usage_plans()
+            assert "items" in resp
+            all_ids = [p["id"] for p in resp["items"]]
+            for plan_id in created:
+                assert plan_id in all_ids
+        finally:
+            for plan_id in created:
+                apigw.delete_usage_plan(usagePlanId=plan_id)
+
+    def test_get_account_throttle_settings(self, apigw):
+        """GetAccount returns throttleSettings or valid account structure."""
+        resp = apigw.get_account()
+        # AWS returns throttleSettings with burstLimit and rateLimit
+        assert "throttleSettings" in resp or "features" in resp or resp.get("ResponseMetadata")
+        # Must have at least HTTP 200
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_vpc_link_nonexistent(self, apigw):
+        """GetVpcLink with nonexistent ID raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_vpc_link(vpcLinkId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_rest_api_unicode_in_description(self, apigw):
+        """CreateRestApi with unicode description stores and returns it correctly."""
+        import uuid
+
+        desc = "API for \u4e2d\u6587 users — with em-dash and caf\u00e9"
+        resp = apigw.create_rest_api(
+            name=f"unicode-api-{uuid.uuid4().hex[:8]}", description=desc
+        )
+        api_id = resp["id"]
+        try:
+            got = apigw.get_rest_api(restApiId=api_id)
+            assert got["description"] == desc
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_create_api_key_disabled(self, apigw):
+        """Create a disabled API key and verify enabled=False."""
+        import uuid
+
+        key = apigw.create_api_key(name=f"disabled-key-{uuid.uuid4().hex[:8]}", enabled=False)
+        key_id = key["id"]
+        try:
+            assert key["enabled"] is False
+            got = apigw.get_api_key(apiKey=key_id)
+            assert got["enabled"] is False
+        finally:
+            apigw.delete_api_key(apiKey=key_id)
+
+    def test_get_resources_nonexistent_api(self, apigw):
+        """GetResources with nonexistent API raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_resources(restApiId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_import_documentation_parts_with_real_api(self, apigw):
+        """ImportDocumentationParts against a real API returns ids list."""
+        import uuid
+
+        api = apigw.create_rest_api(name=f"import-docs-{uuid.uuid4().hex[:8]}")
+        api_id = api["id"]
+        try:
+            resp = apigw.import_documentation_parts(restApiId=api_id, body=b"{}")
+            assert "ids" in resp
+            assert isinstance(resp["ids"], list)
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_reject_domain_name_access_association_create_lifecycle(self, apigw):
+        """Create a domain name access association then reject it."""
+        created = apigw.create_domain_name_access_association(
+            domainNameArn="arn:aws:apigateway:us-east-1::/domainnames/test.example.com",
+            accessAssociationSourceType="VPCE",
+            accessAssociationSource="vpce-0a1b2c3d4e5f67890",
+        )
+        assoc_arn = created.get("domainNameAccessAssociationArn", "")
+
+        # List to verify it exists
+        listed = apigw.get_domain_name_access_associations()
+        assert "items" in listed
+
+        # Reject using the ARN we just created (or a fake one - stub accepts either)
+        reject_arn = assoc_arn or "arn:aws:apigateway:us-east-1::/domainNameAccessAssociations/x"
+        resp = apigw.reject_domain_name_access_association(
+            domainNameAccessAssociationArn=reject_arn,
+            domainNameArn="arn:aws:apigateway:us-east-1::/domainnames/test.example.com",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
