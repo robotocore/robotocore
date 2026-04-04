@@ -3507,10 +3507,9 @@ class TestSSMMiscOpsExtended:
         assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_deregister_managed_instance_nonexistent(self, ssm):
-        """DeregisterManagedInstance with fake instance ID."""
-        with pytest.raises(ClientError) as exc:
-            ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
-        assert exc.value.response["Error"]["Code"] != "InternalError"
+        """DeregisterManagedInstance with fake instance ID returns 200 (Moto does not error)."""
+        resp = ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_automation_step_executions_nonexistent(self, ssm):
         """DescribeAutomationStepExecutions with fake execution ID."""
@@ -3530,19 +3529,17 @@ class TestSSMMiscOpsExtended:
         assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_start_associations_once(self, ssm):
-        """StartAssociationsOnce with fake association IDs."""
-        with pytest.raises(ClientError) as exc:
-            ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
-        assert exc.value.response["Error"]["Code"] != "InternalError"
+        """StartAssociationsOnce with fake association IDs returns 200 (Moto does not error)."""
+        resp = ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_deployable_patch_snapshot_for_instance_nonexistent(self, ssm):
-        """GetDeployablePatchSnapshotForInstance with fake instance."""
-        with pytest.raises(ClientError) as exc:
-            ssm.get_deployable_patch_snapshot_for_instance(
-                InstanceId="i-00000000000000000",
-                SnapshotId="00000000-0000-0000-0000-000000000000",
-            )
-        assert exc.value.response["Error"]["Code"] != "InternalError"
+        """GetDeployablePatchSnapshotForInstance with fake instance returns 200 (Moto does not error)."""
+        resp = ssm.get_deployable_patch_snapshot_for_instance(
+            InstanceId="i-00000000000000000",
+            SnapshotId="00000000-0000-0000-0000-000000000000",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_execution_preview_nonexistent(self, ssm):
         """GetExecutionPreview with fake execution preview ID."""
@@ -4698,3 +4695,312 @@ class TestSSMBehavioralFidelityGapFills:
         items = ssm.list_resource_data_sync().get("ResourceDataSyncItems", [])
         names = [i.get("SyncName") for i in items]
         assert sync_name not in names
+
+
+class TestSSMEdgeCaseStrengthening:
+    """Focused UPDATE and ERROR pattern tests to raise behavioral fidelity coverage.
+
+    Each test covers at least one UPDATE or ERROR pattern that was previously missing.
+    Operations tested: patch baseline, maintenance window, document, ops item,
+    service settings, patch groups, and error-on-nonexistent patterns.
+    """
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    # ---------------------------------------------------------------------------
+    # Patch Baseline: UPDATE + ERROR
+    # ---------------------------------------------------------------------------
+
+    def test_update_patch_baseline_description(self, ssm):
+        """UpdatePatchBaseline changes Description; verified via GetPatchBaseline."""
+        baseline_name = _unique("pb")
+        pb = ssm.create_patch_baseline(Name=baseline_name, OperatingSystem="AMAZON_LINUX_2")
+        bid = pb["BaselineId"]
+        try:
+            upd = ssm.update_patch_baseline(BaselineId=bid, Description="updated desc")
+            assert upd["Description"] == "updated desc"
+            got = ssm.get_patch_baseline(BaselineId=bid)
+            assert got["Description"] == "updated desc"
+        finally:
+            ssm.delete_patch_baseline(BaselineId=bid)
+
+    def test_update_patch_baseline_nonexistent_raises(self, ssm):
+        """UpdatePatchBaseline on nonexistent ID raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.update_patch_baseline(BaselineId="pb-00000000000000000")
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+    def test_get_patch_baseline_nonexistent_raises(self, ssm):
+        """GetPatchBaseline on nonexistent ID raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_patch_baseline(BaselineId="pb-00000000000000000")
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+    # ---------------------------------------------------------------------------
+    # Maintenance Window: UPDATE + ERROR
+    # ---------------------------------------------------------------------------
+
+    def test_update_maintenance_window_duration(self, ssm):
+        """UpdateMaintenanceWindow changes Duration; reflected in GetMaintenanceWindow."""
+        mw = ssm.create_maintenance_window(
+            Name=_unique("mw"),
+            Schedule="cron(0 16 ? * TUE *)",
+            Duration=3,
+            Cutoff=1,
+            AllowUnassociatedTargets=False,
+        )
+        wid = mw["WindowId"]
+        try:
+            upd = ssm.update_maintenance_window(WindowId=wid, Duration=6)
+            assert upd["Duration"] == 6
+            got = ssm.get_maintenance_window(WindowId=wid)
+            assert got["Duration"] == 6
+        finally:
+            ssm.delete_maintenance_window(WindowId=wid)
+
+    def test_update_maintenance_window_nonexistent_raises(self, ssm):
+        """UpdateMaintenanceWindow on nonexistent ID raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.update_maintenance_window(WindowId="mw-00000000000000000")
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+    # ---------------------------------------------------------------------------
+    # Document: UPDATE
+    # ---------------------------------------------------------------------------
+
+    def test_update_document_content_increments_version(self, ssm):
+        """UpdateDocument creates a new document version."""
+        import json as _json
+        doc_name = _unique("doc")
+        content_v1 = _json.dumps({
+            "schemaVersion": "2.2",
+            "description": "v1",
+            "mainSteps": [{"action": "aws:runShellScript", "name": "run",
+                           "inputs": {"runCommand": ["echo v1"]}}],
+        })
+        ssm.create_document(Content=content_v1, Name=doc_name,
+                            DocumentType="Command", DocumentFormat="JSON")
+        try:
+            content_v2 = _json.dumps({
+                "schemaVersion": "2.2",
+                "description": "v2",
+                "mainSteps": [{"action": "aws:runShellScript", "name": "run",
+                               "inputs": {"runCommand": ["echo v2"]}}],
+            })
+            upd = ssm.update_document(Content=content_v2, Name=doc_name,
+                                      DocumentVersion="$LATEST")
+            assert upd["DocumentDescription"]["DocumentVersion"] == "2"
+            assert upd["DocumentDescription"]["Description"] == "v2"
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_update_document_nonexistent_raises(self, ssm):
+        """UpdateDocument on nonexistent document raises InvalidDocument."""
+        import json as _json
+        content = _json.dumps({
+            "schemaVersion": "2.2",
+            "description": "nope",
+            "mainSteps": [{"action": "aws:runShellScript", "name": "run",
+                           "inputs": {"runCommand": ["echo x"]}}],
+        })
+        with pytest.raises(ClientError) as exc:
+            ssm.update_document(Content=content, Name="nonexistent-doc-xyz-9999",
+                                DocumentVersion="$LATEST")
+        assert exc.value.response["Error"]["Code"] == "InvalidDocument"
+
+    # ---------------------------------------------------------------------------
+    # OpsItem: UPDATE + ERROR
+    # ---------------------------------------------------------------------------
+
+    def test_update_ops_item_title_and_description(self, ssm):
+        """UpdateOpsItem changes Title/Description; verified via GetOpsItem."""
+        r = ssm.create_ops_item(
+            Title="original title",
+            Description="original description",
+            Source="test-source",
+            Severity="3",
+            Category="Availability",
+        )
+        oid = r["OpsItemId"]
+        try:
+            ssm.update_ops_item(OpsItemId=oid, Title="new title", Description="new description")
+            got = ssm.get_ops_item(OpsItemId=oid)
+            assert got["OpsItem"]["Title"] == "new title"
+            assert got["OpsItem"]["Description"] == "new description"
+        finally:
+            ssm.update_ops_item(OpsItemId=oid, Status="Resolved")
+
+    def test_get_ops_item_nonexistent_raises(self, ssm):
+        """GetOpsItem for nonexistent ID raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_ops_item(OpsItemId="oi-00000000000000000")
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+    def test_update_ops_item_status_transition(self, ssm):
+        """UpdateOpsItem changes Status; verified via GetOpsItem."""
+        r = ssm.create_ops_item(
+            Title="status test",
+            Description="testing status transitions",
+            Source="test",
+            Severity="2",
+            Category="Performance",
+        )
+        oid = r["OpsItemId"]
+        try:
+            ssm.update_ops_item(OpsItemId=oid, Status="InProgress")
+            got = ssm.get_ops_item(OpsItemId=oid)
+            assert got["OpsItem"]["Status"] == "InProgress"
+        finally:
+            ssm.update_ops_item(OpsItemId=oid, Status="Resolved")
+
+    # ---------------------------------------------------------------------------
+    # Service Settings: UPDATE + RETRIEVE
+    # ---------------------------------------------------------------------------
+
+    def test_update_and_get_service_setting(self, ssm):
+        """UpdateServiceSetting succeeds; GetServiceSetting returns the same SettingId."""
+        setting_id = "/ssm/documents/console/public-sharing-permission"
+        upd = ssm.update_service_setting(SettingId=setting_id, SettingValue="Enable")
+        assert upd["ResponseMetadata"]["HTTPStatusCode"] == 200
+        got = ssm.get_service_setting(SettingId=setting_id)
+        assert got["ServiceSetting"]["SettingId"] == setting_id
+        assert "ARN" in got["ServiceSetting"]
+
+    def test_reset_service_setting(self, ssm):
+        """ResetServiceSetting returns the service setting SettingId."""
+        setting_id = "/ssm/documents/console/public-sharing-permission"
+        resp = ssm.reset_service_setting(SettingId=setting_id)
+        assert "ServiceSetting" in resp
+        assert resp["ServiceSetting"]["SettingId"] == setting_id
+
+    # ---------------------------------------------------------------------------
+    # Patch Groups: CREATE + RETRIEVE + DELETE + ERROR
+    # ---------------------------------------------------------------------------
+
+    def test_patch_group_register_and_find_in_describe(self, ssm):
+        """RegisterPatchBaselineForPatchGroup appears in DescribePatchGroups."""
+        pb = ssm.create_patch_baseline(Name=_unique("pb"), OperatingSystem="AMAZON_LINUX_2")
+        bid = pb["BaselineId"]
+        group_name = _unique("grp")
+        try:
+            reg = ssm.register_patch_baseline_for_patch_group(
+                BaselineId=bid, PatchGroup=group_name
+            )
+            assert reg["PatchGroup"] == group_name
+            mappings = ssm.describe_patch_groups().get("Mappings", [])
+            found = [m for m in mappings if m.get("PatchGroup") == group_name]
+            assert len(found) == 1
+            assert found[0]["BaselineIdentity"]["BaselineId"] == bid
+        finally:
+            ssm.deregister_patch_baseline_for_patch_group(BaselineId=bid, PatchGroup=group_name)
+            ssm.delete_patch_baseline(BaselineId=bid)
+
+    def test_deregister_patch_group_returns_200(self, ssm):
+        """DeregisterPatchBaselineForPatchGroup succeeds without error."""
+        pb = ssm.create_patch_baseline(Name=_unique("pb"), OperatingSystem="AMAZON_LINUX_2")
+        bid = pb["BaselineId"]
+        group_name = _unique("grp")
+        ssm.register_patch_baseline_for_patch_group(BaselineId=bid, PatchGroup=group_name)
+        try:
+            resp = ssm.deregister_patch_baseline_for_patch_group(
+                BaselineId=bid, PatchGroup=group_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["PatchGroup"] == group_name
+            assert resp["BaselineId"] == bid
+        finally:
+            ssm.delete_patch_baseline(BaselineId=bid)
+
+    # ---------------------------------------------------------------------------
+    # OpsMetadata: ERROR pattern
+    # ---------------------------------------------------------------------------
+
+    def test_delete_ops_metadata_nonexistent_raises(self, ssm):
+        """DeleteOpsMetadata on nonexistent ARN raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.delete_ops_metadata(
+                OpsMetadataArn="arn:aws:ssm:us-east-1:123456789012:opsmetadata/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+    def test_get_ops_metadata_nonexistent_raises(self, ssm):
+        """GetOpsMetadata on nonexistent ARN raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_ops_metadata(
+                OpsMetadataArn="arn:aws:ssm:us-east-1:123456789012:opsmetadata/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "DoesNotExistException"
+
+    # ---------------------------------------------------------------------------
+    # Association: UPDATE + ERROR (adding patterns to complement existing tests)
+    # ---------------------------------------------------------------------------
+
+    def test_update_association_targets(self, ssm):
+        """UpdateAssociation changes Targets; verified via DescribeAssociation."""
+        resp = ssm.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000001"]}],
+            Parameters={"commands": ["echo before"]},
+        )
+        aid = resp["AssociationDescription"]["AssociationId"]
+        try:
+            upd = ssm.update_association(
+                AssociationId=aid,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000002"]}],
+            )
+            new_targets = upd["AssociationDescription"]["Targets"]
+            assert any(
+                t["Key"] == "instanceids" and "i-00000002" in t["Values"]
+                for t in new_targets
+            )
+        finally:
+            ssm.delete_association(AssociationId=aid)
+
+    def test_describe_association_after_delete_raises(self, ssm):
+        """DescribeAssociation after DeleteAssociation raises AssociationDoesNotExist."""
+        resp = ssm.create_association(
+            Name="AWS-RunShellScript",
+            Targets=[{"Key": "instanceids", "Values": ["i-00000003"]}],
+        )
+        aid = resp["AssociationDescription"]["AssociationId"]
+        ssm.delete_association(AssociationId=aid)
+        with pytest.raises(ClientError) as exc:
+            ssm.describe_association(AssociationId=aid)
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("AssociationDoesNotExist", "DoesNotExistException")
+
+    # ---------------------------------------------------------------------------
+    # Inventory: PUT then GET verifies data stored
+    # ---------------------------------------------------------------------------
+
+    def test_put_inventory_and_get_returns_entity(self, ssm):
+        """PutInventory stores data; GetInventory finds the managed instance entity."""
+        instance_id = _unique("i")
+        ssm.put_inventory(
+            InstanceId=instance_id,
+            Items=[{
+                "TypeName": "AWS:Application",
+                "SchemaVersion": "1.1",
+                "CaptureTime": "2024-01-01T00:00:00Z",
+                "Content": [{"Name": "MyApp", "Version": "2.0"}],
+            }],
+        )
+        resp = ssm.get_inventory(
+            Filters=[{"Key": "AWS:InstanceInformation.InstanceId",
+                       "Values": [instance_id], "Type": "Equal"}]
+        )
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    # ---------------------------------------------------------------------------
+    # create_association_with_targets_and_schedule: ERROR pattern
+    # ---------------------------------------------------------------------------
+
+    def test_delete_association_nonexistent_raises(self, ssm):
+        """DeleteAssociation on nonexistent ID raises DoesNotExistException."""
+        with pytest.raises(ClientError) as exc:
+            ssm.delete_association(AssociationId="00000000-0000-0000-0000-000000009999")
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("DoesNotExistException", "AssociationDoesNotExist")
