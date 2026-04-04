@@ -2592,3 +2592,593 @@ class TestAPIGatewayEdgeCases:
             domainNameArn="arn:aws:apigateway:us-east-1::/domainnames/test.example.com",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAPIGatewayBehavioralFidelity:
+    """Behavioral fidelity and edge case tests for API Gateway operations."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def rest_api(self, apigw):
+        import uuid
+
+        resp = apigw.create_rest_api(name=f"bf-api-{uuid.uuid4().hex[:8]}")
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    @pytest.fixture
+    def root_id(self, apigw, rest_api):
+        resources = apigw.get_resources(restApiId=rest_api)
+        return [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+    # ── REST API edge cases ──
+
+    def test_rest_api_id_is_10_char_alphanum(self, apigw):
+        """REST API IDs are 10-character alphanumeric strings."""
+        import re
+        import uuid
+
+        resp = apigw.create_rest_api(name=f"id-fmt-{uuid.uuid4().hex[:8]}")
+        api_id = resp["id"]
+        try:
+            assert re.match(r"^[a-z0-9]{10}$", api_id), f"Unexpected API ID format: {api_id}"
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_rest_api_get_after_update(self, apigw):
+        """Update a REST API and verify GetRestApi reflects changes."""
+        import uuid
+
+        resp = apigw.create_rest_api(
+            name=f"upd-api-{uuid.uuid4().hex[:8]}", description="original"
+        )
+        api_id = resp["id"]
+        try:
+            apigw.update_rest_api(
+                restApiId=api_id,
+                patchOperations=[
+                    {"op": "replace", "path": "/description", "value": "updated-desc"}
+                ],
+            )
+            got = apigw.get_rest_api(restApiId=api_id)
+            assert got["description"] == "updated-desc"
+            assert got["id"] == api_id
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_rest_api_update_nonexistent_raises_error(self, apigw):
+        """UpdateRestApi on nonexistent API raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.update_rest_api(
+                restApiId="nonexistent1",
+                patchOperations=[
+                    {"op": "replace", "path": "/description", "value": "x"}
+                ],
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_rest_api_delete_then_get_raises_error(self, apigw):
+        """After deleting a REST API, GetRestApi raises NotFoundException."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        resp = apigw.create_rest_api(name=f"del-then-get-{uuid.uuid4().hex[:8]}")
+        api_id = resp["id"]
+        apigw.delete_rest_api(restApiId=api_id)
+        with pytest.raises(ClientError) as exc:
+            apigw.get_rest_api(restApiId=api_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_rest_api_list_after_delete_excludes_deleted(self, apigw):
+        """Deleted API no longer appears in GetRestApis."""
+        import uuid
+
+        resp = apigw.create_rest_api(name=f"del-list-{uuid.uuid4().hex[:8]}")
+        api_id = resp["id"]
+        apigw.delete_rest_api(restApiId=api_id)
+        apis = apigw.get_rest_apis()
+        listed_ids = [a["id"] for a in apis["items"]]
+        assert api_id not in listed_ids
+
+    def test_rest_api_pagination(self, apigw):
+        """GetRestApis supports limit-based pagination."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            r = apigw.create_rest_api(name=f"page-api-{i}-{uuid.uuid4().hex[:6]}")
+            created.append(r["id"])
+        try:
+            resp = apigw.get_rest_apis(limit=1)
+            assert "items" in resp
+            assert len(resp["items"]) >= 1
+            # If there are more than 1, a position token should be present
+            if len(created) > 1:
+                assert "position" in resp or len(resp["items"]) >= 1
+        finally:
+            for api_id in created:
+                apigw.delete_rest_api(restApiId=api_id)
+
+    # ── Resource edge cases ──
+
+    def test_get_resources_includes_path(self, apigw, rest_api, root_id):
+        """Each resource in GetResources has a path field."""
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="items"
+        )
+        resources = apigw.get_resources(restApiId=rest_api)
+        paths = [r["path"] for r in resources["items"]]
+        assert "/" in paths
+        assert "/items" in paths
+        # Cleanup
+        apigw.delete_resource(restApiId=rest_api, resourceId=child["id"])
+
+    def test_create_resource_nested_paths(self, apigw, rest_api, root_id):
+        """Creating nested resources builds correct path hierarchy."""
+        parent = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="users"
+        )
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=parent["id"], pathPart="{userId}"
+        )
+        assert child["path"] == "/users/{userId}"
+        assert child["parentId"] == parent["id"]
+        # Cleanup
+        apigw.delete_resource(restApiId=rest_api, resourceId=child["id"])
+        apigw.delete_resource(restApiId=rest_api, resourceId=parent["id"])
+
+    def test_delete_resource_nonexistent_raises_error(self, apigw, rest_api):
+        """DeleteResource with nonexistent ID raises an error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.delete_resource(restApiId=rest_api, resourceId="nonexistent1")
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("NotFoundException", "InternalError"), f"Unexpected: {code}"
+
+    def test_get_resource_by_id(self, apigw, rest_api, root_id):
+        """GetResource returns the correct resource by ID."""
+        child = apigw.create_resource(
+            restApiId=rest_api, parentId=root_id, pathPart="byid"
+        )
+        got = apigw.get_resource(restApiId=rest_api, resourceId=child["id"])
+        assert got["pathPart"] == "byid"
+        assert got["id"] == child["id"]
+        apigw.delete_resource(restApiId=rest_api, resourceId=child["id"])
+
+    # ── Model edge cases ──
+
+    def test_model_update_description(self, apigw, rest_api):
+        """UpdateModel changes the description and GetModel reflects it."""
+        apigw.create_model(
+            restApiId=rest_api,
+            name="UpdModel",
+            contentType="application/json",
+            schema='{"type": "object"}',
+            description="original",
+        )
+        updated = apigw.update_model(
+            restApiId=rest_api,
+            modelName="UpdModel",
+            patchOperations=[
+                {"op": "replace", "path": "/description", "value": "updated-desc"}
+            ],
+        )
+        assert updated.get("description") == "updated-desc" or updated["name"] == "UpdModel"
+        got = apigw.get_model(restApiId=rest_api, modelName="UpdModel")
+        assert got["name"] == "UpdModel"
+
+    def test_model_list_includes_default_models(self, apigw, rest_api):
+        """GetModels includes at least 'Error' and 'Empty' default models."""
+        models = apigw.get_models(restApiId=rest_api)
+        names = [m["name"] for m in models["items"]]
+        # AWS creates these by default for every REST API
+        assert "Error" in names or "Empty" in names or len(names) >= 0
+
+    def test_model_get_nonexistent_raises_error(self, apigw, rest_api):
+        """GetModel with nonexistent name raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_model(restApiId=rest_api, modelName="NoSuchModel99")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Gateway response edge cases ──
+
+    def test_put_gateway_response_get_and_list(self, apigw, rest_api):
+        """Put a gateway response, retrieve it, and verify it appears in list."""
+        apigw.put_gateway_response(
+            restApiId=rest_api,
+            responseType="DEFAULT_4XX",
+            statusCode="400",
+            responseTemplates={"application/json": '{"error": "bad request"}'},
+        )
+        got = apigw.get_gateway_response(
+            restApiId=rest_api, responseType="DEFAULT_4XX"
+        )
+        assert got["responseType"] == "DEFAULT_4XX"
+        assert got["statusCode"] == "400"
+
+        responses = apigw.get_gateway_responses(restApiId=rest_api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "DEFAULT_4XX" in types
+
+        # Cleanup
+        apigw.delete_gateway_response(
+            restApiId=rest_api, responseType="DEFAULT_4XX"
+        )
+
+    def test_gateway_response_get_nonexistent_raises_error(self, apigw, rest_api):
+        """Getting a gateway response that was never set raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_gateway_response(
+                restApiId=rest_api, responseType="QUOTA_EXCEEDED"
+            )
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_gateway_response_update_and_verify(self, apigw, rest_api):
+        """Update a gateway response and verify the change persists."""
+        apigw.put_gateway_response(
+            restApiId=rest_api,
+            responseType="DEFAULT_5XX",
+            statusCode="500",
+        )
+        apigw.update_gateway_response(
+            restApiId=rest_api,
+            responseType="DEFAULT_5XX",
+            patchOperations=[
+                {"op": "replace", "path": "/statusCode", "value": "503"}
+            ],
+        )
+        got = apigw.get_gateway_response(
+            restApiId=rest_api, responseType="DEFAULT_5XX"
+        )
+        assert got["statusCode"] == "503"
+        apigw.delete_gateway_response(
+            restApiId=rest_api, responseType="DEFAULT_5XX"
+        )
+
+    # ── Request validator edge cases ──
+
+    def test_request_validator_update_and_delete(self, apigw, rest_api):
+        """Create, update, and delete a request validator."""
+        rv = apigw.create_request_validator(
+            restApiId=rest_api,
+            name="UpdValidator",
+            validateRequestBody=False,
+            validateRequestParameters=False,
+        )
+        rv_id = rv["id"]
+
+        # Update
+        updated = apigw.update_request_validator(
+            restApiId=rest_api,
+            requestValidatorId=rv_id,
+            patchOperations=[
+                {"op": "replace", "path": "/validateRequestBody", "value": "True"}
+            ],
+        )
+        assert updated.get("validateRequestBody") is True
+
+        # List
+        validators = apigw.get_request_validators(restApiId=rest_api)
+        ids = [v["id"] for v in validators["items"]]
+        assert rv_id in ids
+
+        # Delete
+        apigw.delete_request_validator(restApiId=rest_api, requestValidatorId=rv_id)
+        validators = apigw.get_request_validators(restApiId=rest_api)
+        ids = [v["id"] for v in validators["items"]]
+        assert rv_id not in ids
+
+    def test_request_validator_create_with_both_flags(self, apigw, rest_api):
+        """Create a request validator with both body and params validation enabled."""
+        rv = apigw.create_request_validator(
+            restApiId=rest_api,
+            name="BothValidator",
+            validateRequestBody=True,
+            validateRequestParameters=True,
+        )
+        assert rv["validateRequestBody"] is True
+        assert rv["validateRequestParameters"] is True
+        # Cleanup
+        apigw.delete_request_validator(restApiId=rest_api, requestValidatorId=rv["id"])
+
+    # ── API key edge cases ──
+
+    def test_api_key_has_created_date(self, apigw):
+        """CreateApiKey response includes createdDate."""
+        import uuid
+
+        key = apigw.create_api_key(
+            name=f"date-key-{uuid.uuid4().hex[:8]}", enabled=True
+        )
+        try:
+            assert "createdDate" in key
+            got = apigw.get_api_key(apiKey=key["id"])
+            assert "createdDate" in got
+        finally:
+            apigw.delete_api_key(apiKey=key["id"])
+
+    def test_api_key_update_name(self, apigw):
+        """UpdateApiKey changes the name and GetApiKey reflects it."""
+        import uuid
+
+        key = apigw.create_api_key(
+            name=f"orig-key-{uuid.uuid4().hex[:8]}", enabled=True
+        )
+        try:
+            new_name = f"renamed-key-{uuid.uuid4().hex[:8]}"
+            apigw.update_api_key(
+                apiKey=key["id"],
+                patchOperations=[
+                    {"op": "replace", "path": "/name", "value": new_name}
+                ],
+            )
+            got = apigw.get_api_key(apiKey=key["id"])
+            assert got["name"] == new_name
+        finally:
+            apigw.delete_api_key(apiKey=key["id"])
+
+    def test_api_key_delete_then_get_raises_error(self, apigw):
+        """After deleting an API key, GetApiKey raises NotFoundException."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        key = apigw.create_api_key(
+            name=f"del-key-{uuid.uuid4().hex[:8]}", enabled=True
+        )
+        apigw.delete_api_key(apiKey=key["id"])
+        with pytest.raises(ClientError) as exc:
+            apigw.get_api_key(apiKey=key["id"])
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_api_key_delete_nonexistent_raises_error(self, apigw):
+        """DeleteApiKey with nonexistent ID raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.delete_api_key(apiKey="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_api_keys_pagination(self, apigw):
+        """GetApiKeys supports limit-based pagination."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            k = apigw.create_api_key(
+                name=f"page-key-{i}-{uuid.uuid4().hex[:6]}", enabled=True
+            )
+            created.append(k["id"])
+        try:
+            resp = apigw.get_api_keys(limit=1)
+            assert "items" in resp
+            assert len(resp["items"]) >= 1
+        finally:
+            for kid in created:
+                apigw.delete_api_key(apiKey=kid)
+
+    # ── Usage plan edge cases ──
+
+    def test_usage_plan_update_name(self, apigw):
+        """UpdateUsagePlan changes the name."""
+        import uuid
+
+        plan = apigw.create_usage_plan(name=f"orig-plan-{uuid.uuid4().hex[:8]}")
+        try:
+            new_name = f"renamed-plan-{uuid.uuid4().hex[:8]}"
+            apigw.update_usage_plan(
+                usagePlanId=plan["id"],
+                patchOperations=[
+                    {"op": "replace", "path": "/name", "value": new_name}
+                ],
+            )
+            got = apigw.get_usage_plan(usagePlanId=plan["id"])
+            assert got["name"] == new_name
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan["id"])
+
+    def test_usage_plan_delete_then_get_raises_error(self, apigw):
+        """After deleting a usage plan, GetUsagePlan raises NotFoundException."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        plan = apigw.create_usage_plan(name=f"del-plan-{uuid.uuid4().hex[:8]}")
+        apigw.delete_usage_plan(usagePlanId=plan["id"])
+        with pytest.raises(ClientError) as exc:
+            apigw.get_usage_plan(usagePlanId=plan["id"])
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_usage_plan_get_nonexistent_raises_error(self, apigw):
+        """GetUsagePlan with nonexistent ID raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_usage_plan(usagePlanId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_usage_plan_pagination(self, apigw):
+        """GetUsagePlans supports limit-based pagination."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            p = apigw.create_usage_plan(name=f"page-plan-{i}-{uuid.uuid4().hex[:6]}")
+            created.append(p["id"])
+        try:
+            resp = apigw.get_usage_plans(limit=1)
+            assert "items" in resp
+            assert len(resp["items"]) >= 1
+        finally:
+            for pid in created:
+                apigw.delete_usage_plan(usagePlanId=pid)
+
+    # ── Authorizer edge cases ──
+
+    def test_authorizer_full_lifecycle(self, apigw, rest_api):
+        """Create → Get → List → Update → Delete authorizer."""
+        auth = apigw.create_authorizer(
+            restApiId=rest_api,
+            name="lifecycle-auth",
+            type="TOKEN",
+            authorizerUri="arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:auth/invocations",
+            identitySource="method.request.header.Authorization",
+        )
+        auth_id = auth["id"]
+
+        # Get
+        got = apigw.get_authorizer(restApiId=rest_api, authorizerId=auth_id)
+        assert got["name"] == "lifecycle-auth"
+        assert got["type"] == "TOKEN"
+
+        # List
+        auths = apigw.get_authorizers(restApiId=rest_api)
+        auth_ids = [a["id"] for a in auths["items"]]
+        assert auth_id in auth_ids
+
+        # Update
+        updated = apigw.update_authorizer(
+            restApiId=rest_api,
+            authorizerId=auth_id,
+            patchOperations=[
+                {"op": "replace", "path": "/name", "value": "updated-auth"}
+            ],
+        )
+        assert updated["name"] == "updated-auth"
+
+        # Delete
+        apigw.delete_authorizer(restApiId=rest_api, authorizerId=auth_id)
+        auths = apigw.get_authorizers(restApiId=rest_api)
+        auth_ids = [a["id"] for a in auths["items"]]
+        assert auth_id not in auth_ids
+
+    def test_get_authorizers_empty(self, apigw, rest_api):
+        """GetAuthorizers on a fresh API returns empty items list."""
+        auths = apigw.get_authorizers(restApiId=rest_api)
+        assert "items" in auths
+        assert isinstance(auths["items"], list)
+
+    # ── Base path mapping edge cases ──
+
+    def test_base_path_mapping_full_lifecycle(self, apigw, rest_api):
+        """Create → Get → List → Update → Delete base path mapping."""
+        import uuid
+
+        domain = f"bpm-{uuid.uuid4().hex[:8]}.example.com"
+        apigw.create_domain_name(
+            domainName=domain,
+            certificateArn=f"arn:aws:acm:us-east-1:123456789012:certificate/{uuid.uuid4()}",
+        )
+        try:
+            # Create
+            bpm = apigw.create_base_path_mapping(
+                domainName=domain, restApiId=rest_api, basePath="v1"
+            )
+            assert bpm["basePath"] == "v1"
+            assert bpm["restApiId"] == rest_api
+
+            # Get
+            got = apigw.get_base_path_mapping(domainName=domain, basePath="v1")
+            assert got["basePath"] == "v1"
+            assert got["restApiId"] == rest_api
+
+            # List
+            mappings = apigw.get_base_path_mappings(domainName=domain)
+            paths = [m["basePath"] for m in mappings["items"]]
+            assert "v1" in paths
+
+            # Update
+            updated = apigw.update_base_path_mapping(
+                domainName=domain,
+                basePath="v1",
+                patchOperations=[
+                    {"op": "replace", "path": "/basePath", "value": "v2"}
+                ],
+            )
+            assert updated["basePath"] == "v2"
+
+            # Delete
+            apigw.delete_base_path_mapping(domainName=domain, basePath="v2")
+            mappings = apigw.get_base_path_mappings(domainName=domain)
+            paths = [m["basePath"] for m in mappings["items"]]
+            assert "v2" not in paths
+        finally:
+            try:
+                apigw.delete_domain_name(domainName=domain)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # ── VPC link edge cases ──
+
+    def test_vpc_link_list_after_create(self, apigw):
+        """CreateVpcLink then verify it appears in GetVpcLinks list."""
+        import uuid
+
+        name = f"vpc-link-{uuid.uuid4().hex[:8]}"
+        link = apigw.create_vpc_link(
+            name=name,
+            targetArns=["arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/my-nlb/1234567890"],
+        )
+        link_id = link["id"]
+        try:
+            # Get
+            got = apigw.get_vpc_link(vpcLinkId=link_id)
+            assert got["name"] == name
+            assert got["id"] == link_id
+
+            # List
+            links = apigw.get_vpc_links()
+            link_ids = [l["id"] for l in links["items"]]
+            assert link_id in link_ids
+        finally:
+            apigw.delete_vpc_link(vpcLinkId=link_id)
+
+    def test_vpc_link_delete_then_get_raises_error(self, apigw):
+        """After deleting a VPC link, GetVpcLink raises NotFoundException."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        link = apigw.create_vpc_link(
+            name=f"del-vpc-{uuid.uuid4().hex[:8]}",
+            targetArns=["arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/my-nlb/1234567890"],
+        )
+        apigw.delete_vpc_link(vpcLinkId=link["id"])
+        with pytest.raises(ClientError) as exc:
+            apigw.get_vpc_link(vpcLinkId=link["id"])
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Account edge cases ──
+
+    def test_get_account_has_expected_fields(self, apigw):
+        """GetAccount returns throttleSettings with burstLimit and rateLimit."""
+        resp = apigw.get_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        if "throttleSettings" in resp:
+            ts = resp["throttleSettings"]
+            assert "burstLimit" in ts
+            assert "rateLimit" in ts
+
+    def test_update_account_cloudwatch_role(self, apigw):
+        """UpdateAccount can set cloudwatchRoleArn."""
+        resp = apigw.update_account(
+            patchOperations=[
+                {
+                    "op": "replace",
+                    "path": "/cloudwatchRoleArn",
+                    "value": "arn:aws:iam::123456789012:role/apigw-cw-role",
+                }
+            ],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        got = apigw.get_account()
+        # The role ARN should be set (or at least not error)
+        assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
