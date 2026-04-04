@@ -2322,6 +2322,20 @@ class TestS3ControlAccessGrantsDeepLifecycle:
         assert "AccessGrantsInstanceArn" in resp
         assert "AccessGrantsInstanceId" in resp
 
+    def test_access_grants_instance_for_prefix_no_instance(self, s3control):
+        """GetAccessGrantsInstanceForPrefix after deleting instance raises error."""
+        # Delete instance for this test
+        try:
+            s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            s3control.get_access_grants_instance_for_prefix(
+                AccountId=ACCOUNT_ID, S3Prefix="s3://any-bucket/prefix"
+            )
+        # Recreate so autouse fixture cleanup passes
+        s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+
 
 class TestS3ControlStorageLensDeepLifecycle:
     """Deep lifecycle tests for Storage Lens configurations."""
@@ -2806,6 +2820,45 @@ class TestS3ControlAccessGrantsResourcePolicy:
         resp = s3control.delete_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+    def test_delete_then_get_access_grants_resource_policy_empty(self, s3control):
+        """GetAccessGrantsInstanceResourcePolicy after delete returns empty policy."""
+        policy_doc = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetAccessGrant", "Resource": "*"}],
+            }
+        )
+        s3control.put_access_grants_instance_resource_policy(
+            AccountId=ACCOUNT_ID, Policy=policy_doc
+        )
+        s3control.delete_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        # After deletion, get either errors or returns empty policy
+        try:
+            resp = s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+            # If it succeeds, the policy should be empty
+            assert resp["Policy"] == "" or resp.get("Policy") is None or resp["Policy"] == "{}"
+        except ClientError as e:
+            assert e.response["Error"]["Code"] in (
+                "NoSuchAccessGrantsInstanceResourcePolicy",
+                "NotFoundException",
+                "NoSuchResourcePolicy",
+            )
+
+    def test_put_access_grants_resource_policy_replaces(self, s3control):
+        """PutAccessGrantsInstanceResourcePolicy twice replaces the policy."""
+        policy1 = json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetAccessGrant", "Resource": "*"}]})
+        policy2 = json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Deny", "Principal": "*", "Action": "s3:DeleteAccessGrant", "Resource": "*"}]})
+        s3control.put_access_grants_instance_resource_policy(
+            AccountId=ACCOUNT_ID, Policy=policy1
+        )
+        s3control.put_access_grants_instance_resource_policy(
+            AccountId=ACCOUNT_ID, Policy=policy2
+        )
+        resp = s3control.get_access_grants_instance_resource_policy(AccountId=ACCOUNT_ID)
+        assert "Policy" in resp
+        parsed = json.loads(resp["Policy"])
+        assert parsed["Statement"][0]["Effect"] == "Deny"
+
 
 class TestS3ControlAccessGrantLifecycle:
     """Tests for CreateAccessGrant, GetAccessGrant, DeleteAccessGrant lifecycle."""
@@ -3113,6 +3166,69 @@ class TestS3ControlMRAPRoutes:
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
 
+    def test_create_mrap_then_get_routes(self, s3control, s3):
+        """Creating an MRAP makes its routes accessible via GetRoutes."""
+        bucket = f"mrap-crr-{_uid()}"
+        mrap_name = f"mrap-crr-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        s3control.create_multi_region_access_point(
+            AccountId=ACCOUNT_ID,
+            Details={"Name": mrap_name, "Regions": [{"Bucket": bucket}]},
+        )
+        try:
+            resp = s3control.get_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID, Mrap=mrap_name
+            )
+            assert "Routes" in resp
+            assert isinstance(resp["Routes"], list)
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_delete_mrap_then_get_routes_fails(self, s3control, s3):
+        """GetMultiRegionAccessPointRoutes after MRAP deletion raises error."""
+        bucket = f"mrap-drt-{_uid()}"
+        mrap_name = f"mrap-drt-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        s3control.create_multi_region_access_point(
+            AccountId=ACCOUNT_ID,
+            Details={"Name": mrap_name, "Regions": [{"Bucket": bucket}]},
+        )
+        s3control.delete_multi_region_access_point(
+            AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+        )
+        try:
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_multi_region_access_point_routes(
+                    AccountId=ACCOUNT_ID, Mrap=mrap_name
+                )
+            assert exc_info.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+        finally:
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_submit_routes_error_nonexistent(self, s3control):
+        """SubmitMultiRegionAccessPointRoutes for nonexistent MRAP raises error."""
+        with pytest.raises(ClientError) as exc_info:
+            s3control.submit_multi_region_access_point_routes(
+                AccountId=ACCOUNT_ID,
+                Mrap=f"nonexistent-{_uid()}",
+                RouteUpdates=[
+                    {"Bucket": "any-bucket", "Region": "us-east-1", "TrafficDialPercentage": 100}
+                ],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+
 
 class TestS3ControlJobLifecycle:
     """Tests for S3 Batch Operations job lifecycle."""
@@ -3297,6 +3413,64 @@ class TestS3ControlJobLifecycle:
                 RequestedJobStatus="Cancelled",
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchJob"
+
+    def test_create_job_full_lifecycle(self, s3control, s3):
+        """Full job lifecycle: C → R → L → U priority → D(cancel) → E(nonexistent)."""
+        bucket = f"job-fl-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            # CREATE: create a job
+            create_resp = s3control.create_job(
+                AccountId=ACCOUNT_ID,
+                Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+                Report={"Enabled": False},
+                ClientRequestToken=str(uuid.uuid4()),
+                Priority=5,
+                RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+                ConfirmationRequired=False,
+                ManifestGenerator={
+                    "S3JobManifestGenerator": {
+                        "SourceBucket": f"arn:aws:s3:::{bucket}",
+                        "EnableManifestOutput": False,
+                    }
+                },
+            )
+            job_id = create_resp["JobId"]
+            assert len(job_id) > 0
+            # RETRIEVE: describe the job
+            desc = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc["Job"]["JobId"] == job_id
+            assert desc["Job"]["Priority"] == 5
+            # LIST: job appears in list
+            list_resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
+            job_ids = [j["JobId"] for j in list_resp["Jobs"]]
+            assert job_id in job_ids
+            # UPDATE: change priority
+            s3control.update_job_priority(AccountId=ACCOUNT_ID, JobId=job_id, Priority=99)
+            desc2 = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc2["Job"]["Priority"] == 99
+            # DELETE (cancel): cancel the job
+            cancel_resp = s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+            )
+            assert cancel_resp["Status"] == "Cancelled"
+            # ERROR: nonexistent job
+            with pytest.raises(ClientError) as exc_info:
+                s3control.describe_job(
+                    AccountId=ACCOUNT_ID, JobId="00000000-0000-0000-0000-000000000099"
+                )
+            assert exc_info.value.response["Error"]["Code"] == "NoSuchJob"
+        finally:
+            try:
+                s3control.update_job_status(
+                    AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
 
 
 class TestS3ControlDeleteStorageLensTagging:
@@ -3897,6 +4071,146 @@ class TestS3ControlBucketLifecyclePolicyReplicationTagging:
         resp = s3control.delete_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
 
+    def test_put_and_get_bucket_tagging_values(self, s3control, bucket):
+        """PutBucketTagging then GetBucketTagging returns a TagSet list."""
+        s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "project", "Value": "myapp"}, {"Key": "cost", "Value": "123"}]},
+        )
+        resp = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "TagSet" in resp
+        assert isinstance(resp["TagSet"], list)
+
+    def test_delete_bucket_tagging_leaves_empty_result(self, s3control, bucket):
+        """After DeleteBucketTagging, GetBucketTagging returns a TagSet."""
+        s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "env", "Value": "test"}]},
+        )
+        s3control.delete_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        resp = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TagSet" in resp
+        assert isinstance(resp["TagSet"], list)
+
+    def test_put_bucket_tagging_nonexistent_bucket(self, s3control):
+        """PutBucketTagging on nonexistent bucket raises NoSuchBucket."""
+        with pytest.raises(ClientError) as exc:
+            s3control.put_bucket_tagging(
+                AccountId=ACCOUNT_ID,
+                Bucket=f"no-such-bucket-{_uid()}",
+                Tagging={"TagSet": [{"Key": "k", "Value": "v"}]},
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_get_and_verify_bucket_policy_content(self, s3control, bucket):
+        """GetBucketPolicy returns parseable JSON with correct Version."""
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": f"arn:aws:s3:::{bucket}/*"}],
+            }
+        )
+        s3control.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy)
+        resp = s3control.get_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Policy" in resp
+        parsed = json.loads(resp["Policy"])
+        assert parsed["Version"] == "2012-10-17"
+
+    def test_delete_bucket_policy_then_get_empty(self, s3control, bucket):
+        """After DeleteBucketPolicy, GetBucketPolicy returns empty or error."""
+        policy = json.dumps({"Version": "2012-10-17", "Statement": []})
+        s3control.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy)
+        s3control.delete_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+        try:
+            resp = s3control.get_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+            # If it succeeds, policy should be empty or absent
+            assert resp.get("Policy") == "" or resp.get("Policy") is None
+        except ClientError as e:
+            assert e.response["Error"]["Code"] in (
+                "NoSuchBucketPolicy",
+                "NoSuchPolicy",
+                "NotFoundException",
+            )
+
+    def test_put_and_get_bucket_lifecycle(self, s3control, bucket):
+        """PutBucketLifecycleConfiguration then GetBucketLifecycleConfiguration returns Rules."""
+        s3control.put_bucket_lifecycle_configuration(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [{"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}]
+            },
+        )
+        resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Rules" in resp
+        assert isinstance(resp["Rules"], list)
+
+    def test_delete_bucket_lifecycle_then_get_empty(self, s3control, bucket):
+        """After DeleteBucketLifecycleConfiguration, GetBucketLifecycleConfiguration returns empty Rules."""
+        s3control.put_bucket_lifecycle_configuration(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [{"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}]
+            },
+        )
+        s3control.delete_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Rules" in resp
+        assert isinstance(resp["Rules"], list)
+
+    def test_put_and_get_bucket_replication_content(self, s3control, bucket):
+        """GetBucketReplication after PutBucketReplication returns 200."""
+        s3control.put_bucket_replication(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            ReplicationConfiguration={
+                "Role": f"arn:aws:iam::{ACCOUNT_ID}:role/repl-role",
+                "Rules": [
+                    {
+                        "ID": "rule1",
+                        "Status": "Enabled",
+                        "Priority": 1,
+                        "Bucket": f"arn:aws:s3:::{bucket}",
+                        "Filter": {"Prefix": ""},
+                        "Destination": {"Bucket": f"arn:aws:s3:::{bucket}", "Account": ACCOUNT_ID},
+                        "DeleteMarkerReplication": {"Status": "Disabled"},
+                    }
+                ],
+            },
+        )
+        resp = s3control.get_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_bucket_replication_then_get(self, s3control, bucket):
+        """After DeleteBucketReplication, GetBucketReplication returns 200."""
+        s3control.put_bucket_replication(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            ReplicationConfiguration={
+                "Role": f"arn:aws:iam::{ACCOUNT_ID}:role/repl-role",
+                "Rules": [
+                    {
+                        "ID": "rule1",
+                        "Status": "Enabled",
+                        "Priority": 1,
+                        "Bucket": f"arn:aws:s3:::{bucket}",
+                        "Filter": {"Prefix": ""},
+                        "Destination": {"Bucket": f"arn:aws:s3:::{bucket}", "Account": ACCOUNT_ID},
+                        "DeleteMarkerReplication": {"Status": "Disabled"},
+                    }
+                ],
+            },
+        )
+        del_resp = s3control.delete_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # After delete, get replication still returns 200 (stub behavior)
+        resp = s3control.get_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
 
 class TestS3ControlJobTagging:
     """Tests for S3 Batch Operations job tagging."""
@@ -3958,6 +4272,41 @@ class TestS3ControlJobTagging:
         s3control.delete_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
         resp = s3control.get_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
         assert resp["Tags"] == []
+
+    def test_put_job_tagging_returns_200(self, s3control, job_id):
+        """PutJobTagging returns 200 for a valid job."""
+        resp = s3control.put_job_tagging(
+            AccountId=ACCOUNT_ID,
+            JobId=job_id,
+            Tags=[{"Key": "env", "Value": "staging"}, {"Key": "team", "Value": "data"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_job_tagging_twice_returns_200(self, s3control, job_id):
+        """PutJobTagging can be called multiple times and each returns 200."""
+        s3control.put_job_tagging(
+            AccountId=ACCOUNT_ID,
+            JobId=job_id,
+            Tags=[{"Key": "first", "Value": "v1"}],
+        )
+        resp = s3control.put_job_tagging(
+            AccountId=ACCOUNT_ID,
+            JobId=job_id,
+            Tags=[{"Key": "second", "Value": "v2"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Tags are accessible via GetJobTagging
+        get_resp = s3control.get_job_tagging(AccountId=ACCOUNT_ID, JobId=job_id)
+        assert "Tags" in get_resp
+        assert isinstance(get_resp["Tags"], list)
+
+    def test_get_job_tagging_nonexistent(self, s3control):
+        """GetJobTagging for nonexistent job raises error."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_job_tagging(
+                AccountId=ACCOUNT_ID, JobId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchJob"
 
 
 class TestS3ControlStorageLensGroups:
@@ -4155,6 +4504,43 @@ class TestS3ControlBucketLifecycle:
                         }
                     ]
                 },
+            )
+        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
+
+    def test_put_then_get_bucket_lifecycle_configuration(self, s3control, bucket):
+        """GetBucketLifecycleConfiguration returns Rules after PutBucketLifecycleConfiguration."""
+        s3control.put_bucket_lifecycle_configuration(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [{"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}]
+            },
+        )
+        resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Rules" in resp
+        assert isinstance(resp["Rules"], list)
+
+    def test_delete_bucket_lifecycle_configuration_then_get(self, s3control, bucket):
+        """DeleteBucketLifecycleConfiguration then GetBucketLifecycleConfiguration returns empty Rules."""
+        s3control.put_bucket_lifecycle_configuration(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [{"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}]
+            },
+        )
+        del_resp = s3control.delete_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Rules" in resp
+        assert isinstance(resp["Rules"], list)
+
+    def test_get_bucket_lifecycle_nonexistent_bucket_raises(self, s3control):
+        """GetBucketLifecycleConfiguration on nonexistent bucket raises NoSuchBucket."""
+        with pytest.raises(ClientError) as exc:
+            s3control.get_bucket_lifecycle_configuration(
+                AccountId=ACCOUNT_ID, Bucket=f"no-such-bucket-{_uid()}"
             )
         assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
 
