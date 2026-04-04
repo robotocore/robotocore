@@ -1,5 +1,6 @@
 """AWS Batch compatibility tests."""
 
+import re
 import uuid
 
 import pytest
@@ -1133,3 +1134,283 @@ class TestGetJobQueueSnapshot:
         with pytest.raises(batch.exceptions.ClientException) as exc_info:
             batch.get_job_queue_snapshot(jobQueue=_unique("nonexist-jq"))
         assert "does not exist" in str(exc_info.value)
+
+
+def _create_full_infra(batch):
+    """Helper to create CE + JQ + JD. Returns (ce_name, jq_name, jd_name)."""
+    ce_name = _unique("edge-ce")
+    batch.create_compute_environment(
+        computeEnvironmentName=ce_name,
+        type="MANAGED",
+        computeResources={
+            "type": "FARGATE",
+            "maxvCpus": 2,
+            "subnets": ["subnet-12345"],
+            "securityGroupIds": ["sg-12345"],
+        },
+    )
+    ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+    ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+
+    jq_name = _unique("edge-jq")
+    batch.create_job_queue(
+        jobQueueName=jq_name,
+        priority=1,
+        computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+    )
+
+    jd_name = _unique("edge-jd")
+    batch.register_job_definition(
+        jobDefinitionName=jd_name,
+        type="container",
+        containerProperties={"image": "busybox", "vcpus": 1, "memory": 128},
+    )
+
+    return ce_name, jq_name, jd_name
+
+
+def _cleanup_full_infra(batch, ce_name, jq_name, jd_name, jd_revision=1):
+    """Helper to teardown CE + JQ + JD."""
+    try:
+        batch.deregister_job_definition(jobDefinition=f"{jd_name}:{jd_revision}")
+    except Exception:
+        pass
+    try:
+        batch.delete_job_queue(jobQueue=jq_name)
+    except Exception:
+        pass
+    try:
+        batch.delete_compute_environment(computeEnvironment=ce_name)
+    except Exception:
+        pass
+
+
+class TestBatchEdgeCases:
+    def test_describe_jobs_nonexistent(self, batch):
+        """AWS returns empty list for unknown job IDs."""
+        resp = batch.describe_jobs(jobs=["fake-job-id-00000000"])
+        assert resp["jobs"] == []
+
+    def test_list_jobs_multiple_count(self, batch):
+        """Submitting 3 jobs produces at least 3 entries in listJobs."""
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            for i in range(3):
+                batch.submit_job(
+                    jobName=_unique(f"multi-job-{i}"),
+                    jobQueue=jq_name,
+                    jobDefinition=f"{jd_name}:1",
+                )
+            resp = batch.list_jobs(jobQueue=jq_name)
+            assert len(resp["jobSummaryList"]) >= 3
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_submit_job_returns_job_arn(self, batch):
+        """Described job has a jobArn that includes the job ID."""
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            submitted = batch.submit_job(
+                jobName=_unique("arn-job"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )
+            job_id = submitted["jobId"]
+            resp = batch.describe_jobs(jobs=[job_id])
+            job = resp["jobs"][0]
+            assert "jobArn" in job
+            assert job_id in job["jobArn"]
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_submit_job_has_created_at(self, batch):
+        """Described job has a createdAt timestamp."""
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            submitted = batch.submit_job(
+                jobName=_unique("cat-job"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )
+            job_id = submitted["jobId"]
+            resp = batch.describe_jobs(jobs=[job_id])
+            job = resp["jobs"][0]
+            assert "createdAt" in job
+            assert job["createdAt"] is not None
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_submit_job_status_is_valid(self, batch):
+        """Newly submitted job has one of the recognized AWS status values."""
+        valid_statuses = {
+            "SUBMITTED", "PENDING", "RUNNABLE", "STARTING", "RUNNING", "SUCCEEDED", "FAILED"
+        }
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            submitted = batch.submit_job(
+                jobName=_unique("status-job"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )
+            job_id = submitted["jobId"]
+            resp = batch.describe_jobs(jobs=[job_id])
+            job = resp["jobs"][0]
+            assert job["status"] in valid_statuses
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_compute_environment_arn_format(self, batch):
+        """CE ARN contains 'compute-environment/' segment."""
+        ce_name = _unique("arn-ce")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        try:
+            resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+            arn = resp["computeEnvironments"][0]["computeEnvironmentArn"]
+            assert "compute-environment/" in arn
+            assert re.match(r"arn:aws:batch:.*:.*:compute-environment/.*", arn)
+        finally:
+            batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_job_queue_arn_format(self, batch):
+        """Job queue ARN contains 'job-queue/' segment."""
+        ce_name = _unique("jqarn-ce")
+        batch.create_compute_environment(
+            computeEnvironmentName=ce_name,
+            type="MANAGED",
+            computeResources={
+                "type": "FARGATE",
+                "maxvCpus": 2,
+                "subnets": ["subnet-12345"],
+                "securityGroupIds": ["sg-12345"],
+            },
+        )
+        ce_resp = batch.describe_compute_environments(computeEnvironments=[ce_name])
+        ce_arn = ce_resp["computeEnvironments"][0]["computeEnvironmentArn"]
+        jq_name = _unique("jqarn-jq")
+        batch.create_job_queue(
+            jobQueueName=jq_name,
+            priority=1,
+            computeEnvironmentOrder=[{"order": 1, "computeEnvironment": ce_arn}],
+        )
+        try:
+            resp = batch.describe_job_queues(jobQueues=[jq_name])
+            arn = resp["jobQueues"][0]["jobQueueArn"]
+            assert "job-queue/" in arn
+        finally:
+            batch.delete_job_queue(jobQueue=jq_name)
+            batch.delete_compute_environment(computeEnvironment=ce_name)
+
+    def test_job_definition_arn_format(self, batch):
+        """Job definition ARN contains 'job-definition/' and the name."""
+        jd_name = _unique("jdarn-jd")
+        batch.register_job_definition(
+            jobDefinitionName=jd_name,
+            type="container",
+            containerProperties={"image": "busybox", "vcpus": 1, "memory": 128},
+        )
+        try:
+            resp = batch.describe_job_definitions(jobDefinitionName=jd_name)
+            arn = resp["jobDefinitions"][0]["jobDefinitionArn"]
+            assert "job-definition/" in arn
+            assert jd_name in arn
+        finally:
+            batch.deregister_job_definition(jobDefinition=f"{jd_name}:1")
+
+    def test_cancel_job_nonexistent(self, batch):
+        """Cancelling a nonexistent job raises ClientException."""
+        with pytest.raises(batch.exceptions.ClientException):
+            batch.cancel_job(jobId="fake-id-00000000", reason="test")
+
+    def test_terminate_job_nonexistent(self, batch):
+        """Terminating a nonexistent job raises ClientException."""
+        with pytest.raises(batch.exceptions.ClientException):
+            batch.terminate_job(jobId="fake-id-00000000", reason="test")
+
+    def test_list_jobs_with_runnable_filter(self, batch):
+        """list_jobs with RUNNABLE filter returns jobSummaryList key without error."""
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            batch.submit_job(
+                jobName=_unique("runnable-job"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )
+            resp = batch.list_jobs(jobQueue=jq_name, jobStatus="RUNNABLE")
+            assert "jobSummaryList" in resp
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_describe_jobs_multiple_ids(self, batch):
+        """describe_jobs with 2 job IDs returns exactly 2 jobs."""
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            id1 = batch.submit_job(
+                jobName=_unique("multi-a"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )["jobId"]
+            id2 = batch.submit_job(
+                jobName=_unique("multi-b"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )["jobId"]
+            resp = batch.describe_jobs(jobs=[id1, id2])
+            assert len(resp["jobs"]) == 2
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_job_definition_arn_in_submitted_job(self, batch):
+        """Described job's jobDefinition field contains the JD name."""
+        ce_name, jq_name, jd_name = _create_full_infra(batch)
+        try:
+            submitted = batch.submit_job(
+                jobName=_unique("jdref-job"),
+                jobQueue=jq_name,
+                jobDefinition=f"{jd_name}:1",
+            )
+            job_id = submitted["jobId"]
+            resp = batch.describe_jobs(jobs=[job_id])
+            job = resp["jobs"][0]
+            assert "jobDefinition" in job
+            assert jd_name in job["jobDefinition"]
+        finally:
+            _cleanup_full_infra(batch, ce_name, jq_name, jd_name)
+
+    def test_describe_compute_environments_all(self, batch):
+        """describe_compute_environments with no filter returns all created CEs."""
+        names = [_unique("all-ce") for _ in range(2)]
+        for n in names:
+            batch.create_compute_environment(
+                computeEnvironmentName=n,
+                type="MANAGED",
+                computeResources={
+                    "type": "FARGATE",
+                    "maxvCpus": 2,
+                    "subnets": ["subnet-12345"],
+                    "securityGroupIds": ["sg-12345"],
+                },
+            )
+        try:
+            resp = batch.describe_compute_environments()
+            found = {ce["computeEnvironmentName"] for ce in resp["computeEnvironments"]}
+            for n in names:
+                assert n in found
+        finally:
+            for n in names:
+                try:
+                    batch.delete_compute_environment(computeEnvironment=n)
+                except Exception:
+                    pass
+
+
+class TestJobBehavioral:
+    pass
