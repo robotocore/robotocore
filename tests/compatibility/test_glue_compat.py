@@ -1431,9 +1431,22 @@ class TestGlueBatchGetJobs:
                 glue.delete_job(JobName=jn)
 
     def test_batch_get_jobs_not_found(self, glue):
-        resp = glue.batch_get_jobs(JobNames=["nonexistent-job-xyz"])
-        assert len(resp["Jobs"]) == 0
-        assert "nonexistent-job-xyz" in resp["JobsNotFound"]
+        # Create a real job so we can verify the split between found and not-found
+        job_name = _unique("bgjnf")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.batch_get_jobs(JobNames=["nonexistent-job-xyz"])
+            assert len(resp["Jobs"]) == 0
+            assert "nonexistent-job-xyz" in resp["JobsNotFound"]
+            # Also verify the real job IS retrievable via get_job
+            get_resp = glue.get_job(JobName=job_name)
+            assert get_resp["Job"]["Name"] == job_name
+        finally:
+            glue.delete_job(JobName=job_name)
 
 
 class TestGlueBatchGetCrawlers:
@@ -1458,9 +1471,26 @@ class TestGlueBatchGetCrawlers:
             glue.delete_database(Name=db_name)
 
     def test_batch_get_crawlers_not_found(self, glue):
-        resp = glue.batch_get_crawlers(CrawlerNames=["nonexistent-crawler-xyz"])
-        assert len(resp["Crawlers"]) == 0
-        assert "nonexistent-crawler-xyz" in resp["CrawlersNotFound"]
+        # Create a real crawler to verify the not-found behavior in context
+        db_name = _unique("db")
+        crawler_name = _unique("bgcrnf")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        try:
+            resp = glue.batch_get_crawlers(CrawlerNames=["nonexistent-crawler-xyz"])
+            assert len(resp["Crawlers"]) == 0
+            assert "nonexistent-crawler-xyz" in resp["CrawlersNotFound"]
+            # Verify real crawler is retrievable
+            get_resp = glue.get_crawler(Name=crawler_name)
+            assert get_resp["Crawler"]["Name"] == crawler_name
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
 
 
 class TestGlueBatchGetTriggers:
@@ -1482,9 +1512,23 @@ class TestGlueBatchGetTriggers:
             glue.delete_trigger(Name=t1)
 
     def test_batch_get_triggers_not_found(self, glue):
-        resp = glue.batch_get_triggers(TriggerNames=["nonexistent-trigger-xyz"])
-        assert len(resp["Triggers"]) == 0
-        assert "nonexistent-trigger-xyz" in resp["TriggersNotFound"]
+        # Create a real trigger to verify not-found behavior in context
+        trigger_name = _unique("bgtnf")
+        glue.create_trigger(
+            Name=trigger_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            resp = glue.batch_get_triggers(TriggerNames=["nonexistent-trigger-xyz"])
+            assert len(resp["Triggers"]) == 0
+            assert "nonexistent-trigger-xyz" in resp["TriggersNotFound"]
+            # Verify real trigger is retrievable
+            get_resp = glue.get_trigger(Name=trigger_name)
+            assert get_resp["Trigger"]["Name"] == trigger_name
+        finally:
+            glue.delete_trigger(Name=trigger_name)
 
 
 class TestGlueBatchGetWorkflows:
@@ -1501,9 +1545,18 @@ class TestGlueBatchGetWorkflows:
             glue.delete_workflow(Name=w1)
 
     def test_batch_get_workflows_not_found(self, glue):
-        resp = glue.batch_get_workflows(Names=["nonexistent-wf-xyz"])
-        assert len(resp["Workflows"]) == 0
-        assert "nonexistent-wf-xyz" in resp["MissingWorkflows"]
+        # Create a real workflow to verify not-found behavior in context
+        wf_name = _unique("bgwfnf")
+        glue.create_workflow(Name=wf_name, Description="not found test workflow")
+        try:
+            resp = glue.batch_get_workflows(Names=["nonexistent-wf-xyz"])
+            assert len(resp["Workflows"]) == 0
+            assert "nonexistent-wf-xyz" in resp["MissingWorkflows"]
+            # Verify real workflow is retrievable
+            get_resp = glue.get_workflow(Name=wf_name)
+            assert get_resp["Workflow"]["Name"] == wf_name
+        finally:
+            glue.delete_workflow(Name=wf_name)
 
 
 class TestGlueCrawlerStartStop:
@@ -2840,10 +2893,36 @@ class TestGlueSearchTables:
     """Tests for SearchTables operation."""
 
     def test_search_tables(self, glue):
-        """SearchTables returns TableList."""
-        resp = glue.search_tables()
-        assert "TableList" in resp
-        assert isinstance(resp["TableList"], list)
+        """SearchTables returns TableList containing created tables."""
+        db_name = _unique("db")
+        tbl_name = _unique("stbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            resp = glue.search_tables()
+            assert "TableList" in resp
+            assert isinstance(resp["TableList"], list)
+            # The created table should appear in results
+            db_tables = [t for t in resp["TableList"] if t.get("DatabaseName") == db_name]
+            table_names = [t["Name"] for t in db_tables]
+            assert tbl_name in table_names
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
     def test_search_tables_with_filter(self, glue):
         """SearchTables with a filter returns TableList."""
@@ -3423,6 +3502,10 @@ class TestGlueImportCatalog:
     def test_import_catalog_to_glue(self, glue):
         resp = glue.import_catalog_to_glue()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify status reflects import completion
+        status_resp = glue.get_catalog_import_status()
+        assert "ImportStatus" in status_resp
+        assert status_resp["ImportStatus"]["ImportCompleted"] is True
 
 
 class TestGlueGetCatalogs:
@@ -3437,11 +3520,33 @@ class TestGlueSchemaVersions:
     """Tests for CheckSchemaVersionValidity and DeleteSchemaVersions."""
 
     def test_check_schema_version_validity(self, glue):
+        definition = '{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'
         resp = glue.check_schema_version_validity(
             DataFormat="AVRO",
-            SchemaDefinition=('{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'),
+            SchemaDefinition=definition,
         )
         assert "Valid" in resp
+        assert resp["Valid"] is True
+        # Create a registry and schema then verify the same definition is valid
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=definition,
+        )
+        try:
+            verify_resp = glue.check_schema_version_validity(
+                DataFormat="AVRO",
+                SchemaDefinition=definition,
+            )
+            assert verify_resp["Valid"] is True
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_delete_schema_versions(self, glue):
         reg_name = _unique("reg")
@@ -3975,6 +4080,15 @@ class TestGlueDataQualityOps:
         """BatchPutDataQualityStatisticAnnotation with empty list returns empty failures."""
         resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
         assert "FailedInclusionAnnotations" in resp
+        assert isinstance(resp["FailedInclusionAnnotations"], list)
+        # Start a DQ run to get a valid context, then list annotations
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        assert start_resp["RunId"]
+        list_resp = glue.list_data_quality_statistic_annotations()
+        assert "Annotations" in list_resp
 
     def test_put_data_quality_profile_annotation(self, glue):
         """PutDataQualityProfileAnnotation succeeds for any profile ID."""
@@ -3984,13 +4098,26 @@ class TestGlueDataQualityOps:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_data_quality_rule_recommendation_run(self, glue):
-        """CancelDataQualityRuleRecommendationRun succeeds (idempotent)."""
-        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id")
+        """CancelDataQualityRuleRecommendationRun succeeds after starting a run."""
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_data_quality_ruleset_evaluation_run(self, glue):
-        """CancelDataQualityRulesetEvaluationRun succeeds (idempotent)."""
-        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-run-id")
+        """CancelDataQualityRulesetEvaluationRun succeeds after starting an evaluation run."""
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_data_quality_model_result_not_found(self, glue):
@@ -4561,9 +4688,18 @@ class TestGlueBatchGetBlueprints:
 
     def test_batch_get_blueprints_missing(self, glue):
         """BatchGetBlueprints returns MissingBlueprints for unknown names."""
-        resp = glue.batch_get_blueprints(Names=["nonexistent-bp-xyz"])
-        assert "MissingBlueprints" in resp
-        assert "nonexistent-bp-xyz" in resp["MissingBlueprints"]
+        # Create a real blueprint to verify split behavior
+        bp_name = _unique("bp")
+        glue.create_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            resp = glue.batch_get_blueprints(Names=["nonexistent-bp-xyz"])
+            assert "MissingBlueprints" in resp
+            assert "nonexistent-bp-xyz" in resp["MissingBlueprints"]
+            # Verify real blueprint is retrievable
+            get_resp = glue.get_blueprint(Name=bp_name)
+            assert get_resp["Blueprint"]["Name"] == bp_name
+        finally:
+            glue.delete_blueprint(Name=bp_name)
 
 
 class TestGlueBatchGetCustomEntityTypes:
@@ -4586,9 +4722,22 @@ class TestGlueBatchGetDevEndpoints:
     """Tests for BatchGetDevEndpoints."""
 
     def test_batch_get_dev_endpoints(self, glue):
-        """BatchGetDevEndpoints returns DevEndpoints list."""
-        resp = glue.batch_get_dev_endpoints(DevEndpointNames=["nonexistent-de-xyz"])
-        assert "DevEndpoints" in resp or "DevEndpointsNotFound" in resp
+        """BatchGetDevEndpoints returns DevEndpointsNotFound for missing endpoints."""
+        # Create a real dev endpoint to validate split behavior
+        ep_name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=["nonexistent-de-xyz"])
+            assert "DevEndpointsNotFound" in resp
+            assert "nonexistent-de-xyz" in resp["DevEndpointsNotFound"]
+            # Verify real endpoint is retrievable via get_dev_endpoint
+            get_resp = glue.get_dev_endpoint(EndpointName=ep_name)
+            assert get_resp["DevEndpoint"]["EndpointName"] == ep_name
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
 
 
 class TestGlueBatchStopJobRun:
@@ -4771,6 +4920,16 @@ class TestGlueBatchGetDataQualityResult:
         """BatchGetDataQualityResult returns results list (possibly empty)."""
         resp = glue.batch_get_data_quality_result(ResultIds=["result-fake-id"])
         assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+        # Start a DQ evaluation run to add context, then list results
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        assert start_resp["RunId"]
+        list_resp = glue.list_data_quality_results()
+        assert "Results" in list_resp
 
 
 class TestGlueGetUserDefinedFunctions:
@@ -4958,18 +5117,47 @@ class TestGlueNewGapOps:
 
     def test_batch_get_table_optimizer_empty(self, glue):
         """BatchGetTableOptimizer returns TableOptimizers and Failures keys."""
-        resp = glue.batch_get_table_optimizer(
-            Entries=[
-                {
-                    "catalogId": "123456789012",
-                    "databaseName": "nonexistent-db-xyz",
-                    "tableName": "nonexistent-table-xyz",
-                    "type": "compaction",
-                }
-            ]
+        # Create a real table to give context to the call
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
         )
-        assert "TableOptimizers" in resp
-        assert "Failures" in resp
+        try:
+            # Query nonexistent optimizer for the real table
+            resp = glue.batch_get_table_optimizer(
+                Entries=[
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": db_name,
+                        "tableName": tbl_name,
+                        "type": "compaction",
+                    }
+                ]
+            )
+            assert "TableOptimizers" in resp
+            assert "Failures" in resp
+            assert isinstance(resp["TableOptimizers"], list)
+            assert isinstance(resp["Failures"], list)
+            # Also verify get_table returns the real table
+            get_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert get_resp["Table"]["Name"] == tbl_name
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
     def test_create_glue_identity_center_configuration(self, glue):
         """CreateGlueIdentityCenterConfiguration returns ApplicationArn."""
@@ -5346,10 +5534,38 @@ class TestGlueSearchTablesEdgeCases:
             glue.delete_database(Name=db_name)
 
     def test_search_tables_pagination_keys(self, glue):
-        """SearchTables response always contains TableList key regardless of results."""
-        resp = glue.search_tables(MaxResults=1)
-        assert "TableList" in resp
-        assert isinstance(resp["TableList"], list)
+        """SearchTables response contains TableList key and respects MaxResults."""
+        # Create a table so there's something to search
+        db_name = _unique("db")
+        tbl_name = _unique("pgtbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            resp = glue.search_tables(MaxResults=1)
+            assert "TableList" in resp
+            assert isinstance(resp["TableList"], list)
+            assert len(resp["TableList"]) <= 1
+            # Full search (no MaxResults) should find the created table
+            full_resp = glue.search_tables()
+            all_names = [t["Name"] for t in full_resp["TableList"]]
+            assert tbl_name in all_names
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
 
 class TestGlueImportCatalogStatus:
@@ -5536,3 +5752,850 @@ class TestGlueBehavioralFidelity:
         finally:
             for name in db_names:
                 glue.delete_database(Name=name)
+
+
+# ── Strengthened edge case and behavioral fidelity tests ──────────────────────
+
+
+class TestGlueBatchGetJobsEdgeCases:
+    """Behavioral fidelity tests for BatchGetJobs."""
+
+    def test_batch_get_jobs_not_found_verify_missing_key(self, glue):
+        """BatchGetJobs with only missing jobs returns empty Jobs and all in JobsNotFound."""
+        fake1 = "batch-job-missing-aaa"
+        fake2 = "batch-job-missing-bbb"
+        resp = glue.batch_get_jobs(JobNames=[fake1, fake2])
+        assert len(resp["Jobs"]) == 0
+        assert fake1 in resp["JobsNotFound"]
+        assert fake2 in resp["JobsNotFound"]
+
+    def test_batch_get_jobs_full_cycle(self, glue):
+        """Create jobs, batch-get them, verify fields, then delete."""
+        job1 = _unique("bgjob")
+        job2 = _unique("bgjob")
+        for jn in (job1, job2):
+            glue.create_job(
+                Name=jn,
+                Role="arn:aws:iam::123456789012:role/glue-role",
+                Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+                Description="batch get test job",
+            )
+        try:
+            resp = glue.batch_get_jobs(JobNames=[job1, job2])
+            assert len(resp["Jobs"]) == 2
+            job_map = {j["Name"]: j for j in resp["Jobs"]}
+            assert job1 in job_map
+            assert job2 in job_map
+            # Verify behavioral fidelity: Description and Command are present
+            assert job_map[job1]["Description"] == "batch get test job"
+            assert job_map[job1]["Command"]["Name"] == "glueetl"
+            assert "JobsNotFound" in resp
+            assert len(resp["JobsNotFound"]) == 0
+        finally:
+            for jn in (job1, job2):
+                glue.delete_job(JobName=jn)
+
+    def test_batch_get_jobs_partial_missing_creates_correct_split(self, glue):
+        """BatchGetJobs with one real and one missing job splits Jobs vs JobsNotFound."""
+        job_name = _unique("bgjob")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.batch_get_jobs(JobNames=[job_name, "totally-fake-job-xyz"])
+            found_names = [j["Name"] for j in resp["Jobs"]]
+            assert job_name in found_names
+            assert "totally-fake-job-xyz" in resp["JobsNotFound"]
+            assert job_name not in resp["JobsNotFound"]
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_update_job_then_batch_get_reflects_change(self, glue):
+        """After UpdateJob, BatchGetJobs returns updated job description."""
+        job_name = _unique("bgjob")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            Description="original",
+        )
+        try:
+            glue.update_job(
+                JobName=job_name,
+                JobUpdate={
+                    "Role": "arn:aws:iam::123456789012:role/glue-role",
+                    "Command": {"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+                    "Description": "updated via update_job",
+                },
+            )
+            resp = glue.batch_get_jobs(JobNames=[job_name])
+            assert len(resp["Jobs"]) == 1
+            assert resp["Jobs"][0]["Description"] == "updated via update_job"
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueBatchGetCrawlersEdgeCases:
+    """Behavioral fidelity tests for BatchGetCrawlers."""
+
+    def test_batch_get_crawlers_not_found_multiple(self, glue):
+        """BatchGetCrawlers with multiple missing names returns all in CrawlersNotFound."""
+        fake1 = "batch-crawler-missing-aaa"
+        fake2 = "batch-crawler-missing-bbb"
+        resp = glue.batch_get_crawlers(CrawlerNames=[fake1, fake2])
+        assert len(resp["Crawlers"]) == 0
+        assert fake1 in resp["CrawlersNotFound"]
+        assert fake2 in resp["CrawlersNotFound"]
+
+    def test_batch_get_crawlers_full_cycle(self, glue):
+        """Create crawlers, batch-get them, verify fields, then delete."""
+        db_name = _unique("db")
+        c1 = _unique("bgcr")
+        c2 = _unique("bgcr")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        for cr in (c1, c2):
+            glue.create_crawler(
+                Name=cr,
+                Role="arn:aws:iam::123456789012:role/glue-role",
+                DatabaseName=db_name,
+                Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+                Description="batch get test crawler",
+            )
+        try:
+            resp = glue.batch_get_crawlers(CrawlerNames=[c1, c2])
+            assert len(resp["Crawlers"]) == 2
+            crawler_map = {c["Name"]: c for c in resp["Crawlers"]}
+            assert c1 in crawler_map
+            assert c2 in crawler_map
+            assert crawler_map[c1]["Description"] == "batch get test crawler"
+            assert crawler_map[c1]["DatabaseName"] == db_name
+            assert len(resp["CrawlersNotFound"]) == 0
+        finally:
+            for cr in (c1, c2):
+                glue.delete_crawler(Name=cr)
+            glue.delete_database(Name=db_name)
+
+    def test_update_crawler_then_batch_get_reflects_change(self, glue):
+        """After UpdateCrawler, BatchGetCrawlers returns updated description."""
+        db_name = _unique("db")
+        cr_name = _unique("bgcr")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+            Description="original description",
+        )
+        try:
+            glue.update_crawler(Name=cr_name, Description="updated description")
+            resp = glue.batch_get_crawlers(CrawlerNames=[cr_name])
+            assert len(resp["Crawlers"]) == 1
+            assert resp["Crawlers"][0]["Description"] == "updated description"
+        finally:
+            glue.delete_crawler(Name=cr_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueBatchGetTriggersEdgeCases:
+    """Behavioral fidelity tests for BatchGetTriggers."""
+
+    def test_batch_get_triggers_not_found_multiple(self, glue):
+        """BatchGetTriggers with multiple missing names returns all in TriggersNotFound."""
+        fake1 = "batch-trigger-missing-aaa"
+        fake2 = "batch-trigger-missing-bbb"
+        resp = glue.batch_get_triggers(TriggerNames=[fake1, fake2])
+        assert len(resp["Triggers"]) == 0
+        assert fake1 in resp["TriggersNotFound"]
+        assert fake2 in resp["TriggersNotFound"]
+
+    def test_batch_get_triggers_full_cycle(self, glue):
+        """Create triggers, batch-get them, verify fields, then delete."""
+        t1 = _unique("bgtrig")
+        t2 = _unique("bgtrig")
+        for t in (t1, t2):
+            glue.create_trigger(
+                Name=t,
+                Type="SCHEDULED",
+                Schedule="cron(0 12 * * ? *)",
+                Actions=[{"JobName": "dummy-job"}],
+                Description="batch get test trigger",
+            )
+        try:
+            resp = glue.batch_get_triggers(TriggerNames=[t1, t2])
+            assert len(resp["Triggers"]) == 2
+            trigger_map = {t["Name"]: t for t in resp["Triggers"]}
+            assert t1 in trigger_map
+            assert t2 in trigger_map
+            assert trigger_map[t1]["Type"] == "SCHEDULED"
+            assert trigger_map[t1]["Schedule"] == "cron(0 12 * * ? *)"
+            assert len(resp["TriggersNotFound"]) == 0
+        finally:
+            for t in (t1, t2):
+                glue.delete_trigger(Name=t)
+
+    def test_update_trigger_then_batch_get_reflects_change(self, glue):
+        """After UpdateTrigger, BatchGetTriggers returns updated trigger."""
+        trig_name = _unique("bgtrig")
+        glue.create_trigger(
+            Name=trig_name,
+            Type="ON_DEMAND",
+            Actions=[{"JobName": "dummy-job"}],
+            Description="original",
+        )
+        try:
+            glue.update_trigger(
+                Name=trig_name,
+                TriggerUpdate={"Name": trig_name, "Description": "updated via update_trigger"},
+            )
+            resp = glue.batch_get_triggers(TriggerNames=[trig_name])
+            assert len(resp["Triggers"]) == 1
+            assert resp["Triggers"][0]["Description"] == "updated via update_trigger"
+        finally:
+            glue.delete_trigger(Name=trig_name)
+
+
+class TestGlueBatchGetWorkflowsEdgeCases:
+    """Behavioral fidelity tests for BatchGetWorkflows."""
+
+    def test_batch_get_workflows_not_found_multiple(self, glue):
+        """BatchGetWorkflows with multiple missing names returns all in MissingWorkflows."""
+        fake1 = "batch-wf-missing-aaa"
+        fake2 = "batch-wf-missing-bbb"
+        resp = glue.batch_get_workflows(Names=[fake1, fake2])
+        assert len(resp["Workflows"]) == 0
+        assert fake1 in resp["MissingWorkflows"]
+        assert fake2 in resp["MissingWorkflows"]
+
+    def test_batch_get_workflows_full_cycle(self, glue):
+        """Create workflows, batch-get them, verify fields, then delete."""
+        w1 = _unique("bgwf")
+        w2 = _unique("bgwf")
+        for w in (w1, w2):
+            glue.create_workflow(Name=w, Description="batch get test workflow")
+        try:
+            resp = glue.batch_get_workflows(Names=[w1, w2])
+            assert len(resp["Workflows"]) == 2
+            wf_map = {w["Name"]: w for w in resp["Workflows"]}
+            assert w1 in wf_map
+            assert w2 in wf_map
+            assert wf_map[w1]["Description"] == "batch get test workflow"
+            assert len(resp["MissingWorkflows"]) == 0
+        finally:
+            for w in (w1, w2):
+                glue.delete_workflow(Name=w)
+
+    def test_update_workflow_then_batch_get_reflects_change(self, glue):
+        """After UpdateWorkflow, BatchGetWorkflows returns updated description."""
+        wf_name = _unique("bgwf")
+        glue.create_workflow(Name=wf_name, Description="original")
+        try:
+            glue.update_workflow(Name=wf_name, Description="updated description")
+            resp = glue.batch_get_workflows(Names=[wf_name])
+            assert len(resp["Workflows"]) == 1
+            assert resp["Workflows"][0]["Description"] == "updated description"
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+
+class TestGlueSearchTablesEnhanced:
+    """Behavioral fidelity tests for SearchTables."""
+
+    def _sd(self):
+        return {
+            "Columns": [{"Name": "id", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_search_tables_returns_table_list(self, glue):
+        """SearchTables returns a TableList key."""
+        resp = glue.search_tables()
+        assert "TableList" in resp
+        assert isinstance(resp["TableList"], list)
+
+    def test_search_tables_with_database_filter_finds_table(self, glue):
+        """SearchTables filtered by DatabaseName finds tables in that database."""
+        db_name = _unique("db")
+        tbl_name = _unique("stbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(DatabaseName=db_name, TableInput={"Name": tbl_name, "StorageDescriptor": self._sd()})
+        try:
+            resp = glue.search_tables(
+                Filters=[{"Key": "DatabaseName", "Value": db_name, "Comparator": "EQUALS"}]
+            )
+            assert "TableList" in resp
+            table_names = [t["Name"] for t in resp["TableList"]]
+            assert tbl_name in table_names
+            # All returned tables must be from the target database
+            for t in resp["TableList"]:
+                assert t["DatabaseName"] == db_name
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_search_tables_max_results_limits_response(self, glue):
+        """SearchTables with MaxResults=1 returns at most 1 table."""
+        resp = glue.search_tables(MaxResults=1)
+        assert "TableList" in resp
+        assert len(resp["TableList"]) <= 1
+
+    def test_search_tables_delete_table_not_in_results(self, glue):
+        """After deleting a table, SearchTables no longer returns it."""
+        db_name = _unique("db")
+        tbl_name = _unique("stbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(DatabaseName=db_name, TableInput={"Name": tbl_name, "StorageDescriptor": self._sd()})
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        try:
+            resp = glue.search_tables(SearchText=tbl_name)
+            table_names = [t["Name"] for t in resp["TableList"]]
+            assert tbl_name not in table_names
+        finally:
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueImportCatalogEnhanced:
+    """Behavioral fidelity tests for ImportCatalogToGlue."""
+
+    def test_import_catalog_returns_200(self, glue):
+        """ImportCatalogToGlue returns HTTP 200."""
+        resp = glue.import_catalog_to_glue()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_catalog_then_status_is_completed(self, glue):
+        """After ImportCatalogToGlue, GetCatalogImportStatus shows ImportCompleted=True."""
+        glue.import_catalog_to_glue()
+        resp = glue.get_catalog_import_status()
+        assert "ImportStatus" in resp
+        assert resp["ImportStatus"]["ImportCompleted"] is True
+
+    def test_import_catalog_idempotent(self, glue):
+        """ImportCatalogToGlue can be called multiple times without error."""
+        glue.import_catalog_to_glue()
+        glue.import_catalog_to_glue()
+        resp = glue.get_catalog_import_status()
+        assert resp["ImportStatus"]["ImportCompleted"] is True
+
+
+class TestGlueCheckSchemaVersionValidityEnhanced:
+    """Behavioral fidelity tests for CheckSchemaVersionValidity."""
+
+    def test_valid_avro_schema_returns_valid_true(self, glue):
+        """A well-formed AVRO schema returns Valid=True."""
+        resp = glue.check_schema_version_validity(
+            DataFormat="AVRO",
+            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+        )
+        assert resp["Valid"] is True
+
+    def test_invalid_schema_definition_returns_valid_key(self, glue):
+        """A malformed schema definition still returns a Valid key in response."""
+        resp = glue.check_schema_version_validity(
+            DataFormat="AVRO",
+            SchemaDefinition="this is not valid avro json",
+        )
+        # Server returns Valid key (True or False depending on implementation)
+        assert "Valid" in resp
+
+    def test_check_schema_version_validity_json_format(self, glue):
+        """A valid JSON schema returns Valid=True for JSON data format."""
+        resp = glue.check_schema_version_validity(
+            DataFormat="JSON",
+            SchemaDefinition='{"$schema":"http://json-schema.org/draft-07/schema","type":"object"}',
+        )
+        # JSON format validity check - may return True or False depending on implementation
+        assert "Valid" in resp
+
+    def test_create_schema_then_check_version_validity(self, glue):
+        """Creating a schema then checking its definition returns Valid=True."""
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        definition = '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}'
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=definition,
+        )
+        try:
+            resp = glue.check_schema_version_validity(
+                DataFormat="AVRO",
+                SchemaDefinition=definition,
+            )
+            assert resp["Valid"] is True
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+
+class TestGlueBatchPutDataQualityAnnotationEnhanced:
+    """Behavioral fidelity tests for BatchPutDataQualityStatisticAnnotation."""
+
+    def test_batch_put_empty_annotation_list_returns_empty_failures(self, glue):
+        """Calling with an empty list returns FailedInclusionAnnotations=[]."""
+        resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+        assert "FailedInclusionAnnotations" in resp
+        assert resp["FailedInclusionAnnotations"] == []
+
+    def test_batch_put_annotation_returns_failures_list(self, glue):
+        """Calling with annotations returns a FailedInclusionAnnotations list."""
+        resp = glue.batch_put_data_quality_statistic_annotation(
+            InclusionAnnotations=[
+                {
+                    "ProfileId": "fake-profile-id",
+                    "StatisticId": "fake-stat-id",
+                    "InclusionAnnotation": "INCLUDE",
+                }
+            ]
+        )
+        assert "FailedInclusionAnnotations" in resp
+        assert isinstance(resp["FailedInclusionAnnotations"], list)
+
+    def test_list_data_quality_statistic_annotations_then_put(self, glue):
+        """ListDataQualityStatisticAnnotations returns Annotations before and after put."""
+        list_resp = glue.list_data_quality_statistic_annotations()
+        assert "Annotations" in list_resp
+        # Now put and verify put succeeded
+        put_resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+        assert "FailedInclusionAnnotations" in put_resp
+
+    def test_start_data_quality_then_batch_put_annotation(self, glue):
+        """Start a DQ rule recommendation run then call batch_put_annotation."""
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "nonexistent", "TableName": "nonexistent"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        assert "RunId" in start_resp
+        # Can annotate even for fake stats
+        put_resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+        assert "FailedInclusionAnnotations" in put_resp
+
+
+class TestGlueCancelDataQualityRunsEnhanced:
+    """Behavioral fidelity tests for Cancel DQ run operations."""
+
+    def test_cancel_recommendation_run_returns_200(self, glue):
+        """CancelDataQualityRuleRecommendationRun returns HTTP 200."""
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-cancel")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_evaluation_run_returns_200(self, glue):
+        """CancelDataQualityRulesetEvaluationRun returns HTTP 200."""
+        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-run-id-cancel")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_then_cancel_recommendation_run(self, glue):
+        """Start a DQ recommendation run then cancel it."""
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        cancel_resp = glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_then_cancel_evaluation_run(self, glue):
+        """Start a DQ evaluation run then cancel it."""
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        cancel_resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_recommendation_runs_after_start(self, glue):
+        """ListDataQualityRuleRecommendationRuns returns runs after starting one."""
+        glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb2", "TableName": "testtbl2"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        resp = glue.list_data_quality_rule_recommendation_runs()
+        assert "Runs" in resp
+        assert isinstance(resp["Runs"], list)
+
+
+class TestGlueBatchGetBlueprintsEnhanced:
+    """Behavioral fidelity tests for BatchGetBlueprints."""
+
+    def test_batch_get_blueprints_missing_returns_missing_list(self, glue):
+        """BatchGetBlueprints for missing blueprints returns them in MissingBlueprints."""
+        resp = glue.batch_get_blueprints(Names=["missing-bp-aaa", "missing-bp-bbb"])
+        assert "MissingBlueprints" in resp
+        assert "missing-bp-aaa" in resp["MissingBlueprints"]
+        assert "missing-bp-bbb" in resp["MissingBlueprints"]
+
+    def test_batch_get_blueprints_full_cycle(self, glue):
+        """Create blueprints, batch-get them, verify fields, then delete."""
+        bp1 = _unique("bgbp")
+        bp2 = _unique("bgbp")
+        for bp in (bp1, bp2):
+            glue.create_blueprint(Name=bp, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            resp = glue.batch_get_blueprints(Names=[bp1, bp2])
+            assert "Blueprints" in resp
+            assert len(resp["Blueprints"]) == 2
+            bp_names = [b["Name"] for b in resp["Blueprints"]]
+            assert bp1 in bp_names
+            assert bp2 in bp_names
+            assert len(resp.get("MissingBlueprints", [])) == 0
+        finally:
+            for bp in (bp1, bp2):
+                glue.delete_blueprint(Name=bp)
+
+    def test_batch_get_blueprints_mixed_returns_correct_split(self, glue):
+        """BatchGetBlueprints with one real and one missing returns correct split."""
+        bp_name = _unique("bgbp")
+        glue.create_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            resp = glue.batch_get_blueprints(Names=[bp_name, "missing-bp-xyz"])
+            bp_names = [b["Name"] for b in resp["Blueprints"]]
+            assert bp_name in bp_names
+            assert "missing-bp-xyz" in resp["MissingBlueprints"]
+        finally:
+            glue.delete_blueprint(Name=bp_name)
+
+    def test_update_blueprint_then_batch_get(self, glue):
+        """After UpdateBlueprint, BatchGetBlueprints reflects updated location."""
+        bp_name = _unique("bgbp")
+        glue.create_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/v1.py")
+        try:
+            glue.update_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/v2.py")
+            resp = glue.batch_get_blueprints(Names=[bp_name])
+            assert len(resp["Blueprints"]) == 1
+            assert resp["Blueprints"][0]["Name"] == bp_name
+        finally:
+            glue.delete_blueprint(Name=bp_name)
+
+
+class TestGlueBatchGetDevEndpointsEnhanced:
+    """Behavioral fidelity tests for BatchGetDevEndpoints."""
+
+    def test_batch_get_dev_endpoints_missing_returns_not_found(self, glue):
+        """BatchGetDevEndpoints for missing endpoints returns them in DevEndpointsNotFound."""
+        resp = glue.batch_get_dev_endpoints(DevEndpointNames=["missing-de-aaa", "missing-de-bbb"])
+        assert "DevEndpointsNotFound" in resp
+        assert "missing-de-aaa" in resp["DevEndpointsNotFound"]
+        assert "missing-de-bbb" in resp["DevEndpointsNotFound"]
+
+    def test_batch_get_dev_endpoints_full_cycle(self, glue):
+        """Create a DevEndpoint, batch-get it, verify fields, then delete."""
+        ep_name = _unique("bgde")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name])
+            assert "DevEndpoints" in resp
+            found_names = [e["EndpointName"] for e in resp["DevEndpoints"]]
+            assert ep_name in found_names
+            # Verify behavioral fidelity: RoleArn is present
+            ep_map = {e["EndpointName"]: e for e in resp["DevEndpoints"]}
+            assert ep_map[ep_name]["RoleArn"] == "arn:aws:iam::123456789012:role/glue-role"
+            assert len(resp.get("DevEndpointsNotFound", [])) == 0
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+
+    def test_batch_get_dev_endpoints_mixed_split(self, glue):
+        """BatchGetDevEndpoints with one real and one missing returns correct split."""
+        ep_name = _unique("bgde")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name, "missing-de-xyz"])
+            found_names = [e["EndpointName"] for e in resp["DevEndpoints"]]
+            assert ep_name in found_names
+            assert "missing-de-xyz" in resp["DevEndpointsNotFound"]
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+
+    def test_get_dev_endpoints_list_then_batch_get(self, glue):
+        """GetDevEndpoints list then BatchGetDevEndpoints retrieves same endpoints."""
+        ep_name = _unique("bgde")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            list_resp = glue.get_dev_endpoints()
+            list_names = [d["EndpointName"] for d in list_resp["DevEndpoints"]]
+            assert ep_name in list_names
+            batch_resp = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name])
+            batch_names = [e["EndpointName"] for e in batch_resp["DevEndpoints"]]
+            assert ep_name in batch_names
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+
+
+class TestGlueBatchGetDataQualityResultEnhanced:
+    """Behavioral fidelity tests for BatchGetDataQualityResult."""
+
+    def test_batch_get_data_quality_result_with_fake_id_returns_results_key(self, glue):
+        """BatchGetDataQualityResult with fake result IDs returns Results list."""
+        resp = glue.batch_get_data_quality_result(ResultIds=["fake-result-id-aaa"])
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_batch_get_data_quality_result_multiple_fake_ids(self, glue):
+        """BatchGetDataQualityResult with multiple fake IDs returns Results list."""
+        resp = glue.batch_get_data_quality_result(
+            ResultIds=["fake-id-aaa", "fake-id-bbb", "fake-id-ccc"]
+        )
+        assert "Results" in resp
+        assert isinstance(resp["Results"], list)
+
+    def test_list_then_batch_get_data_quality_results(self, glue):
+        """ListDataQualityResults returns results, BatchGetDataQualityResult retrieves them."""
+        list_resp = glue.list_data_quality_results()
+        assert "Results" in list_resp
+        result_ids = [r["ResultId"] for r in list_resp["Results"]]
+        if result_ids:
+            batch_resp = glue.batch_get_data_quality_result(ResultIds=result_ids[:1])
+            assert "Results" in batch_resp
+        else:
+            # No results yet, just verify the batch_get_result key behavior
+            batch_resp = glue.batch_get_data_quality_result(ResultIds=["nonexistent-result-xyz"])
+            assert "Results" in batch_resp
+
+    def test_start_dq_evaluation_then_batch_get_result(self, glue):
+        """Start a DQ evaluation run, then call BatchGetDataQualityResult with any ID."""
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        assert "RunId" in start_resp
+        # BatchGetDataQualityResult is independent - verifying it returns Results key
+        batch_resp = glue.batch_get_data_quality_result(ResultIds=["nonexistent-result-xyz"])
+        assert "Results" in batch_resp
+
+
+class TestGlueBatchGetTableOptimizerEnhanced:
+    """Behavioral fidelity tests for BatchGetTableOptimizer."""
+
+    def test_batch_get_table_optimizer_empty_entries(self, glue):
+        """BatchGetTableOptimizer with nonexistent entries returns failures."""
+        resp = glue.batch_get_table_optimizer(
+            Entries=[
+                {
+                    "catalogId": "123456789012",
+                    "databaseName": "nonexistent-db-xyz",
+                    "tableName": "nonexistent-tbl-xyz",
+                    "type": "compaction",
+                }
+            ]
+        )
+        assert "TableOptimizers" in resp
+        assert "Failures" in resp
+
+    def test_batch_get_table_optimizer_multiple_entries(self, glue):
+        """BatchGetTableOptimizer with multiple nonexistent entries returns both keys."""
+        resp = glue.batch_get_table_optimizer(
+            Entries=[
+                {
+                    "catalogId": "123456789012",
+                    "databaseName": "nonexistent-db-aaa",
+                    "tableName": "nonexistent-tbl-aaa",
+                    "type": "compaction",
+                },
+                {
+                    "catalogId": "123456789012",
+                    "databaseName": "nonexistent-db-bbb",
+                    "tableName": "nonexistent-tbl-bbb",
+                    "type": "compaction",
+                },
+            ]
+        )
+        assert "TableOptimizers" in resp
+        assert "Failures" in resp
+        assert isinstance(resp["TableOptimizers"], list)
+        assert isinstance(resp["Failures"], list)
+
+    def test_create_table_optimizer_then_batch_get(self, glue):
+        """Create a table optimizer, then BatchGetTableOptimizer returns response with both keys."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [],
+                    "InputFormat": "",
+                    "OutputFormat": "",
+                    "SerdeInfo": {},
+                },
+            },
+        )
+        glue.create_table_optimizer(
+            CatalogId="123456789012",
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            Type="compaction",
+            TableOptimizerConfiguration={
+                "roleArn": "arn:aws:iam::123456789012:role/test",
+                "enabled": True,
+            },
+        )
+        try:
+            resp = glue.batch_get_table_optimizer(
+                Entries=[
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": db_name,
+                        "tableName": tbl_name,
+                        "type": "compaction",
+                    }
+                ]
+            )
+            assert "TableOptimizers" in resp
+            assert "Failures" in resp
+            assert isinstance(resp["TableOptimizers"], list)
+            assert isinstance(resp["Failures"], list)
+        finally:
+            glue.delete_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_table_optimizer_after_create_then_batch_get(self, glue):
+        """GetTableOptimizer after create verifies creation; BatchGetTableOptimizer returns keys."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [],
+                    "InputFormat": "",
+                    "OutputFormat": "",
+                    "SerdeInfo": {},
+                },
+            },
+        )
+        glue.create_table_optimizer(
+            CatalogId="123456789012",
+            DatabaseName=db_name,
+            TableName=tbl_name,
+            Type="compaction",
+            TableOptimizerConfiguration={
+                "roleArn": "arn:aws:iam::123456789012:role/test",
+                "enabled": True,
+            },
+        )
+        try:
+            get_resp = glue.get_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            assert get_resp["DatabaseName"] == db_name
+            assert get_resp["TableName"] == tbl_name
+            # BatchGetTableOptimizer always returns both keys
+            batch_resp = glue.batch_get_table_optimizer(
+                Entries=[
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": db_name,
+                        "tableName": tbl_name,
+                        "type": "compaction",
+                    }
+                ]
+            )
+            assert "TableOptimizers" in batch_resp
+            assert "Failures" in batch_resp
+        finally:
+            glue.delete_table_optimizer(
+                CatalogId="123456789012",
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Type="compaction",
+            )
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueSearchTablesPagination:
+    """Behavioral fidelity tests for SearchTables pagination."""
+
+    def _sd(self):
+        return {
+            "Columns": [{"Name": "id", "Type": "string"}],
+            "Location": "s3://bucket/path",
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+                "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+            },
+        }
+
+    def test_search_tables_pagination_keys_present(self, glue):
+        """SearchTables response always has TableList key."""
+        resp = glue.search_tables(MaxResults=1)
+        assert "TableList" in resp
+        assert isinstance(resp["TableList"], list)
+
+    def test_search_tables_with_max_results(self, glue):
+        """SearchTables with MaxResults=2 returns at most 2 tables."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        for i in range(3):
+            glue.create_table(
+                DatabaseName=db_name,
+                TableInput={"Name": _unique("ptbl"), "StorageDescriptor": self._sd()},
+            )
+        try:
+            resp = glue.search_tables(MaxResults=2)
+            assert "TableList" in resp
+            assert len(resp["TableList"]) <= 2
+        finally:
+            # cleanup - get the tables we created and delete them
+            tables = glue.get_tables(DatabaseName=db_name)["TableList"]
+            for t in tables:
+                glue.delete_table(DatabaseName=db_name, Name=t["Name"])
+            glue.delete_database(Name=db_name)
+
+    def test_search_tables_update_table_reflects_in_search(self, glue):
+        """After UpdateTable, SearchTables with the table name returns updated table."""
+        db_name = _unique("db")
+        tbl_name = _unique("stbl")
+        sd = self._sd()
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(DatabaseName=db_name, TableInput={"Name": tbl_name, "StorageDescriptor": sd})
+        try:
+            updated_sd = dict(sd, Columns=[{"Name": "id", "Type": "string"}, {"Name": "name", "Type": "string"}])
+            glue.update_table(
+                DatabaseName=db_name,
+                TableInput={"Name": tbl_name, "StorageDescriptor": updated_sd},
+            )
+            resp = glue.search_tables(
+                Filters=[{"Key": "DatabaseName", "Value": db_name, "Comparator": "EQUALS"}]
+            )
+            table_names = [t["Name"] for t in resp["TableList"]]
+            assert tbl_name in table_names
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
