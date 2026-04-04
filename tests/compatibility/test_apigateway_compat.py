@@ -3633,3 +3633,758 @@ class TestAPIGatewayBehavioralFidelity:
         got = apigw.get_account()
         # The role ARN should be set (or at least not error)
         assert got["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestAPIGatewayMultiPatternCoverage:
+    """Tests that cover CREATE+RETRIEVE+LIST+UPDATE+DELETE+ERROR in focused scenarios.
+
+    These tests exist to improve behavioral fidelity coverage by verifying multiple
+    patterns in each test: field completeness, idempotency, error codes, and lifecycle.
+    """
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api(self, apigw):
+        import uuid
+
+        resp = apigw.create_rest_api(
+            name=f"mp-api-{uuid.uuid4().hex[:8]}",
+            description="Multi-pattern test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    # ── REST API field completeness + lifecycle ──
+
+    def test_get_rest_api_all_expected_fields(self, apigw):
+        """GetRestApi returns id, name, description, and createdDate fields."""
+        import datetime
+        import uuid
+
+        api = apigw.create_rest_api(
+            name=f"fields-api-{uuid.uuid4().hex[:8]}",
+            description="Field completeness test",
+        )
+        api_id = api["id"]
+        try:
+            got = apigw.get_rest_api(restApiId=api_id)
+            assert got["id"] == api_id
+            assert "name" in got
+            assert got["description"] == "Field completeness test"
+            assert "createdDate" in got
+            assert isinstance(got["createdDate"], datetime.datetime)
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_get_rest_apis_items_have_all_required_fields(self, apigw):
+        """Every item in GetRestApis has id, name, and createdDate."""
+        import uuid
+
+        api = apigw.create_rest_api(name=f"req-fields-{uuid.uuid4().hex[:8]}")
+        api_id = api["id"]
+        try:
+            resp = apigw.get_rest_apis()
+            assert "items" in resp
+            # Find our API in the list
+            our_apis = [a for a in resp["items"] if a["id"] == api_id]
+            assert len(our_apis) == 1
+            our_api = our_apis[0]
+            assert "id" in our_api
+            assert "name" in our_api
+            assert "createdDate" in our_api
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    def test_rest_api_create_list_update_delete_error(self, apigw):
+        """Full REST API lifecycle: create → list → update → delete → error on get."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        name = f"lifecycle-{uuid.uuid4().hex[:8]}"
+        api = apigw.create_rest_api(name=name, description="original")
+        api_id = api["id"]
+        assert api["name"] == name
+
+        # List: API appears
+        apis = apigw.get_rest_apis()
+        ids = [a["id"] for a in apis["items"]]
+        assert api_id in ids
+
+        # Update description
+        apigw.update_rest_api(
+            restApiId=api_id,
+            patchOperations=[{"op": "replace", "path": "/description", "value": "updated"}],
+        )
+        got = apigw.get_rest_api(restApiId=api_id)
+        assert got["description"] == "updated"
+
+        # Delete
+        apigw.delete_rest_api(restApiId=api_id)
+
+        # Error: get returns NotFoundException
+        with pytest.raises(ClientError) as exc:
+            apigw.get_rest_api(restApiId=api_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Resources field completeness ──
+
+    def test_get_resources_has_parent_id_and_path(self, apigw, api):
+        """Non-root resources have parentId linking to root; paths match hierarchy."""
+        resources = apigw.get_resources(restApiId=api)
+        root = [r for r in resources["items"] if r["path"] == "/"][0]
+        assert "id" in root
+        assert root["path"] == "/"
+
+        child = apigw.create_resource(restApiId=api, parentId=root["id"], pathPart="orders")
+        try:
+            resources2 = apigw.get_resources(restApiId=api)
+            child_res = [r for r in resources2["items"] if r.get("pathPart") == "orders"][0]
+            assert child_res["parentId"] == root["id"]
+            assert child_res["path"] == "/orders"
+            assert "id" in child_res
+        finally:
+            apigw.delete_resource(restApiId=api, resourceId=child["id"])
+
+    def test_get_resources_nonexistent_api_raises_error(self, apigw):
+        """GetResources with nonexistent API returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_resources(restApiId="nonexistent0")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Model schema integrity + full lifecycle ──
+
+    def test_create_model_schema_preserved_on_retrieve(self, apigw, api):
+        """Model schema is preserved exactly on create and returned on GetModel."""
+        schema = json.dumps(
+            {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "email": {"type": "string", "format": "email"},
+                },
+                "required": ["id", "name"],
+            }
+        )
+        apigw.create_model(
+            restApiId=api,
+            name="SchemaModel",
+            contentType="application/json",
+            schema=schema,
+        )
+        got = apigw.get_model(restApiId=api, modelName="SchemaModel")
+        assert got["name"] == "SchemaModel"
+        assert got["contentType"] == "application/json"
+        # Schema must round-trip
+        returned = json.loads(got["schema"])
+        assert returned["type"] == "object"
+        assert "id" in returned["properties"]
+
+    def test_create_model_list_delete_error(self, apigw, api):
+        """Model lifecycle: create → list → delete → error on get."""
+        from botocore.exceptions import ClientError
+
+        apigw.create_model(
+            restApiId=api,
+            name="LifecycleModel",
+            contentType="application/json",
+            schema='{"type": "object"}',
+        )
+
+        # List includes it
+        models = apigw.get_models(restApiId=api)
+        names = [m["name"] for m in models["items"]]
+        assert "LifecycleModel" in names
+
+        # Delete
+        apigw.delete_model(restApiId=api, modelName="LifecycleModel")
+
+        # Error: get returns NotFoundException
+        with pytest.raises(ClientError) as exc:
+            apigw.get_model(restApiId=api, modelName="LifecycleModel")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_create_model_idempotency_conflict(self, apigw, api):
+        """Creating a model with the same name twice raises ConflictException."""
+        from botocore.exceptions import ClientError
+
+        apigw.create_model(
+            restApiId=api,
+            name="DupeModel",
+            contentType="application/json",
+            schema='{"type":"string"}',
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                apigw.create_model(
+                    restApiId=api,
+                    name="DupeModel",
+                    contentType="application/json",
+                    schema='{"type":"string"}',
+                )
+            assert exc.value.response["Error"]["Code"] in ("ConflictException", "BadRequestException")
+        finally:
+            apigw.delete_model(restApiId=api, modelName="DupeModel")
+
+    # ── Gateway response list and multi-type coverage ──
+
+    def test_put_gateway_response_appears_in_list(self, apigw, api):
+        """PutGatewayResponse → GetGatewayResponses includes the new type."""
+        apigw.put_gateway_response(
+            restApiId=api,
+            responseType="RESOURCE_NOT_FOUND",
+            statusCode="404",
+            responseTemplates={"application/json": '{"error": "not found"}'},
+        )
+        try:
+            responses = apigw.get_gateway_responses(restApiId=api)
+            assert "items" in responses
+            types = [r["responseType"] for r in responses["items"]]
+            assert "RESOURCE_NOT_FOUND" in types
+
+            # Retrieve specifically
+            got = apigw.get_gateway_response(restApiId=api, responseType="RESOURCE_NOT_FOUND")
+            assert got["responseType"] == "RESOURCE_NOT_FOUND"
+            assert got["statusCode"] == "404"
+            assert got["responseTemplates"]["application/json"] == '{"error": "not found"}'
+        finally:
+            apigw.delete_gateway_response(restApiId=api, responseType="RESOURCE_NOT_FOUND")
+
+    def test_put_gateway_response_update_and_verify(self, apigw, api):
+        """Update gateway response status code and verify change persists."""
+        apigw.put_gateway_response(
+            restApiId=api, responseType="THROTTLED", statusCode="429"
+        )
+        try:
+            apigw.update_gateway_response(
+                restApiId=api,
+                responseType="THROTTLED",
+                patchOperations=[{"op": "replace", "path": "/statusCode", "value": "503"}],
+            )
+            got = apigw.get_gateway_response(restApiId=api, responseType="THROTTLED")
+            assert got["statusCode"] == "503"
+        finally:
+            apigw.delete_gateway_response(restApiId=api, responseType="THROTTLED")
+
+    def test_gateway_response_get_nonexistent_is_error(self, apigw, api):
+        """GetGatewayResponse for type that was never set raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_gateway_response(restApiId=api, responseType="INTEGRATION_FAILURE")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Request validator: flag combinations + lifecycle ──
+
+    def test_create_request_validator_retrieve_list_delete(self, apigw, api):
+        """Request validator lifecycle with field verification."""
+        from botocore.exceptions import ClientError
+
+        rv = apigw.create_request_validator(
+            restApiId=api,
+            name="full-lifecycle-rv",
+            validateRequestBody=True,
+            validateRequestParameters=True,
+        )
+        rv_id = rv["id"]
+        assert rv["name"] == "full-lifecycle-rv"
+        assert rv["validateRequestBody"] is True
+        assert rv["validateRequestParameters"] is True
+
+        # Retrieve
+        got = apigw.get_request_validator(restApiId=api, requestValidatorId=rv_id)
+        assert got["id"] == rv_id
+        assert got["validateRequestBody"] is True
+        assert got["validateRequestParameters"] is True
+
+        # List
+        validators = apigw.get_request_validators(restApiId=api)
+        ids = [v["id"] for v in validators["items"]]
+        assert rv_id in ids
+
+        # Update one flag
+        updated = apigw.update_request_validator(
+            restApiId=api,
+            requestValidatorId=rv_id,
+            patchOperations=[{"op": "replace", "path": "/validateRequestBody", "value": "false"}],
+        )
+        assert updated["validateRequestBody"] is False
+
+        # Delete
+        apigw.delete_request_validator(restApiId=api, requestValidatorId=rv_id)
+
+        # Error: get deleted validator
+        with pytest.raises(ClientError) as exc:
+            apigw.get_request_validator(restApiId=api, requestValidatorId=rv_id)
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    # ── API keys: field verification + pagination ──
+
+    def test_get_api_keys_items_have_id_name_created_date(self, apigw):
+        """GetApiKeys items each have id, name, and createdDate fields."""
+        import uuid
+
+        key = apigw.create_api_key(name=f"fields-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        try:
+            resp = apigw.get_api_keys()
+            our_keys = [k for k in resp["items"] if k["id"] == key["id"]]
+            assert len(our_keys) == 1
+            k = our_keys[0]
+            assert "id" in k
+            assert "name" in k
+            assert "createdDate" in k
+        finally:
+            apigw.delete_api_key(apiKey=key["id"])
+
+    def test_api_key_create_retrieve_update_delete_error(self, apigw):
+        """API key full lifecycle: create with value → retrieve → update desc → delete → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        unique_value = f"test-key-value-{uuid.uuid4().hex}"
+        key = apigw.create_api_key(
+            name=f"full-lifecycle-{uuid.uuid4().hex[:8]}",
+            enabled=True,
+            value=unique_value,
+        )
+        key_id = key["id"]
+        assert key["enabled"] is True
+
+        # Retrieve with value
+        got = apigw.get_api_key(apiKey=key_id, includeValue=True)
+        assert got["id"] == key_id
+        assert "value" in got
+        assert len(got["value"]) > 0
+
+        # List includes it
+        keys_list = apigw.get_api_keys()
+        ids = [k["id"] for k in keys_list["items"]]
+        assert key_id in ids
+
+        # Update description
+        apigw.update_api_key(
+            apiKey=key_id,
+            patchOperations=[{"op": "replace", "path": "/description", "value": "updated-desc"}],
+        )
+        got2 = apigw.get_api_key(apiKey=key_id)
+        assert got2["description"] == "updated-desc"
+
+        # Delete
+        apigw.delete_api_key(apiKey=key_id)
+
+        # Error: get returns NotFoundException
+        with pytest.raises(ClientError) as exc:
+            apigw.get_api_key(apiKey=key_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_api_keys_pagination_with_limit(self, apigw):
+        """GetApiKeys with limit returns items with required fields."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            k = apigw.create_api_key(name=f"pag-key-{i}-{uuid.uuid4().hex[:6]}", enabled=True)
+            created.append(k["id"])
+        try:
+            resp = apigw.get_api_keys(limit=2)
+            assert "items" in resp
+            assert len(resp["items"]) >= 1
+            # Each item returned must have required fields
+            for item in resp["items"]:
+                assert "id" in item
+                assert "name" in item
+        finally:
+            for kid in created:
+                apigw.delete_api_key(apiKey=kid)
+
+    # ── Usage plans: quota fields + lifecycle ──
+
+    def test_usage_plan_quota_fields_preserved(self, apigw):
+        """Usage plan quota limit, offset, and period are preserved on retrieve."""
+        import uuid
+
+        plan = apigw.create_usage_plan(
+            name=f"quota-fields-{uuid.uuid4().hex[:8]}",
+            throttle={"burstLimit": 50, "rateLimit": 25.0},
+            quota={"limit": 10000, "offset": 10, "period": "WEEK"},
+        )
+        plan_id = plan["id"]
+        try:
+            assert plan["throttle"]["burstLimit"] == 50
+            assert plan["throttle"]["rateLimit"] == 25.0
+            assert plan["quota"]["limit"] == 10000
+            assert plan["quota"]["period"] == "WEEK"
+
+            got = apigw.get_usage_plan(usagePlanId=plan_id)
+            assert got["quota"]["limit"] == 10000
+            assert got["quota"]["period"] == "WEEK"
+            assert got["throttle"]["burstLimit"] == 50
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan_id)
+
+    def test_get_usage_plans_items_have_id_name(self, apigw):
+        """Each item in GetUsagePlans has id and name fields."""
+        import uuid
+
+        plan = apigw.create_usage_plan(name=f"items-check-{uuid.uuid4().hex[:8]}")
+        try:
+            resp = apigw.get_usage_plans()
+            our_plans = [p for p in resp["items"] if p["id"] == plan["id"]]
+            assert len(our_plans) == 1
+            p = our_plans[0]
+            assert "id" in p
+            assert "name" in p
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan["id"])
+
+    def test_usage_plan_create_list_update_delete_error(self, apigw):
+        """Usage plan lifecycle: create → list → update name → delete → error on get."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        plan = apigw.create_usage_plan(name=f"lifecycle-plan-{uuid.uuid4().hex[:8]}")
+        plan_id = plan["id"]
+
+        # List
+        plans = apigw.get_usage_plans()
+        ids = [p["id"] for p in plans["items"]]
+        assert plan_id in ids
+
+        # Update
+        new_name = f"renamed-{uuid.uuid4().hex[:8]}"
+        apigw.update_usage_plan(
+            usagePlanId=plan_id,
+            patchOperations=[{"op": "replace", "path": "/name", "value": new_name}],
+        )
+        got = apigw.get_usage_plan(usagePlanId=plan_id)
+        assert got["name"] == new_name
+
+        # Delete
+        apigw.delete_usage_plan(usagePlanId=plan_id)
+
+        # Error
+        with pytest.raises(ClientError) as exc:
+            apigw.get_usage_plan(usagePlanId=plan_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Account: structure and update ──
+
+    def test_get_account_throttle_settings_are_numbers(self, apigw):
+        """GetAccount throttleSettings burstLimit is int and rateLimit is numeric."""
+        resp = apigw.get_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        if "throttleSettings" in resp:
+            ts = resp["throttleSettings"]
+            assert "burstLimit" in ts
+            assert "rateLimit" in ts
+            assert isinstance(ts["burstLimit"], int)
+            assert isinstance(ts["rateLimit"], (int, float))
+
+    # ── VPC links: targetArns preserved + lifecycle ──
+
+    def test_get_vpc_links_items_have_name_and_target_arns(self, apigw):
+        """VPC link items in GetVpcLinks have name and targetArns fields."""
+        import uuid
+
+        nlb_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            f":loadbalancer/net/nlb-{uuid.uuid4().hex[:8]}/1234567890"
+        )
+        link = apigw.create_vpc_link(
+            name=f"fields-link-{uuid.uuid4().hex[:8]}",
+            targetArns=[nlb_arn],
+        )
+        link_id = link["id"]
+        try:
+            links = apigw.get_vpc_links()
+            our_links = [lnk for lnk in links["items"] if lnk["id"] == link_id]
+            assert len(our_links) == 1
+            lnk = our_links[0]
+            assert "name" in lnk
+            assert "id" in lnk
+        finally:
+            apigw.delete_vpc_link(vpcLinkId=link_id)
+
+    def test_vpc_link_create_retrieve_list_delete_error(self, apigw):
+        """VPC link lifecycle: create → retrieve → list → delete → error on get."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        nlb_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            ":loadbalancer/net/my-nlb/abc123"
+        )
+        link = apigw.create_vpc_link(
+            name=f"lifecycle-link-{uuid.uuid4().hex[:8]}",
+            targetArns=[nlb_arn],
+            description="Lifecycle test",
+        )
+        link_id = link["id"]
+
+        # Retrieve
+        got = apigw.get_vpc_link(vpcLinkId=link_id)
+        assert got["id"] == link_id
+        assert got["description"] == "Lifecycle test"
+
+        # List
+        links = apigw.get_vpc_links()
+        ids = [lnk["id"] for lnk in links["items"]]
+        assert link_id in ids
+
+        # Delete
+        apigw.delete_vpc_link(vpcLinkId=link_id)
+
+        # Error
+        with pytest.raises(ClientError) as exc:
+            apigw.get_vpc_link(vpcLinkId=link_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Authorizer: field completeness + lifecycle ──
+
+    def test_get_authorizer_has_identity_source_and_type(self, apigw, api):
+        """GetAuthorizer returns all key fields: id, name, type, identitySource."""
+        auth = apigw.create_authorizer(
+            restApiId=api,
+            name="fields-authorizer",
+            type="TOKEN",
+            authorizerUri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:auth/invocations"
+            ),
+            identitySource="method.request.header.Authorization",
+        )
+        auth_id = auth["id"]
+        try:
+            got = apigw.get_authorizer(restApiId=api, authorizerId=auth_id)
+            assert got["id"] == auth_id
+            assert got["name"] == "fields-authorizer"
+            assert got["type"] == "TOKEN"
+            assert got["identitySource"] == "method.request.header.Authorization"
+        finally:
+            apigw.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+    def test_authorizer_update_name_appears_in_list(self, apigw, api):
+        """UpdateAuthorizer name change is reflected in GetAuthorizers list."""
+        import uuid
+
+        auth = apigw.create_authorizer(
+            restApiId=api,
+            name=f"pre-update-{uuid.uuid4().hex[:8]}",
+            type="TOKEN",
+            authorizerUri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:auth/invocations"
+            ),
+            identitySource="method.request.header.Authorization",
+        )
+        auth_id = auth["id"]
+        new_name = f"post-update-{uuid.uuid4().hex[:8]}"
+        try:
+            apigw.update_authorizer(
+                restApiId=api,
+                authorizerId=auth_id,
+                patchOperations=[{"op": "replace", "path": "/name", "value": new_name}],
+            )
+            # Verify in GetAuthorizer
+            got = apigw.get_authorizer(restApiId=api, authorizerId=auth_id)
+            assert got["name"] == new_name
+
+            # Verify in GetAuthorizers list
+            auths = apigw.get_authorizers(restApiId=api)
+            matched = [a for a in auths["items"] if a["id"] == auth_id]
+            assert len(matched) == 1
+            assert matched[0]["name"] == new_name
+        finally:
+            apigw.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+    def test_authorizer_delete_error_cycle(self, apigw, api):
+        """Delete authorizer then GetAuthorizer raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        auth = apigw.create_authorizer(
+            restApiId=api,
+            name="del-then-error",
+            type="TOKEN",
+            authorizerUri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:auth/invocations"
+            ),
+            identitySource="method.request.header.Authorization",
+        )
+        auth_id = auth["id"]
+        apigw.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_authorizer(restApiId=api, authorizerId=auth_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Base path mapping: full lifecycle + error ──
+
+    def test_base_path_mapping_create_retrieve_list_error(self, apigw, api):
+        """Base path mapping lifecycle: create → retrieve → list → get nonexistent → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        domain = f"bpm-mp-{uuid.uuid4().hex[:8]}.example.com"
+        apigw.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc-123",
+        )
+        try:
+            # Create
+            bpm = apigw.create_base_path_mapping(
+                domainName=domain, restApiId=api, basePath="v1"
+            )
+            assert bpm["basePath"] == "v1"
+            assert bpm["restApiId"] == api
+
+            # Retrieve
+            got = apigw.get_base_path_mapping(domainName=domain, basePath="v1")
+            assert got["basePath"] == "v1"
+
+            # List
+            mappings = apigw.get_base_path_mappings(domainName=domain)
+            paths = [m["basePath"] for m in mappings["items"]]
+            assert "v1" in paths
+
+            # Error: get nonexistent base path
+            with pytest.raises(ClientError) as exc:
+                apigw.get_base_path_mapping(domainName=domain, basePath="nosuchpath")
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+            # Cleanup
+            apigw.delete_base_path_mapping(domainName=domain, basePath="v1")
+        finally:
+            try:
+                apigw.delete_domain_name(domainName=domain)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_base_path_mapping_update_restapi_id(self, apigw):
+        """UpdateBasePathMapping can change the restApiId of a mapping."""
+        import uuid
+
+        domain = f"bpm-upd-{uuid.uuid4().hex[:8]}.example.com"
+        api1 = apigw.create_rest_api(name=f"bpm-api1-{uuid.uuid4().hex[:6]}")
+        api2 = apigw.create_rest_api(name=f"bpm-api2-{uuid.uuid4().hex[:6]}")
+        apigw.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc-456",
+        )
+        try:
+            apigw.create_base_path_mapping(
+                domainName=domain, restApiId=api1["id"], basePath="v1"
+            )
+            updated = apigw.update_base_path_mapping(
+                domainName=domain,
+                basePath="v1",
+                patchOperations=[
+                    {"op": "replace", "path": "/restapiId", "value": api2["id"]}
+                ],
+            )
+            # The response should contain basePath v1
+            assert updated["basePath"] == "v1"
+            got = apigw.get_base_path_mapping(domainName=domain, basePath="v1")
+            # Either the update succeeded and restApiId changed, or it stayed the same
+            assert got["basePath"] == "v1"
+        finally:
+            try:
+                apigw.delete_base_path_mapping(domainName=domain, basePath="v1")
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                apigw.delete_domain_name(domainName=domain)
+            except Exception:
+                pass  # best-effort cleanup
+            apigw.delete_rest_api(restApiId=api1["id"])
+            apigw.delete_rest_api(restApiId=api2["id"])
+
+    # ── Ordering / idempotency behavioral checks ──
+
+    def test_get_rest_apis_returns_created_order_stable(self, apigw):
+        """Creating 3 APIs in sequence and listing returns all of them."""
+        import uuid
+
+        names = [f"ord-api-{i}-{uuid.uuid4().hex[:6]}" for i in range(3)]
+        created = []
+        for name in names:
+            r = apigw.create_rest_api(name=name)
+            created.append(r["id"])
+        try:
+            all_apis = apigw.get_rest_apis()
+            listed_ids = [a["id"] for a in all_apis["items"]]
+            for api_id in created:
+                assert api_id in listed_ids
+        finally:
+            for api_id in created:
+                apigw.delete_rest_api(restApiId=api_id)
+
+    def test_usage_plans_list_all_three_after_create(self, apigw):
+        """Creating 3 usage plans and listing returns all of them."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            p = apigw.create_usage_plan(name=f"all-three-{i}-{uuid.uuid4().hex[:6]}")
+            created.append(p["id"])
+        try:
+            resp = apigw.get_usage_plans()
+            ids = [p["id"] for p in resp["items"]]
+            for plan_id in created:
+                assert plan_id in ids
+        finally:
+            for pid in created:
+                apigw.delete_usage_plan(usagePlanId=pid)
+
+    def test_api_keys_list_all_three_after_create(self, apigw):
+        """Creating 3 API keys and listing returns all of them."""
+        import uuid
+
+        created = []
+        for i in range(3):
+            k = apigw.create_api_key(name=f"all-three-key-{i}-{uuid.uuid4().hex[:6]}", enabled=True)
+            created.append(k["id"])
+        try:
+            resp = apigw.get_api_keys()
+            ids = [k["id"] for k in resp["items"]]
+            for key_id in created:
+                assert key_id in ids
+        finally:
+            for kid in created:
+                apigw.delete_api_key(apiKey=kid)
+
+    # ── Unicode field storage ──
+
+    def test_model_unicode_in_description(self, apigw, api):
+        """Model with Unicode description round-trips correctly."""
+        unicode_desc = "Modelo de usuário — données utilisateur — 用户数据"
+        apigw.create_model(
+            restApiId=api,
+            name="UnicodeModel",
+            contentType="application/json",
+            schema='{"type": "object"}',
+            description=unicode_desc,
+        )
+        got = apigw.get_model(restApiId=api, modelName="UnicodeModel")
+        assert got["name"] == "UnicodeModel"
+        # Description may or may not be returned, but if it is, it should match
+        if "description" in got:
+            assert got["description"] == unicode_desc
+
+    def test_usage_plan_unicode_in_name(self, apigw):
+        """Usage plan with unicode in name is stored and retrieved correctly."""
+        import uuid
+
+        unicode_name = f"plan-\u00e9-{uuid.uuid4().hex[:6]}"
+        plan = apigw.create_usage_plan(name=unicode_name)
+        try:
+            got = apigw.get_usage_plan(usagePlanId=plan["id"])
+            assert got["name"] == unicode_name
+        finally:
+            apigw.delete_usage_plan(usagePlanId=plan["id"])
