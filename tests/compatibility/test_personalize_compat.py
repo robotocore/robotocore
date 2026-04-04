@@ -181,6 +181,10 @@ class TestPersonalizeGapListOps:
         desc = client.describe_solution(solutionArn=arn)
         assert desc["solution"]["name"] == "test-gap-list-sol"
 
+        # UPDATE: toggle performAutoTraining
+        upd = client.update_solution(solutionArn=arn, performAutoTraining=True)
+        assert upd["solutionArn"] == arn
+
         # DELETE
         client.delete_solution(solutionArn=arn)
 
@@ -945,6 +949,34 @@ class TestPersonalizeCRUDOps:
     # --- MetricAttribution ---
 
     def test_describe_metric_attribution_not_found(self, client):
+        # CREATE: establish a real metric attribution as baseline
+        r = client.create_metric_attribution(
+            name="test-ma-notfound-baseline",
+            datasetGroupArn=DG_ARN,
+            metrics=METRICS,
+            metricsOutputConfig=METRICS_OUTPUT,
+        )
+        ma_arn = r["metricAttributionArn"]
+
+        # RETRIEVE: verify describe works on the real attribution
+        desc = client.describe_metric_attribution(metricAttributionArn=ma_arn)
+        assert desc["metricAttribution"]["name"] == "test-ma-notfound-baseline"
+
+        # LIST: verify it appears in the list
+        resp = client.list_metric_attributions()
+        arns = [ma["metricAttributionArn"] for ma in resp["metricAttributions"]]
+        assert ma_arn in arns
+
+        # UPDATE: confirm update returns the ARN
+        upd = client.update_metric_attribution(
+            metricAttributionArn=ma_arn, metricsOutputConfig=METRICS_OUTPUT
+        )
+        assert upd["metricAttributionArn"] == ma_arn
+
+        # DELETE: clean up
+        client.delete_metric_attribution(metricAttributionArn=ma_arn)
+
+        # ERROR: nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_metric_attribution(
                 metricAttributionArn=(f"{self.BASE_ARN}:metric-attribution/nonexistent")
@@ -954,6 +986,25 @@ class TestPersonalizeCRUDOps:
     # --- DataDeletionJob ---
 
     def test_describe_data_deletion_job_not_found(self, client):
+        # CREATE: establish a real data deletion job as baseline
+        r = client.create_data_deletion_job(
+            jobName="test-ddj-notfound-baseline",
+            datasetGroupArn=DG_ARN,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=ROLE_ARN,
+        )
+        ddj_arn = r["dataDeletionJobArn"]
+
+        # RETRIEVE: verify describe works on the real job
+        desc = client.describe_data_deletion_job(dataDeletionJobArn=ddj_arn)
+        assert desc["dataDeletionJob"]["jobName"] == "test-ddj-notfound-baseline"
+
+        # LIST: verify it appears in the list
+        resp = client.list_data_deletion_jobs()
+        arns = [j["dataDeletionJobArn"] for j in resp["dataDeletionJobs"]]
+        assert ddj_arn in arns
+
+        # ERROR: nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.describe_data_deletion_job(
                 dataDeletionJobArn=f"{self.BASE_ARN}:data-deletion-job/nonexistent"
@@ -977,6 +1028,12 @@ class TestPersonalizeCRUDOps:
 
     def test_describe_recipe_returns_ok(self, client):
         """Recipes are AWS-provided; describe by a known ARN returns 200."""
+        # LIST: fetch available recipes first so we know what to describe
+        list_resp = client.list_recipes()
+        assert "recipes" in list_resp
+        assert isinstance(list_resp["recipes"], list)
+
+        # RETRIEVE: describe a known AWS recipe
         try:
             resp = client.describe_recipe(recipeArn="arn:aws:personalize:::recipe/aws-hrnn")
             assert "recipe" in resp
@@ -985,6 +1042,12 @@ class TestPersonalizeCRUDOps:
                 "ResourceNotFoundException",
                 "InvalidInputException",
             )
+
+        # RETRIEVE: a recipe from the list (if any available) has matching ARN in describe
+        if list_resp["recipes"]:
+            first_arn = list_resp["recipes"][0]["recipeArn"]
+            recipe_desc = client.describe_recipe(recipeArn=first_arn)
+            assert recipe_desc["recipe"]["recipeArn"] == first_arn
 
     def test_describe_feature_transformation_returns_ok(self, client):
         """Feature transformations are AWS-provided."""
@@ -1004,6 +1067,25 @@ class TestPersonalizeCRUDOps:
     # --- Stop / Tag ops ---
 
     def test_stop_solution_version_creation_not_found(self, client):
+        # CREATE: establish a real solution + solution version as baseline
+        sol = client.create_solution(name="test-stop-sv-sol", datasetGroupArn=DG_ARN)
+        sol_arn = sol["solutionArn"]
+        sv = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv["solutionVersionArn"]
+
+        # RETRIEVE: verify the solution version exists and is ACTIVE
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        assert desc["solutionVersion"]["status"] == "ACTIVE"
+
+        # LIST: verify it appears in the list
+        list_resp = client.list_solution_versions(solutionArn=sol_arn)
+        arns = [v["solutionVersionArn"] for v in list_resp["solutionVersions"]]
+        assert sv_arn in arns
+
+        # DELETE: clean up
+        client.delete_solution(solutionArn=sol_arn)
+
+        # ERROR: stop a nonexistent solution version raises correct error
         with pytest.raises(ClientError) as exc:
             client.stop_solution_version_creation(
                 solutionVersionArn=(f"{self.BASE_ARN}:solution/nonexistent/version/nonexistent")
@@ -1052,7 +1134,23 @@ class TestPersonalizeSchemaEdgeCases:
         assert parts[2] == "personalize"
         assert "schema" in arn
         assert "test-arn-format" in arn
+
+        # RETRIEVE: ARN in describe matches create response
+        desc = client.describe_schema(schemaArn=arn)
+        assert desc["schema"]["schemaArn"] == arn
+
+        # LIST: ARN appears in list
+        list_resp = client.list_schemas()
+        listed_arns = [s["schemaArn"] for s in list_resp["schemas"]]
+        assert arn in listed_arns
+
+        # DELETE: clean up
         client.delete_schema(schemaArn=arn)
+
+        # ERROR: deleted resource ARN no longer resolves
+        with pytest.raises(ClientError) as exc:
+            client.describe_schema(schemaArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_schema_describe_has_timestamps(self, client, schema_json):
         r = client.create_schema(name="test-timestamps", schema=schema_json)
@@ -1071,7 +1169,23 @@ class TestPersonalizeSchemaEdgeCases:
         assert desc["schemaArn"] == arn
         client.delete_schema(schemaArn=arn)
 
-    def test_delete_nonexistent_schema_raises(self, client):
+    def test_delete_nonexistent_schema_raises(self, client, schema_json):
+        # CREATE: establish a real schema as baseline
+        r = client.create_schema(name="test-del-nonexist-baseline", schema=schema_json)
+        arn = r["schemaArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_schema(schemaArn=arn)
+        assert desc["schema"]["schemaArn"] == arn
+
+        # LIST: verify it appears
+        list_resp = client.list_schemas()
+        assert arn in [s["schemaArn"] for s in list_resp["schemas"]]
+
+        # DELETE: clean up the real schema
+        client.delete_schema(schemaArn=arn)
+
+        # ERROR: delete a truly nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.delete_schema(
                 schemaArn="arn:aws:personalize:us-east-1:123456789012:schema/nonexistent"
@@ -1128,7 +1242,23 @@ class TestPersonalizeDatasetGroupEdgeCases:
         assert parts[2] == "personalize"
         assert "dataset-group" in arn
         assert "test-dg-arn-fmt" in arn
+
+        # RETRIEVE: ARN in describe matches create response
+        desc = client.describe_dataset_group(datasetGroupArn=arn)
+        assert desc["datasetGroup"]["datasetGroupArn"] == arn
+
+        # LIST: ARN appears in list
+        list_resp = client.list_dataset_groups()
+        listed_arns = [dg["datasetGroupArn"] for dg in list_resp["datasetGroups"]]
+        assert arn in listed_arns
+
+        # DELETE: clean up
         client.delete_dataset_group(datasetGroupArn=arn)
+
+        # ERROR: deleted resource ARN no longer resolves
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_group(datasetGroupArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_dataset_group_status_is_active(self, client):
         r = client.create_dataset_group(name="test-dg-status-active")
@@ -1147,6 +1277,22 @@ class TestPersonalizeDatasetGroupEdgeCases:
         client.delete_dataset_group(datasetGroupArn=arn)
 
     def test_delete_nonexistent_dataset_group_raises(self, client):
+        # CREATE: establish a real dataset group as baseline
+        r = client.create_dataset_group(name="test-dg-del-nonexist-baseline")
+        arn = r["datasetGroupArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_dataset_group(datasetGroupArn=arn)
+        assert desc["datasetGroup"]["datasetGroupArn"] == arn
+
+        # LIST: verify it appears
+        list_resp = client.list_dataset_groups()
+        assert arn in [dg["datasetGroupArn"] for dg in list_resp["datasetGroups"]]
+
+        # DELETE: clean up the real group
+        client.delete_dataset_group(datasetGroupArn=arn)
+
+        # ERROR: delete a truly nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.delete_dataset_group(
                 datasetGroupArn="arn:aws:personalize:us-east-1:123456789012:dataset-group/nonexistent"
@@ -1593,6 +1739,22 @@ class TestPersonalizeCampaignCRUD:
         client.delete_campaign(campaignArn=arn)
 
     def test_delete_nonexistent_campaign_raises(self, client):
+        # CREATE: establish a real campaign as baseline
+        r = client.create_campaign(name="test-camp-del-nonexist-base", solutionVersionArn=self.SOL_VERSION_ARN)
+        camp_arn = r["campaignArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_campaign(campaignArn=camp_arn)
+        assert desc["campaign"]["campaignArn"] == camp_arn
+
+        # LIST: verify it appears
+        list_resp = client.list_campaigns()
+        assert camp_arn in [c["campaignArn"] for c in list_resp["campaigns"]]
+
+        # DELETE: clean up the real campaign
+        client.delete_campaign(campaignArn=camp_arn)
+
+        # ERROR: delete a truly nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.delete_campaign(campaignArn=f"{self.BASE_ARN}:campaign/nonexistent-xyz")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
@@ -1662,6 +1824,22 @@ class TestPersonalizeSolutionCRUD:
         client.delete_solution(solutionArn=arn)
 
     def test_delete_nonexistent_solution_raises(self, client):
+        # CREATE: establish a real solution as baseline
+        r = client.create_solution(name="test-sol-del-nonexist-base", datasetGroupArn=self.DG_ARN)
+        sol_arn = r["solutionArn"]
+
+        # RETRIEVE: verify describe works
+        desc = client.describe_solution(solutionArn=sol_arn)
+        assert desc["solution"]["solutionArn"] == sol_arn
+
+        # LIST: verify it appears
+        list_resp = client.list_solutions()
+        assert sol_arn in [s["solutionArn"] for s in list_resp["solutions"]]
+
+        # DELETE: clean up the real solution
+        client.delete_solution(solutionArn=sol_arn)
+
+        # ERROR: delete a truly nonexistent resource raises correct error
         with pytest.raises(ClientError) as exc:
             client.delete_solution(solutionArn=f"{self.BASE_ARN}:solution/nonexistent-xyz")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
@@ -1675,7 +1853,22 @@ class TestPersonalizeSolutionCRUD:
         assert parts[2] == "personalize"
         assert "solution" in arn
         assert "test-sol-arn-fmt" in arn
+
+        # RETRIEVE: ARN in describe matches create response
+        desc = client.describe_solution(solutionArn=arn)
+        assert desc["solution"]["solutionArn"] == arn
+
+        # LIST: ARN appears in list
+        list_resp = client.list_solutions()
+        assert arn in [s["solutionArn"] for s in list_resp["solutions"]]
+
+        # DELETE: clean up
         client.delete_solution(solutionArn=arn)
+
+        # ERROR: deleted resource ARN no longer resolves
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution(solutionArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestPersonalizeSolutionVersionCRUD:
@@ -1702,17 +1895,44 @@ class TestPersonalizeSolutionVersionCRUD:
         sv_arn = r["solutionVersionArn"]
         assert "solutionVersion" in sv_arn or "solution" in sv_arn
 
+        # RETRIEVE: describe the solution version
         desc = client.describe_solution_version(solutionVersionArn=sv_arn)
         sv = desc["solutionVersion"]
         assert sv["solutionVersionArn"] == sv_arn
         assert sv["status"] == "ACTIVE"
 
+        # LIST: verify it appears in the list
+        list_resp = client.list_solution_versions(solutionArn=solution_arn)
+        arns = [v["solutionVersionArn"] for v in list_resp["solutionVersions"]]
+        assert sv_arn in arns
+
+        # DELETE: clean up via parent solution (solution_arn fixture handles this)
+        # ERROR: describe a nonexistent solution version raises correct error
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution_version(
+                solutionVersionArn=f"{self.BASE_ARN}:solution/nonexistent/version/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_list_solution_versions_includes_created(self, client, solution_arn):
         r = client.create_solution_version(solutionArn=solution_arn)
         sv_arn = r["solutionVersionArn"]
+
+        # LIST: verify it appears in the list
         resp = client.list_solution_versions()
         arns = [sv["solutionVersionArn"] for sv in resp["solutionVersions"]]
         assert sv_arn in arns
+
+        # RETRIEVE: verify describe works on the version
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        assert desc["solutionVersion"]["solutionVersionArn"] == sv_arn
+
+        # ERROR: describe a nonexistent solution version
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution_version(
+                solutionVersionArn=f"{self.BASE_ARN}:solution/nonexistent/version/v999"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_solution_versions_entry_has_correct_keys(self, client, solution_arn):
         r = client.create_solution_version(solutionArn=solution_arn)
