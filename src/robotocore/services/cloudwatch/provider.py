@@ -1116,6 +1116,11 @@ def _handle_delete_alarm_mute_rule(params: dict, region: str, account_id: str) -
     return {}
 
 
+def _handle_list_alarm_mute_rules(params: dict, region: str, account_id: str) -> dict:
+    """ListAlarmMuteRules — return empty list with required response key."""
+    return {"AlarmMuteRuleSummaries": []}
+
+
 # ---------------------------------------------------------------------------
 # Response helpers
 # ---------------------------------------------------------------------------
@@ -1266,4 +1271,5 @@ _ACTION_MAP: dict[str, Callable] = {
     "PutAlarmMuteRule": _handle_put_alarm_mute_rule,
     "GetAlarmMuteRule": _handle_get_alarm_mute_rule,
     "DeleteAlarmMuteRule": _handle_delete_alarm_mute_rule,
+    "ListAlarmMuteRules": _handle_list_alarm_mute_rules,
 }

@@ -1598,3 +1598,347 @@ class TestCloudWatchMuteRuleCRUD:
         """DeleteAlarmMuteRule with nonexistent name returns 200."""
         resp = cw.delete_alarm_mute_rule(AlarmMuteRuleName="nonexistent-mute-rule-xyz")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestCloudWatchEdgeCases:
+    """Edge case and behavioral fidelity tests for CloudWatch."""
+
+    @pytest.fixture
+    def cw(self):
+        return make_client("cloudwatch")
+
+    # ── put_metric_data: add RETRIEVE + LIST + ERROR patterns ─────────────────
+
+    def test_put_metric_data_retrieve_via_statistics(self, cw):
+        """PutMetricData → GetMetricStatistics round-trip (CREATE + RETRIEVE)."""
+        ns = f"RoundTrip-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[
+                {"MetricName": "Score", "Value": 77.0, "Unit": "Count", "Timestamp": now},
+                {"MetricName": "Score", "Value": 88.0, "Unit": "Count", "Timestamp": now},
+            ],
+        )
+        resp = cw.get_metric_statistics(
+            Namespace=ns,
+            MetricName="Score",
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=5),
+            Period=300,
+            Statistics=["Sum", "Average", "SampleCount", "Minimum", "Maximum"],
+        )
+        assert len(resp["Datapoints"]) >= 1
+        dp = resp["Datapoints"][0]
+        assert dp["SampleCount"] == 2.0
+        assert dp["Sum"] == 165.0
+        assert dp["Minimum"] == 77.0
+        assert dp["Maximum"] == 88.0
+
+    def test_put_metric_data_list_after_put(self, cw):
+        """PutMetricData then ListMetrics returns the new metric (CREATE + LIST)."""
+        ns = f"ListAfterPut-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": "Heartbeat", "Value": 1.0, "Unit": "None"}],
+        )
+        resp = cw.list_metrics(Namespace=ns)
+        names = [m["MetricName"] for m in resp["Metrics"]]
+        assert "Heartbeat" in names
+        # Each metric entry must have Namespace and MetricName fields
+        for m in resp["Metrics"]:
+            assert "Namespace" in m
+            assert "MetricName" in m
+
+    # ── list_metrics: add pagination ─────────────────────────────────────────
+
+    def test_list_metrics_pagination(self, cw):
+        """ListMetrics paginates with NextToken when there are many metrics."""
+        ns = f"Paginate-{uuid.uuid4().hex[:8]}"
+        for i in range(5):
+            cw.put_metric_data(
+                Namespace=ns,
+                MetricData=[{"MetricName": f"Metric{i}", "Value": float(i), "Unit": "None"}],
+            )
+        # Collect all metrics via pagination
+        all_metrics = []
+        kwargs = {"Namespace": ns}
+        while True:
+            resp = cw.list_metrics(**kwargs)
+            all_metrics.extend(resp["Metrics"])
+            next_token = resp.get("NextToken")
+            if not next_token:
+                break
+            kwargs["NextToken"] = next_token
+        names = {m["MetricName"] for m in all_metrics}
+        for i in range(5):
+            assert f"Metric{i}" in names
+
+    def test_list_metrics_empty_namespace_returns_empty(self, cw):
+        """ListMetrics for a namespace with no data returns empty list (LIST + ERROR boundary)."""
+        ns = f"EmptyNS-{uuid.uuid4().hex[:8]}"
+        resp = cw.list_metrics(Namespace=ns)
+        assert resp["Metrics"] == []
+
+    # ── alarm ARN format ──────────────────────────────────────────────────────
+
+    def test_alarm_arn_format(self, cw):
+        """Alarm ARN matches arn:aws:cloudwatch:<region>:<account>:alarm:<name>."""
+        import re
+
+        name = f"arn-check-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_alarm(
+            AlarmName=name,
+            Namespace="ArnNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        try:
+            resp = cw.describe_alarms(AlarmNames=[name])
+            arn = resp["MetricAlarms"][0]["AlarmArn"]
+            assert re.match(
+                r"arn:aws:cloudwatch:[a-z0-9-]+:\d+:alarm:.+", arn
+            ), f"Unexpected ARN format: {arn}"
+        finally:
+            cw.delete_alarms(AlarmNames=[name])
+
+    # ── alarm idempotent update (PUT twice = UPDATE) ──────────────────────────
+
+    def test_alarm_idempotent_update(self, cw):
+        """Putting an alarm with the same name updates it in place (CREATE + UPDATE)."""
+        name = f"update-alarm-{uuid.uuid4().hex[:8]}"
+        try:
+            cw.put_metric_alarm(
+                AlarmName=name,
+                Namespace="IdempNS",
+                MetricName="M",
+                ComparisonOperator="GreaterThanThreshold",
+                EvaluationPeriods=1,
+                Period=60,
+                Statistic="Average",
+                Threshold=50.0,
+            )
+            arn_before = cw.describe_alarms(AlarmNames=[name])["MetricAlarms"][0]["AlarmArn"]
+
+            # Re-put with different threshold
+            cw.put_metric_alarm(
+                AlarmName=name,
+                Namespace="IdempNS",
+                MetricName="M",
+                ComparisonOperator="GreaterThanThreshold",
+                EvaluationPeriods=1,
+                Period=60,
+                Statistic="Average",
+                Threshold=99.0,
+            )
+            resp = cw.describe_alarms(AlarmNames=[name])
+            alarm = resp["MetricAlarms"][0]
+            # ARN should be stable across updates
+            assert alarm["AlarmArn"] == arn_before
+            assert alarm["Threshold"] == 99.0
+        finally:
+            cw.delete_alarms(AlarmNames=[name])
+
+    # ── alarm timestamps (behavioral fidelity) ────────────────────────────────
+
+    def test_alarm_has_timestamps(self, cw):
+        """Alarm response includes StateUpdatedTimestamp and AlarmConfigurationUpdatedTimestamp."""
+        name = f"ts-alarm-{uuid.uuid4().hex[:8]}"
+        try:
+            cw.put_metric_alarm(
+                AlarmName=name,
+                Namespace="TsNS",
+                MetricName="M",
+                ComparisonOperator="GreaterThanThreshold",
+                EvaluationPeriods=1,
+                Period=60,
+                Statistic="Average",
+                Threshold=50.0,
+            )
+            resp = cw.describe_alarms(AlarmNames=[name])
+            alarm = resp["MetricAlarms"][0]
+            assert "StateUpdatedTimestamp" in alarm
+            assert "AlarmConfigurationUpdatedTimestamp" in alarm
+        finally:
+            cw.delete_alarms(AlarmNames=[name])
+
+    # ── set_alarm_state: add LIST + ERROR patterns ────────────────────────────
+
+    def test_set_alarm_state_then_list_by_state(self, cw):
+        """SetAlarmState then DescribeAlarms filtered by StateValue (RETRIEVE + LIST)."""
+        name = f"state-list-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_alarm(
+            AlarmName=name,
+            Namespace="SLNs",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        try:
+            cw.set_alarm_state(AlarmName=name, StateValue="ALARM", StateReason="test")
+            resp = cw.describe_alarms(StateValue="ALARM")
+            names = [a["AlarmName"] for a in resp["MetricAlarms"]]
+            assert name in names
+        finally:
+            cw.delete_alarms(AlarmNames=[name])
+
+    def test_set_alarm_state_nonexistent_alarm_error(self, cw):
+        """SetAlarmState on nonexistent alarm raises ResourceNotFoundException (ERROR)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            cw.set_alarm_state(
+                AlarmName="nonexistent-alarm-xyz-99",
+                StateValue="ALARM",
+                StateReason="testing error",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ResourceNotFound",
+        )
+
+    # ── metric stream: ERROR pattern for nonexistent get ─────────────────────
+
+    def test_get_metric_stream_nonexistent_error(self, cw):
+        """GetMetricStream on nonexistent stream raises ResourceNotFoundException (ERROR)."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            cw.get_metric_stream(Name="nonexistent-stream-xyz-99")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ResourceNotFound",
+        )
+
+    # ── anomaly detector: filter by namespace ────────────────────────────────
+
+    def test_describe_anomaly_detectors_filter_by_namespace(self, cw):
+        """DescribeAnomalyDetectors with Namespace filter (CREATE + RETRIEVE + LIST + DELETE)."""
+        ns = f"ADFilter-{uuid.uuid4().hex[:8]}"
+        metric = "ADMetric"
+        stat = "Sum"
+        cw.put_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+        try:
+            # Filter by namespace: should find only the one we created
+            resp = cw.describe_anomaly_detectors(Namespace=ns)
+            assert len(resp["AnomalyDetectors"]) >= 1
+            for ad in resp["AnomalyDetectors"]:
+                assert ad["Namespace"] == ns
+            # Filter different namespace: should be empty
+            resp2 = cw.describe_anomaly_detectors(Namespace=f"Other-{uuid.uuid4().hex[:8]}")
+            assert resp2["AnomalyDetectors"] == []
+        finally:
+            cw.delete_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+
+    # ── list_alarm_mute_rules: add response key check ─────────────────────────
+
+    def test_list_alarm_mute_rules_response_structure(self, cw):
+        """ListAlarmMuteRules response includes AlarmMuteRuleSummaries key (LIST)."""
+        resp = cw.list_alarm_mute_rules()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AlarmMuteRuleSummaries" in resp
+        assert isinstance(resp["AlarmMuteRuleSummaries"], list)
+
+    # ── delete nonexistent metric stream: add LIST context ───────────────────
+
+    def test_delete_nonexistent_metric_stream_not_in_list(self, cw):
+        """Deleting nonexistent stream: still 200, and it's not in list (DELETE + LIST)."""
+        name = "totally-fake-stream-xyz"
+        resp = cw.delete_metric_stream(Name=name)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        list_resp = cw.list_metric_streams()
+        names = [e["Name"] for e in list_resp["Entries"]]
+        assert name not in names
+
+    # ── get_metric_widget_image: add format validation ────────────────────────
+
+    def test_get_metric_widget_image_is_png(self, cw):
+        """GetMetricWidgetImage returns PNG bytes (starts with PNG magic number)."""
+        import json
+
+        resp = cw.get_metric_widget_image(
+            MetricWidget=json.dumps(
+                {
+                    "metrics": [["AWS/EC2", "CPUUtilization", "InstanceId", "i-12345"]],
+                    "period": 300,
+                    "width": 400,
+                    "height": 300,
+                }
+            )
+        )
+        image_data = resp["MetricWidgetImage"]
+        assert len(image_data) > 0
+        # PNG magic bytes: \x89PNG
+        assert image_data[:4] == b"\x89PNG"
+
+    # ── put_managed_insight_rules: add retrieve context ───────────────────────
+
+    def test_put_managed_insight_rules_no_failures(self, cw):
+        """PutManagedInsightRules returns empty Failures list (CREATE + ERROR check)."""
+        resp = cw.put_managed_insight_rules(
+            ManagedRules=[
+                {
+                    "TemplateName": "DynamoDBContributorInsights",
+                    "ResourceARN": "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+                    "Tags": [{"Key": "team", "Value": "platform"}],
+                }
+            ]
+        )
+        assert "Failures" in resp
+        assert resp["Failures"] == []
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── alarm delete: list after delete shows it's gone ───────────────────────
+
+    def test_delete_alarm_not_in_list_after(self, cw):
+        """Deleted alarm no longer appears in DescribeAlarms (CREATE + DELETE + LIST)."""
+        name = f"gone-alarm-{uuid.uuid4().hex[:8]}"
+        cw.put_metric_alarm(
+            AlarmName=name,
+            Namespace="GoneNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        # Verify exists
+        resp = cw.describe_alarms(AlarmNames=[name])
+        assert len(resp["MetricAlarms"]) == 1
+
+        # Delete
+        cw.delete_alarms(AlarmNames=[name])
+
+        # Verify gone
+        resp = cw.describe_alarms(AlarmNames=[name])
+        assert len(resp["MetricAlarms"]) == 0
+
+    # ── unicode in metric names ───────────────────────────────────────────────
+
+    def test_put_metric_data_unicode_metric_name(self, cw):
+        """PutMetricData with unicode in MetricName round-trips correctly."""
+        ns = f"Unicode-{uuid.uuid4().hex[:8]}"
+        metric_name = "Latência_μs"
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": metric_name, "Value": 42.0, "Unit": "Microseconds"}],
+        )
+        resp = cw.list_metrics(Namespace=ns)
+        names = [m["MetricName"] for m in resp["Metrics"]]
+        assert metric_name in names
+
+    # ── describe_alarm_contributors: add alarm context ───────────────────────
+
+    def test_describe_alarm_contributors_structure(self, cw):
+        """DescribeAlarmContributors returns AlarmContributors with list structure."""
+        resp = cw.describe_alarm_contributors(AlarmName="any-alarm-name")
+        assert "AlarmContributors" in resp
+        assert isinstance(resp["AlarmContributors"], list)
