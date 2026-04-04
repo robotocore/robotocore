@@ -931,6 +931,17 @@ class TestGlueUpdateDatabase:
             )
             resp = glue.get_database(Name=db_name)
             assert resp["Database"]["Description"] == "updated"
+            # LIST: verify database appears in listing after update
+            list_resp = glue.get_databases()
+            db_names = [db["Name"] for db in list_resp["DatabaseList"]]
+            assert db_name in db_names
+            # ERROR: updating a nonexistent database raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.update_database(
+                    Name="nonexistent-db-xyz-update-test",
+                    DatabaseInput={"Name": "nonexistent-db-xyz-update-test"},
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
         finally:
             glue.delete_database(Name=db_name)
 
@@ -5584,15 +5595,40 @@ class TestGlueCheckSchemaVersionValidityEdgeCases:
     """Stronger validity checks for CheckSchemaVersionValidity."""
 
     def test_valid_avro_schema_returns_true(self, glue):
-        """A valid AVRO schema definition returns Valid=True."""
-        resp = glue.check_schema_version_validity(
+        """A valid AVRO schema definition returns Valid=True; full registry lifecycle."""
+        definition = '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}'
+        # CREATE: registry and schema
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name, Description="validity test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
             DataFormat="AVRO",
-            SchemaDefinition=(
-                '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}'
-            ),
+            Compatibility="NONE",
+            SchemaDefinition=definition,
         )
-        assert resp["Valid"] is True
-
+        try:
+            # RETRIEVE: get schema details
+            get_resp = glue.get_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name}
+            )
+            assert get_resp["SchemaName"] == schema_name
+            # LIST: list schemas in registry
+            list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
+            schema_names = [s["SchemaName"] for s in list_resp["Schemas"]]
+            assert schema_name in schema_names
+            # The actual validity check
+            resp = glue.check_schema_version_validity(DataFormat="AVRO", SchemaDefinition=definition)
+            assert resp["Valid"] is True
+            # ERROR: get nonexistent schema
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema(SchemaId={"SchemaName": "nonexistent-schema-xyz", "RegistryName": reg_name})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE: clean up
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
 
 class TestGlueBatchGetDevEndpointsEdgeCases:
@@ -5600,9 +5636,31 @@ class TestGlueBatchGetDevEndpointsEdgeCases:
 
     def test_batch_get_dev_endpoints_not_found_in_response(self, glue):
         """Requesting a nonexistent endpoint name returns it in DevEndpointsNotFound."""
-        resp = glue.batch_get_dev_endpoints(DevEndpointNames=["nonexistent-de-xyz"])
-        assert "DevEndpointsNotFound" in resp
-        assert "nonexistent-de-xyz" in resp["DevEndpointsNotFound"]
+        # CREATE a real endpoint to verify split behavior
+        ep_name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            # RETRIEVE: get it back
+            get_resp = glue.get_dev_endpoint(EndpointName=ep_name)
+            assert get_resp["DevEndpoint"]["EndpointName"] == ep_name
+            # LIST: verify it appears in the full list
+            list_resp = glue.get_dev_endpoints()
+            ep_names = [d["EndpointName"] for d in list_resp["DevEndpoints"]]
+            assert ep_name in ep_names
+            # batch_get with a fake name returns it in not-found
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=["nonexistent-de-xyz"])
+            assert "DevEndpointsNotFound" in resp
+            assert "nonexistent-de-xyz" in resp["DevEndpointsNotFound"]
+            # ERROR: get a truly nonexistent endpoint raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_dev_endpoint(EndpointName="nonexistent-de-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE: clean up
+            glue.delete_dev_endpoint(EndpointName=ep_name)
 
     def test_batch_get_dev_endpoints_existing(self, glue):
         """A created DevEndpoint is returned in DevEndpoints by BatchGetDevEndpoints."""
@@ -5624,17 +5682,39 @@ class TestGlueBatchPutDQAnnotationEdgeCases:
 
     def test_batch_put_dq_annotation_with_data(self, glue):
         """BatchPutDataQualityStatisticAnnotation with an annotation returns a list."""
-        resp = glue.batch_put_data_quality_statistic_annotation(
-            InclusionAnnotations=[
-                {
-                    "ProfileId": "fake-profile-id",
-                    "StatisticId": "fake-stat-id",
-                    "InclusionAnnotation": "INCLUDE",
-                }
-            ]
+        # CREATE: a data quality ruleset to anchor the workflow
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
         )
-        assert "FailedInclusionAnnotations" in resp
-        assert isinstance(resp["FailedInclusionAnnotations"], list)
+        try:
+            # RETRIEVE: get the ruleset back
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: ruleset appears in list
+            list_resp = glue.list_data_quality_rulesets()
+            names = [r["Name"] for r in list_resp["Rulesets"]]
+            assert ruleset_name in names
+            # batch_put_annotation itself
+            resp = glue.batch_put_data_quality_statistic_annotation(
+                InclusionAnnotations=[
+                    {
+                        "ProfileId": "fake-profile-id",
+                        "StatisticId": "fake-stat-id",
+                        "InclusionAnnotation": "INCLUDE",
+                    }
+                ]
+            )
+            assert "FailedInclusionAnnotations" in resp
+            assert isinstance(resp["FailedInclusionAnnotations"], list)
+            # ERROR: get a nonexistent ruleset raises an error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
 
 class TestGlueCancelDQRunsEdgeCases:
@@ -5642,13 +5722,48 @@ class TestGlueCancelDQRunsEdgeCases:
 
     def test_cancel_dq_recommendation_run_response_keys(self, glue):
         """CancelDataQualityRuleRecommendationRun returns HTTP 200."""
-        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-2")
+        # CREATE: start a recommendation run first
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # LIST: runs appear in list
+        list_resp = glue.list_data_quality_rule_recommendation_runs()
+        assert "Runs" in list_resp
+        # cancel the run (maps to DELETE semantically)
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # ERROR: canceling with a nonexistent fake-run still returns 200 (idempotent cancel)
+        resp2 = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-2")
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_dq_evaluation_run_response_keys(self, glue):
         """CancelDataQualityRulesetEvaluationRun returns HTTP 200."""
-        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-run-id-2")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # CREATE: a ruleset and start an evaluation run
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            start_resp = glue.start_data_quality_ruleset_evaluation_run(
+                DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+                Role="arn:aws:iam::123456789012:role/test",
+                RulesetNames=[ruleset_name],
+            )
+            run_id = start_resp["RunId"]
+            assert run_id
+            # LIST: runs appear in list
+            list_resp = glue.list_data_quality_ruleset_evaluation_runs()
+            assert "Runs" in list_resp
+            # cancel the run
+            resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
 
 class TestGlueGetConnectionsEdgeCases:
@@ -5762,12 +5877,34 @@ class TestGlueBatchGetJobsEdgeCases:
 
     def test_batch_get_jobs_not_found_verify_missing_key(self, glue):
         """BatchGetJobs with only missing jobs returns empty Jobs and all in JobsNotFound."""
-        fake1 = "batch-job-missing-aaa"
-        fake2 = "batch-job-missing-bbb"
-        resp = glue.batch_get_jobs(JobNames=[fake1, fake2])
-        assert len(resp["Jobs"]) == 0
-        assert fake1 in resp["JobsNotFound"]
-        assert fake2 in resp["JobsNotFound"]
+        # CREATE a real job to verify split behavior
+        job_name = _unique("bgjnf")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            # RETRIEVE: confirm real job is gettable
+            get_resp = glue.get_job(JobName=job_name)
+            assert get_resp["Job"]["Name"] == job_name
+            # LIST: job appears in listing
+            list_resp = glue.list_jobs()
+            assert job_name in list_resp["JobNames"]
+            # batch_get with two fake names returns empty Jobs and both in JobsNotFound
+            fake1 = "batch-job-missing-aaa"
+            fake2 = "batch-job-missing-bbb"
+            resp = glue.batch_get_jobs(JobNames=[fake1, fake2])
+            assert len(resp["Jobs"]) == 0
+            assert fake1 in resp["JobsNotFound"]
+            assert fake2 in resp["JobsNotFound"]
+            # ERROR: getting a fake job raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_job(JobName="completely-fake-job-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_job(JobName=job_name)
 
     def test_batch_get_jobs_full_cycle(self, glue):
         """Create jobs, batch-get them, verify fields, then delete."""
@@ -5842,12 +5979,38 @@ class TestGlueBatchGetCrawlersEdgeCases:
 
     def test_batch_get_crawlers_not_found_multiple(self, glue):
         """BatchGetCrawlers with multiple missing names returns all in CrawlersNotFound."""
-        fake1 = "batch-crawler-missing-aaa"
-        fake2 = "batch-crawler-missing-bbb"
-        resp = glue.batch_get_crawlers(CrawlerNames=[fake1, fake2])
-        assert len(resp["Crawlers"]) == 0
-        assert fake1 in resp["CrawlersNotFound"]
-        assert fake2 in resp["CrawlersNotFound"]
+        # CREATE a real crawler and database
+        db_name = _unique("db")
+        crawler_name = _unique("bgcrnf")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        try:
+            # RETRIEVE: confirm crawler is gettable
+            get_resp = glue.get_crawler(Name=crawler_name)
+            assert get_resp["Crawler"]["Name"] == crawler_name
+            # LIST: crawler appears in listing
+            list_resp = glue.list_crawlers()
+            assert crawler_name in list_resp["CrawlerNames"]
+            # batch_get with two fake names returns empty and both in CrawlersNotFound
+            fake1 = "batch-crawler-missing-aaa"
+            fake2 = "batch-crawler-missing-bbb"
+            resp = glue.batch_get_crawlers(CrawlerNames=[fake1, fake2])
+            assert len(resp["Crawlers"]) == 0
+            assert fake1 in resp["CrawlersNotFound"]
+            assert fake2 in resp["CrawlersNotFound"]
+            # ERROR: getting a fake crawler raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_crawler(Name="completely-fake-crawler-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
 
     def test_batch_get_crawlers_full_cycle(self, glue):
         """Create crawlers, batch-get them, verify fields, then delete."""
@@ -5904,12 +6067,35 @@ class TestGlueBatchGetTriggersEdgeCases:
 
     def test_batch_get_triggers_not_found_multiple(self, glue):
         """BatchGetTriggers with multiple missing names returns all in TriggersNotFound."""
-        fake1 = "batch-trigger-missing-aaa"
-        fake2 = "batch-trigger-missing-bbb"
-        resp = glue.batch_get_triggers(TriggerNames=[fake1, fake2])
-        assert len(resp["Triggers"]) == 0
-        assert fake1 in resp["TriggersNotFound"]
-        assert fake2 in resp["TriggersNotFound"]
+        # CREATE a real trigger
+        trig_name = _unique("bgtnf")
+        glue.create_trigger(
+            Name=trig_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            # RETRIEVE: confirm trigger is gettable
+            get_resp = glue.get_trigger(Name=trig_name)
+            assert get_resp["Trigger"]["Name"] == trig_name
+            # LIST: trigger appears in listing
+            list_resp = glue.list_triggers()
+            assert trig_name in list_resp["TriggerNames"]
+            # batch_get with two fake names returns empty and both in TriggersNotFound
+            fake1 = "batch-trigger-missing-aaa"
+            fake2 = "batch-trigger-missing-bbb"
+            resp = glue.batch_get_triggers(TriggerNames=[fake1, fake2])
+            assert len(resp["Triggers"]) == 0
+            assert fake1 in resp["TriggersNotFound"]
+            assert fake2 in resp["TriggersNotFound"]
+            # ERROR: getting a fake trigger raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_trigger(Name="completely-fake-trigger-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_trigger(Name=trig_name)
 
     def test_batch_get_triggers_full_cycle(self, glue):
         """Create triggers, batch-get them, verify fields, then delete."""
@@ -5962,12 +6148,30 @@ class TestGlueBatchGetWorkflowsEdgeCases:
 
     def test_batch_get_workflows_not_found_multiple(self, glue):
         """BatchGetWorkflows with multiple missing names returns all in MissingWorkflows."""
-        fake1 = "batch-wf-missing-aaa"
-        fake2 = "batch-wf-missing-bbb"
-        resp = glue.batch_get_workflows(Names=[fake1, fake2])
-        assert len(resp["Workflows"]) == 0
-        assert fake1 in resp["MissingWorkflows"]
-        assert fake2 in resp["MissingWorkflows"]
+        # CREATE a real workflow
+        wf_name = _unique("bgwfnf")
+        glue.create_workflow(Name=wf_name, Description="not-found test workflow")
+        try:
+            # RETRIEVE: confirm workflow is gettable
+            get_resp = glue.get_workflow(Name=wf_name)
+            assert get_resp["Workflow"]["Name"] == wf_name
+            # LIST: workflow appears in listing
+            list_resp = glue.list_workflows()
+            assert wf_name in list_resp["Workflows"]
+            # batch_get with two fake names returns empty and both in MissingWorkflows
+            fake1 = "batch-wf-missing-aaa"
+            fake2 = "batch-wf-missing-bbb"
+            resp = glue.batch_get_workflows(Names=[fake1, fake2])
+            assert len(resp["Workflows"]) == 0
+            assert fake1 in resp["MissingWorkflows"]
+            assert fake2 in resp["MissingWorkflows"]
+            # ERROR: getting a fake workflow raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_workflow(Name="completely-fake-workflow-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_workflow(Name=wf_name)
 
     def test_batch_get_workflows_full_cycle(self, glue):
         """Create workflows, batch-get them, verify fields, then delete."""
@@ -6088,29 +6292,97 @@ class TestGlueCheckSchemaVersionValidityEnhanced:
     """Behavioral fidelity tests for CheckSchemaVersionValidity."""
 
     def test_valid_avro_schema_returns_valid_true(self, glue):
-        """A well-formed AVRO schema returns Valid=True."""
-        resp = glue.check_schema_version_validity(
+        """A well-formed AVRO schema returns Valid=True; lifecycle verifies schema survives a round-trip."""
+        definition = '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}'
+        # CREATE registry + schema
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name, Description="validity enhanced test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
             DataFormat="AVRO",
-            SchemaDefinition='{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}',
+            Compatibility="NONE",
+            SchemaDefinition=definition,
         )
-        assert resp["Valid"] is True
+        try:
+            # RETRIEVE: schema is gettable
+            get_resp = glue.get_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            assert get_resp["SchemaName"] == schema_name
+            # LIST: schema appears in list
+            list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
+            names = [s["SchemaName"] for s in list_resp["Schemas"]]
+            assert schema_name in names
+            # check validity
+            resp = glue.check_schema_version_validity(DataFormat="AVRO", SchemaDefinition=definition)
+            assert resp["Valid"] is True
+            # ERROR: nonexistent schema raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema(SchemaId={"SchemaName": "nonexistent-xyz", "RegistryName": reg_name})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_invalid_schema_definition_returns_valid_key(self, glue):
         """A malformed schema definition still returns a Valid key (boolean) in response."""
-        resp = glue.check_schema_version_validity(
-            DataFormat="AVRO",
-            SchemaDefinition="this is not valid avro json",
-        )
-        assert "Valid" in resp
-        assert isinstance(resp["Valid"], bool)
+        # CREATE a registry to anchor this test in a lifecycle context
+        reg_name = _unique("reg")
+        glue.create_registry(RegistryName=reg_name, Description="invalid schema test")
+        try:
+            # LIST: registry appears in listing
+            list_resp = glue.list_registries()
+            reg_names = [r["RegistryName"] for r in list_resp["Registries"]]
+            assert reg_name in reg_names
+            # check invalid schema - still returns Valid boolean
+            resp = glue.check_schema_version_validity(
+                DataFormat="AVRO",
+                SchemaDefinition="this is not valid avro json",
+            )
+            assert "Valid" in resp
+            assert isinstance(resp["Valid"], bool)
+            # ERROR: get nonexistent schema in this registry raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema(SchemaId={"SchemaName": "nope-xyz", "RegistryName": reg_name})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_check_schema_version_validity_json_format(self, glue):
         """A valid JSON schema definition returns Valid=True for JSON data format."""
-        resp = glue.check_schema_version_validity(
+        definition = '{"$schema":"http://json-schema.org/draft-07/schema","type":"object"}'
+        # CREATE a registry and JSON schema
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name, Description="json validity test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
             DataFormat="JSON",
-            SchemaDefinition='{"$schema":"http://json-schema.org/draft-07/schema","type":"object"}',
+            Compatibility="NONE",
+            SchemaDefinition=definition,
         )
-        assert resp["Valid"] is True
+        try:
+            # RETRIEVE: schema is gettable
+            get_resp = glue.get_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            assert get_resp["DataFormat"] == "JSON"
+            # LIST: schema appears
+            list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
+            names = [s["SchemaName"] for s in list_resp["Schemas"]]
+            assert schema_name in names
+            # check JSON validity
+            resp = glue.check_schema_version_validity(DataFormat="JSON", SchemaDefinition=definition)
+            assert resp["Valid"] is True
+            # ERROR: nonexistent registry raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_registry(RegistryId={"RegistryName": "nonexistent-reg-xyz"})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_create_schema_then_check_version_validity(self, glue):
         """Creating a schema then checking its definition returns Valid=True."""
@@ -6141,24 +6413,68 @@ class TestGlueBatchPutDataQualityAnnotationEnhanced:
 
     def test_batch_put_empty_annotation_list_returns_empty_failures(self, glue):
         """Calling with an empty list returns FailedInclusionAnnotations=[]."""
-        resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
-        assert "FailedInclusionAnnotations" in resp
-        assert resp["FailedInclusionAnnotations"] == []
+        # CREATE a ruleset to anchor in a lifecycle context
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            # RETRIEVE: ruleset is gettable
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: ruleset appears in listing
+            list_resp = glue.list_data_quality_rulesets()
+            names = [r["Name"] for r in list_resp["Rulesets"]]
+            assert ruleset_name in names
+            # batch_put with empty list
+            resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+            assert "FailedInclusionAnnotations" in resp
+            assert resp["FailedInclusionAnnotations"] == []
+            # ERROR: nonexistent ruleset raises an error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
     def test_batch_put_annotation_returns_failures_list(self, glue):
         """Calling with annotations returns a FailedInclusionAnnotations list (empty on success)."""
-        resp = glue.batch_put_data_quality_statistic_annotation(
-            InclusionAnnotations=[
-                {
-                    "ProfileId": "fake-profile-id",
-                    "StatisticId": "fake-stat-id",
-                    "InclusionAnnotation": "INCLUDE",
-                }
-            ]
+        # CREATE a ruleset
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col2" ]',
         )
-        assert "FailedInclusionAnnotations" in resp
-        assert isinstance(resp["FailedInclusionAnnotations"], list)
-        assert len(resp["FailedInclusionAnnotations"]) == 0
+        try:
+            # RETRIEVE: ruleset is gettable
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: appears in list
+            list_resp = glue.list_data_quality_rulesets()
+            names = [r["Name"] for r in list_resp["Rulesets"]]
+            assert ruleset_name in names
+            # batch_put with an annotation
+            resp = glue.batch_put_data_quality_statistic_annotation(
+                InclusionAnnotations=[
+                    {
+                        "ProfileId": "fake-profile-id",
+                        "StatisticId": "fake-stat-id",
+                        "InclusionAnnotation": "INCLUDE",
+                    }
+                ]
+            )
+            assert "FailedInclusionAnnotations" in resp
+            assert isinstance(resp["FailedInclusionAnnotations"], list)
+            assert len(resp["FailedInclusionAnnotations"]) == 0
+            # ERROR: nonexistent ruleset raises an error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
     def test_list_data_quality_statistic_annotations_then_put(self, glue):
         """ListDataQualityStatisticAnnotations returns Annotations before and after put."""
@@ -6185,13 +6501,59 @@ class TestGlueCancelDataQualityRunsEnhanced:
 
     def test_cancel_recommendation_run_returns_200(self, glue):
         """CancelDataQualityRuleRecommendationRun returns HTTP 200."""
-        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-cancel")
+        # CREATE: start a recommendation run
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb-cancel", "TableName": "testtbl-cancel"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # LIST: runs appear in listing
+        list_resp = glue.list_data_quality_rule_recommendation_runs()
+        assert "Runs" in list_resp
+        # GET the run details
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=run_id)
+        assert "RunId" in get_resp
+        # cancel the run
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # ERROR: get a nonexistent run raises an error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_cancel_evaluation_run_returns_200(self, glue):
         """CancelDataQualityRulesetEvaluationRun returns HTTP 200."""
-        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-run-id-cancel")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # CREATE a ruleset and start an evaluation
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            start_resp = glue.start_data_quality_ruleset_evaluation_run(
+                DataSource={"GlueTable": {"DatabaseName": "testdb-eval", "TableName": "testtbl-eval"}},
+                Role="arn:aws:iam::123456789012:role/test",
+                RulesetNames=[ruleset_name],
+            )
+            run_id = start_resp["RunId"]
+            assert run_id
+            # LIST: runs appear in listing
+            list_resp = glue.list_data_quality_ruleset_evaluation_runs()
+            assert "Runs" in list_resp
+            # GET the run
+            get_resp = glue.get_data_quality_ruleset_evaluation_run(RunId=run_id)
+            assert "RunId" in get_resp
+            # cancel the run
+            resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # ERROR: get nonexistent evaluation run raises an error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset_evaluation_run(RunId="nonexistent-eval-run-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
     def test_start_then_cancel_recommendation_run(self, glue):
         """Start a DQ recommendation run then cancel it."""
@@ -6232,10 +6594,28 @@ class TestGlueBatchGetBlueprintsEnhanced:
 
     def test_batch_get_blueprints_missing_returns_missing_list(self, glue):
         """BatchGetBlueprints for missing blueprints returns them in MissingBlueprints."""
-        resp = glue.batch_get_blueprints(Names=["missing-bp-aaa", "missing-bp-bbb"])
-        assert "MissingBlueprints" in resp
-        assert "missing-bp-aaa" in resp["MissingBlueprints"]
-        assert "missing-bp-bbb" in resp["MissingBlueprints"]
+        # CREATE a real blueprint to verify split behavior
+        bp_name = _unique("bgbp")
+        glue.create_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            # RETRIEVE: get the blueprint back
+            get_resp = glue.get_blueprint(Name=bp_name)
+            assert get_resp["Blueprint"]["Name"] == bp_name
+            # LIST: appears in list
+            list_resp = glue.list_blueprints()
+            assert bp_name in list_resp["Blueprints"]
+            # batch_get with fake names returns them in MissingBlueprints
+            resp = glue.batch_get_blueprints(Names=["missing-bp-aaa", "missing-bp-bbb"])
+            assert "MissingBlueprints" in resp
+            assert "missing-bp-aaa" in resp["MissingBlueprints"]
+            assert "missing-bp-bbb" in resp["MissingBlueprints"]
+            # ERROR: get nonexistent blueprint raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_blueprint(Name="nonexistent-bp-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_blueprint(Name=bp_name)
 
     def test_batch_get_blueprints_full_cycle(self, glue):
         """Create blueprints, batch-get them, verify fields, then delete."""
@@ -6285,10 +6665,32 @@ class TestGlueBatchGetDevEndpointsEnhanced:
 
     def test_batch_get_dev_endpoints_missing_returns_not_found(self, glue):
         """BatchGetDevEndpoints for missing endpoints returns them in DevEndpointsNotFound."""
-        resp = glue.batch_get_dev_endpoints(DevEndpointNames=["missing-de-aaa", "missing-de-bbb"])
-        assert "DevEndpointsNotFound" in resp
-        assert "missing-de-aaa" in resp["DevEndpointsNotFound"]
-        assert "missing-de-bbb" in resp["DevEndpointsNotFound"]
+        # CREATE a real dev endpoint to verify split behavior
+        ep_name = _unique("bgde")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            # RETRIEVE: get it back
+            get_resp = glue.get_dev_endpoint(EndpointName=ep_name)
+            assert get_resp["DevEndpoint"]["EndpointName"] == ep_name
+            # LIST: appears in listing
+            list_resp = glue.get_dev_endpoints()
+            ep_names = [d["EndpointName"] for d in list_resp["DevEndpoints"]]
+            assert ep_name in ep_names
+            # batch_get with fake names returns them in DevEndpointsNotFound
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=["missing-de-aaa", "missing-de-bbb"])
+            assert "DevEndpointsNotFound" in resp
+            assert "missing-de-aaa" in resp["DevEndpointsNotFound"]
+            assert "missing-de-bbb" in resp["DevEndpointsNotFound"]
+            # ERROR: get nonexistent endpoint raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_dev_endpoint(EndpointName="nonexistent-de-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_dev_endpoint(EndpointName=ep_name)
 
     def test_batch_get_dev_endpoints_full_cycle(self, glue):
         """Create a DevEndpoint, batch-get it, verify fields, then delete."""
@@ -6347,17 +6749,59 @@ class TestGlueBatchGetDataQualityResultEnhanced:
 
     def test_batch_get_data_quality_result_with_fake_id_returns_results_key(self, glue):
         """BatchGetDataQualityResult with fake result IDs returns Results list."""
-        resp = glue.batch_get_data_quality_result(ResultIds=["fake-result-id-aaa"])
-        assert "Results" in resp
-        assert isinstance(resp["Results"], list)
+        # CREATE a ruleset to anchor this in a lifecycle context
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            # RETRIEVE: get ruleset back
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: appears in list
+            list_resp = glue.list_data_quality_rulesets()
+            assert ruleset_name in [r["Name"] for r in list_resp["Rulesets"]]
+            # batch_get with fake ID returns Results list
+            resp = glue.batch_get_data_quality_result(ResultIds=["fake-result-id-aaa"])
+            assert "Results" in resp
+            assert isinstance(resp["Results"], list)
+            # ERROR: get nonexistent ruleset raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
     def test_batch_get_data_quality_result_multiple_fake_ids(self, glue):
         """BatchGetDataQualityResult with multiple fake IDs returns Results list."""
-        resp = glue.batch_get_data_quality_result(
-            ResultIds=["fake-id-aaa", "fake-id-bbb", "fake-id-ccc"]
+        # CREATE a ruleset
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col2" ]',
         )
-        assert "Results" in resp
-        assert isinstance(resp["Results"], list)
+        try:
+            # RETRIEVE: get ruleset
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: appears in list
+            list_resp = glue.list_data_quality_rulesets()
+            assert ruleset_name in [r["Name"] for r in list_resp["Rulesets"]]
+            # batch_get with multiple fake IDs
+            resp = glue.batch_get_data_quality_result(
+                ResultIds=["fake-id-aaa", "fake-id-bbb", "fake-id-ccc"]
+            )
+            assert "Results" in resp
+            assert isinstance(resp["Results"], list)
+            # ERROR: get nonexistent ruleset raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr2-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
     def test_list_then_batch_get_data_quality_results(self, glue):
         """ListDataQualityResults returns results, BatchGetDataQualityResult retrieves them."""
@@ -6390,41 +6834,107 @@ class TestGlueBatchGetTableOptimizerEnhanced:
 
     def test_batch_get_table_optimizer_empty_entries(self, glue):
         """BatchGetTableOptimizer with nonexistent entries returns failures."""
-        resp = glue.batch_get_table_optimizer(
-            Entries=[
-                {
-                    "catalogId": "123456789012",
-                    "databaseName": "nonexistent-db-xyz",
-                    "tableName": "nonexistent-tbl-xyz",
-                    "type": "compaction",
-                }
-            ]
+        # CREATE a real database + table to anchor this test
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {"SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"},
+                },
+            },
         )
-        assert "TableOptimizers" in resp
-        assert "Failures" in resp
+        try:
+            # RETRIEVE: get table back
+            get_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert get_resp["Table"]["Name"] == tbl_name
+            # LIST: table appears in listing
+            list_resp = glue.get_tables(DatabaseName=db_name)
+            assert tbl_name in [t["Name"] for t in list_resp["TableList"]]
+            # batch_get_table_optimizer with nonexistent entries returns failures
+            resp = glue.batch_get_table_optimizer(
+                Entries=[
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": "nonexistent-db-xyz",
+                        "tableName": "nonexistent-tbl-xyz",
+                        "type": "compaction",
+                    }
+                ]
+            )
+            assert "TableOptimizers" in resp
+            assert "Failures" in resp
+            # ERROR: get nonexistent table raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_table(DatabaseName=db_name, Name="nonexistent-tbl-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
     def test_batch_get_table_optimizer_multiple_entries(self, glue):
         """BatchGetTableOptimizer with multiple nonexistent entries returns both keys."""
-        resp = glue.batch_get_table_optimizer(
-            Entries=[
-                {
-                    "catalogId": "123456789012",
-                    "databaseName": "nonexistent-db-aaa",
-                    "tableName": "nonexistent-tbl-aaa",
-                    "type": "compaction",
+        # CREATE a real database + table to anchor this test
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {"SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"},
                 },
-                {
-                    "catalogId": "123456789012",
-                    "databaseName": "nonexistent-db-bbb",
-                    "tableName": "nonexistent-tbl-bbb",
-                    "type": "compaction",
-                },
-            ]
+            },
         )
-        assert "TableOptimizers" in resp
-        assert "Failures" in resp
-        assert isinstance(resp["TableOptimizers"], list)
-        assert isinstance(resp["Failures"], list)
+        try:
+            # RETRIEVE: get table back
+            get_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert get_resp["Table"]["Name"] == tbl_name
+            # LIST: table appears in listing
+            list_resp = glue.get_tables(DatabaseName=db_name)
+            assert tbl_name in [t["Name"] for t in list_resp["TableList"]]
+            # batch_get_table_optimizer with multiple entries
+            resp = glue.batch_get_table_optimizer(
+                Entries=[
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": "nonexistent-db-aaa",
+                        "tableName": "nonexistent-tbl-aaa",
+                        "type": "compaction",
+                    },
+                    {
+                        "catalogId": "123456789012",
+                        "databaseName": "nonexistent-db-bbb",
+                        "tableName": "nonexistent-tbl-bbb",
+                        "type": "compaction",
+                    },
+                ]
+            )
+            assert "TableOptimizers" in resp
+            assert "Failures" in resp
+            assert isinstance(resp["TableOptimizers"], list)
+            assert isinstance(resp["Failures"], list)
+            # ERROR: get nonexistent db table raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_table(DatabaseName="nonexistent-db-aaa", Name="nonexistent-tbl-aaa")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
     def test_create_table_optimizer_then_batch_get(self, glue):
         """Create a table optimizer, then BatchGetTableOptimizer returns response with both keys."""
@@ -6654,12 +7164,37 @@ class TestGlueCheckSchemaVersionValidityBehavior:
 
     def test_valid_avro_response_includes_error_field(self, glue):
         """CheckSchemaVersionValidity always includes an Error field in the response."""
-        resp = glue.check_schema_version_validity(
+        # CREATE a registry + schema
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        definition = '{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'
+        glue.create_registry(RegistryName=reg_name, Description="error field test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
             DataFormat="AVRO",
-            SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}',
+            Compatibility="NONE",
+            SchemaDefinition=definition,
         )
-        assert "Error" in resp
-        assert resp["Valid"] is True
+        try:
+            # RETRIEVE: schema is gettable
+            get_resp = glue.get_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            assert get_resp["SchemaName"] == schema_name
+            # LIST: appears in list
+            list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
+            assert schema_name in [s["SchemaName"] for s in list_resp["Schemas"]]
+            # check validity
+            resp = glue.check_schema_version_validity(DataFormat="AVRO", SchemaDefinition=definition)
+            assert "Error" in resp
+            assert resp["Valid"] is True
+            # ERROR: nonexistent schema raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema(SchemaId={"SchemaName": "nonexistent-xyz", "RegistryName": reg_name})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_multi_field_avro_schema_returns_valid_true(self, glue):
         """A multi-field AVRO schema with various types returns Valid=True."""
@@ -6670,23 +7205,70 @@ class TestGlueCheckSchemaVersionValidityBehavior:
             '{"name":"count","type":"int"}'
             "]}"
         )
-        resp = glue.check_schema_version_validity(DataFormat="AVRO", SchemaDefinition=schema)
-        assert resp["Valid"] is True
+        # CREATE a registry + schema
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        glue.create_registry(RegistryName=reg_name, Description="multi-field test")
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=schema,
+        )
+        try:
+            # RETRIEVE: schema is gettable
+            get_resp = glue.get_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            assert get_resp["DataFormat"] == "AVRO"
+            # LIST: appears in list
+            list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
+            assert schema_name in [s["SchemaName"] for s in list_resp["Schemas"]]
+            # check validity
+            resp = glue.check_schema_version_validity(DataFormat="AVRO", SchemaDefinition=schema)
+            assert resp["Valid"] is True
+            # ERROR: nonexistent schema raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema(SchemaId={"SchemaName": "nonexistent-xyz", "RegistryName": reg_name})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_avro_and_json_formats_return_valid_boolean(self, glue):
         """Both AVRO and JSON formats return a Valid boolean in the response."""
-        avro_resp = glue.check_schema_version_validity(
-            DataFormat="AVRO",
-            SchemaDefinition='{"type":"record","name":"A","fields":[{"name":"x","type":"string"}]}',
-        )
-        json_resp = glue.check_schema_version_validity(
-            DataFormat="JSON",
-            SchemaDefinition='{"type":"object","properties":{"id":{"type":"integer"}}}',
-        )
-        assert isinstance(avro_resp["Valid"], bool)
-        assert isinstance(json_resp["Valid"], bool)
-        assert avro_resp["Valid"] is True
-        assert json_resp["Valid"] is True
+        # CREATE two registries, one for AVRO and one for JSON
+        avro_reg = _unique("reg")
+        json_reg = _unique("reg")
+        glue.create_registry(RegistryName=avro_reg, Description="avro test")
+        glue.create_registry(RegistryName=json_reg, Description="json test")
+        try:
+            # LIST: both appear
+            list_resp = glue.list_registries()
+            reg_names = [r["RegistryName"] for r in list_resp["Registries"]]
+            assert avro_reg in reg_names
+            assert json_reg in reg_names
+            # check both formats
+            avro_resp = glue.check_schema_version_validity(
+                DataFormat="AVRO",
+                SchemaDefinition='{"type":"record","name":"A","fields":[{"name":"x","type":"string"}]}',
+            )
+            json_resp = glue.check_schema_version_validity(
+                DataFormat="JSON",
+                SchemaDefinition='{"type":"object","properties":{"id":{"type":"integer"}}}',
+            )
+            assert isinstance(avro_resp["Valid"], bool)
+            assert isinstance(json_resp["Valid"], bool)
+            assert avro_resp["Valid"] is True
+            assert json_resp["Valid"] is True
+            # ERROR: nonexistent registry raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_registry(RegistryId={"RegistryName": "nonexistent-reg-xyz"})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_registry(RegistryId={"RegistryName": avro_reg})
+            glue.delete_registry(RegistryId={"RegistryName": json_reg})
 
 
 class TestGlueBatchGetDevEndpointsLifecycle:
@@ -6730,26 +7312,67 @@ class TestGlueBatchPutDQAnnotationBehavior:
 
     def test_two_annotations_returns_empty_failures(self, glue):
         """Putting two annotations returns FailedInclusionAnnotations=[]."""
-        resp = glue.batch_put_data_quality_statistic_annotation(
-            InclusionAnnotations=[
-                {"ProfileId": "p1", "StatisticId": "s1", "InclusionAnnotation": "INCLUDE"},
-                {"ProfileId": "p2", "StatisticId": "s2", "InclusionAnnotation": "EXCLUDE"},
-            ]
+        # CREATE a ruleset to anchor in lifecycle context
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
         )
-        assert "FailedInclusionAnnotations" in resp
-        assert resp["FailedInclusionAnnotations"] == []
+        try:
+            # RETRIEVE: ruleset is gettable
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: appears in listing
+            list_resp = glue.list_data_quality_rulesets()
+            assert ruleset_name in [r["Name"] for r in list_resp["Rulesets"]]
+            # batch_put two annotations
+            resp = glue.batch_put_data_quality_statistic_annotation(
+                InclusionAnnotations=[
+                    {"ProfileId": "p1", "StatisticId": "s1", "InclusionAnnotation": "INCLUDE"},
+                    {"ProfileId": "p2", "StatisticId": "s2", "InclusionAnnotation": "EXCLUDE"},
+                ]
+            )
+            assert "FailedInclusionAnnotations" in resp
+            assert resp["FailedInclusionAnnotations"] == []
+            # ERROR: get nonexistent ruleset raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
     def test_empty_then_nonempty_annotations_both_succeed(self, glue):
         """Both empty and non-empty annotation lists return empty failures."""
-        empty_resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
-        assert empty_resp["FailedInclusionAnnotations"] == []
-
-        nonempty_resp = glue.batch_put_data_quality_statistic_annotation(
-            InclusionAnnotations=[
-                {"ProfileId": "p1", "StatisticId": "s1", "InclusionAnnotation": "INCLUDE"},
-            ]
+        # CREATE a ruleset
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col3" ]',
         )
-        assert nonempty_resp["FailedInclusionAnnotations"] == []
+        try:
+            # RETRIEVE: ruleset is gettable
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            # LIST: appears in listing
+            list_resp = glue.list_data_quality_rulesets()
+            assert ruleset_name in [r["Name"] for r in list_resp["Rulesets"]]
+            # both empty and non-empty succeed
+            empty_resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+            assert empty_resp["FailedInclusionAnnotations"] == []
+            nonempty_resp = glue.batch_put_data_quality_statistic_annotation(
+                InclusionAnnotations=[
+                    {"ProfileId": "p1", "StatisticId": "s1", "InclusionAnnotation": "INCLUDE"},
+                ]
+            )
+            assert nonempty_resp["FailedInclusionAnnotations"] == []
+            # ERROR: get nonexistent ruleset raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr3-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
 
 class TestGlueCancelDQRunsLifecycle:
@@ -6780,13 +7403,59 @@ class TestGlueCancelDQRunsLifecycle:
 
     def test_cancel_recommendation_run_fake_id_returns_200(self, glue):
         """CancelDataQualityRuleRecommendationRun with any RunId returns HTTP 200."""
+        # CREATE: start a real recommendation run
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb-lifecycle", "TableName": "testtbl-lifecycle"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        real_run_id = start_resp["RunId"]
+        assert real_run_id
+        # LIST: runs appear in listing
+        list_resp = glue.list_data_quality_rule_recommendation_runs()
+        assert "Runs" in list_resp
+        # GET the run
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=real_run_id)
+        assert "RunId" in get_resp
+        # cancel with fake ID
         resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-lifecycle")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # ERROR: get nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_cancel_evaluation_run_fake_id_returns_200(self, glue):
         """CancelDataQualityRulesetEvaluationRun with any RunId returns HTTP 200."""
-        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-eval-id-lifecycle")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # CREATE a ruleset and start evaluation
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            start_resp = glue.start_data_quality_ruleset_evaluation_run(
+                DataSource={"GlueTable": {"DatabaseName": "testdb-lifecycle", "TableName": "testtbl-lifecycle"}},
+                Role="arn:aws:iam::123456789012:role/test",
+                RulesetNames=[ruleset_name],
+            )
+            real_run_id = start_resp["RunId"]
+            assert real_run_id
+            # LIST: runs appear
+            list_resp = glue.list_data_quality_ruleset_evaluation_runs()
+            assert "Runs" in list_resp
+            # GET the run
+            get_resp = glue.get_data_quality_ruleset_evaluation_run(RunId=real_run_id)
+            assert "RunId" in get_resp
+            # cancel with fake ID
+            resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-eval-id-lifecycle")
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # ERROR: get nonexistent evaluation run raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset_evaluation_run(RunId="nonexistent-eval-xyz")
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
 
 
 class TestGlueBatchGetJobsBehavior:
@@ -6811,11 +7480,33 @@ class TestGlueBatchGetJobsBehavior:
 
     def test_batch_get_jobs_all_missing_returns_empty_jobs_list(self, glue):
         """BatchGetJobs with only nonexistent names returns Jobs=[] and names in JobsNotFound."""
-        names = ["missing-job-behav-x1", "missing-job-behav-x2", "missing-job-behav-x3"]
-        resp = glue.batch_get_jobs(JobNames=names)
-        assert resp["Jobs"] == []
-        for name in names:
-            assert name in resp["JobsNotFound"]
+        # CREATE a real job to verify split behavior
+        job_name = _unique("bgjob")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            # RETRIEVE: confirm job is gettable
+            get_resp = glue.get_job(JobName=job_name)
+            assert get_resp["Job"]["Name"] == job_name
+            # LIST: job appears in listing
+            list_resp = glue.list_jobs()
+            assert job_name in list_resp["JobNames"]
+            # batch_get with all-missing names
+            names = ["missing-job-behav-x1", "missing-job-behav-x2", "missing-job-behav-x3"]
+            resp = glue.batch_get_jobs(JobNames=names)
+            assert resp["Jobs"] == []
+            for name in names:
+                assert name in resp["JobsNotFound"]
+            # ERROR: get nonexistent job raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_job(JobName="completely-fake-job-abc")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_job(JobName=job_name)
 
     def test_batch_get_jobs_create_delete_then_missing(self, glue):
         """Create a job, batch-get it, delete it, then batch-get shows it missing."""
@@ -6841,10 +7532,36 @@ class TestGlueBatchGetCrawlersBehavior:
 
     def test_batch_get_crawlers_single_missing_appears_in_not_found(self, glue):
         """BatchGetCrawlers with one missing name returns it in CrawlersNotFound."""
-        fake_name = "single-missing-crawler-behav-xyz"
-        resp = glue.batch_get_crawlers(CrawlerNames=[fake_name])
-        assert resp["Crawlers"] == []
-        assert fake_name in resp["CrawlersNotFound"]
+        # CREATE a real crawler to verify split behavior
+        db_name = _unique("db")
+        cr_name = _unique("bgcr")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        try:
+            # RETRIEVE: confirm crawler is gettable
+            get_resp = glue.get_crawler(Name=cr_name)
+            assert get_resp["Crawler"]["Name"] == cr_name
+            # LIST: crawler appears in listing
+            list_resp = glue.list_crawlers()
+            assert cr_name in list_resp["CrawlerNames"]
+            # batch_get with one missing name
+            fake_name = "single-missing-crawler-behav-xyz"
+            resp = glue.batch_get_crawlers(CrawlerNames=[fake_name])
+            assert resp["Crawlers"] == []
+            assert fake_name in resp["CrawlersNotFound"]
+            # ERROR: get nonexistent crawler raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_crawler(Name="completely-fake-crawler-abc")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_crawler(Name=cr_name)
+            glue.delete_database(Name=db_name)
 
     def test_batch_get_crawlers_create_delete_then_missing(self, glue):
         """Create a crawler, batch-get it, delete it, then batch-get shows it missing."""
@@ -6874,10 +7591,33 @@ class TestGlueBatchGetTriggersBehavior:
 
     def test_batch_get_triggers_single_missing_appears_in_not_found(self, glue):
         """BatchGetTriggers with one missing name returns it in TriggersNotFound."""
-        fake_name = "single-missing-trigger-behav-xyz"
-        resp = glue.batch_get_triggers(TriggerNames=[fake_name])
-        assert resp["Triggers"] == []
-        assert fake_name in resp["TriggersNotFound"]
+        # CREATE a real trigger to verify split behavior
+        trig_name = _unique("bgtrig")
+        glue.create_trigger(
+            Name=trig_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            # RETRIEVE: confirm trigger is gettable
+            get_resp = glue.get_trigger(Name=trig_name)
+            assert get_resp["Trigger"]["Name"] == trig_name
+            # LIST: trigger appears in listing
+            list_resp = glue.list_triggers()
+            assert trig_name in list_resp["TriggerNames"]
+            # batch_get with one missing name
+            fake_name = "single-missing-trigger-behav-xyz"
+            resp = glue.batch_get_triggers(TriggerNames=[fake_name])
+            assert resp["Triggers"] == []
+            assert fake_name in resp["TriggersNotFound"]
+            # ERROR: get nonexistent trigger raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_trigger(Name="completely-fake-trigger-abc")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_trigger(Name=trig_name)
 
     def test_batch_get_triggers_create_delete_then_missing(self, glue):
         """Create a trigger, batch-get it, delete it, then batch-get shows it missing."""
@@ -6904,10 +7644,28 @@ class TestGlueBatchGetWorkflowsBehavior:
 
     def test_batch_get_workflows_single_missing_appears_in_missing(self, glue):
         """BatchGetWorkflows with one missing name returns it in MissingWorkflows."""
-        fake_name = "single-missing-workflow-behav-xyz"
-        resp = glue.batch_get_workflows(Names=[fake_name])
-        assert resp["Workflows"] == []
-        assert fake_name in resp["MissingWorkflows"]
+        # CREATE a real workflow to verify split behavior
+        wf_name = _unique("bgwf")
+        glue.create_workflow(Name=wf_name, Description="single missing test workflow")
+        try:
+            # RETRIEVE: confirm workflow is gettable
+            get_resp = glue.get_workflow(Name=wf_name)
+            assert get_resp["Workflow"]["Name"] == wf_name
+            # LIST: workflow appears in listing
+            list_resp = glue.list_workflows()
+            assert wf_name in list_resp["Workflows"]
+            # batch_get with one missing name
+            fake_name = "single-missing-workflow-behav-xyz"
+            resp = glue.batch_get_workflows(Names=[fake_name])
+            assert resp["Workflows"] == []
+            assert fake_name in resp["MissingWorkflows"]
+            # ERROR: get nonexistent workflow raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_workflow(Name="completely-fake-workflow-abc")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_workflow(Name=wf_name)
 
     def test_batch_get_workflows_create_retrieve_delete_then_missing(self, glue):
         """Create a workflow, batch-get it with description, delete, then shows as missing."""
