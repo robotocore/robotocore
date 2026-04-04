@@ -6096,22 +6096,21 @@ class TestGlueCheckSchemaVersionValidityEnhanced:
         assert resp["Valid"] is True
 
     def test_invalid_schema_definition_returns_valid_key(self, glue):
-        """A malformed schema definition still returns a Valid key in response."""
+        """A malformed schema definition still returns a Valid key (boolean) in response."""
         resp = glue.check_schema_version_validity(
             DataFormat="AVRO",
             SchemaDefinition="this is not valid avro json",
         )
-        # Server returns Valid key (True or False depending on implementation)
         assert "Valid" in resp
+        assert isinstance(resp["Valid"], bool)
 
     def test_check_schema_version_validity_json_format(self, glue):
-        """A valid JSON schema returns Valid=True for JSON data format."""
+        """A valid JSON schema definition returns Valid=True for JSON data format."""
         resp = glue.check_schema_version_validity(
             DataFormat="JSON",
             SchemaDefinition='{"$schema":"http://json-schema.org/draft-07/schema","type":"object"}',
         )
-        # JSON format validity check - may return True or False depending on implementation
-        assert "Valid" in resp
+        assert resp["Valid"] is True
 
     def test_create_schema_then_check_version_validity(self, glue):
         """Creating a schema then checking its definition returns Valid=True."""
@@ -6147,7 +6146,7 @@ class TestGlueBatchPutDataQualityAnnotationEnhanced:
         assert resp["FailedInclusionAnnotations"] == []
 
     def test_batch_put_annotation_returns_failures_list(self, glue):
-        """Calling with annotations returns a FailedInclusionAnnotations list."""
+        """Calling with annotations returns a FailedInclusionAnnotations list (empty on success)."""
         resp = glue.batch_put_data_quality_statistic_annotation(
             InclusionAnnotations=[
                 {
@@ -6159,6 +6158,7 @@ class TestGlueBatchPutDataQualityAnnotationEnhanced:
         )
         assert "FailedInclusionAnnotations" in resp
         assert isinstance(resp["FailedInclusionAnnotations"], list)
+        assert len(resp["FailedInclusionAnnotations"]) == 0
 
     def test_list_data_quality_statistic_annotations_then_put(self, glue):
         """ListDataQualityStatisticAnnotations returns Annotations before and after put."""
@@ -6599,3 +6599,328 @@ class TestGlueSearchTablesPagination:
         finally:
             glue.delete_table(DatabaseName=db_name, Name=tbl_name)
             glue.delete_database(Name=db_name)
+
+
+# ── Edge case and behavioral fidelity additions ───────────────────────────────
+
+
+class TestGlueUpdateDatabaseEdgeCases:
+    """Edge cases for UpdateDatabase: error paths and list-after-update behavior."""
+
+    def test_update_nonexistent_database_raises_entity_not_found(self, glue):
+        """UpdateDatabase on a nonexistent database raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_database(
+                Name="nonexistent-db-update-xyz",
+                DatabaseInput={"Name": "nonexistent-db-update-xyz", "Description": "oops"},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_database_description_visible_in_list(self, glue):
+        """After UpdateDatabase, GetDatabases returns the updated description."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name, "Description": "before"})
+        try:
+            glue.update_database(
+                Name=db_name,
+                DatabaseInput={"Name": db_name, "Description": "after update"},
+            )
+            resp = glue.get_databases()
+            dbs = {d["Name"]: d for d in resp["DatabaseList"]}
+            assert db_name in dbs
+            assert dbs[db_name]["Description"] == "after update"
+        finally:
+            glue.delete_database(Name=db_name)
+
+    def test_update_database_multiple_times_final_value_wins(self, glue):
+        """UpdateDatabase can be called multiple times; final value wins."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name, "Description": "v1"})
+        try:
+            glue.update_database(
+                Name=db_name, DatabaseInput={"Name": db_name, "Description": "v2"}
+            )
+            glue.update_database(
+                Name=db_name, DatabaseInput={"Name": db_name, "Description": "v3"}
+            )
+            resp = glue.get_database(Name=db_name)
+            assert resp["Database"]["Description"] == "v3"
+        finally:
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueCheckSchemaVersionValidityBehavior:
+    """Behavioral fidelity: CheckSchemaVersionValidity response shape and field values."""
+
+    def test_valid_avro_response_includes_error_field(self, glue):
+        """CheckSchemaVersionValidity always includes an Error field in the response."""
+        resp = glue.check_schema_version_validity(
+            DataFormat="AVRO",
+            SchemaDefinition='{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}',
+        )
+        assert "Error" in resp
+        assert resp["Valid"] is True
+
+    def test_multi_field_avro_schema_returns_valid_true(self, glue):
+        """A multi-field AVRO schema with various types returns Valid=True."""
+        schema = (
+            '{"type":"record","name":"Event","fields":['
+            '{"name":"timestamp","type":"long"},'
+            '{"name":"message","type":"string"},'
+            '{"name":"count","type":"int"}'
+            "]}"
+        )
+        resp = glue.check_schema_version_validity(DataFormat="AVRO", SchemaDefinition=schema)
+        assert resp["Valid"] is True
+
+    def test_avro_and_json_formats_return_valid_boolean(self, glue):
+        """Both AVRO and JSON formats return a Valid boolean in the response."""
+        avro_resp = glue.check_schema_version_validity(
+            DataFormat="AVRO",
+            SchemaDefinition='{"type":"record","name":"A","fields":[{"name":"x","type":"string"}]}',
+        )
+        json_resp = glue.check_schema_version_validity(
+            DataFormat="JSON",
+            SchemaDefinition='{"type":"object","properties":{"id":{"type":"integer"}}}',
+        )
+        assert isinstance(avro_resp["Valid"], bool)
+        assert isinstance(json_resp["Valid"], bool)
+        assert avro_resp["Valid"] is True
+        assert json_resp["Valid"] is True
+
+
+class TestGlueBatchGetDevEndpointsLifecycle:
+    """Full lifecycle behavioral tests for BatchGetDevEndpoints."""
+
+    def test_create_then_batch_get_then_delete_then_not_found(self, glue):
+        """Create a DevEndpoint, batch-get verifies it's present, delete, then it's in NotFound."""
+        ep_name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        resp = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name])
+        assert len(resp["DevEndpoints"]) == 1
+        assert resp["DevEndpoints"][0]["EndpointName"] == ep_name
+        assert resp["DevEndpoints"][0]["RoleArn"] == "arn:aws:iam::123456789012:role/glue-role"
+        assert ep_name not in resp.get("DevEndpointsNotFound", [])
+
+        glue.delete_dev_endpoint(EndpointName=ep_name)
+
+        resp_after = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name])
+        assert ep_name in resp_after["DevEndpointsNotFound"]
+        assert len(resp_after.get("DevEndpoints", [])) == 0
+
+    def test_batch_get_dev_endpoints_returns_correct_role_arn(self, glue):
+        """BatchGetDevEndpoints returns RoleArn matching what was provided at creation."""
+        ep_name = _unique("de")
+        role = "arn:aws:iam::123456789012:role/glue-role"
+        glue.create_dev_endpoint(EndpointName=ep_name, RoleArn=role)
+        try:
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name])
+            ep_map = {e["EndpointName"]: e for e in resp["DevEndpoints"]}
+            assert ep_name in ep_map
+            assert ep_map[ep_name]["RoleArn"] == role
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+
+
+class TestGlueBatchPutDQAnnotationBehavior:
+    """Behavioral fidelity tests for BatchPutDataQualityStatisticAnnotation."""
+
+    def test_two_annotations_returns_empty_failures(self, glue):
+        """Putting two annotations returns FailedInclusionAnnotations=[]."""
+        resp = glue.batch_put_data_quality_statistic_annotation(
+            InclusionAnnotations=[
+                {"ProfileId": "p1", "StatisticId": "s1", "InclusionAnnotation": "INCLUDE"},
+                {"ProfileId": "p2", "StatisticId": "s2", "InclusionAnnotation": "EXCLUDE"},
+            ]
+        )
+        assert "FailedInclusionAnnotations" in resp
+        assert resp["FailedInclusionAnnotations"] == []
+
+    def test_empty_then_nonempty_annotations_both_succeed(self, glue):
+        """Both empty and non-empty annotation lists return empty failures."""
+        empty_resp = glue.batch_put_data_quality_statistic_annotation(InclusionAnnotations=[])
+        assert empty_resp["FailedInclusionAnnotations"] == []
+
+        nonempty_resp = glue.batch_put_data_quality_statistic_annotation(
+            InclusionAnnotations=[
+                {"ProfileId": "p1", "StatisticId": "s1", "InclusionAnnotation": "INCLUDE"},
+            ]
+        )
+        assert nonempty_resp["FailedInclusionAnnotations"] == []
+
+
+class TestGlueCancelDQRunsLifecycle:
+    """Behavioral tests: start a DQ run, then cancel using the returned RunId."""
+
+    def test_start_then_cancel_recommendation_run_with_real_id(self, glue):
+        """Start a DQ recommendation run, cancel with the real RunId, get HTTP 200."""
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        cancel_resp = glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_start_then_cancel_evaluation_run_with_real_id(self, glue):
+        """Start a DQ evaluation run, cancel with the real RunId, get HTTP 200."""
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        cancel_resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_recommendation_run_fake_id_returns_200(self, glue):
+        """CancelDataQualityRuleRecommendationRun with any RunId returns HTTP 200."""
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-lifecycle")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_evaluation_run_fake_id_returns_200(self, glue):
+        """CancelDataQualityRulesetEvaluationRun with any RunId returns HTTP 200."""
+        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-eval-id-lifecycle")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGlueBatchGetJobsBehavior:
+    """Additional behavioral tests for BatchGetJobs."""
+
+    def test_batch_get_jobs_unicode_description_preserved(self, glue):
+        """A job with unicode description is returned intact by BatchGetJobs."""
+        job_name = _unique("bgjob")
+        unicode_desc = "データ処理 - Process données - 处理数据"
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+            Description=unicode_desc,
+        )
+        try:
+            resp = glue.batch_get_jobs(JobNames=[job_name])
+            assert len(resp["Jobs"]) == 1
+            assert resp["Jobs"][0]["Description"] == unicode_desc
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_batch_get_jobs_all_missing_returns_empty_jobs_list(self, glue):
+        """BatchGetJobs with only nonexistent names returns Jobs=[] and names in JobsNotFound."""
+        names = ["missing-job-behav-x1", "missing-job-behav-x2", "missing-job-behav-x3"]
+        resp = glue.batch_get_jobs(JobNames=names)
+        assert resp["Jobs"] == []
+        for name in names:
+            assert name in resp["JobsNotFound"]
+
+    def test_batch_get_jobs_create_delete_then_missing(self, glue):
+        """Create a job, batch-get it, delete it, then batch-get shows it missing."""
+        job_name = _unique("bgjob")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        resp = glue.batch_get_jobs(JobNames=[job_name])
+        assert len(resp["Jobs"]) == 1
+        assert resp["Jobs"][0]["Name"] == job_name
+
+        glue.delete_job(JobName=job_name)
+
+        resp_after = glue.batch_get_jobs(JobNames=[job_name])
+        assert job_name in resp_after["JobsNotFound"]
+        assert resp_after["Jobs"] == []
+
+
+class TestGlueBatchGetCrawlersBehavior:
+    """Additional behavioral tests for BatchGetCrawlers."""
+
+    def test_batch_get_crawlers_single_missing_appears_in_not_found(self, glue):
+        """BatchGetCrawlers with one missing name returns it in CrawlersNotFound."""
+        fake_name = "single-missing-crawler-behav-xyz"
+        resp = glue.batch_get_crawlers(CrawlerNames=[fake_name])
+        assert resp["Crawlers"] == []
+        assert fake_name in resp["CrawlersNotFound"]
+
+    def test_batch_get_crawlers_create_delete_then_missing(self, glue):
+        """Create a crawler, batch-get it, delete it, then batch-get shows it missing."""
+        db_name = _unique("db")
+        cr_name = _unique("bgcr")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        resp = glue.batch_get_crawlers(CrawlerNames=[cr_name])
+        assert len(resp["Crawlers"]) == 1
+        assert resp["Crawlers"][0]["Name"] == cr_name
+
+        glue.delete_crawler(Name=cr_name)
+        glue.delete_database(Name=db_name)
+
+        resp_after = glue.batch_get_crawlers(CrawlerNames=[cr_name])
+        assert cr_name in resp_after["CrawlersNotFound"]
+        assert resp_after["Crawlers"] == []
+
+
+class TestGlueBatchGetTriggersBehavior:
+    """Additional behavioral tests for BatchGetTriggers."""
+
+    def test_batch_get_triggers_single_missing_appears_in_not_found(self, glue):
+        """BatchGetTriggers with one missing name returns it in TriggersNotFound."""
+        fake_name = "single-missing-trigger-behav-xyz"
+        resp = glue.batch_get_triggers(TriggerNames=[fake_name])
+        assert resp["Triggers"] == []
+        assert fake_name in resp["TriggersNotFound"]
+
+    def test_batch_get_triggers_create_delete_then_missing(self, glue):
+        """Create a trigger, batch-get it, delete it, then batch-get shows it missing."""
+        t_name = _unique("bgtrig")
+        glue.create_trigger(
+            Name=t_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        resp = glue.batch_get_triggers(TriggerNames=[t_name])
+        assert len(resp["Triggers"]) == 1
+        assert resp["Triggers"][0]["Name"] == t_name
+
+        glue.delete_trigger(Name=t_name)
+
+        resp_after = glue.batch_get_triggers(TriggerNames=[t_name])
+        assert t_name in resp_after["TriggersNotFound"]
+        assert resp_after["Triggers"] == []
+
+
+class TestGlueBatchGetWorkflowsBehavior:
+    """Additional behavioral tests for BatchGetWorkflows."""
+
+    def test_batch_get_workflows_single_missing_appears_in_missing(self, glue):
+        """BatchGetWorkflows with one missing name returns it in MissingWorkflows."""
+        fake_name = "single-missing-workflow-behav-xyz"
+        resp = glue.batch_get_workflows(Names=[fake_name])
+        assert resp["Workflows"] == []
+        assert fake_name in resp["MissingWorkflows"]
+
+    def test_batch_get_workflows_create_retrieve_delete_then_missing(self, glue):
+        """Create a workflow, batch-get it with description, delete, then shows as missing."""
+        wf_name = _unique("bgwf")
+        glue.create_workflow(Name=wf_name, Description="behavioral fidelity test")
+        resp = glue.batch_get_workflows(Names=[wf_name])
+        assert len(resp["Workflows"]) == 1
+        assert resp["Workflows"][0]["Name"] == wf_name
+        assert resp["Workflows"][0]["Description"] == "behavioral fidelity test"
+        assert resp["MissingWorkflows"] == []
+
+        glue.delete_workflow(Name=wf_name)
+
+        resp_after = glue.batch_get_workflows(Names=[wf_name])
+        assert wf_name in resp_after["MissingWorkflows"]
+        assert resp_after["Workflows"] == []
