@@ -2449,3 +2449,285 @@ class TestGuardDutyAcceptInvitationBehavior:
         resp = guardduty.list_invitations()
         assert "Invitations" in resp
         assert isinstance(resp["Invitations"], list)
+
+
+class TestGuardDutyArchiveFindingsErrorCases:
+    """Error-path edge cases for ArchiveFindings and UnarchiveFindings."""
+
+    def test_archive_findings_bad_detector_raises_error(self, guardduty):
+        """ArchiveFindings with nonexistent DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.archive_findings(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                FindingIds=["fake-finding-id"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_unarchive_findings_bad_detector_raises_error(self, guardduty):
+        """UnarchiveFindings with nonexistent DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.unarchive_findings(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                FindingIds=["fake-finding-id"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_archive_real_findings_then_verify_archived_status(self, guardduty, detector):
+        """Archive a real sample finding and verify the finding is retrievable."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        finding_ids = list_resp["FindingIds"]
+        assert len(finding_ids) > 0
+
+        guardduty.archive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        get_resp = guardduty.get_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        assert "Findings" in get_resp
+        assert len(get_resp["Findings"]) > 0
+        assert get_resp["Findings"][0]["Service"]["Archived"] is True
+
+    def test_archive_then_unarchive_restores_archived_false(self, guardduty, detector):
+        """Archive then unarchive a finding — Service.Archived becomes False again."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        finding_ids = list_resp["FindingIds"]
+        assert len(finding_ids) > 0
+
+        guardduty.archive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        guardduty.unarchive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        get_resp = guardduty.get_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        assert get_resp["Findings"][0]["Service"]["Archived"] is False
+
+    def test_archive_multiple_findings_bad_detector_raises_error(self, guardduty):
+        """ArchiveFindings with multiple IDs and bad detector raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.archive_findings(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                FindingIds=["id-1", "id-2", "id-3"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_unarchive_multiple_findings_bad_detector_raises_error(self, guardduty):
+        """UnarchiveFindings with multiple IDs and bad detector raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.unarchive_findings(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                FindingIds=["id-1", "id-2"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyInviteMembersErrorCases:
+    """Error-path edge cases for InviteMembers."""
+
+    def test_invite_members_bad_detector_raises_error(self, guardduty):
+        """InviteMembers with nonexistent DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.invite_members(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                AccountIds=["111122223333"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_invite_members_unprocessed_accounts_have_account_id(self, guardduty, detector):
+        """InviteMembers: every UnprocessedAccounts entry has an AccountId."""
+        resp = guardduty.invite_members(DetectorId=detector, AccountIds=["999911112222"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+
+    def test_invite_multiple_members_unprocessed_structure(self, guardduty, detector):
+        """InviteMembers with multiple accounts — UnprocessedAccounts is a list."""
+        resp = guardduty.invite_members(
+            DetectorId=detector,
+            AccountIds=["111122223333", "444455556666"],
+        )
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_invite_members_with_message_returns_unprocessed(self, guardduty, detector):
+        """InviteMembers with Message returns UnprocessedAccounts list."""
+        resp = guardduty.invite_members(
+            DetectorId=detector,
+            AccountIds=["111122223333"],
+            Message="Please join.",
+        )
+        assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+
+class TestGuardDutyDeclineInvitationsErrorCases:
+    """Error-path and structural edge cases for DeclineInvitations."""
+
+    def test_decline_invitations_returns_unprocessed_list(self, guardduty):
+        """DeclineInvitations always returns a list, even for unknown accounts."""
+        resp = guardduty.decline_invitations(AccountIds=["111122223333"])
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_decline_invitations_multiple_response_structure(self, guardduty):
+        """DeclineInvitations with multiple IDs — UnprocessedAccounts has AccountId+Result."""
+        resp = guardduty.decline_invitations(AccountIds=["111122223333", "444455556666"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+            assert "Result" in acct
+
+    def test_delete_invitations_multiple_response_structure(self, guardduty):
+        """DeleteInvitations with multiple IDs — UnprocessedAccounts has AccountId+Result."""
+        resp = guardduty.delete_invitations(AccountIds=["111122223333", "444455556666"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+            assert "Result" in acct
+
+
+class TestGuardDutyDisassociateErrorCases:
+    """Error-path edge cases for disassociate operations."""
+
+    def test_disassociate_from_administrator_bad_detector_raises_error(self, guardduty):
+        """DisassociateFromAdministratorAccount with bad DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.disassociate_from_administrator_account(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_disassociate_from_master_bad_detector_raises_error(self, guardduty):
+        """DisassociateFromMasterAccount with bad DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.disassociate_from_master_account(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_disassociate_members_bad_detector_raises_error(self, guardduty):
+        """DisassociateMembers with bad DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.disassociate_members(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                AccountIds=["111122223333"],
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_disassociate_members_unprocessed_accounts_is_list(self, guardduty, detector):
+        """DisassociateMembers returns UnprocessedAccounts as a list."""
+        resp = guardduty.disassociate_members(DetectorId=detector, AccountIds=["111122223333"])
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+
+class TestGuardDutyAcceptInvitationErrorCases:
+    """Error-path edge cases for AcceptInvitation and AcceptAdministratorInvitation."""
+
+    def test_accept_invitation_bad_detector_raises_error(self, guardduty):
+        """AcceptInvitation with nonexistent DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.accept_invitation(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                MasterId="111122223333",
+                InvitationId="fake-id",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_accept_administrator_invitation_bad_detector_raises_error(self, guardduty):
+        """AcceptAdministratorInvitation with bad DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.accept_administrator_invitation(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                AdministratorId="111122223333",
+                InvitationId="fake-id",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_accept_administrator_invitation_then_get_administrator(self, guardduty, detector):
+        """After AcceptAdministratorInvitation, GetAdministratorAccount returns the admin."""
+        guardduty.accept_administrator_invitation(
+            DetectorId=detector,
+            AdministratorId="555566667777",
+            InvitationId="test-inv-id",
+        )
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        assert "Administrator" in resp
+        assert resp["Administrator"]["AccountId"] == "555566667777"
+
+
+class TestGuardDutyTrustedEntitySetUpdateFidelity:
+    """Behavioral fidelity tests for UpdateTrustedEntitySet (covers L and E patterns)."""
+
+    def test_update_trusted_entity_set_then_list_shows_set(self, guardduty, detector):
+        """After update, the set still appears in ListTrustedEntitySets."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            guardduty.update_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id, Name="updated-for-list"
+            )
+            listed = guardduty.list_trusted_entity_sets(DetectorId=detector)
+            assert trust_id in listed["TrustedEntitySetIds"]
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_update_trusted_entity_set_name_persists(self, guardduty, detector):
+        """UpdateTrustedEntitySet: updated name is returned by GetTrustedEntitySet."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            new_name = _unique("trusted-renamed")
+            guardduty.update_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id, Name=new_name
+            )
+            get_resp = guardduty.get_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id
+            )
+            assert get_resp["Name"] == new_name
+            assert get_resp["Format"] == "TXT"
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_update_trusted_entity_set_location(self, guardduty, detector):
+        """UpdateTrustedEntitySet: location can be updated."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            guardduty.update_trusted_entity_set(
+                DetectorId=detector,
+                TrustedEntitySetId=trust_id,
+                Location="s3://new-bucket/trusted2.txt",
+            )
+            get_resp = guardduty.get_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id
+            )
+            assert get_resp["Location"] == "s3://new-bucket/trusted2.txt"
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_update_trusted_entity_set_bad_detector_raises_error(self, guardduty):
+        """UpdateTrustedEntitySet with bad DetectorId raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_trusted_entity_set(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                TrustedEntitySetId="someid00000000000000000000000000",
+                Name="new-name",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
