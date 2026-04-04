@@ -26,6 +26,7 @@ class TestEC2Operations:
     def test_describe_subnets(self, ec2):
         response = ec2.describe_subnets()
         assert "Subnets" in response
+        assert isinstance(response["Subnets"], list)
 
     def test_create_security_group(self, ec2):
         response = ec2.create_security_group(
@@ -50,11 +51,13 @@ class TestEC2Operations:
     def test_describe_instances(self, ec2):
         response = ec2.describe_instances()
         assert "Reservations" in response
+        assert isinstance(response["Reservations"], list)
 
     def test_describe_regions(self, ec2):
         response = ec2.describe_regions()
         region_names = [r["RegionName"] for r in response["Regions"]]
         assert "us-east-1" in region_names
+        assert len(region_names) > 1
 
 
 class TestEC2VPCOperations:
@@ -483,6 +486,7 @@ class TestEC2Images:
         """DescribeImages should work with owner filter."""
         response = ec2.describe_images(Owners=["amazon"])
         assert "Images" in response
+        assert isinstance(response["Images"], list)
 
 
 class TestEC2MultipleSubnets:
@@ -516,6 +520,7 @@ class TestEC2InstanceTypes:
         """DescribeImages with owner-alias=amazon filter."""
         response = ec2.describe_images(Filters=[{"Name": "owner-alias", "Values": ["amazon"]}])
         assert "Images" in response
+        assert isinstance(response["Images"], list)
 
 
 class TestEC2RunInstances:
@@ -925,6 +930,7 @@ class TestEC2ExtendedOperationsV2:
     def test_describe_account_attributes(self, ec2):
         resp = ec2.describe_account_attributes()
         assert "AccountAttributes" in resp
+        assert isinstance(resp["AccountAttributes"], list)
         names = [a["AttributeName"] for a in resp["AccountAttributes"]]
         assert "default-vpc" in names or "supported-platforms" in names or len(names) >= 1
 
@@ -963,6 +969,7 @@ class TestEC2ExtendedOperationsV2:
     def test_describe_subnets(self, ec2):
         resp = ec2.describe_subnets()
         assert "Subnets" in resp
+        assert isinstance(resp["Subnets"], list)
 
     def test_describe_security_groups(self, ec2):
         resp = ec2.describe_security_groups()
@@ -1046,12 +1053,14 @@ class TestEC2ExtendedOperationsV2:
     def test_describe_images(self, ec2):
         resp = ec2.describe_images(Filters=[{"Name": "owner-alias", "Values": ["amazon"]}])
         assert "Images" in resp
+        assert isinstance(resp["Images"], list)
 
     def test_describe_instances_filter(self, ec2):
         resp = ec2.describe_instances(
             Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
         )
         assert "Reservations" in resp
+        assert isinstance(resp["Reservations"], list)
 
     def test_create_and_describe_dhcp_options(self, ec2):
         resp = ec2.create_dhcp_options(
@@ -1070,6 +1079,7 @@ class TestEC2ExtendedOperationsV2:
     def test_describe_vpc_peering_connections(self, ec2):
         resp = ec2.describe_vpc_peering_connections()
         assert "VpcPeeringConnections" in resp
+        assert isinstance(resp["VpcPeeringConnections"], list)
 
     def test_describe_network_acls(self, ec2):
         resp = ec2.describe_network_acls()
@@ -1181,6 +1191,7 @@ class TestEC2ExtendedV2:
             attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsSupport")
             assert "EnableDnsSupport" in attr
             assert isinstance(attr["EnableDnsSupport"]["Value"], bool)
+            assert attr["EnableDnsSupport"]["Value"] is True
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
 
@@ -1252,6 +1263,7 @@ class TestEC2ExtendedV2:
         """DescribePrefixLists returns results (AWS-managed prefix lists)."""
         response = ec2.describe_prefix_lists()
         assert "PrefixLists" in response
+        assert isinstance(response["PrefixLists"], list)
 
     def test_associate_eip_with_network_interface(self, ec2):
         """Associate an Elastic IP with a network interface."""
@@ -1342,6 +1354,7 @@ class TestEC2ExtendedV2:
     def test_describe_account_attributes(self, ec2):
         """DescribeAccountAttributes returns expected attribute names."""
         response = ec2.describe_account_attributes()
+        assert isinstance(response["AccountAttributes"], list)
         attr_names = [a["AttributeName"] for a in response["AccountAttributes"]]
         # At minimum, these standard attributes should be present
         assert "supported-platforms" in attr_names or "default-vpc" in attr_names
@@ -1752,6 +1765,7 @@ class TestEC2DescribeGapCoverage:
     def test_describe_addresses_attribute(self, ec2):
         resp = ec2.describe_addresses_attribute()
         assert "Addresses" in resp
+        assert isinstance(resp["Addresses"], list)
 
     # --- Aggregate / ID format ---
 
@@ -2008,6 +2022,7 @@ class TestEC2DescribeGapCoverage:
     def test_get_ebs_encryption_by_default(self, ec2):
         resp = ec2.get_ebs_encryption_by_default()
         assert "EbsEncryptionByDefault" in resp
+        assert isinstance(resp["EbsEncryptionByDefault"], bool)
 
     def test_get_vpn_connection_device_types(self, ec2):
         resp = ec2.get_vpn_connection_device_types()
@@ -2141,9 +2156,11 @@ class TestEC2SettingsGapCoverage:
         """EnableEbsEncryptionByDefault / DisableEbsEncryptionByDefault."""
         enable_resp = ec2.enable_ebs_encryption_by_default()
         assert "EbsEncryptionByDefault" in enable_resp
+        assert enable_resp["EbsEncryptionByDefault"] is True
 
         disable_resp = ec2.disable_ebs_encryption_by_default()
         assert "EbsEncryptionByDefault" in disable_resp
+        assert disable_resp["EbsEncryptionByDefault"] is False
 
     def test_modify_reset_ebs_default_kms_key(self, ec2):
         """ModifyEbsDefaultKmsKeyId / ResetEbsDefaultKmsKeyId."""
@@ -2319,11 +2336,13 @@ class TestEC2NetworkGapCoverage:
             Filters=[{"Name": "availability-zone", "Values": ["us-east-1a"]}]
         )
         assert "Subnets" in resp
+        assert isinstance(resp["Subnets"], list)
 
     def test_describe_route_tables_with_filter(self, ec2):
         """DescribeRouteTables with filter."""
         resp = ec2.describe_route_tables(Filters=[{"Name": "association.main", "Values": ["true"]}])
         assert "RouteTables" in resp
+        assert isinstance(resp["RouteTables"], list)
 
     def test_describe_internet_gateways_with_filter(self, ec2):
         """DescribeInternetGateways with filter."""
@@ -2331,6 +2350,7 @@ class TestEC2NetworkGapCoverage:
             Filters=[{"Name": "attachment.state", "Values": ["available"]}]
         )
         assert "InternetGateways" in resp
+        assert isinstance(resp["InternetGateways"], list)
 
     def test_describe_security_groups_with_filter(self, ec2):
         """DescribeSecurityGroups with filter."""
@@ -2342,26 +2362,31 @@ class TestEC2NetworkGapCoverage:
         """DescribeVpcs with is-default filter."""
         resp = ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])
         assert "Vpcs" in resp
+        assert isinstance(resp["Vpcs"], list)
 
     def test_describe_nat_gateways_with_filter(self, ec2):
         """DescribeNatGateways with filter."""
         resp = ec2.describe_nat_gateways(Filters=[{"Name": "state", "Values": ["available"]}])
         assert "NatGateways" in resp
+        assert isinstance(resp["NatGateways"], list)
 
     def test_describe_volumes_with_filter(self, ec2):
         """DescribeVolumes with filter."""
         resp = ec2.describe_volumes(Filters=[{"Name": "status", "Values": ["available"]}])
         assert "Volumes" in resp
+        assert isinstance(resp["Volumes"], list)
 
     def test_describe_snapshots_owner_self(self, ec2):
         """DescribeSnapshots with OwnerIds=self."""
         resp = ec2.describe_snapshots(OwnerIds=["self"])
         assert "Snapshots" in resp
+        assert isinstance(resp["Snapshots"], list)
 
     def test_describe_images_owner_self(self, ec2):
         """DescribeImages with Owners=self."""
         resp = ec2.describe_images(Owners=["self"])
         assert "Images" in resp
+        assert isinstance(resp["Images"], list)
 
 
 class TestEc2AutoCoverage:
@@ -2445,6 +2470,7 @@ class TestEc2AutoCoverage:
         """DescribeCapacityBlockStatus returns a response."""
         resp = client.describe_capacity_block_status()
         assert "CapacityBlockStatuses" in resp
+        assert isinstance(resp["CapacityBlockStatuses"], list)
 
     def test_describe_capacity_blocks(self, client):
         """DescribeCapacityBlocks returns a response."""
@@ -2470,6 +2496,7 @@ class TestEc2AutoCoverage:
         """DescribeIamInstanceProfileAssociations returns a response."""
         resp = client.describe_iam_instance_profile_associations()
         assert "IamInstanceProfileAssociations" in resp
+        assert isinstance(resp["IamInstanceProfileAssociations"], list)
 
     def test_describe_id_format(self, client):
         """DescribeIdFormat returns a response."""
@@ -2490,6 +2517,7 @@ class TestEc2AutoCoverage:
         """DescribeInstanceImageMetadata returns a response."""
         resp = client.describe_instance_image_metadata()
         assert "InstanceImageMetadata" in resp
+        assert isinstance(resp["InstanceImageMetadata"], list)
 
     def test_describe_instance_sql_ha_history_states(self, client):
         """DescribeInstanceSqlHaHistoryStates returns a response."""
@@ -2555,16 +2583,19 @@ class TestEc2AutoCoverage:
         """DescribeTransitGatewayAttachments returns a response."""
         resp = client.describe_transit_gateway_attachments()
         assert "TransitGatewayAttachments" in resp
+        assert isinstance(resp["TransitGatewayAttachments"], list)
 
     def test_describe_transit_gateway_peering_attachments(self, client):
         """DescribeTransitGatewayPeeringAttachments returns a response."""
         resp = client.describe_transit_gateway_peering_attachments()
         assert "TransitGatewayPeeringAttachments" in resp
+        assert isinstance(resp["TransitGatewayPeeringAttachments"], list)
 
     def test_describe_volume_status(self, client):
         """DescribeVolumeStatus returns a response."""
         resp = client.describe_volume_status()
         assert "VolumeStatuses" in resp
+        assert isinstance(resp["VolumeStatuses"], list)
 
     def test_describe_vpc_block_public_access_exclusions(self, client):
         """DescribeVpcBlockPublicAccessExclusions returns a response."""
@@ -2590,6 +2621,7 @@ class TestEc2AutoCoverage:
         """DescribeVpcEndpointServices returns a response."""
         resp = client.describe_vpc_endpoint_services()
         assert "ServiceNames" in resp
+        assert isinstance(resp["ServiceNames"], list)
 
     def test_describe_vpn_concentrators(self, client):
         """DescribeVpnConcentrators returns a response."""
@@ -6950,6 +6982,7 @@ class TestEC2CoipPoolLifecycle:
         """DescribeCoipPools returns list (possibly empty)."""
         resp = ec2.describe_coip_pools()
         assert "CoipPools" in resp
+        assert isinstance(resp["CoipPools"], list)
 
     def test_create_and_delete_coip_pool(self, ec2):
         """CreateCoipPool + DeleteCoipPool lifecycle."""
@@ -6999,6 +7032,7 @@ class TestEC2InstanceEventWindowLifecycle:
         """DescribeInstanceEventWindows returns list."""
         resp = ec2.describe_instance_event_windows()
         assert "InstanceEventWindows" in resp
+        assert isinstance(resp["InstanceEventWindows"], list)
 
     def test_create_and_delete_instance_event_window(self, ec2):
         """CreateInstanceEventWindow + DeleteInstanceEventWindow."""
