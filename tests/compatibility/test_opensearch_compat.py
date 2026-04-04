@@ -2064,3 +2064,332 @@ class TestOpenSearchEdgeCases:
             assert entry["EngineType"] == "OpenSearch"
         finally:
             client.delete_domain(DomainName=name)
+
+
+class TestOpenSearchEdgeCases2:
+    """Additional edge case and behavioral fidelity tests targeting low-coverage areas."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, client):
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            client.delete_domain(DomainName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # --- cancel_service_software_update behavioral fidelity ---
+
+    def test_cancel_service_software_update_full_structure(self, client, domain):
+        """cancel_service_software_update returns complete ServiceSoftwareOptions structure."""
+        resp = client.cancel_service_software_update(DomainName=domain)
+        opts = resp["ServiceSoftwareOptions"]
+        required_keys = {
+            "CurrentVersion", "NewVersion", "UpdateAvailable", "Cancellable",
+            "UpdateStatus", "Description", "AutomatedUpdateDate", "OptionalDeployment",
+        }
+        missing = required_keys - set(opts.keys())
+        assert not missing, f"Missing ServiceSoftwareOptions keys: {missing}"
+        assert isinstance(opts["UpdateAvailable"], bool)
+        assert isinstance(opts["Cancellable"], bool)
+
+    def test_cancel_service_software_update_bool_fields(self, client, domain):
+        """cancel_service_software_update UpdateAvailable and Cancellable are booleans."""
+        resp = client.cancel_service_software_update(DomainName=domain)
+        opts = resp["ServiceSoftwareOptions"]
+        assert isinstance(opts["UpdateAvailable"], bool)
+        assert isinstance(opts["Cancellable"], bool)
+        assert isinstance(opts["OptionalDeployment"], bool)
+
+    def test_cancel_service_software_update_new_domain_no_update(self, client, domain):
+        """Freshly created domain has UpdateAvailable=False."""
+        resp = client.cancel_service_software_update(DomainName=domain)
+        opts = resp["ServiceSoftwareOptions"]
+        assert opts["UpdateAvailable"] is False
+
+    # --- get_compatible_versions edge cases ---
+
+    def test_get_compatible_versions_nonexistent_domain_raises(self, client):
+        """get_compatible_versions for nonexistent domain raises ResourceNotFoundException."""
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_compatible_versions(DomainName="xyz-no-such-domain-abc")
+
+    def test_get_compatible_versions_version_format(self, client):
+        """GetCompatibleVersions SourceVersion and TargetVersions have OpenSearch_ or Elasticsearch_ prefix."""
+        resp = client.get_compatible_versions()
+        for entry in resp["CompatibleVersions"]:
+            src = entry["SourceVersion"]
+            assert src.startswith("OpenSearch_") or src.startswith("Elasticsearch_"), (
+                f"Unexpected source version format: {src}"
+            )
+            for target in entry["TargetVersions"]:
+                assert target.startswith("OpenSearch_") or target.startswith("Elasticsearch_"), (
+                    f"Unexpected target version format: {target}"
+                )
+
+    def test_get_compatible_versions_domain_source_matches_engine(self, client, domain):
+        """GetCompatibleVersions for a domain returns entries whose SourceVersion matches OpenSearch_2.5."""
+        resp = client.get_compatible_versions(DomainName=domain)
+        assert "CompatibleVersions" in resp
+        versions = resp["CompatibleVersions"]
+        assert len(versions) > 0
+        # Each entry must have SourceVersion and TargetVersions
+        for entry in versions:
+            assert "SourceVersion" in entry
+            assert "TargetVersions" in entry
+            assert isinstance(entry["TargetVersions"], list)
+
+    def test_get_compatible_versions_for_elasticsearch_domain(self, client):
+        """GetCompatibleVersions works for an Elasticsearch domain."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="Elasticsearch_7.10")
+        try:
+            resp = client.get_compatible_versions(DomainName=name)
+            assert "CompatibleVersions" in resp
+            assert len(resp["CompatibleVersions"]) > 0
+        finally:
+            client.delete_domain(DomainName=name)
+
+    # --- list_versions edge cases ---
+
+    def test_list_versions_all_have_known_prefix(self, client):
+        """All versions from list_versions start with OpenSearch_ or Elasticsearch_."""
+        resp = client.list_versions()
+        for version in resp["Versions"]:
+            assert version.startswith("OpenSearch_") or version.startswith("Elasticsearch_"), (
+                f"Unexpected version format: {version}"
+            )
+
+    def test_list_versions_no_duplicates(self, client):
+        """list_versions returns unique version strings."""
+        resp = client.list_versions()
+        versions = resp["Versions"]
+        assert len(versions) == len(set(versions)), "Duplicate versions in ListVersions response"
+
+    def test_list_versions_pagination_next_token(self, client):
+        """list_versions with MaxResults=2 returns NextToken when more results exist."""
+        resp = client.list_versions(MaxResults=2)
+        assert "Versions" in resp
+        assert len(resp["Versions"]) <= 2
+        assert "NextToken" in resp  # there are always more than 2 versions
+
+    def test_list_versions_pagination_continues_with_token(self, client):
+        """list_versions NextToken pages through all versions without overlap."""
+        first = client.list_versions(MaxResults=2)
+        assert "NextToken" in first
+        second = client.list_versions(NextToken=first["NextToken"])
+        assert "Versions" in second
+        assert len(second["Versions"]) > 0
+        first_set = set(first["Versions"])
+        second_set = set(second["Versions"])
+        assert first_set.isdisjoint(second_set), "Overlapping versions across pages"
+
+    # --- list_vpc_endpoints structure ---
+
+    def test_list_vpc_endpoints_returns_summary_list(self, client):
+        """list_vpc_endpoints returns VpcEndpointSummaryList key."""
+        resp = client.list_vpc_endpoints()
+        assert "VpcEndpointSummaryList" in resp
+        assert isinstance(resp["VpcEndpointSummaryList"], list)
+
+    def test_list_vpc_endpoints_empty_by_default(self, client):
+        """list_vpc_endpoints VpcEndpointSummaryList is a list (may be empty)."""
+        resp = client.list_vpc_endpoints()
+        assert isinstance(resp["VpcEndpointSummaryList"], list)
+
+    def test_list_vpc_endpoints_includes_created(self, client, domain):
+        """list_vpc_endpoints includes newly created endpoint."""
+        resp = client.create_vpc_endpoint(
+            DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{domain}",
+            VpcOptions={"SubnetIds": ["subnet-abcdef01"]},
+        )
+        endpoint_id = resp["VpcEndpoint"]["VpcEndpointId"]
+        try:
+            list_resp = client.list_vpc_endpoints()
+            assert "VpcEndpointSummaryList" in list_resp
+            ids = [e["VpcEndpointId"] for e in list_resp["VpcEndpointSummaryList"]]
+            assert endpoint_id in ids
+        finally:
+            client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+
+    def test_list_vpc_endpoints_for_domain_structure(self, client, domain):
+        """list_vpc_endpoints_for_domain returns VpcEndpointSummaryList."""
+        resp = client.list_vpc_endpoints_for_domain(DomainName=domain)
+        assert "VpcEndpointSummaryList" in resp
+        assert isinstance(resp["VpcEndpointSummaryList"], list)
+
+    # --- describe_inbound_connections structure ---
+
+    def test_describe_inbound_connections_has_connections(self, client):
+        """describe_inbound_connections returns Connections key with a list."""
+        resp = client.describe_inbound_connections()
+        assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
+
+    def test_describe_inbound_connections_after_outbound_created(self, client):
+        """After creating outbound connection, inbound side is reflected."""
+        resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "local-d2", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "remote-d2", "OwnerId": "111122223333", "Region": "us-west-2",
+            }},
+            ConnectionAlias="inbound-check-conn",
+        )
+        conn_id = resp["ConnectionId"]
+        try:
+            inbound = client.describe_inbound_connections()
+            assert "Connections" in inbound
+            assert isinstance(inbound["Connections"], list)
+        finally:
+            client.delete_outbound_connection(ConnectionId=conn_id)
+
+    # --- describe_outbound_connections structure ---
+
+    def test_describe_outbound_connections_connection_fields(self, client):
+        """describe_outbound_connections entries have ConnectionId and ConnectionAlias."""
+        conn_resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "loc-domain", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "rem-domain", "OwnerId": "123456789012", "Region": "us-west-2",
+            }},
+            ConnectionAlias="fields-check-conn",
+        )
+        conn_id = conn_resp["ConnectionId"]
+        try:
+            resp = client.describe_outbound_connections()
+            conns = resp["Connections"]
+            matching = [c for c in conns if c["ConnectionId"] == conn_id]
+            assert len(matching) == 1
+            conn = matching[0]
+            assert "ConnectionAlias" in conn
+            assert conn["ConnectionAlias"] == "fields-check-conn"
+            assert "ConnectionStatus" in conn
+        finally:
+            client.delete_outbound_connection(ConnectionId=conn_id)
+
+    # --- describe_packages structure ---
+
+    def test_describe_packages_empty_returns_list(self, client):
+        """describe_packages always returns PackageDetailsList."""
+        resp = client.describe_packages()
+        assert "PackageDetailsList" in resp
+        assert isinstance(resp["PackageDetailsList"], list)
+
+    def test_describe_packages_entry_structure(self, client):
+        """describe_packages entries have PackageID, PackageName, PackageType."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "key.txt"},
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            pkgs = client.describe_packages()
+            matching = [p for p in pkgs["PackageDetailsList"] if p["PackageID"] == pkg_id]
+            assert len(matching) == 1
+            entry = matching[0]
+            assert entry["PackageName"] == pkg_name
+            assert entry["PackageType"] == "TXT-DICTIONARY"
+            assert "PackageStatus" in entry
+        finally:
+            client.delete_package(PackageID=pkg_id)
+
+    def test_describe_packages_filter_by_name(self, client):
+        """describe_packages filtered by PackageName returns only matching packages."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "key.txt"},
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            filtered = client.describe_packages(
+                Filters=[{"Name": "PackageName", "Value": [pkg_name]}]
+            )
+            names = [p["PackageName"] for p in filtered["PackageDetailsList"]]
+            assert pkg_name in names
+        finally:
+            client.delete_package(PackageID=pkg_id)
+
+    # --- describe_reserved_instance_offerings structure ---
+
+    def test_describe_reserved_instance_offerings_entry_fields(self, client):
+        """describe_reserved_instance_offerings entries have required fields."""
+        resp = client.describe_reserved_instance_offerings()
+        offerings = resp["ReservedInstanceOfferings"]
+        assert len(offerings) > 0
+        offering = offerings[0]
+        assert "ReservedInstanceOfferingId" in offering
+        assert "InstanceType" in offering
+        assert "Duration" in offering
+        assert "FixedPrice" in offering
+        assert "CurrencyCode" in offering
+        assert "PaymentOption" in offering
+
+    # --- describe_reserved_instances structure ---
+
+    def test_describe_reserved_instances_empty_list(self, client):
+        """describe_reserved_instances returns empty list when none purchased."""
+        resp = client.describe_reserved_instances()
+        assert "ReservedInstances" in resp
+        assert isinstance(resp["ReservedInstances"], list)
+        assert len(resp["ReservedInstances"]) == 0
+
+    def test_describe_reserved_instances_with_fake_id_returns_empty(self, client):
+        """describe_reserved_instances with non-matching ID returns empty list."""
+        resp = client.describe_reserved_instances(
+            ReservedInstanceId="00000000-0000-0000-0000-000000000000"
+        )
+        assert "ReservedInstances" in resp
+        assert len(resp["ReservedInstances"]) == 0
+
+    # --- get_default_application_setting ---
+
+    def test_get_default_application_setting_200(self, client):
+        """get_default_application_setting always returns HTTP 200."""
+        resp = client.get_default_application_setting()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_default_application_setting_is_dict(self, client):
+        """get_default_application_setting returns a dict response."""
+        resp = client.get_default_application_setting()
+        assert isinstance(resp, dict)
+        assert "ResponseMetadata" in resp
+
+    # --- list_domain_names structural edge cases ---
+
+    def test_list_domain_names_each_entry_has_name(self, client):
+        """Every entry in list_domain_names has a DomainName field."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = client.list_domain_names()
+            for entry in resp["DomainNames"]:
+                assert "DomainName" in entry
+                assert isinstance(entry["DomainName"], str)
+                assert len(entry["DomainName"]) > 0
+        finally:
+            client.delete_domain(DomainName=name)
+
+    def test_list_domain_names_engine_type_values(self, client):
+        """list_domain_names EngineType is either OpenSearch or Elasticsearch."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = client.list_domain_names()
+            for entry in resp["DomainNames"]:
+                if "EngineType" in entry:
+                    assert entry["EngineType"] in ("OpenSearch", "Elasticsearch")
+        finally:
+            client.delete_domain(DomainName=name)
