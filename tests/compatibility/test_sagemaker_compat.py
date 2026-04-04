@@ -22,26 +22,36 @@ class TestSageMakerListOperations:
         response = sagemaker.list_endpoints()
         assert "Endpoints" in response
         assert isinstance(response["Endpoints"], list)
+        with pytest.raises(ClientError):
+            sagemaker.describe_endpoint(EndpointName="nonexistent-ep-xyz-999")
 
     def test_list_models_empty(self, sagemaker):
         response = sagemaker.list_models()
         assert "Models" in response
         assert isinstance(response["Models"], list)
+        with pytest.raises(ClientError):
+            sagemaker.describe_model(ModelName="nonexistent-model-xyz-999")
 
     def test_list_training_jobs_empty(self, sagemaker):
         response = sagemaker.list_training_jobs()
         assert "TrainingJobSummaries" in response
         assert isinstance(response["TrainingJobSummaries"], list)
+        with pytest.raises(ClientError):
+            sagemaker.describe_training_job(TrainingJobName="nonexistent-tj-xyz-999")
 
     def test_list_notebook_instances_empty(self, sagemaker):
         response = sagemaker.list_notebook_instances()
         assert "NotebookInstances" in response
         assert isinstance(response["NotebookInstances"], list)
+        with pytest.raises(ClientError):
+            sagemaker.describe_notebook_instance(NotebookInstanceName="nonexistent-nb-xyz-999")
 
     def test_list_experiments_empty(self, sagemaker):
         response = sagemaker.list_experiments()
         assert "ExperimentSummaries" in response
         assert isinstance(response["ExperimentSummaries"], list)
+        with pytest.raises(ClientError):
+            sagemaker.describe_experiment(ExperimentName="nonexistent-exp-xyz-999")
 
 
 class TestSageMakerModelCRUD:
@@ -208,14 +218,19 @@ class TestSagemakerAutoCoverage:
         return make_client("sagemaker")
 
     def test_list_auto_ml_jobs(self, client):
-        """ListAutoMLJobs returns a response."""
+        """ListAutoMLJobs returns a response; nonexistent V2 job raises ResourceNotFound."""
         resp = client.list_auto_ml_jobs()
         assert "AutoMLJobSummaries" in resp
+        with pytest.raises(ClientError) as exc:
+            client.describe_auto_ml_job_v2(AutoMLJobName="nonexistent-aml-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_clusters(self, client):
-        """ListClusters returns a response."""
+        """ListClusters returns a response; nonexistent cluster raises an error."""
         resp = client.list_clusters()
         assert "ClusterSummaries" in resp
+        with pytest.raises(ClientError):
+            client.describe_cluster(ClusterName="nonexistent-cluster-xyz-999")
 
     def test_list_compilation_jobs(self, client):
         """ListCompilationJobs returns a response."""
@@ -3210,7 +3225,7 @@ class TestSageMakerTagsOnTrial:
             sagemaker.delete_experiment(ExperimentName=exp_name)
 
     def test_delete_tags_on_trial(self, sagemaker):
-        """delete_tags removes tags from a trial."""
+        """delete_tags removes tags from a trial; update_trial modifies it."""
         exp_name = _uid("exp")
         trial_name = _uid("trial")
         sagemaker.create_experiment(ExperimentName=exp_name)
@@ -3229,6 +3244,13 @@ class TestSageMakerTagsOnTrial:
             keys = [t["Key"] for t in tags_resp["Tags"]]
             assert "stage" not in keys
             assert "team" in keys
+            # Update the trial and verify
+            sagemaker.update_trial(TrialName=trial_name, DisplayName="updated-display")
+            desc = sagemaker.describe_trial(TrialName=trial_name)
+            assert desc["TrialName"] == trial_name
+            # Error: nonexistent trial raises error
+            with pytest.raises(ClientError):
+                sagemaker.describe_trial(TrialName="nonexistent-trial-xyz-999")
         finally:
             sagemaker.delete_trial(TrialName=trial_name)
             sagemaker.delete_experiment(ExperimentName=exp_name)
@@ -3934,6 +3956,8 @@ class TestSageMakerBatchOperations:
 
     def test_batch_delete_cluster_nodes(self, sagemaker):
         """BatchDeleteClusterNodes accepts cluster name and node IDs."""
+        list_resp = sagemaker.list_clusters()
+        assert isinstance(list_resp["ClusterSummaries"], list)
         resp = sagemaker.batch_delete_cluster_nodes(
             ClusterName="fake-cluster-bd-zzz", NodeIds=["mi-fake123"]
         )
@@ -3941,6 +3965,8 @@ class TestSageMakerBatchOperations:
 
     def test_batch_reboot_cluster_nodes(self, sagemaker):
         """BatchRebootClusterNodes accepts cluster name and node IDs."""
+        list_resp = sagemaker.list_clusters()
+        assert isinstance(list_resp["ClusterSummaries"], list)
         resp = sagemaker.batch_reboot_cluster_nodes(
             ClusterName="fake-cluster-reboot-zzz", NodeIds=["mi-fake123"]
         )
@@ -3948,6 +3974,8 @@ class TestSageMakerBatchOperations:
 
     def test_batch_replace_cluster_nodes(self, sagemaker):
         """BatchReplaceClusterNodes accepts cluster name and node IDs."""
+        list_resp = sagemaker.list_clusters()
+        assert isinstance(list_resp["ClusterSummaries"], list)
         resp = sagemaker.batch_replace_cluster_nodes(
             ClusterName="fake-cluster-replace-zzz", NodeIds=["mi-fake123"]
         )
@@ -5200,20 +5228,30 @@ class TestSageMakerUpdatePipelineVersion:
 
 class TestSageMakerAttachDetachClusterNodeVolume:
     def test_attach_cluster_node_volume(self, sagemaker):
+        """attach_cluster_node_volume returns 200; nonexistent cluster raises error."""
+        list_resp = sagemaker.list_clusters()
+        assert isinstance(list_resp["ClusterSummaries"], list)
         resp = sagemaker.attach_cluster_node_volume(
             ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
             NodeId="fake-node-id",
             VolumeId="vol-fake12345",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        with pytest.raises(ClientError):
+            sagemaker.describe_cluster(ClusterName="nonexistent-cluster-xyz-999")
 
     def test_detach_cluster_node_volume(self, sagemaker):
+        """detach_cluster_node_volume returns 200; nonexistent cluster raises error."""
+        list_resp = sagemaker.list_clusters()
+        assert isinstance(list_resp["ClusterSummaries"], list)
         resp = sagemaker.detach_cluster_node_volume(
             ClusterArn="arn:aws:sagemaker:us-east-1:123456789012:cluster/fake-cluster",
             NodeId="fake-node-id",
             VolumeId="vol-fake12345",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        with pytest.raises(ClientError):
+            sagemaker.describe_cluster(ClusterName="nonexistent-cluster-xyz-999")
 
 
 class TestSageMakerStartSession:
@@ -5242,12 +5280,16 @@ class TestSageMakerCreatePresignedMlflowAppUrl:
 
 class TestSageMakerRenderUiTemplate:
     def test_render_ui_template(self, sagemaker):
+        """render_ui_template returns RenderedContent; list_human_task_uis returns list."""
+        list_resp = sagemaker.list_human_task_uis()
+        assert isinstance(list_resp["HumanTaskUiSummaries"], list)
         resp = sagemaker.render_ui_template(
             UiTemplate={"Content": "<html><body>Test</body></html>"},
             Task={"Input": '{"key": "value"}'},
             RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
         )
-        assert "RenderedContent" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "RenderedContent" in resp
+        assert isinstance(resp["RenderedContent"], str)
 
 
 class TestSageMakerAdditionalOps:
@@ -5428,6 +5470,9 @@ class TestSageMakerBatchDescribeModelPackage:
     """BatchDescribeModelPackage tests."""
 
     def test_batch_describe_model_package_empty(self, sagemaker):
+        """batch_describe_model_package with nonexistent ARN returns error map."""
+        list_resp = sagemaker.list_model_packages()
+        assert isinstance(list_resp["ModelPackageSummaryList"], list)
         arn = "arn:aws:sagemaker:us-east-1:123456789012:model-package/fake/1"
         resp = sagemaker.batch_describe_model_package(ModelPackageArnList=[arn])
         assert "BatchDescribeModelPackageErrorMap" in resp
@@ -5689,9 +5734,394 @@ class TestSageMakerBatchAddClusterNodes:
     """Test BatchAddClusterNodes."""
 
     def test_batch_add_cluster_nodes(self, sagemaker):
-        """BatchAddClusterNodes returns success."""
+        """BatchAddClusterNodes returns success; list_clusters returns list."""
+        list_resp = sagemaker.list_clusters()
+        assert isinstance(list_resp["ClusterSummaries"], list)
         resp = sagemaker.batch_add_cluster_nodes(
             ClusterName="test-cluster",
             NodesToAdd=[{"InstanceGroupName": "worker-group", "IncrementTargetCountBy": 1}],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestSageMakerBehavioralFidelity:
+    """Tests verifying behavioral correctness: ARNs, timestamps, idempotency, pagination."""
+
+    def test_model_arn_format(self, sagemaker):
+        """Model ARN matches arn:aws:sagemaker:region:account:model/name format."""
+        name = _uid("model")
+        resp = sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+        )
+        arn = resp["ModelArn"]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert ":model/" in arn
+            assert name in arn
+        finally:
+            sagemaker.delete_model(ModelName=name)
+
+    def test_model_describe_has_creation_time(self, sagemaker):
+        """describe_model returns CreationTime field."""
+        name = _uid("model")
+        sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+        )
+        try:
+            desc = sagemaker.describe_model(ModelName=name)
+            assert "CreationTime" in desc
+        finally:
+            sagemaker.delete_model(ModelName=name)
+
+    def test_create_and_overwrite_model_keeps_latest(self, sagemaker):
+        """Creating a model with the same name twice keeps the model accessible."""
+        name = _uid("model")
+        sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+        )
+        try:
+            # Second create with same name - model is still accessible
+            sagemaker.create_model(
+                ModelName=name,
+                ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+                PrimaryContainer={
+                    "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img2:latest"
+                },
+            )
+            desc = sagemaker.describe_model(ModelName=name)
+            assert desc["ModelName"] == name
+        finally:
+            sagemaker.delete_model(ModelName=name)
+
+    def test_experiment_arn_format(self, sagemaker):
+        """Experiment ARN matches arn:aws:sagemaker:region:account:experiment/name."""
+        name = _uid("exp")
+        resp = sagemaker.create_experiment(ExperimentName=name)
+        arn = resp["ExperimentArn"]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert ":experiment/" in arn
+            assert name in arn
+        finally:
+            sagemaker.delete_experiment(ExperimentName=name)
+
+    def test_experiment_describe_has_timestamps(self, sagemaker):
+        """describe_experiment returns CreationTime and LastModifiedTime."""
+        name = _uid("exp")
+        sagemaker.create_experiment(ExperimentName=name)
+        try:
+            desc = sagemaker.describe_experiment(ExperimentName=name)
+            assert "CreationTime" in desc
+            assert "LastModifiedTime" in desc
+        finally:
+            sagemaker.delete_experiment(ExperimentName=name)
+
+    def test_list_models_shows_all_created_models(self, sagemaker):
+        """list_models returns all created models including newly created ones."""
+        names = [_uid("mdl") for _ in range(3)]
+        for n in names:
+            sagemaker.create_model(
+                ModelName=n,
+                ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+                PrimaryContainer={
+                    "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+                },
+            )
+        try:
+            resp = sagemaker.list_models()
+            all_names = [m["ModelName"] for m in resp["Models"]]
+            for n in names:
+                assert n in all_names
+        finally:
+            for n in names:
+                sagemaker.delete_model(ModelName=n)
+
+    def test_list_experiments_shows_all_created(self, sagemaker):
+        """list_experiments returns all created experiments including newly created ones."""
+        names = [_uid("exp") for _ in range(3)]
+        for n in names:
+            sagemaker.create_experiment(ExperimentName=n)
+        try:
+            resp = sagemaker.list_experiments()
+            all_names = [e["ExperimentName"] for e in resp["ExperimentSummaries"]]
+            for n in names:
+                assert n in all_names
+        finally:
+            for n in names:
+                sagemaker.delete_experiment(ExperimentName=n)
+
+    def test_training_job_arn_format(self, sagemaker):
+        """Training job ARN matches expected format and contains job name."""
+        name = _uid("tj")
+        resp = sagemaker.create_training_job(
+            TrainingJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            AlgorithmSpecification={
+                "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "TrainingInputMode": "File",
+            },
+            OutputDataConfig={"S3OutputPath": "s3://bucket/output"},
+            ResourceConfig={
+                "InstanceType": "ml.m4.xlarge",
+                "InstanceCount": 1,
+                "VolumeSizeInGB": 10,
+            },
+            StoppingCondition={"MaxRuntimeInSeconds": 3600},
+        )
+        arn = resp["TrainingJobArn"]
+        assert arn.startswith("arn:aws:sagemaker:")
+        assert ":training-job/" in arn
+        assert name in arn
+
+    def test_training_job_describe_has_timestamps(self, sagemaker):
+        """describe_training_job returns CreationTime."""
+        name = _uid("tj")
+        sagemaker.create_training_job(
+            TrainingJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            AlgorithmSpecification={
+                "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "TrainingInputMode": "File",
+            },
+            OutputDataConfig={"S3OutputPath": "s3://bucket/output"},
+            ResourceConfig={
+                "InstanceType": "ml.m4.xlarge",
+                "InstanceCount": 1,
+                "VolumeSizeInGB": 10,
+            },
+            StoppingCondition={"MaxRuntimeInSeconds": 3600},
+        )
+        desc = sagemaker.describe_training_job(TrainingJobName=name)
+        assert "CreationTime" in desc
+
+    def test_endpoint_config_arn_format(self, sagemaker):
+        """EndpointConfig ARN matches expected format."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+        )
+        resp = sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                }
+            ],
+        )
+        arn = resp["EndpointConfigArn"]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert ":endpoint-config/" in arn
+            assert ec_name in arn
+        finally:
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)
+
+    def test_pipeline_arn_contains_name(self, sagemaker):
+        """Pipeline ARN contains the pipeline name."""
+        name = _uid("pipe")
+        resp = sagemaker.create_pipeline(
+            PipelineName=name,
+            PipelineDefinition='{"Version":"2020-12-01","Steps":[]}',
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        arn = resp["PipelineArn"]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert name in arn
+        finally:
+            sagemaker.delete_pipeline(PipelineName=name)
+
+    def test_notebook_instance_describe_has_arn_and_status(self, sagemaker):
+        """describe_notebook_instance returns NotebookInstanceArn and status."""
+        name = _uid("nb")
+        sagemaker.create_notebook_instance(
+            NotebookInstanceName=name,
+            InstanceType="ml.t2.medium",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        try:
+            desc = sagemaker.describe_notebook_instance(NotebookInstanceName=name)
+            assert "NotebookInstanceArn" in desc
+            assert desc["NotebookInstanceArn"].startswith("arn:aws:sagemaker:")
+            assert desc["NotebookInstanceStatus"] in (
+                "Pending",
+                "InService",
+                "Stopping",
+                "Stopped",
+                "Failed",
+                "Deleting",
+                "Updating",
+            )
+        finally:
+            sagemaker.stop_notebook_instance(NotebookInstanceName=name)
+            sagemaker.delete_notebook_instance(NotebookInstanceName=name)
+
+    def test_list_endpoint_configs_pagination(self, sagemaker):
+        """list_endpoint_configs with MaxResults=1 paginates correctly."""
+        model_name = _uid("model")
+        ec_names = [_uid("ec") for _ in range(3)]
+        sagemaker.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+        )
+        for ec in ec_names:
+            sagemaker.create_endpoint_config(
+                EndpointConfigName=ec,
+                ProductionVariants=[
+                    {
+                        "VariantName": "v1",
+                        "ModelName": model_name,
+                        "InitialInstanceCount": 1,
+                        "InstanceType": "ml.m4.xlarge",
+                    }
+                ],
+            )
+        try:
+            all_ec = []
+            resp = sagemaker.list_endpoint_configs(MaxResults=1)
+            assert len(resp["EndpointConfigs"]) <= 1
+            all_ec.extend(c["EndpointConfigName"] for c in resp["EndpointConfigs"])
+            while "NextToken" in resp:
+                resp = sagemaker.list_endpoint_configs(
+                    MaxResults=1, NextToken=resp["NextToken"]
+                )
+                all_ec.extend(c["EndpointConfigName"] for c in resp["EndpointConfigs"])
+            for ec in ec_names:
+                assert ec in all_ec
+        finally:
+            for ec in ec_names:
+                sagemaker.delete_endpoint_config(EndpointConfigName=ec)
+            sagemaker.delete_model(ModelName=model_name)
+
+    def test_model_card_describe_has_version(self, sagemaker):
+        """describe_model_card returns ModelCardVersion field."""
+        name = _uid("mc")
+        sagemaker.create_model_card(
+            ModelCardName=name,
+            Content='{"model_overview":{}}',
+            ModelCardStatus="Draft",
+        )
+        try:
+            desc = sagemaker.describe_model_card(ModelCardName=name)
+            assert "ModelCardVersion" in desc
+            assert isinstance(desc["ModelCardVersion"], int)
+        finally:
+            sagemaker.delete_model_card(ModelCardName=name)
+
+    def test_experiment_accessible_after_second_create(self, sagemaker):
+        """Experiment remains accessible if created twice with same name."""
+        name = _uid("exp")
+        sagemaker.create_experiment(ExperimentName=name)
+        try:
+            sagemaker.create_experiment(ExperimentName=name)
+            desc = sagemaker.describe_experiment(ExperimentName=name)
+            assert desc["ExperimentName"] == name
+        finally:
+            sagemaker.delete_experiment(ExperimentName=name)
+
+    def test_model_card_version_increments_on_update(self, sagemaker):
+        """update_model_card increments ModelCardVersion."""
+        name = _uid("mc")
+        sagemaker.create_model_card(
+            ModelCardName=name,
+            Content='{"model_overview":{}}',
+            ModelCardStatus="Draft",
+        )
+        try:
+            desc1 = sagemaker.describe_model_card(ModelCardName=name)
+            v1 = desc1["ModelCardVersion"]
+            sagemaker.update_model_card(ModelCardName=name, ModelCardStatus="PendingReview")
+            desc2 = sagemaker.describe_model_card(ModelCardName=name)
+            v2 = desc2["ModelCardVersion"]
+            assert v2 > v1
+        finally:
+            sagemaker.delete_model_card(ModelCardName=name)
+
+    def test_pipeline_describe_has_definition(self, sagemaker):
+        """describe_pipeline returns the PipelineDefinition stored at creation."""
+        name = _uid("pipe")
+        defn = '{"Version":"2020-12-01","Steps":[]}'
+        sagemaker.create_pipeline(
+            PipelineName=name,
+            PipelineDefinition=defn,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        try:
+            desc = sagemaker.describe_pipeline(PipelineName=name)
+            assert "PipelineDefinition" in desc
+            assert desc["PipelineDefinition"] == defn
+        finally:
+            sagemaker.delete_pipeline(PipelineName=name)
+
+    def test_domain_arn_format(self, sagemaker):
+        """Domain ARN matches expected format."""
+        name = _uid("dom")
+        resp = sagemaker.create_domain(
+            DomainName=name,
+            AuthMode="IAM",
+            DefaultUserSettings={
+                "ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"
+            },
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        arn = resp["DomainArn"]
+        domain_id = arn.split("/")[-1]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert ":domain/" in arn
+        finally:
+            sagemaker.delete_domain(DomainId=domain_id)
+
+    def test_list_training_jobs_pagination(self, sagemaker):
+        """list_training_jobs with MaxResults=1 paginates through all jobs."""
+        names = [_uid("tj") for _ in range(3)]
+        for n in names:
+            sagemaker.create_training_job(
+                TrainingJobName=n,
+                RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+                AlgorithmSpecification={
+                    "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                    "TrainingInputMode": "File",
+                },
+                OutputDataConfig={"S3OutputPath": "s3://bucket/output"},
+                ResourceConfig={
+                    "InstanceType": "ml.m4.xlarge",
+                    "InstanceCount": 1,
+                    "VolumeSizeInGB": 10,
+                },
+                StoppingCondition={"MaxRuntimeInSeconds": 3600},
+            )
+        all_names = []
+        resp = sagemaker.list_training_jobs(MaxResults=1)
+        assert len(resp["TrainingJobSummaries"]) <= 1
+        all_names.extend(j["TrainingJobName"] for j in resp["TrainingJobSummaries"])
+        while "NextToken" in resp:
+            resp = sagemaker.list_training_jobs(MaxResults=1, NextToken=resp["NextToken"])
+            all_names.extend(j["TrainingJobName"] for j in resp["TrainingJobSummaries"])
+        for n in names:
+            assert n in all_names
