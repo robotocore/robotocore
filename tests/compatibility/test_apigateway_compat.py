@@ -2123,6 +2123,457 @@ class TestAPIGatewayUpdateMethodResponse:
         apigw.delete_rest_api(restApiId=api_id)
 
 
+class TestAPIGatewayEdgeCases:
+    """Edge cases and behavioral fidelity tests for API Gateway."""
+
+    @pytest.fixture
+    def apigw(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api(self, apigw):
+        import uuid
+
+        resp = apigw.create_rest_api(
+            name=f"edge-api-{uuid.uuid4().hex[:8]}",
+            description="Edge case test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        apigw.delete_rest_api(restApiId=api_id)
+
+    # --- Error cases: NotFoundException for nonexistent resources ---
+
+    def test_get_nonexistent_rest_api_raises(self, apigw):
+        """GetRestApi with a fake ID returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_rest_api(restApiId="nonexistent1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_nonexistent_rest_api_raises(self, apigw):
+        """DeleteRestApi with a fake ID returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.delete_rest_api(restApiId="doesnotexist")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_nonexistent_authorizer_raises(self, apigw, api):
+        """GetAuthorizer with nonexistent authorizerId returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_authorizer(restApiId=api, authorizerId="badid12345")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_nonexistent_request_validator_raises(self, apigw, api):
+        """GetRequestValidator with nonexistent ID returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_request_validator(restApiId=api, requestValidatorId="noexist123")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_nonexistent_model_raises(self, apigw, api):
+        """GetModel with nonexistent modelName returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_model(restApiId=api, modelName="NoSuchModel")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_nonexistent_usage_plan_raises(self, apigw):
+        """GetUsagePlan with a fake plan ID returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_usage_plan(usagePlanId="fakeplanid1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_get_nonexistent_api_key_raises(self, apigw):
+        """GetApiKey with a fake key ID returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            apigw.get_api_key(apiKey="fakekeyid0000")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # --- Behavioral fidelity: timestamps and ID format ---
+
+    def test_rest_api_has_created_date(self, apigw, api):
+        """GetRestApi returns a createdDate timestamp."""
+        import datetime
+
+        resp = apigw.get_rest_api(restApiId=api)
+        assert "createdDate" in resp
+        assert isinstance(resp["createdDate"], datetime.datetime)
+
+    def test_rest_api_id_is_alphanumeric(self, apigw, api):
+        """REST API IDs are 10-character alphanumeric strings."""
+        resp = apigw.get_rest_api(restApiId=api)
+        api_id = resp["id"]
+        assert len(api_id) == 10
+        assert api_id.isalnum()
+
+    def test_deployment_has_created_date(self, apigw, api):
+        """CreateDeployment returns a createdDate timestamp."""
+        import datetime
+
+        resources = apigw.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=api)
+        assert "createdDate" in dep
+        assert isinstance(dep["createdDate"], datetime.datetime)
+
+    def test_stage_has_timestamps(self, apigw, api):
+        """CreateStage returns createdDate and lastUpdatedDate."""
+        import datetime
+
+        resources = apigw.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+        apigw.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        apigw.put_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = apigw.create_deployment(restApiId=api)
+        stage = apigw.create_stage(restApiId=api, stageName="ts-stage", deploymentId=dep["id"])
+        assert "createdDate" in stage
+        assert isinstance(stage["createdDate"], datetime.datetime)
+        assert "lastUpdatedDate" in stage
+        assert isinstance(stage["lastUpdatedDate"], datetime.datetime)
+
+    # --- Behavioral fidelity: description preserved through update ---
+
+    def test_rest_api_description_survives_update(self, apigw, api):
+        """UpdateRestApi description change is reflected in GetRestApi."""
+        apigw.update_rest_api(
+            restApiId=api,
+            patchOperations=[{"op": "replace", "path": "/description", "value": "Edge updated"}],
+        )
+        resp = apigw.get_rest_api(restApiId=api)
+        assert resp["description"] == "Edge updated"
+
+    # --- Behavioral fidelity: gateway response full lifecycle ---
+
+    def test_gateway_response_put_retrieve_delete(self, apigw, api):
+        """Put, retrieve, update, delete a gateway response."""
+        # Put
+        apigw.put_gateway_response(
+            restApiId=api,
+            responseType="MISSING_AUTHENTICATION_TOKEN",
+            statusCode="403",
+            responseTemplates={"application/json": '{"message":"missing token"}'},
+        )
+
+        # Retrieve
+        got = apigw.get_gateway_response(
+            restApiId=api, responseType="MISSING_AUTHENTICATION_TOKEN"
+        )
+        assert got["responseType"] == "MISSING_AUTHENTICATION_TOKEN"
+        assert got["statusCode"] == "403"
+
+        # Update
+        apigw.update_gateway_response(
+            restApiId=api,
+            responseType="MISSING_AUTHENTICATION_TOKEN",
+            patchOperations=[{"op": "replace", "path": "/statusCode", "value": "401"}],
+        )
+        updated = apigw.get_gateway_response(
+            restApiId=api, responseType="MISSING_AUTHENTICATION_TOKEN"
+        )
+        assert updated["statusCode"] == "401"
+
+        # Delete
+        apigw.delete_gateway_response(
+            restApiId=api, responseType="MISSING_AUTHENTICATION_TOKEN"
+        )
+        responses = apigw.get_gateway_responses(restApiId=api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "MISSING_AUTHENTICATION_TOKEN" not in types
+
+    # --- Pagination: get_rest_apis with limit ---
+
+    def test_get_rest_apis_pagination(self, apigw):
+        """Create 3 REST APIs and verify pagination with limit."""
+        import uuid
+
+        created_ids = []
+        for i in range(3):
+            resp = apigw.create_rest_api(name=f"page-api-{uuid.uuid4().hex[:8]}")
+            created_ids.append(resp["id"])
+
+        try:
+            # Without limit, all should be present
+            all_resp = apigw.get_rest_apis()
+            all_ids = [a["id"] for a in all_resp["items"]]
+            for api_id in created_ids:
+                assert api_id in all_ids
+
+            # With limit=1, should get position token for next page
+            page1 = apigw.get_rest_apis(limit=1)
+            assert len(page1["items"]) == 1
+            # If server supports pagination, position will be returned
+            if "position" in page1:
+                page2 = apigw.get_rest_apis(limit=1, position=page1["position"])
+                assert len(page2["items"]) == 1
+                assert page2["items"][0]["id"] != page1["items"][0]["id"]
+        finally:
+            for api_id in created_ids:
+                apigw.delete_rest_api(restApiId=api_id)
+
+    # --- Idempotency: create model with same name twice ---
+
+    def test_create_duplicate_model_raises(self, apigw, api):
+        """Creating a model with the same name twice raises ConflictException."""
+        from botocore.exceptions import ClientError
+
+        apigw.create_model(
+            restApiId=api,
+            name="DuplicateModel",
+            contentType="application/json",
+            schema='{"type":"object"}',
+        )
+        with pytest.raises(ClientError) as exc:
+            apigw.create_model(
+                restApiId=api,
+                name="DuplicateModel",
+                contentType="application/json",
+                schema='{"type":"object"}',
+            )
+        assert exc.value.response["Error"]["Code"] in ("ConflictException", "BadRequestException")
+
+    # --- Unicode in names and descriptions ---
+
+    def test_rest_api_unicode_description(self, apigw):
+        """REST API with unicode characters in description is stored and retrieved."""
+        unicode_desc = "API для тестирования — with émojis 🚀"
+        resp = apigw.create_rest_api(name="unicode-desc-api", description=unicode_desc)
+        api_id = resp["id"]
+        try:
+            got = apigw.get_rest_api(restApiId=api_id)
+            assert got["description"] == unicode_desc
+        finally:
+            apigw.delete_rest_api(restApiId=api_id)
+
+    # --- List returns known fields ---
+
+    def test_get_rest_apis_items_have_required_fields(self, apigw, api):
+        """Each item in GetRestApis has id and name fields."""
+        resp = apigw.get_rest_apis()
+        assert "items" in resp
+        for item in resp["items"]:
+            assert "id" in item
+            assert "name" in item
+
+    def test_get_api_keys_returns_list(self, apigw):
+        """GetApiKeys returns items list even when empty."""
+        resp = apigw.get_api_keys()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+    def test_get_usage_plans_returns_list(self, apigw):
+        """GetUsagePlans returns items list even when empty."""
+        resp = apigw.get_usage_plans()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+    def test_get_vpc_links_returns_list(self, apigw):
+        """GetVpcLinks returns items list even when empty."""
+        resp = apigw.get_vpc_links()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+    def test_get_account_has_throttle_settings(self, apigw):
+        """GetAccount returns throttleSettings with burstLimit and rateLimit."""
+        resp = apigw.get_account()
+        assert "throttleSettings" in resp
+        assert "burstLimit" in resp["throttleSettings"]
+        assert "rateLimit" in resp["throttleSettings"]
+
+    # --- Authorizer full lifecycle with error ---
+
+    def test_authorizer_full_lifecycle_with_error(self, apigw, api):
+        """Create, get, update, delete authorizer; then get returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        auth = apigw.create_authorizer(
+            restApiId=api,
+            name="lifecycle-auth",
+            type="TOKEN",
+            authorizerUri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:auth/invocations"
+            ),
+            identitySource="method.request.header.Authorization",
+        )
+        auth_id = auth["id"]
+
+        # Retrieve
+        got = apigw.get_authorizer(restApiId=api, authorizerId=auth_id)
+        assert got["name"] == "lifecycle-auth"
+
+        # List
+        auths = apigw.get_authorizers(restApiId=api)
+        auth_ids = [a["id"] for a in auths["items"]]
+        assert auth_id in auth_ids
+
+        # Update
+        updated = apigw.update_authorizer(
+            restApiId=api,
+            authorizerId=auth_id,
+            patchOperations=[{"op": "replace", "path": "/name", "value": "renamed-auth"}],
+        )
+        assert updated["name"] == "renamed-auth"
+
+        # Delete
+        apigw.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+        # Error: get deleted authorizer
+        with pytest.raises(ClientError) as exc:
+            apigw.get_authorizer(restApiId=api, authorizerId=auth_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # --- Request validator full lifecycle with error ---
+
+    def test_request_validator_full_lifecycle_with_error(self, apigw, api):
+        """Create, get, list, update, delete validator; then get returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        validator = apigw.create_request_validator(
+            restApiId=api,
+            name="edge-validator",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        val_id = validator["id"]
+
+        # Retrieve
+        got = apigw.get_request_validator(restApiId=api, requestValidatorId=val_id)
+        assert got["name"] == "edge-validator"
+
+        # List
+        validators = apigw.get_request_validators(restApiId=api)
+        val_ids = [v["id"] for v in validators["items"]]
+        assert val_id in val_ids
+
+        # Update
+        updated = apigw.update_request_validator(
+            restApiId=api,
+            requestValidatorId=val_id,
+            patchOperations=[
+                {"op": "replace", "path": "/validateRequestParameters", "value": "true"},
+            ],
+        )
+        assert updated["validateRequestParameters"] is True
+
+        # Delete
+        apigw.delete_request_validator(restApiId=api, requestValidatorId=val_id)
+
+        # Error: get deleted validator
+        with pytest.raises(ClientError) as exc:
+            apigw.get_request_validator(restApiId=api, requestValidatorId=val_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # --- Base path mapping full lifecycle with error ---
+
+    def test_base_path_mapping_full_lifecycle(self, apigw, api):
+        """Create, get, list, update, delete base path mapping."""
+        import uuid
+
+        domain_name = f"edge-{uuid.uuid4().hex[:8]}.example.com"
+        apigw.create_domain_name(
+            domainName=domain_name,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+        )
+        try:
+            # Create
+            resp = apigw.create_base_path_mapping(
+                domainName=domain_name,
+                restApiId=api,
+                basePath="v1",
+            )
+            assert resp["basePath"] == "v1"
+            assert resp["restApiId"] == api
+
+            # Retrieve
+            got = apigw.get_base_path_mapping(domainName=domain_name, basePath="v1")
+            assert got["basePath"] == "v1"
+
+            # List
+            mappings = apigw.get_base_path_mappings(domainName=domain_name)
+            paths = [m["basePath"] for m in mappings["items"]]
+            assert "v1" in paths
+
+            # Update
+            updated = apigw.update_base_path_mapping(
+                domainName=domain_name,
+                basePath="v1",
+                patchOperations=[{"op": "replace", "path": "/basePath", "value": "v1-updated"}],
+            )
+            assert updated["basePath"] == "v1-updated"
+
+            # Delete
+            apigw.delete_base_path_mapping(domainName=domain_name, basePath="v1-updated")
+            mappings_after = apigw.get_base_path_mappings(domainName=domain_name)
+            paths_after = [m["basePath"] for m in mappings_after.get("items", [])]
+            assert "v1-updated" not in paths_after
+        finally:
+            try:
+                apigw.delete_domain_name(domainName=domain_name)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # --- Model full lifecycle with retrieve and list ---
+
+    def test_model_full_lifecycle(self, apigw, api):
+        """Create, retrieve, list, delete model with verification."""
+        from botocore.exceptions import ClientError
+
+        model = apigw.create_model(
+            restApiId=api,
+            name="EdgeModel",
+            contentType="application/json",
+            schema='{"type":"object","properties":{"id":{"type":"string"}}}',
+        )
+        assert model["name"] == "EdgeModel"
+        assert model["contentType"] == "application/json"
+
+        # Retrieve
+        got = apigw.get_model(restApiId=api, modelName="EdgeModel")
+        assert got["name"] == "EdgeModel"
+
+        # List
+        models = apigw.get_models(restApiId=api)
+        names = [m["name"] for m in models["items"]]
+        assert "EdgeModel" in names
+
+        # Delete
+        apigw.delete_model(restApiId=api, modelName="EdgeModel")
+
+        # Error: get deleted model
+        with pytest.raises(ClientError) as exc:
+            apigw.get_model(restApiId=api, modelName="EdgeModel")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
 class TestAPIGatewayTagUntagResource:
     """Tests for TagResource and UntagResource on REST APIs."""
 
