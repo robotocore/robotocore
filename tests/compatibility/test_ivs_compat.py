@@ -236,6 +236,119 @@ class TestIVSChannelOperations:
         assert "channels" in resp
         assert isinstance(resp["channels"], list)
 
+    def test_create_channel_ingest_endpoint_present(self, ivs):
+        """Channel response includes ingestEndpoint field."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel = resp["channel"]
+        try:
+            got = ivs.get_channel(arn=channel["arn"])
+            assert "ingestEndpoint" in got["channel"]
+            assert len(got["channel"]["ingestEndpoint"]) > 0
+        finally:
+            ivs.delete_channel(arn=channel["arn"])
+
+    def test_create_channel_playback_url_present(self, ivs):
+        """Channel response includes playbackUrl field."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel = resp["channel"]
+        try:
+            got = ivs.get_channel(arn=channel["arn"])
+            assert "playbackUrl" in got["channel"]
+            assert len(got["channel"]["playbackUrl"]) > 0
+        finally:
+            ivs.delete_channel(arn=channel["arn"])
+
+    def test_update_channel_latency_mode(self, ivs):
+        """update_channel can change latencyMode."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, latencyMode="LOW")
+        channel_arn = resp["channel"]["arn"]
+        try:
+            updated = ivs.update_channel(arn=channel_arn, latencyMode="NORMAL")
+            assert updated["channel"]["latencyMode"] == "NORMAL"
+            got = ivs.get_channel(arn=channel_arn)
+            assert got["channel"]["latencyMode"] == "NORMAL"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_list_channels_filter_by_recording_config_with_channel(self, ivs):
+        """list_channels filterByRecordingConfigurationArn filters correctly."""
+        rc_resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-ivs-filter-bucket"}}
+        )
+        rc_arn = rc_resp["recordingConfiguration"]["arn"]
+        ch_resp = ivs.create_channel(
+            name=_unique("ch"), recordingConfigurationArn=rc_arn
+        )
+        channel_arn = ch_resp["channel"]["arn"]
+        try:
+            filtered = ivs.list_channels(filterByRecordingConfigurationArn=rc_arn)
+            assert "channels" in filtered
+            arns = [ch["arn"] for ch in filtered["channels"]]
+            assert channel_arn in arns
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+            ivs.delete_recording_configuration(arn=rc_arn)
+
+    def test_batch_get_channel_all_errors(self, ivs):
+        """batch_get_channel with all-missing ARNs returns errors list."""
+        fake1 = "arn:aws:ivs:us-east-1:123456789012:channel/fake1"
+        fake2 = "arn:aws:ivs:us-east-1:123456789012:channel/fake2"
+        batch = ivs.batch_get_channel(arns=[fake1, fake2])
+        assert "errors" in batch
+        assert len(batch["errors"]) == 2
+        error_arns = {e["arn"] for e in batch["errors"]}
+        assert fake1 in error_arns
+        assert fake2 in error_arns
+
+
+    def test_list_channels_returns_name_field(self, ivs):
+        """list_channels summary items include name field."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            listed = ivs.list_channels()
+            ch = next((c for c in listed["channels"] if c["arn"] == channel_arn), None)
+            assert ch is not None
+            assert ch["name"] == name
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_create_channel_authorized_field(self, ivs):
+        """create_channel with authorized=True sets authorized flag."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, authorized=True)
+        channel = resp["channel"]
+        try:
+            assert channel["authorized"] is True
+            got = ivs.get_channel(arn=channel["arn"])
+            assert got["channel"]["authorized"] is True
+        finally:
+            ivs.delete_channel(arn=channel["arn"])
+
+    def test_update_channel_recording_config(self, ivs):
+        """update_channel can set recordingConfigurationArn."""
+        rc_resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-ivs-update-rc"}}
+        )
+        rc_arn = rc_resp["recordingConfiguration"]["arn"]
+        name = _unique("ch")
+        ch_resp = ivs.create_channel(name=name)
+        channel_arn = ch_resp["channel"]["arn"]
+        try:
+            updated = ivs.update_channel(
+                arn=channel_arn, recordingConfigurationArn=rc_arn
+            )
+            assert updated["channel"]["recordingConfigurationArn"] == rc_arn
+            got = ivs.get_channel(arn=channel_arn)
+            assert got["channel"]["recordingConfigurationArn"] == rc_arn
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+            ivs.delete_recording_configuration(arn=rc_arn)
+
 
 class TestIVSStreamKeyOperations:
     """Tests for IVS stream key CRUD operations."""
@@ -355,6 +468,50 @@ class TestIVSStreamKeyOperations:
             assert "nextToken" in page1
         finally:
             ivs.delete_channel(arn=ch_arn)
+
+    def test_stream_key_value_unique_per_key(self, ivs):
+        """Each stream key has a unique value string."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            sk1 = ivs.create_stream_key(channelArn=ch_arn)
+            sk2 = ivs.create_stream_key(channelArn=ch_arn)
+            val1 = sk1["streamKey"]["value"]
+            val2 = sk2["streamKey"]["value"]
+            assert val1 != val2
+            assert len(val1) > 0
+            assert len(val2) > 0
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
+    def test_stream_key_with_tags(self, ivs):
+        """create_stream_key supports tags."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            sk = ivs.create_stream_key(channelArn=ch_arn, tags={"env": "prod"})
+            sk_arn = sk["streamKey"]["arn"]
+            assert sk["streamKey"]["tags"]["env"] == "prod"
+            tags_resp = ivs.list_tags_for_resource(resourceArn=sk_arn)
+            assert tags_resp["tags"]["env"] == "prod"
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
+    def test_delete_stream_key_not_found(self, ivs):
+        """delete_stream_key raises ResourceNotFoundException for missing ARN."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:stream-key/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.delete_stream_key(arn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_get_stream_key_not_found(self, ivs):
+        """get_stream_key raises ResourceNotFoundException for missing ARN."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:stream-key/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_stream_key(arn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestIVSRecordingConfigurationOperations:
@@ -593,6 +750,44 @@ class TestIVSPlaybackKeys:
         finally:
             ivs.delete_playback_key_pair(arn=kp_arn)
 
+    def test_list_playback_key_pairs_pagination(self, ivs):
+        """list_playback_key_pairs supports maxResults pagination."""
+        arns = []
+        try:
+            for _ in range(3):
+                resp = ivs.import_playback_key_pair(
+                    publicKeyMaterial=self._PUB_KEY,
+                    name=_unique("kp"),
+                )
+                arns.append(resp["keyPair"]["arn"])
+            page1 = ivs.list_playback_key_pairs(maxResults=1)
+            assert len(page1["keyPairs"]) == 1
+            assert "nextToken" in page1
+            page2 = ivs.list_playback_key_pairs(
+                maxResults=1, nextToken=page1["nextToken"]
+            )
+            assert len(page2["keyPairs"]) == 1
+            assert page1["keyPairs"][0]["arn"] != page2["keyPairs"][0]["arn"]
+        finally:
+            for arn in arns:
+                ivs.delete_playback_key_pair(arn=arn)
+
+    def test_list_playback_key_pairs_summary_has_name(self, ivs):
+        """list_playback_key_pairs summary includes name field."""
+        kp_name = _unique("kp")
+        resp = ivs.import_playback_key_pair(
+            publicKeyMaterial=self._PUB_KEY,
+            name=kp_name,
+        )
+        kp_arn = resp["keyPair"]["arn"]
+        try:
+            listed = ivs.list_playback_key_pairs()
+            kp = next((k for k in listed["keyPairs"] if k["arn"] == kp_arn), None)
+            assert kp is not None
+            assert kp["name"] == kp_name
+        finally:
+            ivs.delete_playback_key_pair(arn=kp_arn)
+
 
 class TestIVSTags:
     """Tests for IVS tagging operations."""
@@ -726,6 +921,12 @@ class TestIVSNewOps:
         # Without an active ingest, the streams list should be empty
         assert len(resp["streams"]) == 0
 
+    def test_list_streams_with_maxresults(self, ivs):
+        """list_streams accepts maxResults without error and returns empty list."""
+        resp = ivs.list_streams(maxResults=10)
+        assert "streams" in resp
+        assert len(resp["streams"]) == 0
+
     def test_stop_stream(self, ivs):
         """stop_stream succeeds for a valid channel."""
         name = _unique("ch")
@@ -767,8 +968,9 @@ class TestIVSNewOps:
         channel_arn = ch["channel"]["arn"]
         try:
             resp = ivs.get_stream_session(channelArn=channel_arn)
-            assert "streamSession" in resp
-            assert "streamId" in resp["streamSession"]
+            session = resp["streamSession"]
+            # streamId must be a non-empty string
+            assert len(session["streamId"]) > 0
         finally:
             ivs.delete_channel(arn=channel_arn)
 
@@ -827,6 +1029,97 @@ class TestIVSNewOps:
         with pytest.raises(ClientError) as exc_info:
             ivs.get_playback_restriction_policy(arn=policy_arn)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_playback_restriction_policy_removes_from_list(self, ivs):
+        """After deletion, policy is no longer returned by list."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://example.com"],
+            name=_unique("policy"),
+        )
+        policy_arn = resp["playbackRestrictionPolicy"]["arn"]
+        ivs.delete_playback_restriction_policy(arn=policy_arn)
+        listed = ivs.list_playback_restriction_policies()
+        arns = [p["arn"] for p in listed["playbackRestrictionPolicies"]]
+        assert policy_arn not in arns
+
+    def test_playback_restriction_policy_arn_format(self, ivs):
+        """Playback restriction policy ARN matches expected IVS pattern."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://example.com"],
+            name=_unique("policy"),
+        )
+        policy = resp["playbackRestrictionPolicy"]
+        policy_arn = policy["arn"]
+        try:
+            assert re.match(
+                r"arn:aws:ivs:[a-z0-9-]+:\d{12}:playback-restriction-policy/[A-Za-z0-9]+",
+                policy_arn,
+            ), f"Unexpected ARN format: {policy_arn}"
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_playback_restriction_policy_with_tags(self, ivs):
+        """create_playback_restriction_policy supports tags."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://example.com"],
+            name=_unique("policy"),
+            tags={"env": "test"},
+        )
+        policy = resp["playbackRestrictionPolicy"]
+        policy_arn = policy["arn"]
+        try:
+            assert policy["tags"]["env"] == "test"
+            tags_resp = ivs.list_tags_for_resource(resourceArn=policy_arn)
+            assert tags_resp["tags"]["env"] == "test"
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_get_playback_restriction_policy(self, ivs):
+        """get_playback_restriction_policy retrieves by ARN with full details."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US", "CA"],
+            allowedOrigins=["https://example.com"],
+            enableStrictOriginEnforcement=True,
+            name=_unique("policy"),
+        )
+        policy_arn = resp["playbackRestrictionPolicy"]["arn"]
+        try:
+            got = ivs.get_playback_restriction_policy(arn=policy_arn)
+            p = got["playbackRestrictionPolicy"]
+            assert p["arn"] == policy_arn
+            assert set(p["allowedCountries"]) == {"US", "CA"}
+            assert p["enableStrictOriginEnforcement"] is True
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_list_playback_restriction_policies_pagination(self, ivs):
+        """list_playback_restriction_policies supports maxResults pagination."""
+        arns = []
+        try:
+            for _ in range(3):
+                resp = ivs.create_playback_restriction_policy(
+                    allowedCountries=["US"],
+                    allowedOrigins=["https://example.com"],
+                    name=_unique("policy"),
+                )
+                arns.append(resp["playbackRestrictionPolicy"]["arn"])
+            page1 = ivs.list_playback_restriction_policies(maxResults=1)
+            assert len(page1["playbackRestrictionPolicies"]) == 1
+            assert "nextToken" in page1
+            page2 = ivs.list_playback_restriction_policies(
+                maxResults=1, nextToken=page1["nextToken"]
+            )
+            assert len(page2["playbackRestrictionPolicies"]) == 1
+            assert (
+                page1["playbackRestrictionPolicies"][0]["arn"]
+                != page2["playbackRestrictionPolicies"][0]["arn"]
+            )
+        finally:
+            for arn in arns:
+                ivs.delete_playback_restriction_policy(arn=arn)
 
     def test_start_viewer_session_revocation(self, ivs):
         """start_viewer_session_revocation succeeds for a valid channel and viewer."""
