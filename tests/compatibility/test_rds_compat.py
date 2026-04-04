@@ -5417,3 +5417,622 @@ class TestRDSEdgeCasesAndBehavioralFidelity:
                 client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
             except ClientError:
                 pass  # best-effort cleanup
+
+
+class TestRDSDBInstanceEdgeCases:
+    """Edge cases and behavioral fidelity tests for DB instances."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def instance(self, client):
+        name = _unique("edge-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_describe_nonexistent_db_instance_error(self, client):
+        """Describing a nonexistent instance returns DBInstanceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_instances(DBInstanceIdentifier="nonexistent-inst-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_reboot_nonexistent_db_instance_error(self, client):
+        """Rebooting a nonexistent instance returns DBInstanceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.reboot_db_instance(DBInstanceIdentifier="nonexistent-inst-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_modify_nonexistent_db_instance_error(self, client):
+        """Modifying a nonexistent instance returns DBInstanceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_instance(
+                DBInstanceIdentifier="nonexistent-inst-xyz-999",
+                MasterUserPassword="newpassword456",
+            )
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_stop_nonexistent_db_instance_error(self, client):
+        """Stopping a nonexistent instance returns DBInstanceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.stop_db_instance(DBInstanceIdentifier="nonexistent-inst-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "DBInstanceNotFound"
+
+    def test_db_instance_arn_format(self, client, instance):
+        """DBInstanceArn field follows arn:aws:rds:<region>:<account>:db:<id> format."""
+        resp = client.describe_db_instances(DBInstanceIdentifier=instance)
+        inst = resp["DBInstances"][0]
+        assert "DBInstanceArn" in inst
+        arn = inst["DBInstanceArn"]
+        assert arn.startswith("arn:aws:rds:")
+        assert ":db:" in arn
+        assert instance in arn
+
+    def test_db_instance_has_create_timestamp(self, client, instance):
+        """InstanceCreateTime is present and is a datetime."""
+        import datetime
+        resp = client.describe_db_instances(DBInstanceIdentifier=instance)
+        inst = resp["DBInstances"][0]
+        assert "InstanceCreateTime" in inst
+        assert isinstance(inst["InstanceCreateTime"], datetime.datetime)
+
+    def test_db_instance_has_engine_version(self, client, instance):
+        """EngineVersion field is present and non-empty."""
+        resp = client.describe_db_instances(DBInstanceIdentifier=instance)
+        inst = resp["DBInstances"][0]
+        assert "EngineVersion" in inst
+        assert inst["EngineVersion"] != ""
+
+    def test_list_db_instances_pagination(self, client):
+        """DescribeDBInstances MaxRecords limits results and Marker enables next page."""
+        names = [_unique("pg-db") for _ in range(3)]
+        for name in names:
+            client.create_db_instance(
+                DBInstanceIdentifier=name,
+                DBInstanceClass="db.t3.micro",
+                Engine="mysql",
+                MasterUsername="admin",
+                MasterUserPassword="password123",
+            )
+        try:
+            all_resp = client.describe_db_instances()
+            total = len(all_resp["DBInstances"])
+            if total > 1:
+                page = client.describe_db_instances(MaxRecords=1)
+                assert len(page["DBInstances"]) == 1
+                if "Marker" in page:
+                    page2 = client.describe_db_instances(MaxRecords=1, Marker=page["Marker"])
+                    assert "DBInstances" in page2
+        finally:
+            for name in names:
+                try:
+                    client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+    def test_db_instance_reboot_returns_status(self, client, instance):
+        """RebootDBInstance returns DBInstance with status field."""
+        resp = client.reboot_db_instance(DBInstanceIdentifier=instance)
+        assert "DBInstance" in resp
+        inst = resp["DBInstance"]
+        assert inst["DBInstanceIdentifier"] == instance
+        assert "DBInstanceStatus" in inst
+
+    def test_db_instance_modify_returns_updated_field(self, client, instance):
+        """ModifyDBInstance returns DBInstance with identifier field."""
+        resp = client.modify_db_instance(
+            DBInstanceIdentifier=instance,
+            BackupRetentionPeriod=3,
+        )
+        assert "DBInstance" in resp
+        inst = resp["DBInstance"]
+        assert inst["DBInstanceIdentifier"] == instance
+
+    def test_db_instance_stop_returns_status(self, client, instance):
+        """StopDBInstance returns DBInstance with identifier and status."""
+        resp = client.stop_db_instance(DBInstanceIdentifier=instance)
+        assert "DBInstance" in resp
+        inst = resp["DBInstance"]
+        assert inst["DBInstanceIdentifier"] == instance
+        assert "DBInstanceStatus" in inst
+
+
+class TestRDSSubnetGroupEdgeCases:
+    """Edge cases and behavioral fidelity tests for DB subnet groups."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def subnet_group_with_vpc(self, client, ec2_client):
+        vpc = ec2_client.create_vpc(CidrBlock="10.86.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.86.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.86.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        name = _unique("edge-sg")
+        client.create_db_subnet_group(
+            DBSubnetGroupName=name,
+            DBSubnetGroupDescription="edge case subnet group",
+            SubnetIds=subnet_ids,
+        )
+        yield name, vpc_id, subnet_ids
+        try:
+            client.delete_db_subnet_group(DBSubnetGroupName=name)
+        except ClientError:
+            pass  # best-effort cleanup
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass  # best-effort cleanup
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_describe_nonexistent_subnet_group_error(self, client):
+        """Describing a nonexistent subnet group returns DBSubnetGroupNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_subnet_groups(DBSubnetGroupName="nonexistent-sg-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "DBSubnetGroupNotFoundFault"
+
+    def test_subnet_group_arn_format(self, client, subnet_group_with_vpc):
+        """DBSubnetGroupArn follows expected arn format."""
+        name, _, _ = subnet_group_with_vpc
+        resp = client.describe_db_subnet_groups(DBSubnetGroupName=name)
+        grp = resp["DBSubnetGroups"][0]
+        assert "DBSubnetGroupArn" in grp
+        arn = grp["DBSubnetGroupArn"]
+        assert arn.startswith("arn:aws:rds:")
+        assert ":subgrp:" in arn
+        assert name in arn
+
+    def test_subnet_group_vpc_id_present(self, client, subnet_group_with_vpc):
+        """DBSubnetGroup includes VpcId field."""
+        name, vpc_id, _ = subnet_group_with_vpc
+        resp = client.describe_db_subnet_groups(DBSubnetGroupName=name)
+        grp = resp["DBSubnetGroups"][0]
+        assert "VpcId" in grp
+        assert grp["VpcId"] == vpc_id
+
+    def test_subnet_group_subnet_status_present(self, client, subnet_group_with_vpc):
+        """Each subnet in the group has SubnetStatus field."""
+        name, _, _ = subnet_group_with_vpc
+        resp = client.describe_db_subnet_groups(DBSubnetGroupName=name)
+        grp = resp["DBSubnetGroups"][0]
+        for subnet in grp["Subnets"]:
+            assert "SubnetStatus" in subnet
+            assert "SubnetIdentifier" in subnet
+
+
+class TestRDSParameterGroupEdgeCases:
+    """Edge cases and behavioral fidelity tests for DB parameter groups."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def pg(self, client):
+        name = _unique("edge-pg")
+        client.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="mysql8.0",
+            Description="edge case parameter group",
+        )
+        yield name
+        try:
+            client.delete_db_parameter_group(DBParameterGroupName=name)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_describe_nonexistent_parameter_group_returns_empty(self, client):
+        """DescribeDBParameterGroups for unknown group returns empty list."""
+        resp = client.describe_db_parameter_groups(DBParameterGroupName="nonexistent-pg-xyz-999")
+        assert resp["DBParameterGroups"] == []
+
+    def test_parameter_group_arn_format(self, client, pg):
+        """DBParameterGroupArn follows arn:aws:rds:...:pg:... format."""
+        resp = client.describe_db_parameter_groups(DBParameterGroupName=pg)
+        grp = resp["DBParameterGroups"][0]
+        assert "DBParameterGroupArn" in grp
+        arn = grp["DBParameterGroupArn"]
+        assert arn.startswith("arn:aws:rds:")
+        assert ":pg:" in arn
+        assert pg in arn
+
+    def test_db_parameters_have_parameter_name_field(self, client, pg):
+        """Parameters returned by DescribeDBParameters include ParameterName."""
+        resp = client.describe_db_parameters(DBParameterGroupName=pg)
+        params = resp["Parameters"]
+        if params:
+            for p in params[:3]:
+                assert "ParameterName" in p
+                assert "DataType" in p
+
+    def test_parameter_group_delete_nonexistent_error(self, client):
+        """Deleting a nonexistent parameter group returns DBParameterGroupNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_db_parameter_group(DBParameterGroupName="nonexistent-pg-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "DBParameterGroupNotFound"
+
+
+class TestRDSEventsEdgeCases:
+    """Edge cases for DescribeEvents."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_events_with_max_records(self, client):
+        """DescribeEvents accepts MaxRecords parameter and returns Events list."""
+        resp = client.describe_events(MaxRecords=20)
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_events_with_duration(self, client):
+        """DescribeEvents with Duration parameter returns response."""
+        resp = client.describe_events(Duration=60)
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_events_by_source_type_parameter_group(self, client):
+        """DescribeEvents can filter by SourceType=db-parameter-group."""
+        resp = client.describe_events(SourceType="db-parameter-group")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_events_by_source_type_snapshot(self, client):
+        """DescribeEvents can filter by SourceType=db-snapshot."""
+        resp = client.describe_events(SourceType="db-snapshot")
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+
+class TestRDSOrderableOptionsEdgeCases:
+    """Edge cases for DescribeOrderableDBInstanceOptions."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_orderable_options_fields_present(self, client):
+        """Each orderable option has required fields."""
+        resp = client.describe_orderable_db_instance_options(Engine="mysql", MaxRecords=20)
+        options = resp["OrderableDBInstanceOptions"]
+        if options:
+            opt = options[0]
+            assert "Engine" in opt
+            assert "DBInstanceClass" in opt
+
+    def test_orderable_options_engine_filter(self, client):
+        """Filtering by engine returns only matching options."""
+        resp = client.describe_orderable_db_instance_options(Engine="mysql")
+        for opt in resp["OrderableDBInstanceOptions"]:
+            assert opt["Engine"] == "mysql"
+
+    def test_orderable_options_max_records(self, client):
+        """MaxRecords limits the returned results."""
+        resp = client.describe_orderable_db_instance_options(Engine="mysql", MaxRecords=5)
+        assert len(resp["OrderableDBInstanceOptions"]) <= 5
+
+
+class TestRDSClusterSnapshotEdgeCases:
+    """Edge cases for DB cluster snapshots."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def cluster_with_snapshot(self, client):
+        cluster_name = _unique("edge-cl")
+        snap_name = _unique("edge-csnap")
+        client.create_db_cluster(
+            DBClusterIdentifier=cluster_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        client.create_db_cluster_snapshot(
+            DBClusterSnapshotIdentifier=snap_name,
+            DBClusterIdentifier=cluster_name,
+        )
+        yield cluster_name, snap_name
+        try:
+            client.delete_db_cluster_snapshot(DBClusterSnapshotIdentifier=snap_name)
+        except ClientError:
+            pass  # best-effort cleanup
+        try:
+            client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_cluster_snapshot_status_field(self, client, cluster_with_snapshot):
+        """DBClusterSnapshot includes Status field."""
+        _, snap_name = cluster_with_snapshot
+        resp = client.describe_db_cluster_snapshots(DBClusterSnapshotIdentifier=snap_name)
+        snap = resp["DBClusterSnapshots"][0]
+        assert "Status" in snap
+        assert snap["Status"] in ("available", "creating")
+
+    def test_describe_cluster_snapshots_by_cluster(self, client, cluster_with_snapshot):
+        """DescribeDBClusterSnapshots filters by DBClusterIdentifier."""
+        cluster_name, snap_name = cluster_with_snapshot
+        resp = client.describe_db_cluster_snapshots(DBClusterIdentifier=cluster_name)
+        snap_ids = [s["DBClusterSnapshotIdentifier"] for s in resp["DBClusterSnapshots"]]
+        assert snap_name in snap_ids
+
+    def test_cluster_snapshot_arn_format(self, client, cluster_with_snapshot):
+        """DBClusterSnapshotArn follows expected arn format."""
+        _, snap_name = cluster_with_snapshot
+        resp = client.describe_db_cluster_snapshots(DBClusterSnapshotIdentifier=snap_name)
+        snap = resp["DBClusterSnapshots"][0]
+        assert "DBClusterSnapshotArn" in snap
+        arn = snap["DBClusterSnapshotArn"]
+        assert arn.startswith("arn:aws:rds:")
+        assert ":cluster-snapshot:" in arn
+
+    def test_describe_nonexistent_cluster_snapshot_error(self, client):
+        """Describing a nonexistent cluster snapshot returns DBClusterSnapshotNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_cluster_snapshots(
+                DBClusterSnapshotIdentifier="nonexistent-csnap-xyz-999"
+            )
+        assert exc.value.response["Error"]["Code"] == "DBClusterSnapshotNotFoundFault"
+
+    def test_cluster_snapshot_engine_field(self, client, cluster_with_snapshot):
+        """DBClusterSnapshot includes Engine field matching the source cluster."""
+        _, snap_name = cluster_with_snapshot
+        resp = client.describe_db_cluster_snapshots(DBClusterSnapshotIdentifier=snap_name)
+        snap = resp["DBClusterSnapshots"][0]
+        assert "Engine" in snap
+        assert snap["Engine"] == "aurora-mysql"
+
+
+class TestRDSClusterParameterGroupEdgeCases:
+    """Edge cases for DB cluster parameter groups."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def cpg(self, client):
+        name = _unique("edge-cpg")
+        client.create_db_cluster_parameter_group(
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily="aurora-mysql8.0",
+            Description="edge case cluster param group",
+        )
+        yield name
+        try:
+            client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=name)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_describe_cluster_param_group_by_name(self, client, cpg):
+        """DescribeDBClusterParameterGroups can filter by name."""
+        resp = client.describe_db_cluster_parameter_groups(DBClusterParameterGroupName=cpg)
+        groups = resp["DBClusterParameterGroups"]
+        assert len(groups) == 1
+        assert groups[0]["DBClusterParameterGroupName"] == cpg
+
+    def test_cluster_param_group_arn_format(self, client, cpg):
+        """DBClusterParameterGroupArn follows expected format."""
+        resp = client.describe_db_cluster_parameter_groups(DBClusterParameterGroupName=cpg)
+        grp = resp["DBClusterParameterGroups"][0]
+        assert "DBClusterParameterGroupArn" in grp
+        arn = grp["DBClusterParameterGroupArn"]
+        assert arn.startswith("arn:aws:rds:")
+        assert ":cluster-pg:" in arn
+
+    def test_describe_nonexistent_cluster_param_group_error(self, client):
+        """DescribeDBClusterParameterGroups for nonexistent group returns error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_cluster_parameter_groups(
+                DBClusterParameterGroupName="nonexistent-cpg-xyz-999"
+            )
+        assert exc.value.response["Error"]["Code"] == "DBParameterGroupNotFound"
+
+    def test_cluster_param_group_family_field(self, client, cpg):
+        """DBClusterParameterGroup includes DBParameterGroupFamily field."""
+        resp = client.describe_db_cluster_parameter_groups(DBClusterParameterGroupName=cpg)
+        grp = resp["DBClusterParameterGroups"][0]
+        assert "DBParameterGroupFamily" in grp
+        assert grp["DBParameterGroupFamily"] == "aurora-mysql8.0"
+
+
+class TestRDSSnapshotAttributesEdgeCases:
+    """Edge cases for DB snapshot attributes (fills missing patterns)."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def instance_with_snapshot(self, client):
+        db_name = _unique("edge-db")
+        snap_name = _unique("edge-snap")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap_name,
+            DBInstanceIdentifier=db_name,
+        )
+        yield db_name, snap_name
+        try:
+            client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+        except ClientError:
+            pass  # best-effort cleanup
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_snapshot_attributes_result_has_snapshot_id(self, client, instance_with_snapshot):
+        """DBSnapshotAttributesResult contains DBSnapshotIdentifier."""
+        _, snap_name = instance_with_snapshot
+        resp = client.describe_db_snapshot_attributes(DBSnapshotIdentifier=snap_name)
+        result = resp["DBSnapshotAttributesResult"]
+        assert "DBSnapshotIdentifier" in result
+        assert result["DBSnapshotIdentifier"] == snap_name
+
+    def test_snapshot_attributes_list_is_present(self, client, instance_with_snapshot):
+        """DBSnapshotAttributesResult contains DBSnapshotAttributes list."""
+        _, snap_name = instance_with_snapshot
+        resp = client.describe_db_snapshot_attributes(DBSnapshotIdentifier=snap_name)
+        result = resp["DBSnapshotAttributesResult"]
+        assert "DBSnapshotAttributes" in result
+        assert isinstance(result["DBSnapshotAttributes"], list)
+
+    def test_snapshot_attribute_values_after_modify(self, client, instance_with_snapshot):
+        """ModifyDBSnapshotAttribute changes are visible in describe."""
+        _, snap_name = instance_with_snapshot
+        client.modify_db_snapshot_attribute(
+            DBSnapshotIdentifier=snap_name,
+            AttributeName="restore",
+            ValuesToAdd=["all"],
+        )
+        resp = client.describe_db_snapshot_attributes(DBSnapshotIdentifier=snap_name)
+        attrs = resp["DBSnapshotAttributesResult"]["DBSnapshotAttributes"]
+        restore_attrs = [a for a in attrs if a["AttributeName"] == "restore"]
+        assert len(restore_attrs) == 1
+        assert "all" in restore_attrs[0]["AttributeValues"]
+
+    def test_snapshot_attribute_remove_value(self, client, instance_with_snapshot):
+        """Removing a value from snapshot attribute is reflected in describe."""
+        _, snap_name = instance_with_snapshot
+        client.modify_db_snapshot_attribute(
+            DBSnapshotIdentifier=snap_name,
+            AttributeName="restore",
+            ValuesToAdd=["all"],
+        )
+        client.modify_db_snapshot_attribute(
+            DBSnapshotIdentifier=snap_name,
+            AttributeName="restore",
+            ValuesToRemove=["all"],
+        )
+        resp = client.describe_db_snapshot_attributes(DBSnapshotIdentifier=snap_name)
+        attrs = resp["DBSnapshotAttributesResult"]["DBSnapshotAttributes"]
+        restore_attrs = [a for a in attrs if a["AttributeName"] == "restore"]
+        if restore_attrs:
+            assert "all" not in restore_attrs[0]["AttributeValues"]
+
+    def test_describe_snapshot_attributes_nonexistent_error(self, client):
+        """Describing attributes for a nonexistent snapshot returns DBSnapshotNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_snapshot_attributes(DBSnapshotIdentifier="nonexistent-snap-xyz")
+        assert exc.value.response["Error"]["Code"] == "DBSnapshotNotFound"
+
+
+class TestRDSApplyPendingMaintenanceEdgeCases:
+    """Edge cases for ApplyPendingMaintenanceAction."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def instance(self, client):
+        name = _unique("maint-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        yield name
+        try:
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_apply_pending_maintenance_immediate(self, client, instance):
+        """ApplyPendingMaintenanceAction with immediate opt-in returns resource ARN."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:db:{instance}"
+        resp = client.apply_pending_maintenance_action(
+            ResourceIdentifier=arn,
+            ApplyAction="system-update",
+            OptInType="immediate",
+        )
+        assert "ResourcePendingMaintenanceActions" in resp
+        result = resp["ResourcePendingMaintenanceActions"]
+        assert "ResourceIdentifier" in result
+
+    def test_apply_pending_maintenance_next_window(self, client, instance):
+        """ApplyPendingMaintenanceAction with next-maintenance opt-in returns response."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:db:{instance}"
+        resp = client.apply_pending_maintenance_action(
+            ResourceIdentifier=arn,
+            ApplyAction="system-update",
+            OptInType="next-maintenance",
+        )
+        assert "ResourcePendingMaintenanceActions" in resp
+
+    def test_apply_pending_maintenance_undo_opt_in(self, client, instance):
+        """ApplyPendingMaintenanceAction with undo-opt-in returns response."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:db:{instance}"
+        resp = client.apply_pending_maintenance_action(
+            ResourceIdentifier=arn,
+            ApplyAction="system-update",
+            OptInType="undo-opt-in",
+        )
+        assert "ResourcePendingMaintenanceActions" in resp
+
+    def test_describe_pending_maintenance_actions_for_resource(self, client, instance):
+        """DescribePendingMaintenanceActions can filter by resource ARN."""
+        arn = f"arn:aws:rds:us-east-1:123456789012:db:{instance}"
+        resp = client.describe_pending_maintenance_actions(ResourceIdentifier=arn)
+        assert "PendingMaintenanceActions" in resp
+        assert isinstance(resp["PendingMaintenanceActions"], list)
+
+
+class TestRDSBlueGreenDeploymentEdgeCases:
+    """Edge cases for BlueGreenDeployment operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_blue_green_deployments_empty(self, client):
+        """DescribeBlueGreenDeployments returns list (may be empty)."""
+        resp = client.describe_blue_green_deployments()
+        assert "BlueGreenDeployments" in resp
+        assert isinstance(resp["BlueGreenDeployments"], list)
+
+    def test_describe_nonexistent_blue_green_deployment_error(self, client):
+        """Describing a nonexistent BGD returns BlueGreenDeploymentNotFoundFault."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_blue_green_deployments(BlueGreenDeploymentIdentifier="nonexistent-bgd")
+        assert exc.value.response["Error"]["Code"] in (
+            "BlueGreenDeploymentNotFoundFault",
+            "BlueGreenDeploymentNotFound",
+        )
