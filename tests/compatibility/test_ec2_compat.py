@@ -1195,6 +1195,33 @@ class TestEC2ExtendedV2:
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
 
+    def test_modify_vpc_attribute_dns_hostnames_toggle(self, ec2):
+        """Enable then disable DNS hostnames to verify UPDATE (toggle) pattern."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.115.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        try:
+            ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": True})
+            attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsHostnames")
+            assert attr["EnableDnsHostnames"]["Value"] is True
+
+            ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": False})
+            attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsHostnames")
+            assert attr["EnableDnsHostnames"]["Value"] is False
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_modify_vpc_attribute_nonexistent_vpc_raises_error(self, ec2):
+        """ModifyVpcAttribute on a nonexistent VPC raises ClientError (ERROR pattern)."""
+        fake_vpc_id = "vpc-00000000deadbeef"
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.modify_vpc_attribute(
+                VpcId=fake_vpc_id, EnableDnsHostnames={"Value": True}
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidVpcID.NotFound",
+            "InvalidVpc.NotFound",
+        )
+
     def test_launch_template_version(self, ec2):
         """CreateLaunchTemplateVersion / DescribeLaunchTemplateVersions."""
         lt_name = _unique("lt-ver")
@@ -2278,8 +2305,9 @@ class TestEc2AutoCoverage:
         client.accept_transit_gateway_multicast_domain_associations()
 
     def test_cancel_import_task(self, client):
-        """CancelImportTask returns a response."""
-        client.cancel_import_task()
+        """CancelImportTask with a task ID returns a response (even for unknown IDs)."""
+        resp = client.cancel_import_task(ImportTaskId="import-ami-0123456789abcdef0")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_instance_event_window(self, client):
         """CreateInstanceEventWindow returns a response."""
@@ -2521,14 +2549,49 @@ class TestEc2AutoCoverage:
         client.reject_transit_gateway_multicast_domain_associations()
 
     def test_replace_image_criteria_in_allowed_images_settings(self, client):
-        """ReplaceImageCriteriaInAllowedImagesSettings returns a response."""
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue=True."""
         resp = client.replace_image_criteria_in_allowed_images_settings()
         assert "ReturnValue" in resp
+        assert resp["ReturnValue"] is True
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_request_spot_instances(self, client):
-        """RequestSpotInstances returns a response."""
-        resp = client.request_spot_instances()
+        """RequestSpotInstances full CRUD lifecycle: CREATE → RETRIEVE → DELETE."""
+        # C: request a spot instance with price and launch spec
+        resp = client.request_spot_instances(
+            SpotPrice="0.05",
+            LaunchSpecification={
+                "ImageId": "ami-12345678",
+                "InstanceType": "t2.micro",
+            },
+        )
         assert "SpotInstanceRequests" in resp
+        assert len(resp["SpotInstanceRequests"]) >= 1
+        sir = resp["SpotInstanceRequests"][0]
+        sir_id = sir["SpotInstanceRequestId"]
+        assert sir_id.startswith("sir-")
+        # SpotPrice is returned as a decimal string like "0.050000"
+        assert float(sir["SpotPrice"]) == pytest.approx(0.05)
+        assert sir["LaunchSpecification"]["InstanceType"] == "t2.micro"
+        assert sir["State"] in ("open", "active")
+
+        try:
+            # R: describe the spot instance request by ID
+            desc = client.describe_spot_instance_requests(
+                SpotInstanceRequestIds=[sir_id]
+            )
+            assert len(desc["SpotInstanceRequests"]) == 1
+            assert desc["SpotInstanceRequests"][0]["SpotInstanceRequestId"] == sir_id
+            assert desc["SpotInstanceRequests"][0]["State"] in ("open", "active")
+        finally:
+            # D: cancel the spot instance request
+            cancel = client.cancel_spot_instance_requests(
+                SpotInstanceRequestIds=[sir_id]
+            )
+            assert len(cancel["CancelledSpotInstanceRequests"]) == 1
+            cancelled = cancel["CancelledSpotInstanceRequests"][0]
+            assert cancelled["SpotInstanceRequestId"] == sir_id
+            assert cancelled["State"] == "cancelled"
 
 
 class TestEC2AddressOperations:
@@ -5791,6 +5854,12 @@ class TestEC2SpotFleetMultiCancel:
         assert len(cancel["SuccessfulFleetRequests"]) == 2
         cancelled_ids = {r["SpotFleetRequestId"] for r in cancel["SuccessfulFleetRequests"]}
         assert set(fleet_ids) == cancelled_ids
+        for result in cancel["SuccessfulFleetRequests"]:
+            assert result["PreviousSpotFleetRequestState"] == "active"
+            assert result["CurrentSpotFleetRequestState"] in (
+                "cancelled_running",
+                "cancelled_terminating",
+            )
 
 
 class TestEC2SpotPriceHistory:
@@ -5931,7 +6000,9 @@ class TestEC2SpotFleetAllocationStrategies:
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
-        assert cancel["SuccessfulFleetRequests"][0]["CurrentSpotFleetRequestState"] in (
+        result = cancel["SuccessfulFleetRequests"][0]
+        assert result["PreviousSpotFleetRequestState"] == "active"
+        assert result["CurrentSpotFleetRequestState"] in (
             "cancelled_running",
             "cancelled_terminating",
         )
@@ -7012,6 +7083,9 @@ class TestEC2HostReservation:
         resp = ec2.purchase_host_reservation(HostIdSet=["h-87654321"], OfferingId="hro-87654321")
         assert "TotalHourlyPrice" in resp
         assert "TotalUpfrontPrice" in resp
+        assert isinstance(resp["TotalHourlyPrice"], str)
+        assert isinstance(resp["TotalUpfrontPrice"], str)
+        assert resp.get("CurrencyCode") == "USD"
 
 
 class TestEC2NetworkInsightsAccessScope:
@@ -10122,7 +10196,11 @@ class TestEC2GapPurchaseCapacityBlock:
         assert "CapacityReservation" in resp
         reservation = resp["CapacityReservation"]
         assert "CapacityReservationId" in reservation
+        assert reservation["CapacityReservationId"].startswith("cr-")
         assert "State" in reservation
+        assert isinstance(reservation["State"], str)
+        assert len(reservation["State"]) > 0
+        assert reservation.get("InstancePlatform") == "Linux/UNIX"
 
 
 class TestEC2GapDeprovisionPublicIpv4PoolCidr:
@@ -10704,13 +10782,15 @@ class TestEC2GapSearchLocalGatewayRoutes:
         return make_client("ec2")
 
     def test_search_local_gateway_routes_returns_routes(self, ec2):
-        """SearchLocalGatewayRoutes returns a routes list."""
+        """SearchLocalGatewayRoutes returns a routes list with correct response shape."""
         resp = ec2.search_local_gateway_routes(
             LocalGatewayRouteTableId="lgw-rtb-00000000000000000",
             Filters=[{"Name": "type", "Values": ["static"]}],
         )
         assert "Routes" in resp
         assert isinstance(resp["Routes"], list)
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2GapSearchTransitGatewayRoutes:
@@ -10721,7 +10801,7 @@ class TestEC2GapSearchTransitGatewayRoutes:
         return make_client("ec2")
 
     def test_search_transit_gateway_routes_returns_routes(self, ec2):
-        """SearchTransitGatewayRoutes returns routes list."""
+        """SearchTransitGatewayRoutes returns routes list with correct response shape."""
         resp = ec2.search_transit_gateway_routes(
             TransitGatewayRouteTableId="tgw-rtb-00000000000000000",
             Filters=[{"Name": "type", "Values": ["static"]}],
@@ -10729,6 +10809,9 @@ class TestEC2GapSearchTransitGatewayRoutes:
         assert "Routes" in resp
         assert isinstance(resp["Routes"], list)
         assert "AdditionalRoutesAvailable" in resp
+        assert isinstance(resp["AdditionalRoutesAvailable"], bool)
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2GapDeleteNetworkInsightsPath:
@@ -11209,8 +11292,10 @@ class TestEC2SpotFleetCancelBehavior:
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
-        assert cancel["SuccessfulFleetRequests"][0]["SpotFleetRequestId"] == fleet_id
-        state = cancel["SuccessfulFleetRequests"][0]["CurrentSpotFleetRequestState"]
+        result = cancel["SuccessfulFleetRequests"][0]
+        assert result["SpotFleetRequestId"] == fleet_id
+        assert result["PreviousSpotFleetRequestState"] == "active"
+        state = result["CurrentSpotFleetRequestState"]
         assert state in ("cancelled_running", "cancelled_terminating")
 
     def test_cancel_multiple_fleets_all_succeed(self, ec2):
@@ -11227,6 +11312,12 @@ class TestEC2SpotFleetCancelBehavior:
         assert len(cancel["SuccessfulFleetRequests"]) == 3
         cancelled_ids = {r["SpotFleetRequestId"] for r in cancel["SuccessfulFleetRequests"]}
         assert set(fleet_ids) == cancelled_ids
+        for result in cancel["SuccessfulFleetRequests"]:
+            assert result["PreviousSpotFleetRequestState"] == "active"
+            assert result["CurrentSpotFleetRequestState"] in (
+                "cancelled_running",
+                "cancelled_terminating",
+            )
 
     def test_describe_spot_fleet_after_cancel(self, ec2):
         """Cancel response reports the cancelled fleet state."""
@@ -11455,20 +11546,24 @@ class TestEC2PurchaseHostReservationBehavior:
         return make_client("ec2")
 
     def test_purchase_host_reservation_returns_pricing(self, ec2):
-        """PurchaseHostReservation returns TotalHourlyPrice and TotalUpfrontPrice."""
+        """PurchaseHostReservation returns TotalHourlyPrice and TotalUpfrontPrice as strings."""
         resp = ec2.purchase_host_reservation(
             HostIdSet=["h-87654321"], OfferingId="hro-87654321"
         )
         assert "TotalHourlyPrice" in resp
         assert "TotalUpfrontPrice" in resp
+        assert isinstance(resp["TotalHourlyPrice"], str)
+        assert isinstance(resp["TotalUpfrontPrice"], str)
 
     def test_purchase_host_reservation_currency_code(self, ec2):
-        """PurchaseHostReservation returns CurrencyCode in response."""
+        """PurchaseHostReservation returns CurrencyCode == USD in response."""
         resp = ec2.purchase_host_reservation(
             HostIdSet=["h-11111111"], OfferingId="hro-11111111"
         )
         assert "CurrencyCode" in resp
         assert resp["CurrencyCode"] == "USD"
+        assert isinstance(resp["TotalHourlyPrice"], str)
+        assert isinstance(resp["TotalUpfrontPrice"], str)
 
     def test_describe_host_reservation_offerings_returns_list(self, ec2):
         """DescribeHostReservationOfferings returns OfferingSet list."""
@@ -11502,7 +11597,11 @@ class TestEC2PurchaseCapacityBlockBehavior:
         assert "CapacityReservation" in resp
         reservation = resp["CapacityReservation"]
         assert "CapacityReservationId" in reservation
+        assert reservation["CapacityReservationId"].startswith("cr-")
         assert "State" in reservation
+        assert isinstance(reservation["State"], str)
+        assert len(reservation["State"]) > 0
+        assert reservation.get("InstancePlatform") == "Linux/UNIX"
 
     def test_purchase_capacity_block_reservation_id_format(self, ec2):
         """PurchaseCapacityBlock CapacityReservationId starts with cr-."""
