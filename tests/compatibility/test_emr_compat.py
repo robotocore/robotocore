@@ -76,10 +76,12 @@ class TestEMRClusterOperations:
     def test_list_steps(self, emr, cluster_id):
         resp = emr.list_steps(ClusterId=cluster_id)
         assert "Steps" in resp
+        assert isinstance(resp["Steps"], list)
 
     def test_list_instance_groups(self, emr, cluster_id):
         resp = emr.list_instance_groups(ClusterId=cluster_id)
         assert "InstanceGroups" in resp
+        assert isinstance(resp["InstanceGroups"], list)
 
     def test_terminate_job_flows(self, emr):
         resp = emr.run_job_flow(
@@ -243,7 +245,8 @@ class TestEMRStepOperations:
         )
         resp = emr.list_steps(ClusterId=cluster_id)
         step_names = [s["Name"] for s in resp["Steps"]]
-        assert "listed-step" in step_names
+        listed = [s for s in resp["Steps"] if s["Name"] == "listed-step"]
+        assert len(listed) == 1
 
 
 class TestEMRInstanceOperations:
@@ -276,8 +279,8 @@ class TestEMRInstanceOperations:
         )
         # Verify the group was added
         igs = emr.list_instance_groups(ClusterId=cluster_id)
-        names = [g["Name"] for g in igs["InstanceGroups"]]
-        assert "task-group" in names
+        task_groups = [g for g in igs["InstanceGroups"] if g["Name"] == "task-group"]
+        assert len(task_groups) == 1
 
     def test_list_instance_groups_after_add(self, emr, cluster_id):
         """ListInstanceGroups includes groups added via AddInstanceGroups."""
@@ -293,8 +296,8 @@ class TestEMRInstanceOperations:
             JobFlowId=cluster_id,
         )
         resp = emr.list_instance_groups(ClusterId=cluster_id)
-        group_names = [g["Name"] for g in resp["InstanceGroups"]]
-        assert "extra-task" in group_names
+        extra_groups = [g for g in resp["InstanceGroups"] if g["Name"] == "extra-task"]
+        assert len(extra_groups) == 1
 
 
 class TestEMRClusterSettings:
@@ -555,8 +558,8 @@ class TestEMRRunJobFlowVariants:
         )
         cid = resp["JobFlowId"]
         steps = emr.list_steps(ClusterId=cid)
-        step_names = [s["Name"] for s in steps["Steps"]]
-        assert "inline-step" in step_names
+        inline_steps = [s for s in steps["Steps"] if s["Name"] == "inline-step"]
+        assert len(inline_steps) == 1
         emr.terminate_job_flows(JobFlowIds=[cid])
 
 
@@ -718,6 +721,8 @@ class TestEMRStepDetails:
         step_id = add["StepIds"][0]
         step = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
         assert "State" in step["Step"]["Status"]
+        valid_states = {"PENDING", "CANCEL_PENDING", "RUNNING", "COMPLETED", "CANCELLED", "FAILED", "INTERRUPTED"}
+        assert step["Step"]["Status"]["State"] in valid_states
 
 
 class TestEmrAutoCoverage:
@@ -731,11 +736,13 @@ class TestEmrAutoCoverage:
         """GetBlockPublicAccessConfiguration returns a response."""
         resp = client.get_block_public_access_configuration()
         assert "BlockPublicAccessConfiguration" in resp
+        assert isinstance(resp["BlockPublicAccessConfiguration"], dict)
 
     def test_list_release_labels(self, client):
         """ListReleaseLabels returns a response."""
         resp = client.list_release_labels()
         assert "ReleaseLabels" in resp
+        assert isinstance(resp["ReleaseLabels"], list)
 
     def test_modify_instance_groups_no_args(self, client):
         """ModifyInstanceGroups with no args succeeds."""
@@ -1117,8 +1124,8 @@ class TestEMRInstanceFleetOperations:
         )
         resp = emr.list_instance_fleets(ClusterId=fleet_cluster_id)
         assert "InstanceFleets" in resp
-        fleet_names = [f["Name"] for f in resp["InstanceFleets"]]
-        assert "listed-fleet" in fleet_names
+        listed_fleets = [f for f in resp["InstanceFleets"] if f["Name"] == "listed-fleet"]
+        assert len(listed_fleets) == 1
 
     def test_modify_instance_fleet(self, emr, fleet_cluster_id):
         """ModifyInstanceFleet changes target capacity of a fleet."""
@@ -1217,6 +1224,7 @@ class TestEMRMissingGapOps:
         """ListStudioSessionMappings returns session mappings list."""
         resp = emr.list_studio_session_mappings()
         assert "SessionMappings" in resp
+        assert isinstance(resp["SessionMappings"], list)
 
     def test_set_keep_job_flow_alive_when_no_steps(self, emr):
         """SetKeepJobFlowAliveWhenNoSteps returns 200 (no-op for fake cluster ID)."""
@@ -1242,6 +1250,7 @@ class TestEMRMissingGapOps:
         )
         assert "Credentials" in resp
         assert "ExpiresAt" in resp
+        assert isinstance(resp["Credentials"], dict)
 
 
 class TestEMRPersistentAppUI:
@@ -1263,6 +1272,7 @@ class TestEMRPersistentAppUI:
         ui_id = create_resp["PersistentAppUIId"]
         desc_resp = emr.describe_persistent_app_ui(PersistentAppUIId=ui_id)
         assert "PersistentAppUI" in desc_resp
+        assert isinstance(desc_resp["PersistentAppUI"], dict)
 
     def test_describe_persistent_app_ui_nonexistent(self, emr):
         """DescribePersistentAppUI raises for a nonexistent PersistentAppUIId."""
@@ -1294,6 +1304,8 @@ class TestEMRPersistentAppUI:
             ServiceRole="arn:aws:iam::123456789012:role/EMR_Notebooks_DefaultRole",
         )
         assert "NotebookExecutionId" in resp
+        nid = resp["NotebookExecutionId"]
+        assert isinstance(nid, str) and len(nid) > 0
 
 
 class TestEMREdgeCasesAndFidelity:
@@ -1424,7 +1436,8 @@ class TestEMREdgeCasesAndFidelity:
         """ListInstanceGroups for a cluster includes at least the MASTER group."""
         resp = emr.list_instance_groups(ClusterId=cluster_id)
         roles = [g["InstanceGroupType"] for g in resp["InstanceGroups"]]
-        assert "MASTER" in roles
+        master_groups = [r for r in roles if r == "MASTER"]
+        assert len(master_groups) >= 1
 
     def test_list_instances_returns_list(self, emr, cluster_id):
         """ListInstances returns an Instances list (may be empty in emulation)."""
@@ -1714,8 +1727,8 @@ class TestEMRDescribeClusterFullLifecycle:
             ],
         )
         steps = emr.list_steps(ClusterId=cluster_id)
-        names = [s["Name"] for s in steps["Steps"]]
-        assert "lifecycle-step" in names
+        lifecycle_steps = [s for s in steps["Steps"] if s["Name"] == "lifecycle-step"]
+        assert len(lifecycle_steps) == 1
 
 
 class TestEMRStepsCRLDE:
@@ -1814,8 +1827,10 @@ class TestEMRInstanceGroupsCRLDE:
     def test_list_instances_after_cluster_creation(self, emr, cluster_id):
         """ListInstances returns Instances list — each instance has an Id."""
         resp = emr.list_instances(ClusterId=cluster_id)
+        assert isinstance(resp["Instances"], list)
         for instance in resp["Instances"]:
             assert "Id" in instance
+            assert isinstance(instance["Id"], str)
 
     def test_list_bootstrap_actions_returns_defined_actions(self, emr):
         """ListBootstrapActions for a cluster with bootstrap actions lists them."""
@@ -1843,8 +1858,8 @@ class TestEMRInstanceGroupsCRLDE:
         cid = resp["JobFlowId"]
         try:
             ba = emr.list_bootstrap_actions(ClusterId=cid)
-            names = [a["Name"] for a in ba["BootstrapActions"]]
-            assert "bootstrap-list-check" in names
+            matching = [a for a in ba["BootstrapActions"] if a["Name"] == "bootstrap-list-check"]
+            assert len(matching) == 1
         finally:
             emr.terminate_job_flows(JobFlowIds=[cid])
 
@@ -2097,3 +2112,634 @@ class TestEMRSecurityConfigFullEncryptionCRLDE:
                 assert before <= dt <= after
         finally:
             emr.delete_security_configuration(Name=name)
+
+
+class TestEMRListClustersPagination:
+    """Tests for ListClusters pagination (uses Marker, not MaxResults)."""
+
+    def test_list_clusters_marker_pagination(self, emr):
+        """ListClusters supports Marker-based pagination across multiple clusters."""
+        cids = []
+        for i in range(3):
+            r = emr.run_job_flow(
+                Name=_unique(f"page-cluster-{i}"),
+                ReleaseLabel="emr-6.10.0",
+                Instances={
+                    "MasterInstanceType": "m5.xlarge",
+                    "SlaveInstanceType": "m5.xlarge",
+                    "InstanceCount": 1,
+                    "KeepJobFlowAliveWhenNoSteps": True,
+                },
+                JobFlowRole="EMR_EC2_DefaultRole",
+                ServiceRole="EMR_DefaultRole",
+            )
+            cids.append(r["JobFlowId"])
+        try:
+            # Collect all clusters via marker-based pagination
+            seen_ids: set = set()
+            kwargs: dict = {"ClusterStates": ["WAITING", "RUNNING", "STARTING"]}
+            while True:
+                resp = emr.list_clusters(**kwargs)
+                for c in resp["Clusters"]:
+                    seen_ids.add(c["Id"])
+                if "Marker" not in resp or not resp["Marker"]:
+                    break
+                kwargs["Marker"] = resp["Marker"]
+            for cid in cids:
+                assert cid in seen_ids, f"Cluster {cid} not found in paginated results"
+        finally:
+            emr.terminate_job_flows(JobFlowIds=cids)
+
+    def test_list_clusters_multiple_all_visible(self, emr):
+        """Creating 3 clusters and listing returns all 3 in active state filter."""
+        cids = []
+        for i in range(3):
+            r = emr.run_job_flow(
+                Name=_unique(f"multi-{i}"),
+                ReleaseLabel="emr-6.10.0",
+                Instances={
+                    "MasterInstanceType": "m5.xlarge",
+                    "SlaveInstanceType": "m5.xlarge",
+                    "InstanceCount": 1,
+                    "KeepJobFlowAliveWhenNoSteps": True,
+                },
+                JobFlowRole="EMR_EC2_DefaultRole",
+                ServiceRole="EMR_DefaultRole",
+            )
+            cids.append(r["JobFlowId"])
+        try:
+            resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+            listed_ids = [c["Id"] for c in resp["Clusters"]]
+            for cid in cids:
+                assert cid in listed_ids
+        finally:
+            emr.terminate_job_flows(JobFlowIds=cids)
+
+    def test_list_clusters_each_entry_has_required_fields(self, emr, cluster_id):
+        """Each cluster in ListClusters has Id, Name, and Status.State."""
+        resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        assert len(resp["Clusters"]) >= 1
+        entry = next(c for c in resp["Clusters"] if c["Id"] == cluster_id)
+        assert entry["Id"] == cluster_id
+        assert "Name" in entry
+        assert "Status" in entry
+        assert "State" in entry["Status"]
+        valid_states = {
+            "STARTING", "BOOTSTRAPPING", "RUNNING", "WAITING",
+            "TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS",
+        }
+        assert entry["Status"]["State"] in valid_states
+
+
+class TestEMRListStepsBehavior:
+    """Behavioral fidelity tests for ListSteps."""
+
+    def test_list_steps_count_increases_after_add(self, emr, cluster_id):
+        """Step count in ListSteps increases after AddJobFlowSteps."""
+        before = emr.list_steps(ClusterId=cluster_id)
+        count_before = len(before["Steps"])
+        emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "count-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "count"]},
+                }
+            ],
+        )
+        after = emr.list_steps(ClusterId=cluster_id)
+        assert len(after["Steps"]) == count_before + 1
+
+    def test_list_steps_each_entry_has_required_fields(self, emr, cluster_id):
+        """Each step in ListSteps has Id, Name, and Status.State."""
+        emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "fields-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "x"]},
+                }
+            ],
+        )
+        resp = emr.list_steps(ClusterId=cluster_id)
+        assert len(resp["Steps"]) >= 1
+        for step in resp["Steps"]:
+            assert "Id" in step
+            assert "Name" in step
+            assert "Status" in step
+            assert "State" in step["Status"]
+
+    def test_list_steps_state_filter_pending(self, emr, cluster_id):
+        """ListSteps with StepStates=['PENDING'] returns only pending steps."""
+        emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "pending-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "pending"]},
+                }
+            ],
+        )
+        resp = emr.list_steps(ClusterId=cluster_id, StepStates=["PENDING"])
+        assert "Steps" in resp
+        for step in resp["Steps"]:
+            assert step["Status"]["State"] == "PENDING"
+
+    def test_add_job_flow_steps_list_then_retrieve(self, emr, cluster_id):
+        """AddJobFlowSteps: step appears in ListSteps and DescribeStep with correct name."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "list-retrieve-step",
+                    "ActionOnFailure": "TERMINATE_JOB_FLOW",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "lr"]},
+                }
+            ],
+        )
+        step_id = add["StepIds"][0]
+        list_resp = emr.list_steps(ClusterId=cluster_id)
+        listed_ids = [s["Id"] for s in list_resp["Steps"]]
+        assert step_id in listed_ids
+        desc = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        assert desc["Step"]["Name"] == "list-retrieve-step"
+        assert desc["Step"]["Config"]["Args"] == ["echo", "lr"]
+
+    def test_add_multiple_steps_listed_and_retrievable(self, emr, cluster_id):
+        """All steps from AddJobFlowSteps appear in ListSteps and are individually describable."""
+        add = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": f"batch-step-{i}",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", str(i)]},
+                }
+                for i in range(3)
+            ],
+        )
+        all_ids = add["StepIds"]
+        assert len(all_ids) == 3
+        list_resp = emr.list_steps(ClusterId=cluster_id)
+        listed_ids = [s["Id"] for s in list_resp["Steps"]]
+        for sid in all_ids:
+            assert sid in listed_ids
+            desc = emr.describe_step(ClusterId=cluster_id, StepId=sid)
+            assert desc["Step"]["Id"] == sid
+
+
+class TestEMRInstanceGroupsFields:
+    """Field verification tests for instance group and instance operations."""
+
+    def test_list_instance_groups_fields(self, emr, cluster_id):
+        """Each instance group in ListInstanceGroups has required fields."""
+        resp = emr.list_instance_groups(ClusterId=cluster_id)
+        assert len(resp["InstanceGroups"]) >= 1
+        for ig in resp["InstanceGroups"]:
+            assert "Id" in ig
+            assert "Name" in ig
+            assert "InstanceGroupType" in ig
+            assert ig["InstanceGroupType"] in ("MASTER", "CORE", "TASK")
+            assert "InstanceType" in ig
+            assert "RequestedInstanceCount" in ig
+            assert ig["RequestedInstanceCount"] >= 0
+
+    def test_list_instance_groups_master_has_correct_type(self, emr, cluster_id):
+        """The default cluster has a MASTER instance group with m5.xlarge type."""
+        resp = emr.list_instance_groups(ClusterId=cluster_id)
+        masters = [g for g in resp["InstanceGroups"] if g["InstanceGroupType"] == "MASTER"]
+        assert len(masters) >= 1
+        assert masters[0]["InstanceType"] == "m5.xlarge"
+
+    def test_list_instances_filter_by_instance_group_type(self, emr, cluster_id):
+        """ListInstances filtered by MASTER instance group type returns a list."""
+        resp = emr.list_instances(ClusterId=cluster_id, InstanceGroupTypes=["MASTER"])
+        assert "Instances" in resp
+        assert isinstance(resp["Instances"], list)
+        # Verify any returned instances have Id
+        for inst in resp["Instances"]:
+            assert "Id" in inst
+
+    def test_list_bootstrap_actions_fields(self, emr):
+        """Each bootstrap action in ListBootstrapActions has Name and ScriptPath."""
+        r = emr.run_job_flow(
+            Name=_unique("ba-fields"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+            BootstrapActions=[
+                {
+                    "Name": "ba-fields-check",
+                    "ScriptBootstrapAction": {
+                        "Path": "s3://bucket/script.sh",
+                        "Args": ["--flag"],
+                    },
+                }
+            ],
+        )
+        cid = r["JobFlowId"]
+        try:
+            resp = emr.list_bootstrap_actions(ClusterId=cid)
+            assert len(resp["BootstrapActions"]) == 1
+            ba = resp["BootstrapActions"][0]
+            assert ba["Name"] == "ba-fields-check"
+            assert "ScriptPath" in ba
+            assert ba["ScriptPath"] == "s3://bucket/script.sh"
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+
+class TestEMRAutoScalingPolicyRetrieveAndError:
+    """RETRIEVE and ERROR patterns for auto-scaling policy operations."""
+
+    def _put_policy(self, emr, cluster_id, ig_id):
+        emr.put_auto_scaling_policy(
+            ClusterId=cluster_id,
+            InstanceGroupId=ig_id,
+            AutoScalingPolicy={
+                "Constraints": {"MinCapacity": 1, "MaxCapacity": 5},
+                "Rules": [
+                    {
+                        "Name": "scale-rule",
+                        "Action": {
+                            "SimpleScalingPolicyConfiguration": {
+                                "ScalingAdjustment": 1,
+                                "AdjustmentType": "CHANGE_IN_CAPACITY",
+                            }
+                        },
+                        "Trigger": {
+                            "CloudWatchAlarmDefinition": {
+                                "ComparisonOperator": "GREATER_THAN",
+                                "MetricName": "YARNMemoryAvailablePercentage",
+                                "Period": 300,
+                                "Statistic": "AVERAGE",
+                                "Threshold": 15.0,
+                                "Unit": "PERCENT",
+                            }
+                        },
+                    }
+                ],
+            },
+        )
+
+    def test_remove_auto_scaling_policy_retrieve_after_put(self, emr, cluster_id):
+        """PutAutoScalingPolicy response contains ClusterId, InstanceGroupId, and Constraints."""
+        igs = emr.list_instance_groups(ClusterId=cluster_id)
+        ig_id = igs["InstanceGroups"][0]["Id"]
+        resp = emr.put_auto_scaling_policy(
+            ClusterId=cluster_id,
+            InstanceGroupId=ig_id,
+            AutoScalingPolicy={
+                "Constraints": {"MinCapacity": 2, "MaxCapacity": 8},
+                "Rules": [
+                    {
+                        "Name": "retrieve-rule",
+                        "Action": {
+                            "SimpleScalingPolicyConfiguration": {
+                                "ScalingAdjustment": 1,
+                                "AdjustmentType": "CHANGE_IN_CAPACITY",
+                            }
+                        },
+                        "Trigger": {
+                            "CloudWatchAlarmDefinition": {
+                                "ComparisonOperator": "GREATER_THAN",
+                                "MetricName": "YARNMemoryAvailablePercentage",
+                                "Period": 300,
+                                "Statistic": "AVERAGE",
+                                "Threshold": 15.0,
+                                "Unit": "PERCENT",
+                            }
+                        },
+                    }
+                ],
+            },
+        )
+        assert resp["ClusterId"] == cluster_id
+        assert resp["InstanceGroupId"] == ig_id
+        assert "AutoScalingPolicy" in resp
+        policy = resp["AutoScalingPolicy"]
+        assert "Constraints" in policy
+        assert policy["Constraints"]["MinCapacity"] == 2
+        assert policy["Constraints"]["MaxCapacity"] == 8
+        emr.remove_auto_scaling_policy(ClusterId=cluster_id, InstanceGroupId=ig_id)
+
+    def test_remove_auto_scaling_policy_update_policy(self, emr, cluster_id):
+        """Put policy then update with new constraints — new MaxCapacity returned."""
+        igs = emr.list_instance_groups(ClusterId=cluster_id)
+        ig_id = igs["InstanceGroups"][0]["Id"]
+        self._put_policy(emr, cluster_id, ig_id)
+        update_resp = emr.put_auto_scaling_policy(
+            ClusterId=cluster_id,
+            InstanceGroupId=ig_id,
+            AutoScalingPolicy={
+                "Constraints": {"MinCapacity": 1, "MaxCapacity": 10},
+                "Rules": [
+                    {
+                        "Name": "updated-rule",
+                        "Action": {
+                            "SimpleScalingPolicyConfiguration": {
+                                "ScalingAdjustment": 2,
+                                "AdjustmentType": "CHANGE_IN_CAPACITY",
+                            }
+                        },
+                        "Trigger": {
+                            "CloudWatchAlarmDefinition": {
+                                "ComparisonOperator": "LESS_THAN",
+                                "MetricName": "YARNMemoryAvailablePercentage",
+                                "Period": 600,
+                                "Statistic": "AVERAGE",
+                                "Threshold": 20.0,
+                                "Unit": "PERCENT",
+                            }
+                        },
+                    }
+                ],
+            },
+        )
+        assert update_resp["AutoScalingPolicy"]["Constraints"]["MaxCapacity"] == 10
+        emr.remove_auto_scaling_policy(ClusterId=cluster_id, InstanceGroupId=ig_id)
+
+    def test_remove_auto_scaling_policy_idempotent_on_nonexistent_ig(self, emr, cluster_id):
+        """RemoveAutoScalingPolicy is idempotent — removing a nonexistent policy returns 200."""
+        igs = emr.list_instance_groups(ClusterId=cluster_id)
+        ig_id = igs["InstanceGroups"][0]["Id"]
+        # Remove without ever having set a policy — should succeed silently
+        resp = emr.remove_auto_scaling_policy(ClusterId=cluster_id, InstanceGroupId=ig_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_remove_auto_scaling_policy_list_groups_after_remove(self, emr, cluster_id):
+        """After removing a policy, the instance group is still listed."""
+        igs = emr.list_instance_groups(ClusterId=cluster_id)
+        ig_id = igs["InstanceGroups"][0]["Id"]
+        self._put_policy(emr, cluster_id, ig_id)
+        emr.remove_auto_scaling_policy(ClusterId=cluster_id, InstanceGroupId=ig_id)
+        after = emr.list_instance_groups(ClusterId=cluster_id)
+        ig_ids = [g["Id"] for g in after["InstanceGroups"]]
+        assert ig_id in ig_ids
+
+
+class TestEMRListSupportedInstanceTypesBehavior:
+    """Behavioral fidelity tests for ListSupportedInstanceTypes."""
+
+    def test_list_supported_instance_types_count_reasonable(self, emr):
+        """ListSupportedInstanceTypes returns at least 10 instance types."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-6.10.0")
+        types = resp["SupportedInstanceTypes"]
+        assert len(types) >= 10, f"Expected >=10 types, got {len(types)}"
+
+    def test_list_supported_instance_types_each_has_type_field(self, emr):
+        """Every entry in SupportedInstanceTypes has a non-empty Type string."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-6.10.0")
+        for t in resp["SupportedInstanceTypes"]:
+            assert "Type" in t
+            assert isinstance(t["Type"], str)
+            assert len(t["Type"]) > 0
+
+    def test_list_supported_instance_types_includes_xlarge(self, emr):
+        """ListSupportedInstanceTypes includes at least one xlarge instance type."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-6.10.0")
+        types = [t["Type"] for t in resp["SupportedInstanceTypes"]]
+        xlarge_types = [t for t in types if "xlarge" in t]
+        assert len(xlarge_types) >= 1, f"No xlarge types found in: {types[:10]}"
+
+
+class TestEMRModifyClusterBehavior:
+    """Behavioral tests for ModifyCluster covering RETRIEVE and ERROR patterns."""
+
+    def test_modify_cluster_step_concurrency_describe_reflects_change(self, emr, cluster_id):
+        """After ModifyCluster, DescribeCluster returns the new StepConcurrencyLevel."""
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=4)
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["StepConcurrencyLevel"] == 4
+
+    def test_modify_cluster_step_concurrency_list_cluster_still_active(self, emr, cluster_id):
+        """After ModifyCluster, the cluster still appears in the active cluster list."""
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=3)
+        resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        ids = [c["Id"] for c in resp["Clusters"]]
+        assert cluster_id in ids
+
+    def test_modify_cluster_step_concurrency_error_invalid_cluster(self, emr):
+        """ModifyCluster with nonexistent cluster raises ClientError."""
+        with pytest.raises(ClientError) as exc:
+            emr.modify_cluster(ClusterId="j-DOESNOTEXIST00", StepConcurrencyLevel=2)
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+
+class TestEMRDescribeClusterComprehensive:
+    """Comprehensive CRLDE tests for DescribeCluster detail operations."""
+
+    def test_describe_cluster_release_label_matches_requested(self, emr):
+        """ReleaseLabel in DescribeCluster matches what was passed to RunJobFlow."""
+        resp = emr.run_job_flow(
+            Name=_unique("rl-check"),
+            ReleaseLabel="emr-6.15.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["ReleaseLabel"] == "emr-6.15.0"
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_describe_cluster_service_role_exact_value(self, emr):
+        """ServiceRole in DescribeCluster is the exact string passed at creation."""
+        resp = emr.run_job_flow(
+            Name=_unique("sr-exact"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["ServiceRole"] == "EMR_DefaultRole"
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_describe_cluster_termination_protection_toggle(self, emr):
+        """TerminationProtected defaults to False and toggles correctly."""
+        resp = emr.run_job_flow(
+            Name=_unique("tp-toggle"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["TerminationProtected"] is False
+            emr.set_termination_protection(JobFlowIds=[cid], TerminationProtected=True)
+            desc2 = emr.describe_cluster(ClusterId=cid)
+            assert desc2["Cluster"]["TerminationProtected"] is True
+            emr.set_termination_protection(JobFlowIds=[cid], TerminationProtected=False)
+            desc3 = emr.describe_cluster(ClusterId=cid)
+            assert desc3["Cluster"]["TerminationProtected"] is False
+        finally:
+            emr.set_termination_protection(JobFlowIds=[cid], TerminationProtected=False)
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_describe_cluster_auto_terminate_false_with_keepalive(self, emr):
+        """AutoTerminate is False when KeepJobFlowAliveWhenNoSteps=True."""
+        resp = emr.run_job_flow(
+            Name=_unique("at-false"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["AutoTerminate"] is False
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_describe_cluster_in_list_after_create(self, emr):
+        """Created cluster appears in ListClusters with its name visible."""
+        name = _unique("in-list-check")
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            listed = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+            entry = next((c for c in listed["Clusters"] if c["Id"] == cid), None)
+            assert entry is not None, f"Cluster {cid} not found in list"
+            assert entry["Name"] == name
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_describe_cluster_not_in_active_list_after_terminate(self, emr):
+        """Terminated cluster no longer appears in the WAITING state filter."""
+        resp = emr.run_job_flow(
+            Name=_unique("term-not-listed"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["Status"]["State"] in (
+            "TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS"
+        )
+        waiting = emr.list_clusters(ClusterStates=["WAITING"])
+        ids = [c["Id"] for c in waiting["Clusters"]]
+        assert cid not in ids
+
+
+class TestEMRListClustersStateFilter:
+    """CRLDE coverage for ListClusters by state."""
+
+    def test_list_clusters_by_state_create_and_verify(self, emr):
+        """Newly created cluster appears in WAITING/RUNNING/STARTING filter."""
+        resp = emr.run_job_flow(
+            Name=_unique("state-new"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            listed = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+            ids = [c["Id"] for c in listed["Clusters"]]
+            assert cid in ids
+            entry = next(c for c in listed["Clusters"] if c["Id"] == cid)
+            assert "Status" in entry
+            state = entry["Status"]["State"]
+            assert state in ("STARTING", "BOOTSTRAPPING", "RUNNING", "WAITING")
+        finally:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_list_clusters_by_state_delete_removes_from_active(self, emr):
+        """Terminating a cluster removes it from the WAITING/RUNNING/STARTING filter."""
+        resp = emr.run_job_flow(
+            Name=_unique("state-delete"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        active = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        assert cid in [c["Id"] for c in active["Clusters"]]
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        after = emr.list_clusters(ClusterStates=["WAITING"])
+        assert cid not in [c["Id"] for c in after["Clusters"]]
+
+    def test_list_clusters_by_state_terminated_filter_valid(self, emr):
+        """ListClusters with TERMINATED filter returns a valid list."""
+        resp = emr.list_clusters(ClusterStates=["TERMINATED"])
+        assert "Clusters" in resp
+        assert isinstance(resp["Clusters"], list)
+
+    def test_list_clusters_by_state_update_visible(self, emr, cluster_id):
+        """After ModifyCluster, the cluster is still in the active list."""
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=2)
+        resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        ids = [c["Id"] for c in resp["Clusters"]]
+        assert cluster_id in ids
