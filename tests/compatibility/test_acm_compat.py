@@ -753,3 +753,186 @@ class TestACMBehavioralFidelity:
         )
         resp = acm.list_tags_for_certificate(CertificateArn=arn)
         assert resp["Tags"] == []
+
+
+class TestACMEdgeCases:
+    """Edge cases and behavioral fidelity tests covering all CRLUDE patterns."""
+
+    @pytest.fixture
+    def acm(self):
+        return make_client("acm")
+
+    def test_full_lifecycle_all_patterns(self, acm):
+        """C+R+L+U+D+E: complete lifecycle touching every pattern."""
+        # CREATE
+        arn = acm.request_certificate(DomainName="full-all.example.com")["CertificateArn"]
+
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["DomainName"] == "full-all.example.com"
+        assert cert["Status"] == "PENDING_VALIDATION"
+
+        # LIST
+        all_arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in all_arns
+
+        # UPDATE (add tag, verify it persists)
+        acm.add_tags_to_certificate(
+            CertificateArn=arn, Tags=[{"Key": "lifecycle-phase", "Value": "testing"}]
+        )
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]
+        assert any(t["Key"] == "lifecycle-phase" and t["Value"] == "testing" for t in tags)
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — describe after delete must raise
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_idempotency_token_returns_same_arn(self, acm):
+        """Requesting with same domain+token twice returns the identical ARN."""
+        token = "edge-case-idem-token-xyz"
+        domain = "idem-edge.example.com"
+        arn1 = acm.request_certificate(DomainName=domain, IdempotencyToken=token)["CertificateArn"]
+        arn2 = acm.request_certificate(DomainName=domain, IdempotencyToken=token)["CertificateArn"]
+        assert arn1 == arn2
+        # Only one cert with this domain should exist
+        certs = [
+            c
+            for c in acm.list_certificates()["CertificateSummaryList"]
+            if c["DomainName"] == domain
+        ]
+        assert len(certs) == 1
+
+    def test_list_certificates_pagination_all_pages(self, acm):
+        """Create 5 certs, paginate MaxItems=2, collect all pages, all ARNs found."""
+        created_arns = set()
+        for i in range(5):
+            arn = acm.request_certificate(
+                DomainName=f"pagtest{i}.example.com"
+            )["CertificateArn"]
+            created_arns.add(arn)
+
+        collected_arns = set()
+        resp = acm.list_certificates(MaxItems=2)
+        collected_arns.update(c["CertificateArn"] for c in resp["CertificateSummaryList"])
+
+        while "NextToken" in resp:
+            resp = acm.list_certificates(MaxItems=2, NextToken=resp["NextToken"])
+            collected_arns.update(c["CertificateArn"] for c in resp["CertificateSummaryList"])
+
+        assert created_arns.issubset(collected_arns)
+
+    def test_email_validation_method_preserved_in_describe(self, acm):
+        """Cert requested with EMAIL validation shows EMAIL in DomainValidationOptions."""
+        arn = acm.request_certificate(
+            DomainName="email-method.example.com",
+            ValidationMethod="EMAIL",
+        )["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        options = cert.get("DomainValidationOptions", [])
+        assert len(options) >= 1
+        assert options[0]["ValidationMethod"] == "EMAIL"
+
+    def test_arn_uuid_format_and_retrievable(self, acm):
+        """ARN UUID portion is 36-char hyphenated hex; cert is describable by that ARN."""
+        import re
+
+        arn = acm.request_certificate(DomainName="uuid-check.example.com")["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["CertificateArn"] == arn
+        uuid_part = arn.split("/")[-1]
+        assert re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", uuid_part
+        ), f"UUID portion {uuid_part!r} malformed"
+
+    def test_request_certificate_domain_appears_in_list_summary(self, acm):
+        """Domain in ListCertificates summary matches the requested domain exactly."""
+        domain = "listsummary3.example.com"
+        arn = acm.request_certificate(DomainName=domain)["CertificateArn"]
+        certs = acm.list_certificates()["CertificateSummaryList"]
+        matches = [c for c in certs if c["CertificateArn"] == arn]
+        assert len(matches) == 1
+        assert matches[0]["DomainName"] == domain
+
+    def test_add_tags_error_on_nonexistent_cert(self, acm):
+        """AddTagsToCertificate on a nonexistent ARN raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm:us-east-1:123456789012:certificate/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        )
+        with pytest.raises(ClientError) as exc:
+            acm.add_tags_to_certificate(
+                CertificateArn=fake_arn, Tags=[{"Key": "k", "Value": "v"}]
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_tags_error_on_nonexistent_cert(self, acm):
+        """ListTagsForCertificate on a nonexistent ARN raises ResourceNotFoundException."""
+        fake_arn = (
+            "arn:aws:acm:us-east-1:123456789012:certificate/ffffffff-ffff-ffff-ffff-ffffffffffff"
+        )
+        with pytest.raises(ClientError) as exc:
+            acm.list_tags_for_certificate(CertificateArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_transparency_logging_persists(self, acm):
+        """UpdateCertificateOptions sets transparency pref; DescribeCertificate reflects it."""
+        arn = acm.request_certificate(DomainName="update-retrieve.example.com")["CertificateArn"]
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        opts = cert.get("Options", {})
+        assert opts.get("CertificateTransparencyLoggingPreference") == "DISABLED"
+        acm.delete_certificate(CertificateArn=arn)
+
+    def test_request_certificate_with_idempotency_token_and_list(self, acm):
+        """RequestCertificate with token: cert appears in list with correct domain."""
+        domain = "token-list.example.com"
+        arn = acm.request_certificate(
+            DomainName=domain,
+            IdempotencyToken="token-list-test-001",
+        )["CertificateArn"]
+        assert arn.startswith("arn:aws:acm:")
+        certs = acm.list_certificates()["CertificateSummaryList"]
+        found = [c for c in certs if c["CertificateArn"] == arn]
+        assert len(found) == 1
+        assert found[0]["DomainName"] == domain
+
+    def test_request_certificate_email_validation_status_pending(self, acm):
+        """EMAIL-validated cert starts as PENDING_VALIDATION and is listable."""
+        arn = acm.request_certificate(
+            DomainName="email-pending.example.com",
+            ValidationMethod="EMAIL",
+        )["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Status"] == "PENDING_VALIDATION"
+        listed = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in listed
+
+    def test_describe_certificate_has_subject_alternative_names(self, acm):
+        """DescribeCertificate always includes SubjectAlternativeNames (at least the domain)."""
+        arn = acm.request_certificate(DomainName="sans-always.example.com")["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert "SubjectAlternativeNames" in cert
+        # Primary domain must appear in SANs
+        assert "sans-always.example.com" in cert["SubjectAlternativeNames"]
+
+    def test_delete_removes_from_list(self, acm):
+        """After delete, certificate no longer appears in ListCertificates."""
+        arn = acm.request_certificate(DomainName="del-list.example.com")["CertificateArn"]
+        before = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in before
+        acm.delete_certificate(CertificateArn=arn)
+        after = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn not in after
+
+    def test_status_filter_pending_includes_new_cert(self, acm):
+        """Filtering by PENDING_VALIDATION includes a freshly requested certificate."""
+        arn = acm.request_certificate(DomainName="pending-filter.example.com")["CertificateArn"]
+        resp = acm.list_certificates(CertificateStatuses=["PENDING_VALIDATION"])
+        pending_arns = [c["CertificateArn"] for c in resp["CertificateSummaryList"]]
+        assert arn in pending_arns
