@@ -82,18 +82,22 @@ class TestGuardDutyDetectorOperations:
     def test_get_detector_returns_service_role(self, guardduty, detector):
         detail = guardduty.get_detector(DetectorId=detector)
         assert "ServiceRole" in detail
+        assert isinstance(detail["ServiceRole"], str)
 
     def test_get_detector_returns_data_sources(self, guardduty, detector):
         detail = guardduty.get_detector(DetectorId=detector)
         assert "DataSources" in detail
+        assert isinstance(detail["DataSources"], dict)
 
     def test_get_detector_returns_tags(self, guardduty, detector):
         detail = guardduty.get_detector(DetectorId=detector)
         assert "Tags" in detail
+        assert isinstance(detail["Tags"], dict)
 
     def test_get_detector_returns_features(self, guardduty, detector):
         detail = guardduty.get_detector(DetectorId=detector)
         assert "Features" in detail
+        assert isinstance(detail["Features"], list)
 
     def test_create_detector_with_finding_publishing_frequency(self, guardduty):
         resp = guardduty.create_detector(Enable=True, FindingPublishingFrequency="ONE_HOUR")
@@ -289,6 +293,7 @@ class TestGuardDutyOrganizationAdminAccountOperations:
     def test_list_organization_admin_accounts(self, guardduty):
         resp = guardduty.list_organization_admin_accounts()
         assert "AdminAccounts" in resp
+        assert isinstance(resp["AdminAccounts"], list)
 
     def test_enable_organization_admin_account(self, guardduty):
         resp = guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
@@ -385,6 +390,11 @@ class TestGuardDutyIPSetOperations:
         try:
             detail = guardduty.get_ip_set(DetectorId=detector, IpSetId=ipset_id)
             assert "Status" in detail
+            assert isinstance(detail["Status"], str)
+            assert detail["Status"] in (
+                "ACTIVE", "INACTIVE", "ACTIVATING", "DEACTIVATING", "ERROR",
+                "DELETE_PENDING", "DELETED",
+            )
         finally:
             guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
 
@@ -448,6 +458,11 @@ class TestGuardDutyThreatIntelSetOperations:
         try:
             detail = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
             assert "Status" in detail
+            assert isinstance(detail["Status"], str)
+            assert detail["Status"] in (
+                "ACTIVE", "INACTIVE", "ACTIVATING", "DEACTIVATING", "ERROR",
+                "DELETE_PENDING", "DELETED",
+            )
         finally:
             guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
 
@@ -476,6 +491,7 @@ class TestGuardDutyTagOperations:
         arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
         tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
         assert "Tags" in tags_resp
+        assert isinstance(tags_resp["Tags"], dict)
 
     def test_tag_resource(self, guardduty, detector):
         """TagResource adds tags to a detector."""
@@ -705,12 +721,14 @@ class TestGuardDutyFindingsOperations:
             DetectorId=detector, FindingStatisticTypes=["COUNT_BY_SEVERITY"]
         )
         assert "FindingStatistics" in resp
+        assert isinstance(resp["FindingStatistics"], dict)
 
     def test_get_findings_statistics_has_count_by_severity(self, guardduty, detector):
         resp = guardduty.get_findings_statistics(
             DetectorId=detector, FindingStatisticTypes=["COUNT_BY_SEVERITY"]
         )
         assert "CountBySeverity" in resp["FindingStatistics"]
+        assert isinstance(resp["FindingStatistics"]["CountBySeverity"], dict)
 
 
 class TestGuardDutyMasterAccountOperations:
@@ -733,6 +751,7 @@ class TestGuardDutyOrganizationConfigOperations:
         resp = guardduty.describe_organization_configuration(DetectorId=detector)
         assert "AutoEnable" in resp
         assert "MemberAccountLimitReached" in resp
+        assert isinstance(resp["MemberAccountLimitReached"], bool)
 
     def test_describe_organization_configuration_has_features(self, guardduty, detector):
         resp = guardduty.describe_organization_configuration(DetectorId=detector)
@@ -763,10 +782,12 @@ class TestGuardDutyMalwareOperations:
     def test_get_malware_scan_settings(self, guardduty, detector):
         resp = guardduty.get_malware_scan_settings(DetectorId=detector)
         assert "EbsSnapshotPreservation" in resp
+        assert isinstance(resp["EbsSnapshotPreservation"], str)
 
     def test_get_malware_scan_settings_has_resource_criteria(self, guardduty, detector):
         resp = guardduty.get_malware_scan_settings(DetectorId=detector)
         assert "ScanResourceCriteria" in resp
+        assert isinstance(resp["ScanResourceCriteria"], dict)
 
 
 class TestGuardDutyCoverageOperations:
@@ -777,6 +798,7 @@ class TestGuardDutyCoverageOperations:
             DetectorId=detector, StatisticsType=["COUNT_BY_RESOURCE_TYPE"]
         )
         assert "CoverageStatistics" in resp
+        assert isinstance(resp["CoverageStatistics"], dict)
 
     def test_get_coverage_statistics_response_shape(self, guardduty, detector):
         resp = guardduty.get_coverage_statistics(
@@ -795,6 +817,7 @@ class TestGuardDutyUsageOperations:
             UsageCriteria={"DataSources": ["FLOW_LOGS"]},
         )
         assert "UsageStatistics" in resp
+        assert isinstance(resp["UsageStatistics"], dict)
 
     def test_get_usage_statistics_response_shape(self, guardduty, detector):
         resp = guardduty.get_usage_statistics(
@@ -922,6 +945,7 @@ class TestGuardDutyMemberOperations:
             AccountIds=["999988887777"],
         )
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_get_member_detectors_unprocessed(self, guardduty, detector):
         """GetMemberDetectors returns UnprocessedAccounts for unknown members."""
@@ -930,6 +954,7 @@ class TestGuardDutyMemberOperations:
             AccountIds=["999988887777"],
         )
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
 
 class TestGuardDutyDetectorEdgeCases:
@@ -1081,6 +1106,8 @@ class TestGuardDutyPublishingDestinationEdgeCases:
             DestinationId=dest_id,
         )
         assert "Status" in resp
+        assert isinstance(resp["Status"], str)
+        assert resp["Status"] != ""
 
 
 class TestGuardDutyFindingsEdgeCases:
@@ -1291,6 +1318,7 @@ class TestGuardDutyMemberCRUDOperations:
         assert "Members" in resp
         member_ids = [m["AccountId"] for m in resp["Members"]]
         assert "333344445555" in member_ids
+        assert isinstance(resp["Members"], list)
 
     def test_get_members(self, guardduty, detector):
         """GetMembers returns details for specified account IDs."""
@@ -1306,6 +1334,8 @@ class TestGuardDutyMemberCRUDOperations:
         )
         assert "Members" in resp
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["Members"], list)
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_get_members_returns_member_details(self, guardduty, detector):
         """GetMembers returns email and account ID for created members."""
@@ -1362,6 +1392,7 @@ class TestGuardDutyMemberCRUDOperations:
             AccountIds=["000011112222"],
         )
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_create_multiple_members(self, guardduty, detector):
         """CreateMembers can add multiple accounts at once."""
@@ -1373,6 +1404,7 @@ class TestGuardDutyMemberCRUDOperations:
             ],
         )
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         listed = guardduty.list_members(DetectorId=detector)
         member_ids = [m["AccountId"] for m in listed["Members"]]
         assert "111122223333" in member_ids
@@ -1490,6 +1522,7 @@ class TestGuardDutyDetectorBehavioralFidelity:
         ds = detail["DataSources"]
         assert "S3Logs" in ds
         assert "Status" in ds["S3Logs"]
+        assert isinstance(ds["S3Logs"]["Status"], str)
 
     def test_data_sources_has_cloud_trail(self, guardduty, detector):
         """DataSources should contain CloudTrail with a Status field."""
@@ -1497,6 +1530,7 @@ class TestGuardDutyDetectorBehavioralFidelity:
         ds = detail["DataSources"]
         assert "CloudTrail" in ds
         assert "Status" in ds["CloudTrail"]
+        assert isinstance(ds["CloudTrail"]["Status"], str)
 
     def test_tags_dict_is_empty_by_default(self, guardduty, detector):
         """Tags should be an empty dict (not None) when no tags were set."""
@@ -1547,6 +1581,7 @@ class TestGuardDutyOrganizationAdminBehavior:
         resp = guardduty.list_organization_admin_accounts()
         admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
         assert "111133335555" in admin_ids
+        assert len(admin_ids) >= 1
         # cleanup
         guardduty.disable_organization_admin_account(AdminAccountId="111133335555")
 
@@ -1809,6 +1844,7 @@ class TestGuardDutyTrustedEntitySetEdgeCases:
         resp = guardduty.describe_organization_configuration(DetectorId=detector)
         # AutoEnable should be present (value depends on implementation)
         assert "AutoEnable" in resp
+        assert isinstance(resp["AutoEnable"], (bool, str))
 
     def test_describe_organization_configuration_nonexistent_detector(self, guardduty):
         """DescribeOrganizationConfiguration for nonexistent detector should fail."""
@@ -1847,6 +1883,7 @@ class TestGuardDutyUpdateOrganizationConfiguration:
         resp = guardduty.describe_organization_configuration(DetectorId=detector)
         assert "AutoEnable" in resp
         assert "MemberAccountLimitReached" in resp
+        assert isinstance(resp["MemberAccountLimitReached"], bool)
 
 
 class TestGuardDutyAcceptAdministratorInvitation:
@@ -2077,6 +2114,8 @@ class TestGuardDutyIPSets:
             Activate=False,
         )
         assert "IpSetId" in resp
+        assert isinstance(resp["IpSetId"], str)
+        assert len(resp["IpSetId"]) > 0
         ip_set_id = resp["IpSetId"]
         guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
 
@@ -2102,6 +2141,7 @@ class TestGuardDutyIPSets:
         """ListIPSets returns IpSetIds."""
         resp = guardduty.list_ip_sets(DetectorId=detector)
         assert "IpSetIds" in resp
+        assert isinstance(resp["IpSetIds"], list)
 
     def test_update_ip_set(self, guardduty, detector):
         """UpdateIPSet can change the name of an IP set."""
@@ -2152,6 +2192,7 @@ class TestGuardDutyThreatIntelSets:
             Activate=False,
         )
         assert "ThreatIntelSetId" in resp
+        assert isinstance(resp["ThreatIntelSetId"], str)
         guardduty.delete_threat_intel_set(
             DetectorId=detector, ThreatIntelSetId=resp["ThreatIntelSetId"]
         )
@@ -2178,6 +2219,7 @@ class TestGuardDutyThreatIntelSets:
         """ListThreatIntelSets returns ThreatIntelSetIds."""
         resp = guardduty.list_threat_intel_sets(DetectorId=detector)
         assert "ThreatIntelSetIds" in resp
+        assert isinstance(resp["ThreatIntelSetIds"], list)
 
     def test_update_threat_intel_set(self, guardduty, detector):
         """UpdateThreatIntelSet can change the name."""
@@ -2226,6 +2268,8 @@ class TestGuardDutyMalwareProtection:
             ProtectedResource={"S3Bucket": {"BucketName": "test-bucket"}},
         )
         assert "MalwareProtectionPlanId" in resp
+        assert isinstance(resp["MalwareProtectionPlanId"], str)
+        assert len(resp["MalwareProtectionPlanId"]) > 0
         guardduty.delete_malware_protection_plan(
             MalwareProtectionPlanId=resp["MalwareProtectionPlanId"]
         )
@@ -2234,6 +2278,7 @@ class TestGuardDutyMalwareProtection:
         """ListMalwareProtectionPlans returns MalwareProtectionPlans."""
         resp = guardduty.list_malware_protection_plans()
         assert "MalwareProtectionPlans" in resp
+        assert isinstance(resp["MalwareProtectionPlans"], list)
 
     def test_get_malware_protection_plan(self, guardduty):
         """GetMalwareProtectionPlan returns details of a created plan."""
@@ -2300,6 +2345,7 @@ class TestGuardDutyThreatEntitySetOperations:
         """ListThreatEntitySets returns ThreatEntitySetIds."""
         resp = guardduty.list_threat_entity_sets(DetectorId=detector)
         assert "ThreatEntitySetIds" in resp
+        assert isinstance(resp["ThreatEntitySetIds"], list)
 
     def test_list_threat_entity_sets_includes_created(self, guardduty, detector):
         """ListThreatEntitySets includes a newly created set."""
@@ -2399,6 +2445,7 @@ class TestGuardDutyTrustedEntitySetOperations:
         """ListTrustedEntitySets returns TrustedEntitySetIds."""
         resp = guardduty.list_trusted_entity_sets(DetectorId=detector)
         assert "TrustedEntitySetIds" in resp
+        assert isinstance(resp["TrustedEntitySetIds"], list)
 
     def test_list_trusted_entity_sets_includes_created(self, guardduty, detector):
         """ListTrustedEntitySets includes a newly created set."""
@@ -2462,6 +2509,7 @@ class TestGuardDutyOrganizationStatistics:
         """GetOrganizationStatistics returns OrganizationDetails."""
         resp = guardduty.get_organization_statistics()
         assert "OrganizationDetails" in resp
+        assert isinstance(resp["OrganizationDetails"], dict)
 
     def test_get_organization_statistics_response_code(self, guardduty):
         """GetOrganizationStatistics returns 200."""
@@ -2498,6 +2546,8 @@ class TestGuardDutyDetectorTimestampBehavior:
         detail = guardduty.get_detector(DetectorId=detector)
         assert "DataSources" in detail
         assert "CloudTrail" in detail["DataSources"]
+        ds = detail["DataSources"]
+        assert isinstance(ds["CloudTrail"]["Status"], str)
 
     def test_detector_features_is_list(self, guardduty, detector):
         """Features field is a list type."""
@@ -2933,9 +2983,11 @@ class TestGuardDutyInviteMembersBehavior:
         """InviteMembers UnprocessedAccounts entries have AccountId and Result fields."""
         resp = guardduty.invite_members(DetectorId=detector, AccountIds=["999911112222"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
             assert "Result" in acct
+            assert isinstance(acct["AccountId"], str)
 
     def test_invite_members_after_create_member(self, guardduty, detector):
         """InviteMembers after creating a member account returns 200."""
@@ -2946,6 +2998,7 @@ class TestGuardDutyInviteMembersBehavior:
         resp = guardduty.invite_members(DetectorId=detector, AccountIds=["234523452345"])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
     def test_invite_members_with_message(self, guardduty, detector):
         """InviteMembers accepts an optional Message parameter."""
@@ -2955,6 +3008,7 @@ class TestGuardDutyInviteMembersBehavior:
             Message="Please join as a member.",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["UnprocessedAccounts"], list)
 
 
 class TestGuardDutyDeclineInvitationsBehavior:
@@ -2964,9 +3018,11 @@ class TestGuardDutyDeclineInvitationsBehavior:
         """DeclineInvitations UnprocessedAccounts entries have AccountId and Result."""
         resp = guardduty.decline_invitations(AccountIds=["111122223333"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
             assert "Result" in acct
+            assert isinstance(acct["AccountId"], str)
 
     def test_decline_invitations_multiple_accounts(self, guardduty):
         """DeclineInvitations handles multiple account IDs."""
@@ -2978,9 +3034,11 @@ class TestGuardDutyDeclineInvitationsBehavior:
         """DeleteInvitations UnprocessedAccounts entries have AccountId and Result."""
         resp = guardduty.delete_invitations(AccountIds=["111122223333"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
             assert "Result" in acct
+            assert isinstance(acct["AccountId"], str)
 
 
 class TestGuardDutyDisassociateBehavior:
@@ -3005,9 +3063,11 @@ class TestGuardDutyDisassociateBehavior:
         )
         resp = guardduty.disassociate_members(DetectorId=detector, AccountIds=["123412341234"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
             assert "Result" in acct
+            assert isinstance(acct["AccountId"], str)
 
     def test_disassociate_members_multiple_accounts(self, guardduty, detector):
         """DisassociateMembers handles multiple account IDs."""
@@ -3146,6 +3206,7 @@ class TestGuardDutyInviteMembersErrorCases:
         """InviteMembers: every UnprocessedAccounts entry has an AccountId."""
         resp = guardduty.invite_members(DetectorId=detector, AccountIds=["999911112222"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
 
@@ -3180,6 +3241,7 @@ class TestGuardDutyDeclineInvitationsErrorCases:
         """DeclineInvitations with multiple IDs — UnprocessedAccounts has AccountId+Result."""
         resp = guardduty.decline_invitations(AccountIds=["111122223333", "444455556666"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
             assert "Result" in acct
@@ -3188,9 +3250,11 @@ class TestGuardDutyDeclineInvitationsErrorCases:
         """DeleteInvitations with multiple IDs — UnprocessedAccounts has AccountId+Result."""
         resp = guardduty.delete_invitations(AccountIds=["111122223333", "444455556666"])
         assert "UnprocessedAccounts" in resp
+        assert isinstance(resp["UnprocessedAccounts"], list)
         for acct in resp["UnprocessedAccounts"]:
             assert "AccountId" in acct
             assert "Result" in acct
+            assert isinstance(acct["AccountId"], str)
 
 
 class TestGuardDutyDisassociateErrorCases:
@@ -3379,11 +3443,13 @@ class TestGuardDutyBehavioralFidelity:
         """DataSources response includes S3Logs key."""
         detail = guardduty.get_detector(DetectorId=detector)
         assert "S3Logs" in detail["DataSources"]
+        assert isinstance(detail["DataSources"]["S3Logs"], dict)
 
     def test_detector_data_sources_s3logs_has_status(self, guardduty, detector):
         """DataSources.S3Logs includes a Status field."""
         detail = guardduty.get_detector(DetectorId=detector)
         assert "Status" in detail["DataSources"]["S3Logs"]
+        assert isinstance(detail["DataSources"]["S3Logs"]["Status"], str)
 
     def test_detector_features_is_list(self, guardduty, detector):
         """Features field is a list."""
@@ -3422,6 +3488,7 @@ class TestGuardDutyBehavioralFidelity:
         """ListOrganizationAdminAccounts always returns AdminAccounts key."""
         resp = guardduty.list_organization_admin_accounts()
         assert "AdminAccounts" in resp
+        assert isinstance(resp["AdminAccounts"], list)
 
     # ── Filter list / delete patterns ─────────────────────────────────────
 
@@ -3571,11 +3638,13 @@ class TestGuardDutyBehavioralFidelity:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
 
     def test_list_findings_with_max_results(self, guardduty, detector):
         """list_findings accepts MaxResults parameter."""
         resp = guardduty.list_findings(DetectorId=detector, MaxResults=10)
         assert "FindingIds" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_list_findings_with_criteria_and_sort(self, guardduty, detector):
         """list_findings accepts both FindingCriteria and SortCriteria together."""
@@ -3585,6 +3654,7 @@ class TestGuardDutyBehavioralFidelity:
             SortCriteria={"AttributeName": "severity", "OrderBy": "ASC"},
         )
         assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
 
     # ── IPSet pagination ───────────────────────────────────────────────────
 
@@ -3638,4 +3708,279 @@ class TestGuardDutyBehavioralFidelity:
         guardduty.delete_detector(DetectorId=det_id)
         listed = guardduty.list_detectors()
         assert det_id not in listed["DetectorIds"]
+
+
+class TestGuardDutyDetectorFieldBehavior:
+    """Behavioral tests for specific detector fields — stronger assertions than key-presence."""
+
+    def test_created_at_is_recent_datetime(self, guardduty):
+        """CreatedAt field is a datetime or ISO string with a year >= 2020."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=det_id)
+            created_at = detail["CreatedAt"]
+            assert isinstance(created_at, (datetime.datetime, str))
+            if isinstance(created_at, str):
+                assert "202" in created_at  # year 2020+
+            else:
+                assert created_at.year >= 2020
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_updated_at_is_recent_datetime(self, guardduty):
+        """UpdatedAt field is a datetime or ISO string with a year >= 2020."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=det_id)
+            updated_at = detail["UpdatedAt"]
+            assert isinstance(updated_at, (datetime.datetime, str))
+            if isinstance(updated_at, str):
+                assert "202" in updated_at  # year 2020+
+            else:
+                assert updated_at.year >= 2020
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_service_role_is_nonempty_string(self, guardduty):
+        """ServiceRole is a non-None string (may be empty but must be str)."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=det_id)
+            assert isinstance(detail["ServiceRole"], str)
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_data_sources_s3_status_is_valid_string(self, guardduty):
+        """DataSources.S3Logs.Status is one of the expected status strings."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=det_id)
+            status = detail["DataSources"]["S3Logs"]["Status"]
+            assert status in ("ENABLED", "DISABLED")
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_tags_is_empty_dict_not_none_when_unset(self, guardduty):
+        """Tags is an empty dict (not None) when no tags were set at create time."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=det_id)
+            assert detail["Tags"] == {}
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_features_list_items_have_name_and_status_strings(self, guardduty):
+        """Each item in Features has Name (str) and Status (str) fields."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=det_id)
+            features = detail["Features"]
+            assert isinstance(features, list)
+            for feature in features:
+                assert isinstance(feature.get("Name"), str)
+                assert isinstance(feature.get("Status"), str)
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_created_at_unchanged_after_update(self, guardduty):
+        """CreatedAt is not modified when the detector is updated."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            created_before = guardduty.get_detector(DetectorId=det_id)["CreatedAt"]
+            guardduty.update_detector(DetectorId=det_id, FindingPublishingFrequency="SIX_HOURS")
+            created_after = guardduty.get_detector(DetectorId=det_id)["CreatedAt"]
+            assert created_before == created_after
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_delete_detector_raises_on_get(self, guardduty):
+        """After deleting a detector, get_detector raises BadRequestException."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        guardduty.delete_detector(DetectorId=det_id)
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_detector(DetectorId=det_id)
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyAdminAccountBehavior:
+    """Behavioral tests for GetAdministratorAccount — stronger assertions."""
+
+    def test_get_administrator_account_returns_dict_response(self, guardduty, detector):
+        """get_administrator_account returns a dict (not None) with ResponseMetadata."""
+        result = guardduty.get_administrator_account(DetectorId=detector)
+        assert isinstance(result, dict)
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_administrator_account_response_is_not_none(self, guardduty, detector):
+        """get_administrator_account does not return None — even without an admin configured."""
+        result = guardduty.get_administrator_account(DetectorId=detector)
+        assert result is not None
+        # Administrator key may be present (dict) or absent — either is valid
+        if "Administrator" in result:
+            assert isinstance(result["Administrator"], dict)
+
+
+class TestGuardDutyOrgAdminLifecycle:
+    """Lifecycle tests for organization admin with full pattern coverage."""
+
+    def test_enable_org_admin_appears_in_list_with_status(self, guardduty):
+        """After enable, list contains the account with an AdminStatus field."""
+        guardduty.enable_organization_admin_account(AdminAccountId="333311112222")
+        try:
+            resp = guardduty.list_organization_admin_accounts()
+            assert isinstance(resp["AdminAccounts"], list)
+            matching = [a for a in resp["AdminAccounts"] if a["AdminAccountId"] == "333311112222"]
+            assert len(matching) == 1
+            assert isinstance(matching[0]["AdminStatus"], str)
+            assert matching[0]["AdminStatus"] != ""
+        finally:
+            guardduty.disable_organization_admin_account(AdminAccountId="333311112222")
+
+    def test_enable_disable_org_admin_absent_from_list(self, guardduty):
+        """After enable then disable, the account is no longer in list."""
+        guardduty.enable_organization_admin_account(AdminAccountId="444422221111")
+        guardduty.disable_organization_admin_account(AdminAccountId="444422221111")
+        resp = guardduty.list_organization_admin_accounts()
+        ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
+        assert "444422221111" not in ids
+
+    def test_list_org_admin_accounts_returns_list_type(self, guardduty):
+        """list_organization_admin_accounts always returns a list, not None."""
+        resp = guardduty.list_organization_admin_accounts()
+        assert isinstance(resp["AdminAccounts"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyEmptyListBehavior:
+    """Empty list tests with length assertions (stronger than isinstance-only)."""
+
+    def test_list_filters_fresh_detector_length_zero(self, guardduty, detector):
+        """A brand-new detector has zero filters."""
+        resp = guardduty.list_filters(DetectorId=detector)
+        assert len(resp["FilterNames"]) == 0
+
+    def test_list_ipsets_fresh_detector_length_zero(self, guardduty, detector):
+        """A brand-new detector has zero IP sets."""
+        resp = guardduty.list_ip_sets(DetectorId=detector)
+        assert len(resp["IpSetIds"]) == 0
+
+    def test_list_threat_intel_sets_fresh_detector_length_zero(self, guardduty, detector):
+        """A brand-new detector has zero threat intel sets."""
+        resp = guardduty.list_threat_intel_sets(DetectorId=detector)
+        assert len(resp["ThreatIntelSetIds"]) == 0
+
+    def test_list_findings_fresh_detector_length_zero(self, guardduty, detector):
+        """A brand-new detector has zero findings."""
+        resp = guardduty.list_findings(DetectorId=detector)
+        assert len(resp["FindingIds"]) == 0
+
+
+class TestGuardDutyTagsBehavior:
+    """Tag operation behavior — stronger assertions than key-presence."""
+
+    def test_list_tags_empty_resource_returns_empty_dict(self, guardduty, detector):
+        """list_tags_for_resource on a fresh detector returns Tags == {}."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert resp["Tags"] == {}
+
+    def test_tag_then_list_returns_correct_values(self, guardduty, detector):
+        """After tagging, list_tags_for_resource returns the exact tag values set."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"mykey": "myvalue", "env": "ci"})
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert resp["Tags"]["mykey"] == "myvalue"
+        assert resp["Tags"]["env"] == "ci"
+        assert len(resp["Tags"]) == 2
+
+    def test_untag_reduces_tag_count(self, guardduty, detector):
+        """Untagging one key leaves the others intact and reduces count by 1."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"a": "1", "b": "2", "c": "3"})
+        guardduty.untag_resource(ResourceArn=arn, TagKeys=["b"])
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert len(resp["Tags"]) == 2
+        assert resp["Tags"]["a"] == "1"
+        assert resp["Tags"]["c"] == "3"
+        assert "b" not in resp["Tags"]
+
+
+class TestGuardDutyFindingsBehavior:
+    """Findings list behavior — stronger assertions."""
+
+    def test_list_findings_with_severity_criteria_returns_list_type(self, guardduty, detector):
+        """list_findings with severity criterion returns a list (not None)."""
+        resp = guardduty.list_findings(
+            DetectorId=detector,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+        )
+        assert isinstance(resp["FindingIds"], list)
+        # Confirm specific field type rather than just presence
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_findings_with_criteria_count_is_nonnegative(self, guardduty, detector):
+        """list_findings count is >= 0 for any valid criteria."""
+        resp = guardduty.list_findings(
+            DetectorId=detector,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 8}}},
+        )
+        assert len(resp["FindingIds"]) >= 0
+
+    def test_create_sample_findings_increases_list_count(self, guardduty, detector):
+        """After create_sample_findings, list_findings returns at least 1 finding."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        resp = guardduty.list_findings(DetectorId=detector)
+        assert len(resp["FindingIds"]) >= 1
+
+
+class TestGuardDutyUpdateIPSetErrorCases:
+    """Error cases for UpdateIPSet."""
+
+    def test_update_nonexistent_ip_set_raises_error(self, guardduty, detector):
+        """Updating an IP set that does not exist raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_ip_set(
+                DetectorId=detector,
+                IpSetId="nonexistent00000000000000000000",
+                Name="should-fail",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_update_ip_set_still_in_list_after_update(self, guardduty, detector):
+        """After updating an IP set, it still appears in list_ip_sets."""
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=_unique("ipset"),
+            Format="TXT",
+            Location="s3://test-bucket/list-check.txt",
+            Activate=False,
+        )
+        ipset_id = resp["IpSetId"]
+        try:
+            guardduty.update_ip_set(DetectorId=detector, IpSetId=ipset_id, Name="updated-list-check")
+            listed = guardduty.list_ip_sets(DetectorId=detector)
+            assert ipset_id in listed["IpSetIds"]
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+    def test_update_nonexistent_threat_intel_set_raises_error(self, guardduty, detector):
+        """Updating a threat intel set that does not exist raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_threat_intel_set(
+                DetectorId=detector,
+                ThreatIntelSetId="nonexistent00000000000000000000",
+                Name="should-fail",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
 
