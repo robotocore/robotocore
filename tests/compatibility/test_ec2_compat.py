@@ -1516,10 +1516,6 @@ class TestEC2FlowLogs:
             iam.delete_role(RoleName=role_name)
 
 
-def _assert_ok(resp):
-    """Assert the response has HTTP 200 status (stub operations return empty results)."""
-    assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
 
 class TestEC2GapStubs:
     """Tests for EC2 operations that were stubbed in Moto's gap_stubs.py.
@@ -1530,172 +1526,222 @@ class TestEC2GapStubs:
     # --- IPAM operations ---
 
     def test_describe_ipams(self, ec2):
-        _assert_ok(ec2.describe_ipams())
+        resp = ec2.describe_ipams()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_pools(self, ec2):
-        _assert_ok(ec2.describe_ipam_pools())
+        resp = ec2.describe_ipam_pools()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_scopes(self, ec2):
-        _assert_ok(ec2.describe_ipam_scopes())
+        resp = ec2.describe_ipam_scopes()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_resource_discoveries(self, ec2):
-        _assert_ok(ec2.describe_ipam_resource_discoveries())
+        resp = ec2.describe_ipam_resource_discoveries()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_resource_discovery_associations(self, ec2):
-        _assert_ok(ec2.describe_ipam_resource_discovery_associations())
+        resp = ec2.describe_ipam_resource_discovery_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_byoasn(self, ec2):
-        _assert_ok(ec2.describe_ipam_byoasn())
+        resp = ec2.describe_ipam_byoasn()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_external_resource_verification_tokens(self, ec2):
-        _assert_ok(ec2.describe_ipam_external_resource_verification_tokens())
+        resp = ec2.describe_ipam_external_resource_verification_tokens()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_policies(self, ec2):
-        _assert_ok(ec2.describe_ipam_policies())
+        resp = ec2.describe_ipam_policies()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_prefix_list_resolvers(self, ec2):
-        _assert_ok(ec2.describe_ipam_prefix_list_resolvers())
+        resp = ec2.describe_ipam_prefix_list_resolvers()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipam_prefix_list_resolver_targets(self, ec2):
-        _assert_ok(ec2.describe_ipam_prefix_list_resolver_targets())
+        resp = ec2.describe_ipam_prefix_list_resolver_targets()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Verified Access operations ---
 
     def test_describe_verified_access_instances(self, ec2):
-        _assert_ok(ec2.describe_verified_access_instances())
+        resp = ec2.describe_verified_access_instances()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_verified_access_endpoints(self, ec2):
-        _assert_ok(ec2.describe_verified_access_endpoints())
+        resp = ec2.describe_verified_access_endpoints()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_verified_access_groups(self, ec2):
-        _assert_ok(ec2.describe_verified_access_groups())
+        resp = ec2.describe_verified_access_groups()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_verified_access_trust_providers(self, ec2):
-        _assert_ok(ec2.describe_verified_access_trust_providers())
+        resp = ec2.describe_verified_access_trust_providers()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_verified_access_instance_logging_configurations(self, ec2):
-        _assert_ok(ec2.describe_verified_access_instance_logging_configurations())
+        resp = ec2.describe_verified_access_instance_logging_configurations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Traffic Mirror operations ---
 
     def test_describe_traffic_mirror_filters(self, ec2):
-        _assert_ok(ec2.describe_traffic_mirror_filters())
+        resp = ec2.describe_traffic_mirror_filters()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_traffic_mirror_sessions(self, ec2):
-        _assert_ok(ec2.describe_traffic_mirror_sessions())
+        resp = ec2.describe_traffic_mirror_sessions()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_traffic_mirror_targets(self, ec2):
-        _assert_ok(ec2.describe_traffic_mirror_targets())
+        resp = ec2.describe_traffic_mirror_targets()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_traffic_mirror_filter_rules(self, ec2):
-        _assert_ok(ec2.describe_traffic_mirror_filter_rules())
+        resp = ec2.describe_traffic_mirror_filter_rules()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Transit Gateway operations ---
 
     def test_describe_transit_gateway_multicast_domains(self, ec2):
-        _assert_ok(ec2.describe_transit_gateway_multicast_domains())
+        resp = ec2.describe_transit_gateway_multicast_domains()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_transit_gateway_connect_peers(self, ec2):
-        _assert_ok(ec2.describe_transit_gateway_connect_peers())
+        resp = ec2.describe_transit_gateway_connect_peers()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_transit_gateway_connects(self, ec2):
-        _assert_ok(ec2.describe_transit_gateway_connects())
+        resp = ec2.describe_transit_gateway_connects()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_transit_gateway_policy_tables(self, ec2):
-        _assert_ok(ec2.describe_transit_gateway_policy_tables())
+        resp = ec2.describe_transit_gateway_policy_tables()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_transit_gateway_route_table_announcements(self, ec2):
-        _assert_ok(ec2.describe_transit_gateway_route_table_announcements())
+        resp = ec2.describe_transit_gateway_route_table_announcements()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_transit_gateway_metering_policies(self, ec2):
-        _assert_ok(ec2.describe_transit_gateway_metering_policies())
+        resp = ec2.describe_transit_gateway_metering_policies()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Local Gateway operations ---
 
     def test_describe_local_gateways(self, ec2):
-        _assert_ok(ec2.describe_local_gateways())
+        resp = ec2.describe_local_gateways()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_local_gateway_route_tables(self, ec2):
-        _assert_ok(ec2.describe_local_gateway_route_tables())
+        resp = ec2.describe_local_gateway_route_tables()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_local_gateway_virtual_interfaces(self, ec2):
-        _assert_ok(ec2.describe_local_gateway_virtual_interfaces())
+        resp = ec2.describe_local_gateway_virtual_interfaces()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_local_gateway_virtual_interface_groups(self, ec2):
-        _assert_ok(ec2.describe_local_gateway_virtual_interface_groups())
+        resp = ec2.describe_local_gateway_virtual_interface_groups()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_local_gateway_route_table_vpc_associations(self, ec2):
-        _assert_ok(ec2.describe_local_gateway_route_table_vpc_associations())
+        resp = ec2.describe_local_gateway_route_table_vpc_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_local_gateway_route_table_virtual_interface_group_associations(self, ec2):
-        _assert_ok(ec2.describe_local_gateway_route_table_virtual_interface_group_associations())
+        resp = ec2.describe_local_gateway_route_table_virtual_interface_group_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Network Insights operations ---
 
     def test_describe_network_insights_paths(self, ec2):
-        _assert_ok(ec2.describe_network_insights_paths())
+        resp = ec2.describe_network_insights_paths()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_network_insights_analyses(self, ec2):
-        _assert_ok(ec2.describe_network_insights_analyses())
+        resp = ec2.describe_network_insights_analyses()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_network_insights_access_scopes(self, ec2):
-        _assert_ok(ec2.describe_network_insights_access_scopes())
+        resp = ec2.describe_network_insights_access_scopes()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_network_insights_access_scope_analyses(self, ec2):
-        _assert_ok(ec2.describe_network_insights_access_scope_analyses())
+        resp = ec2.describe_network_insights_access_scope_analyses()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Capacity operations ---
 
     def test_describe_capacity_reservations(self, ec2):
-        _assert_ok(ec2.describe_capacity_reservations())
+        resp = ec2.describe_capacity_reservations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_capacity_reservation_fleets(self, ec2):
-        _assert_ok(ec2.describe_capacity_reservation_fleets())
+        resp = ec2.describe_capacity_reservation_fleets()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- VPC / Networking misc ---
 
     def test_describe_coip_pools(self, ec2):
-        _assert_ok(ec2.describe_coip_pools())
+        resp = ec2.describe_coip_pools()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_public_ipv4_pools(self, ec2):
-        _assert_ok(ec2.describe_public_ipv4_pools())
+        resp = ec2.describe_public_ipv4_pools()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_ipv6_pools(self, ec2):
-        _assert_ok(ec2.describe_ipv6_pools())
+        resp = ec2.describe_ipv6_pools()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_vpc_endpoint_connections(self, ec2):
-        _assert_ok(ec2.describe_vpc_endpoint_connections())
+        resp = ec2.describe_vpc_endpoint_connections()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_vpc_endpoint_connection_notifications(self, ec2):
-        _assert_ok(ec2.describe_vpc_endpoint_connection_notifications())
+        resp = ec2.describe_vpc_endpoint_connection_notifications()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_trunk_interface_associations(self, ec2):
-        _assert_ok(ec2.describe_trunk_interface_associations())
+        resp = ec2.describe_trunk_interface_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_network_interface_permissions(self, ec2):
-        _assert_ok(ec2.describe_network_interface_permissions())
+        resp = ec2.describe_network_interface_permissions()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Snapshot / Image misc ---
 
     def test_describe_locked_snapshots(self, ec2):
-        _assert_ok(ec2.describe_locked_snapshots())
+        resp = ec2.describe_locked_snapshots()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_fast_snapshot_restores(self, ec2):
-        _assert_ok(ec2.describe_fast_snapshot_restores())
+        resp = ec2.describe_fast_snapshot_restores()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_replace_root_volume_tasks(self, ec2):
-        _assert_ok(ec2.describe_replace_root_volume_tasks())
+        resp = ec2.describe_replace_root_volume_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Settings ---
 
     def test_get_instance_metadata_defaults(self, ec2):
-        _assert_ok(ec2.get_instance_metadata_defaults())
+        resp = ec2.get_instance_metadata_defaults()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_image_block_public_access_state(self, ec2):
-        _assert_ok(ec2.get_image_block_public_access_state())
+        resp = ec2.get_image_block_public_access_state()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_snapshot_block_public_access_state(self, ec2):
-        _assert_ok(ec2.get_snapshot_block_public_access_state())
+        resp = ec2.get_snapshot_block_public_access_state()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2DescribeGapCoverage:
@@ -1717,22 +1763,28 @@ class TestEC2DescribeGapCoverage:
         assert isinstance(resp["BundleTasks"], list)
 
     def test_describe_conversion_tasks(self, ec2):
-        _assert_ok(ec2.describe_conversion_tasks())
+        resp = ec2.describe_conversion_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_export_image_tasks(self, ec2):
-        _assert_ok(ec2.describe_export_image_tasks())
+        resp = ec2.describe_export_image_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_export_tasks(self, ec2):
-        _assert_ok(ec2.describe_export_tasks())
+        resp = ec2.describe_export_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_import_image_tasks(self, ec2):
-        _assert_ok(ec2.describe_import_image_tasks())
+        resp = ec2.describe_import_image_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_import_snapshot_tasks(self, ec2):
-        _assert_ok(ec2.describe_import_snapshot_tasks())
+        resp = ec2.describe_import_snapshot_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_store_image_tasks(self, ec2):
-        _assert_ok(ec2.describe_store_image_tasks())
+        resp = ec2.describe_store_image_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Carrier / Classic ---
 
@@ -1742,12 +1794,14 @@ class TestEC2DescribeGapCoverage:
         assert isinstance(resp["CarrierGateways"], list)
 
     def test_describe_classic_link_instances(self, ec2):
-        _assert_ok(ec2.describe_classic_link_instances())
+        resp = ec2.describe_classic_link_instances()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Client VPN ---
 
     def test_describe_client_vpn_endpoints(self, ec2):
-        _assert_ok(ec2.describe_client_vpn_endpoints())
+        resp = ec2.describe_client_vpn_endpoints()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Egress Only IGW ---
 
@@ -1766,20 +1820,24 @@ class TestEC2DescribeGapCoverage:
     # --- FPGA ---
 
     def test_describe_fpga_images(self, ec2):
-        _assert_ok(ec2.describe_fpga_images())
+        resp = ec2.describe_fpga_images()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Hosts ---
 
     def test_describe_host_reservations(self, ec2):
-        _assert_ok(ec2.describe_host_reservations())
+        resp = ec2.describe_host_reservations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Instance event ---
 
     def test_describe_instance_event_notification_attributes(self, ec2):
-        _assert_ok(ec2.describe_instance_event_notification_attributes())
+        resp = ec2.describe_instance_event_notification_attributes()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_instance_event_windows(self, ec2):
-        _assert_ok(ec2.describe_instance_event_windows())
+        resp = ec2.describe_instance_event_windows()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Instance credit ---
 
@@ -1791,12 +1849,14 @@ class TestEC2DescribeGapCoverage:
     # --- Instance topology ---
 
     def test_describe_instance_topology(self, ec2):
-        _assert_ok(ec2.describe_instance_topology())
+        resp = ec2.describe_instance_topology()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Instance connect endpoints ---
 
     def test_describe_instance_connect_endpoints(self, ec2):
-        _assert_ok(ec2.describe_instance_connect_endpoints())
+        resp = ec2.describe_instance_connect_endpoints()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Instance type offerings ---
 
@@ -1812,22 +1872,26 @@ class TestEC2DescribeGapCoverage:
     # --- Mac hosts ---
 
     def test_describe_mac_hosts(self, ec2):
-        _assert_ok(ec2.describe_mac_hosts())
+        resp = ec2.describe_mac_hosts()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Principal ID format ---
 
     def test_describe_principal_id_format(self, ec2):
-        _assert_ok(ec2.describe_principal_id_format())
+        resp = ec2.describe_principal_id_format()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Moving addresses ---
 
     def test_describe_moving_addresses(self, ec2):
-        _assert_ok(ec2.describe_moving_addresses())
+        resp = ec2.describe_moving_addresses()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Scheduled instances ---
 
     def test_describe_scheduled_instances(self, ec2):
-        _assert_ok(ec2.describe_scheduled_instances())
+        resp = ec2.describe_scheduled_instances()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Spot ---
 
@@ -1851,7 +1915,8 @@ class TestEC2DescribeGapCoverage:
         assert "SpotPriceHistory" in resp
 
     def test_describe_spot_datafeed_subscription(self, ec2):
-        _assert_ok(ec2.describe_spot_datafeed_subscription())
+        resp = ec2.describe_spot_datafeed_subscription()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Snapshot tier ---
 
@@ -1923,17 +1988,20 @@ class TestEC2DescribeGapCoverage:
     # --- Elastic GPU ---
 
     def test_describe_elastic_gpus(self, ec2):
-        _assert_ok(ec2.describe_elastic_gpus())
+        resp = ec2.describe_elastic_gpus()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Fast launch images ---
 
     def test_describe_fast_launch_images(self, ec2):
-        _assert_ok(ec2.describe_fast_launch_images())
+        resp = ec2.describe_fast_launch_images()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- Declarative policies ---
 
     def test_describe_declarative_policies_reports(self, ec2):
-        _assert_ok(ec2.describe_declarative_policies_reports())
+        resp = ec2.describe_declarative_policies_reports()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # --- EBS settings ---
 
@@ -1942,7 +2010,8 @@ class TestEC2DescribeGapCoverage:
         assert "EbsEncryptionByDefault" in resp
 
     def test_get_vpn_connection_device_types(self, ec2):
-        _assert_ok(ec2.get_vpn_connection_device_types())
+        resp = ec2.get_vpn_connection_device_types()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2CRUDGapCoverage:
@@ -2081,12 +2150,15 @@ class TestEC2SettingsGapCoverage:
         modify_resp = ec2.modify_ebs_default_kms_key_id(KmsKeyId="alias/aws/ebs")
         assert "KmsKeyId" in modify_resp
 
-        _assert_ok(ec2.reset_ebs_default_kms_key_id())
+        resp = ec2.reset_ebs_default_kms_key_id()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_enable_disable_serial_console_access(self, ec2):
         """EnableSerialConsoleAccess / DisableSerialConsoleAccess."""
-        _assert_ok(ec2.enable_serial_console_access())
-        _assert_ok(ec2.disable_serial_console_access())
+        resp = ec2.enable_serial_console_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = ec2.disable_serial_console_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_modify_instance_metadata_defaults(self, ec2):
         """ModifyInstanceMetadataDefaults."""
@@ -2098,7 +2170,8 @@ class TestEC2SettingsGapCoverage:
 
     def test_delete_spot_datafeed_subscription(self, ec2):
         """DeleteSpotDatafeedSubscription (no-op when none exists)."""
-        _assert_ok(ec2.delete_spot_datafeed_subscription())
+        resp = ec2.delete_spot_datafeed_subscription()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2VPCPeeringGapCoverage:
@@ -2172,19 +2245,17 @@ class TestEC2TransitGatewayGapCoverage:
 
     def test_get_transit_gateway_route_table_associations(self, ec2):
         """GetTransitGatewayRouteTableAssociations (stub)."""
-        _assert_ok(
-            ec2.get_transit_gateway_route_table_associations(
-                TransitGatewayRouteTableId="tgw-rtb-0000"
-            )
+        resp = ec2.get_transit_gateway_route_table_associations(
+            TransitGatewayRouteTableId="tgw-rtb-0000"
         )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_transit_gateway_route_table_propagations(self, ec2):
         """GetTransitGatewayRouteTablePropagations (stub)."""
-        _assert_ok(
-            ec2.get_transit_gateway_route_table_propagations(
-                TransitGatewayRouteTableId="tgw-rtb-0000"
-            )
+        resp = ec2.get_transit_gateway_route_table_propagations(
+            TransitGatewayRouteTableId="tgw-rtb-0000"
         )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2NetworkGapCoverage:
@@ -2302,7 +2373,8 @@ class TestEc2AutoCoverage:
 
     def test_accept_transit_gateway_multicast_domain_associations(self, client):
         """AcceptTransitGatewayMulticastDomainAssociations returns a response."""
-        client.accept_transit_gateway_multicast_domain_associations()
+        resp = client.accept_transit_gateway_multicast_domain_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_import_task(self, client):
         """CancelImportTask with a task ID returns a response (even for unknown IDs)."""
@@ -2311,51 +2383,63 @@ class TestEc2AutoCoverage:
 
     def test_create_instance_event_window(self, client):
         """CreateInstanceEventWindow returns a response."""
-        client.create_instance_event_window()
+        resp = client.create_instance_event_window()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_ipam(self, client):
         """CreateIpam returns a response."""
-        client.create_ipam()
+        resp = client.create_ipam()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_ipam_resource_discovery(self, client):
         """CreateIpamResourceDiscovery returns a response."""
-        client.create_ipam_resource_discovery()
+        resp = client.create_ipam_resource_discovery()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_public_ipv4_pool(self, client):
         """CreatePublicIpv4Pool returns a response."""
-        client.create_public_ipv4_pool()
+        resp = client.create_public_ipv4_pool()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_traffic_mirror_filter(self, client):
         """CreateTrafficMirrorFilter returns a response."""
-        client.create_traffic_mirror_filter()
+        resp = client.create_traffic_mirror_filter()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_traffic_mirror_target(self, client):
         """CreateTrafficMirrorTarget returns a response."""
-        client.create_traffic_mirror_target()
+        resp = client.create_traffic_mirror_target()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_create_verified_access_instance(self, client):
         """CreateVerifiedAccessInstance returns a response."""
-        client.create_verified_access_instance()
+        resp = client.create_verified_access_instance()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_deregister_transit_gateway_multicast_group_members(self, client):
         """DeregisterTransitGatewayMulticastGroupMembers returns a response."""
-        client.deregister_transit_gateway_multicast_group_members()
+        resp = client.deregister_transit_gateway_multicast_group_members()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_deregister_transit_gateway_multicast_group_sources(self, client):
         """DeregisterTransitGatewayMulticastGroupSources returns a response."""
-        client.deregister_transit_gateway_multicast_group_sources()
+        resp = client.deregister_transit_gateway_multicast_group_sources()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_address_transfers(self, client):
         """DescribeAddressTransfers returns a response."""
-        client.describe_address_transfers()
+        resp = client.describe_address_transfers()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_aws_network_performance_metric_subscriptions(self, client):
         """DescribeAwsNetworkPerformanceMetricSubscriptions returns a response."""
-        client.describe_aws_network_performance_metric_subscriptions()
+        resp = client.describe_aws_network_performance_metric_subscriptions()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_capacity_block_extension_history(self, client):
         """DescribeCapacityBlockExtensionHistory returns a response."""
-        client.describe_capacity_block_extension_history()
+        resp = client.describe_capacity_block_extension_history()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_capacity_block_status(self, client):
         """DescribeCapacityBlockStatus returns a response."""
@@ -2364,19 +2448,23 @@ class TestEc2AutoCoverage:
 
     def test_describe_capacity_blocks(self, client):
         """DescribeCapacityBlocks returns a response."""
-        client.describe_capacity_blocks()
+        resp = client.describe_capacity_blocks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_capacity_manager_data_exports(self, client):
         """DescribeCapacityManagerDataExports returns a response."""
-        client.describe_capacity_manager_data_exports()
+        resp = client.describe_capacity_manager_data_exports()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_capacity_reservation_topology(self, client):
         """DescribeCapacityReservationTopology returns a response."""
-        client.describe_capacity_reservation_topology()
+        resp = client.describe_capacity_reservation_topology()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_host_reservation_offerings(self, client):
         """DescribeHostReservationOfferings returns a response."""
-        client.describe_host_reservation_offerings()
+        resp = client.describe_host_reservation_offerings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_iam_instance_profile_associations(self, client):
         """DescribeIamInstanceProfileAssociations returns a response."""
@@ -2385,15 +2473,18 @@ class TestEc2AutoCoverage:
 
     def test_describe_id_format(self, client):
         """DescribeIdFormat returns a response."""
-        client.describe_id_format()
+        resp = client.describe_id_format()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_image_usage_report_entries(self, client):
         """DescribeImageUsageReportEntries returns a response."""
-        client.describe_image_usage_report_entries()
+        resp = client.describe_image_usage_report_entries()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_image_usage_reports(self, client):
         """DescribeImageUsageReports returns a response."""
-        client.describe_image_usage_reports()
+        resp = client.describe_image_usage_reports()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_instance_image_metadata(self, client):
         """DescribeInstanceImageMetadata returns a response."""
@@ -2402,51 +2493,63 @@ class TestEc2AutoCoverage:
 
     def test_describe_instance_sql_ha_history_states(self, client):
         """DescribeInstanceSqlHaHistoryStates returns a response."""
-        client.describe_instance_sql_ha_history_states()
+        resp = client.describe_instance_sql_ha_history_states()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_instance_sql_ha_states(self, client):
         """DescribeInstanceSqlHaStates returns a response."""
-        client.describe_instance_sql_ha_states()
+        resp = client.describe_instance_sql_ha_states()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_mac_modification_tasks(self, client):
         """DescribeMacModificationTasks returns a response."""
-        client.describe_mac_modification_tasks()
+        resp = client.describe_mac_modification_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_outpost_lags(self, client):
         """DescribeOutpostLags returns a response."""
-        client.describe_outpost_lags()
+        resp = client.describe_outpost_lags()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_route_server_endpoints(self, client):
         """DescribeRouteServerEndpoints returns a response."""
-        client.describe_route_server_endpoints()
+        resp = client.describe_route_server_endpoints()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_route_server_peers(self, client):
         """DescribeRouteServerPeers returns a response."""
-        client.describe_route_server_peers()
+        resp = client.describe_route_server_peers()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_route_servers(self, client):
         """DescribeRouteServers returns a response."""
-        client.describe_route_servers()
+        resp = client.describe_route_servers()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_secondary_interfaces(self, client):
         """DescribeSecondaryInterfaces returns a response."""
-        client.describe_secondary_interfaces()
+        resp = client.describe_secondary_interfaces()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_secondary_networks(self, client):
         """DescribeSecondaryNetworks returns a response."""
-        client.describe_secondary_networks()
+        resp = client.describe_secondary_networks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_secondary_subnets(self, client):
         """DescribeSecondarySubnets returns a response."""
-        client.describe_secondary_subnets()
+        resp = client.describe_secondary_subnets()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_security_group_vpc_associations(self, client):
         """DescribeSecurityGroupVpcAssociations returns a response."""
-        client.describe_security_group_vpc_associations()
+        resp = client.describe_security_group_vpc_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_service_link_virtual_interfaces(self, client):
         """DescribeServiceLinkVirtualInterfaces returns a response."""
-        client.describe_service_link_virtual_interfaces()
+        resp = client.describe_service_link_virtual_interfaces()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_transit_gateway_attachments(self, client):
         """DescribeTransitGatewayAttachments returns a response."""
@@ -2465,19 +2568,23 @@ class TestEc2AutoCoverage:
 
     def test_describe_vpc_block_public_access_exclusions(self, client):
         """DescribeVpcBlockPublicAccessExclusions returns a response."""
-        client.describe_vpc_block_public_access_exclusions()
+        resp = client.describe_vpc_block_public_access_exclusions()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_vpc_block_public_access_options(self, client):
         """DescribeVpcBlockPublicAccessOptions returns a response."""
-        client.describe_vpc_block_public_access_options()
+        resp = client.describe_vpc_block_public_access_options()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_vpc_encryption_controls(self, client):
         """DescribeVpcEncryptionControls returns a response."""
-        client.describe_vpc_encryption_controls()
+        resp = client.describe_vpc_encryption_controls()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_vpc_endpoint_associations(self, client):
         """DescribeVpcEndpointAssociations returns a response."""
-        client.describe_vpc_endpoint_associations()
+        resp = client.describe_vpc_endpoint_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_vpc_endpoint_services(self, client):
         """DescribeVpcEndpointServices returns a response."""
@@ -2486,67 +2593,83 @@ class TestEc2AutoCoverage:
 
     def test_describe_vpn_concentrators(self, client):
         """DescribeVpnConcentrators returns a response."""
-        client.describe_vpn_concentrators()
+        resp = client.describe_vpn_concentrators()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disable_allowed_images_settings(self, client):
         """DisableAllowedImagesSettings returns a response."""
-        client.disable_allowed_images_settings()
+        resp = client.disable_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disable_aws_network_performance_metric_subscription(self, client):
         """DisableAwsNetworkPerformanceMetricSubscription returns a response."""
-        client.disable_aws_network_performance_metric_subscription()
+        resp = client.disable_aws_network_performance_metric_subscription()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disable_capacity_manager(self, client):
         """DisableCapacityManager returns a response."""
-        client.disable_capacity_manager()
+        resp = client.disable_capacity_manager()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disable_image_block_public_access(self, client):
         """DisableImageBlockPublicAccess returns a response."""
-        client.disable_image_block_public_access()
+        resp = client.disable_image_block_public_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disable_snapshot_block_public_access(self, client):
         """DisableSnapshotBlockPublicAccess returns a response."""
-        client.disable_snapshot_block_public_access()
+        resp = client.disable_snapshot_block_public_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_enable_aws_network_performance_metric_subscription(self, client):
         """EnableAwsNetworkPerformanceMetricSubscription returns a response."""
-        client.enable_aws_network_performance_metric_subscription()
+        resp = client.enable_aws_network_performance_metric_subscription()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_enable_capacity_manager(self, client):
         """EnableCapacityManager returns a response."""
-        client.enable_capacity_manager()
+        resp = client.enable_capacity_manager()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_enable_reachability_analyzer_organization_sharing(self, client):
         """EnableReachabilityAnalyzerOrganizationSharing returns a response."""
-        client.enable_reachability_analyzer_organization_sharing()
+        resp = client.enable_reachability_analyzer_organization_sharing()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_allowed_images_settings(self, client):
         """GetAllowedImagesSettings returns a response."""
-        client.get_allowed_images_settings()
+        resp = client.get_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_aws_network_performance_data(self, client):
         """GetAwsNetworkPerformanceData returns a response."""
-        client.get_aws_network_performance_data()
+        resp = client.get_aws_network_performance_data()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_capacity_manager_attributes(self, client):
         """GetCapacityManagerAttributes returns a response."""
-        client.get_capacity_manager_attributes()
+        resp = client.get_capacity_manager_attributes()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_enabled_ipam_policy(self, client):
         """GetEnabledIpamPolicy returns a response."""
-        client.get_enabled_ipam_policy()
+        resp = client.get_enabled_ipam_policy()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_import_image(self, client):
         """ImportImage returns a response."""
-        client.import_image()
+        resp = client.import_image()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_import_snapshot(self, client):
         """ImportSnapshot returns a response."""
-        client.import_snapshot()
+        resp = client.import_snapshot()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_reject_transit_gateway_multicast_domain_associations(self, client):
         """RejectTransitGatewayMulticastDomainAssociations returns a response."""
-        client.reject_transit_gateway_multicast_domain_associations()
+        resp = client.reject_transit_gateway_multicast_domain_associations()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_replace_image_criteria_in_allowed_images_settings(self, client):
         """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue=True."""
