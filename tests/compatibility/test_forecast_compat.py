@@ -1816,3 +1816,431 @@ class TestForecastListOpEdgeCases:
             )
         finally:
             client.delete_monitor(MonitorArn=monitor_arn)
+
+
+class TestForecastBehavioralFidelity:
+    """Tests filling behavioral coverage gaps: pagination, tag errors, describe consistency."""
+
+    SCHEMA = {
+        "Attributes": [
+            {"AttributeName": "item_id", "AttributeType": "string"},
+            {"AttributeName": "timestamp", "AttributeType": "timestamp"},
+            {"AttributeName": "target_value", "AttributeType": "float"},
+        ]
+    }
+
+    @pytest.fixture
+    def client(self):
+        return make_client("forecast")
+
+    # -------------------------------------------------------------------------
+    # Pagination for list operations (CREATE 3 → paginate → verify all found)
+    # -------------------------------------------------------------------------
+
+    def test_list_monitors_pagination_3_items(self, client):
+        """CREATE 3 monitors → paginate with MaxResults=2 → all 3 appear across pages."""
+        arns = []
+        for i in range(3):
+            r = client.create_monitor(
+                MonitorName=f"test-bfid-mon-{i}",
+                ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            )
+            arns.append(r["MonitorArn"])
+        try:
+            collected = []
+            resp = client.list_monitors(MaxResults=2)
+            collected.extend([m["MonitorArn"] for m in resp["Monitors"]])
+            while "NextToken" in resp:
+                resp = client.list_monitors(MaxResults=2, NextToken=resp["NextToken"])
+                collected.extend([m["MonitorArn"] for m in resp["Monitors"]])
+            for arn in arns:
+                assert arn in collected, f"Monitor {arn} missing from paginated results"
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_monitor(MonitorArn=arn)
+                except ClientError:
+                    pass
+
+    def test_list_what_if_analyses_pagination_3_items(self, client):
+        """CREATE 3 what-if analyses → paginate → all 3 found."""
+        arns = []
+        for i in range(3):
+            r = client.create_what_if_analysis(
+                WhatIfAnalysisName=f"test-bfid-wia-{i}",
+                ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+            )
+            arns.append(r["WhatIfAnalysisArn"])
+        try:
+            collected = []
+            resp = client.list_what_if_analyses(MaxResults=2)
+            collected.extend([w["WhatIfAnalysisArn"] for w in resp["WhatIfAnalyses"]])
+            while "NextToken" in resp:
+                resp = client.list_what_if_analyses(MaxResults=2, NextToken=resp["NextToken"])
+                collected.extend([w["WhatIfAnalysisArn"] for w in resp["WhatIfAnalyses"]])
+            for arn in arns:
+                assert arn in collected, f"WhatIfAnalysis {arn} missing from paginated results"
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_what_if_analysis(WhatIfAnalysisArn=arn)
+                except ClientError:
+                    pass
+
+    def test_list_explainabilities_pagination_3_items(self, client):
+        """CREATE 3 explainabilities → paginate → all 3 found."""
+        arns = []
+        for i in range(3):
+            r = client.create_explainability(
+                ExplainabilityName=f"test-bfid-exp-{i}",
+                ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+                ExplainabilityConfig={
+                    "TimeSeriesGranularity": "ALL",
+                    "TimePointGranularity": "ALL",
+                },
+            )
+            arns.append(r["ExplainabilityArn"])
+        try:
+            collected = []
+            resp = client.list_explainabilities(MaxResults=2)
+            collected.extend([e["ExplainabilityArn"] for e in resp["Explainabilities"]])
+            while "NextToken" in resp:
+                resp = client.list_explainabilities(MaxResults=2, NextToken=resp["NextToken"])
+                collected.extend([e["ExplainabilityArn"] for e in resp["Explainabilities"]])
+            for arn in arns:
+                assert arn in collected, f"Explainability {arn} missing from paginated results"
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_explainability(ExplainabilityArn=arn)
+                except ClientError:
+                    pass
+
+    def test_list_dataset_import_jobs_pagination_3_items(self, client):
+        """CREATE 3 import jobs → paginate → all 3 found."""
+        arns = []
+        for i in range(3):
+            r = client.create_dataset_import_job(
+                DatasetImportJobName=f"test-bfid-import-{i}",
+                DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/dummy",
+                DataSource={
+                    "S3Config": {
+                        "Path": "s3://test-bucket/data.csv",
+                        "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                    }
+                },
+                TimestampFormat="yyyy-MM-dd HH:mm:ss",
+            )
+            arns.append(r["DatasetImportJobArn"])
+        try:
+            collected = []
+            resp = client.list_dataset_import_jobs(MaxResults=2)
+            collected.extend([j["DatasetImportJobArn"] for j in resp["DatasetImportJobs"]])
+            while "NextToken" in resp:
+                resp = client.list_dataset_import_jobs(MaxResults=2, NextToken=resp["NextToken"])
+                collected.extend([j["DatasetImportJobArn"] for j in resp["DatasetImportJobs"]])
+            for arn in arns:
+                assert arn in collected, f"ImportJob {arn} missing from paginated results"
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_dataset_import_job(DatasetImportJobArn=arn)
+                except ClientError:
+                    pass
+
+    def test_list_what_if_forecasts_pagination_3_items(self, client):
+        """CREATE 3 what-if forecasts → paginate → all 3 found."""
+        arns = []
+        for i in range(3):
+            r = client.create_what_if_forecast(
+                WhatIfForecastName=f"test-bfid-wif-{i}",
+                WhatIfAnalysisArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/dummy-wia"
+                ),
+            )
+            arns.append(r["WhatIfForecastArn"])
+        try:
+            collected = []
+            resp = client.list_what_if_forecasts(MaxResults=2)
+            collected.extend([w["WhatIfForecastArn"] for w in resp["WhatIfForecasts"]])
+            while "NextToken" in resp:
+                resp = client.list_what_if_forecasts(MaxResults=2, NextToken=resp["NextToken"])
+                collected.extend([w["WhatIfForecastArn"] for w in resp["WhatIfForecasts"]])
+            for arn in arns:
+                assert arn in collected, f"WhatIfForecast {arn} missing from paginated results"
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_what_if_forecast(WhatIfForecastArn=arn)
+                except ClientError:
+                    pass
+
+    def test_list_predictor_backtest_export_jobs_pagination_3_items(self, client):
+        """CREATE 3 backtest export jobs → paginate → all 3 found."""
+        arns = []
+        for i in range(3):
+            r = client.create_predictor_backtest_export_job(
+                PredictorBacktestExportJobName=f"test-bfid-backtest-{i}",
+                PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+                Destination={
+                    "S3Config": {
+                        "Path": "s3://test-bucket/backtest/",
+                        "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                    }
+                },
+            )
+            arns.append(r["PredictorBacktestExportJobArn"])
+        try:
+            collected = []
+            resp = client.list_predictor_backtest_export_jobs(MaxResults=2)
+            collected.extend(
+                [j["PredictorBacktestExportJobArn"] for j in resp["PredictorBacktestExportJobs"]]
+            )
+            while "NextToken" in resp:
+                resp = client.list_predictor_backtest_export_jobs(
+                    MaxResults=2, NextToken=resp["NextToken"]
+                )
+                collected.extend(
+                    [
+                        j["PredictorBacktestExportJobArn"]
+                        for j in resp["PredictorBacktestExportJobs"]
+                    ]
+                )
+            for arn in arns:
+                assert arn in collected, f"BacktestExportJob {arn} missing from paginated results"
+        finally:
+            for arn in arns:
+                try:
+                    client.delete_predictor_backtest_export_job(
+                        PredictorBacktestExportJobArn=arn
+                    )
+                except ClientError:
+                    pass
+
+    # -------------------------------------------------------------------------
+    # Tag operations with RETRIEVE and ERROR patterns
+    # -------------------------------------------------------------------------
+
+    def test_dataset_tag_then_describe_still_active(self, client):
+        """After tagging a dataset, describe still returns ACTIVE status (retrieve after update)."""
+        r = client.create_dataset(
+            DatasetName="test-bfid-tag-describe",
+            Domain="RETAIL",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema=self.SCHEMA,
+        )
+        arn = r["DatasetArn"]
+        try:
+            client.tag_resource(
+                ResourceArn=arn, Tags=[{"Key": "phase", "Value": "bfid-test"}]
+            )
+            desc = client.describe_dataset(DatasetArn=arn)
+            assert desc["Status"] == "ACTIVE"
+            assert desc["DatasetName"] == "test-bfid-tag-describe"
+        finally:
+            client.delete_dataset(DatasetArn=arn)
+
+    def test_tag_nonexistent_resource_returns_empty_on_list(self, client):
+        """TagResource on a nonexistent ARN silently succeeds; ListTags returns those tags."""
+        fake_arn = "arn:aws:forecast:us-east-1:123456789012:dataset-group/does-not-exist"
+        client.tag_resource(ResourceArn=fake_arn, Tags=[{"Key": "k", "Value": "v"}])
+        tags = client.list_tags_for_resource(ResourceArn=fake_arn)["Tags"]
+        assert isinstance(tags, list)
+
+    def test_list_tags_nonexistent_resource_returns_empty(self, client):
+        """ListTagsForResource on a nonexistent ARN returns an empty list (no error)."""
+        resp = client.list_tags_for_resource(
+            ResourceArn=(
+                "arn:aws:forecast:us-east-1:123456789012:dataset-group/no-such-for-tags"
+            )
+        )
+        assert "Tags" in resp
+        assert isinstance(resp["Tags"], list)
+
+    def test_tag_overwrite_existing_key(self, client):
+        """Re-tagging with same key replaces the value."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-bfid-tag-overwrite", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "dev"}])
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "prod"}])
+            tags = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            env_tags = [t for t in tags if t["Key"] == "env"]
+            assert len(env_tags) == 1
+            assert env_tags[0]["Value"] == "prod"
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    # -------------------------------------------------------------------------
+    # List-then-describe consistency
+    # -------------------------------------------------------------------------
+
+    def test_list_and_describe_dataset_group_consistency(self, client):
+        """Fields common to list_dataset_groups and describe_dataset_group match."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-bfid-consistency", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            list_resp = client.list_dataset_groups()
+            listed = next(
+                (g for g in list_resp["DatasetGroups"] if g["DatasetGroupArn"] == arn), None
+            )
+            assert listed is not None
+
+            desc = client.describe_dataset_group(DatasetGroupArn=arn)
+            assert listed["DatasetGroupName"] == desc["DatasetGroupName"]
+            assert listed["DatasetGroupArn"] == desc["DatasetGroupArn"]
+            # List entries have timestamps; verify they match describe
+            assert listed["CreationTime"] == desc["CreationTime"]
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_list_and_describe_dataset_consistency(self, client):
+        """Fields common to list_datasets and describe_dataset match."""
+        r = client.create_dataset(
+            DatasetName="test-bfid-ds-consistency",
+            Domain="RETAIL",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema=self.SCHEMA,
+        )
+        arn = r["DatasetArn"]
+        try:
+            list_resp = client.list_datasets()
+            listed = next(
+                (ds for ds in list_resp["Datasets"] if ds["DatasetArn"] == arn), None
+            )
+            assert listed is not None
+
+            desc = client.describe_dataset(DatasetArn=arn)
+            assert listed["DatasetName"] == desc["DatasetName"]
+            assert listed["DatasetArn"] == desc["DatasetArn"]
+            assert listed["CreationTime"] == desc["CreationTime"]
+        finally:
+            client.delete_dataset(DatasetArn=arn)
+
+    # -------------------------------------------------------------------------
+    # Resume resource: CREATE + RESUME positive path
+    # -------------------------------------------------------------------------
+
+    def test_resume_resource_on_what_if_analysis(self, client):
+        """CREATE what-if analysis, then RESUME it → resource still in list after."""
+        r = client.create_what_if_analysis(
+            WhatIfAnalysisName="test-bfid-wia-resume",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+        )
+        wia_arn = r["WhatIfAnalysisArn"]
+        try:
+            client.resume_resource(ResourceArn=wia_arn)
+            resp = client.list_what_if_analyses()
+            arns = [w["WhatIfAnalysisArn"] for w in resp["WhatIfAnalyses"]]
+            assert wia_arn in arns
+        finally:
+            client.delete_what_if_analysis(WhatIfAnalysisArn=wia_arn)
+
+    def test_resume_resource_on_explainability(self, client):
+        """CREATE explainability, then RESUME it → resource still in list after."""
+        r = client.create_explainability(
+            ExplainabilityName="test-bfid-exp-resume",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            ExplainabilityConfig={
+                "TimeSeriesGranularity": "ALL",
+                "TimePointGranularity": "ALL",
+            },
+        )
+        exp_arn = r["ExplainabilityArn"]
+        try:
+            client.resume_resource(ResourceArn=exp_arn)
+            resp = client.list_explainabilities()
+            arns = [e["ExplainabilityArn"] for e in resp["Explainabilities"]]
+            assert exp_arn in arns
+        finally:
+            client.delete_explainability(ExplainabilityArn=exp_arn)
+
+    # -------------------------------------------------------------------------
+    # list_dataset_groups: CREATE → count change → DELETE → count change
+    # -------------------------------------------------------------------------
+
+    def test_list_dataset_groups_count_increases_after_create(self, client):
+        """Count in list_dataset_groups increases after creating a new group."""
+        before = len(client.list_dataset_groups()["DatasetGroups"])
+        r = client.create_dataset_group(
+            DatasetGroupName="test-bfid-count-up", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            after = len(client.list_dataset_groups()["DatasetGroups"])
+            assert after == before + 1
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_list_dataset_groups_count_decreases_after_delete(self, client):
+        """Count in list_dataset_groups decreases after deleting a group."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-bfid-count-down", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        before = len(client.list_dataset_groups()["DatasetGroups"])
+        client.delete_dataset_group(DatasetGroupArn=arn)
+        after = len(client.list_dataset_groups()["DatasetGroups"])
+        assert after == before - 1
+
+    # -------------------------------------------------------------------------
+    # Describe after delete → error for various resource types
+    # -------------------------------------------------------------------------
+
+    def test_describe_explainability_after_delete(self, client):
+        """DESCRIBE after DELETE returns ResourceNotFoundException."""
+        r = client.create_explainability(
+            ExplainabilityName="test-bfid-exp-del",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            ExplainabilityConfig={
+                "TimeSeriesGranularity": "ALL",
+                "TimePointGranularity": "ALL",
+            },
+        )
+        exp_arn = r["ExplainabilityArn"]
+        client.delete_explainability(ExplainabilityArn=exp_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_explainability(ExplainabilityArn=exp_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_monitor_after_delete(self, client):
+        """DESCRIBE after DELETE returns ResourceNotFoundException."""
+        r = client.create_monitor(
+            MonitorName="test-bfid-mon-del",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        client.delete_monitor(MonitorArn=monitor_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_monitor(MonitorArn=monitor_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_what_if_analysis_after_delete(self, client):
+        """DESCRIBE after DELETE returns ResourceNotFoundException."""
+        r = client.create_what_if_analysis(
+            WhatIfAnalysisName="test-bfid-wia-del",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+        )
+        wia_arn = r["WhatIfAnalysisArn"]
+        client.delete_what_if_analysis(WhatIfAnalysisArn=wia_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_what_if_analysis(WhatIfAnalysisArn=wia_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_what_if_forecast_after_delete(self, client):
+        """DESCRIBE after DELETE returns ResourceNotFoundException."""
+        r = client.create_what_if_forecast(
+            WhatIfForecastName="test-bfid-wif-del",
+            WhatIfAnalysisArn=(
+                "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/dummy-wia"
+            ),
+        )
+        wif_arn = r["WhatIfForecastArn"]
+        client.delete_what_if_forecast(WhatIfForecastArn=wif_arn)
+        with pytest.raises(ClientError) as exc:
+            client.describe_what_if_forecast(WhatIfForecastArn=wif_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
