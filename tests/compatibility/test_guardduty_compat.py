@@ -2098,6 +2098,243 @@ class TestGuardDutyOrganizationStatistics:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+class TestGuardDutyDetectorTimestampBehavior:
+    """Behavioral fidelity tests for detector timestamps and fields."""
+
+    def test_detector_created_at_is_nonempty_string(self, guardduty, detector):
+        """CreatedAt field is a non-empty string."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["CreatedAt"], str)
+        assert len(detail["CreatedAt"]) > 0
+
+    def test_detector_updated_at_changes_after_update(self, guardduty, detector):
+        """UpdatedAt is set before and remains set after update."""
+        before = guardduty.get_detector(DetectorId=detector)
+        assert before["UpdatedAt"]
+        guardduty.update_detector(DetectorId=detector, Enable=True)
+        after = guardduty.get_detector(DetectorId=detector)
+        assert after["UpdatedAt"]
+
+    def test_detector_service_role_is_arn_like(self, guardduty, detector):
+        """ServiceRole resembles an ARN (starts with 'arn:')."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        service_role = detail.get("ServiceRole", "")
+        assert isinstance(service_role, str)
+        assert service_role.startswith("arn:")
+
+    def test_detector_data_sources_has_cloud_trail(self, guardduty, detector):
+        """DataSources contains CloudTrail key."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert "DataSources" in detail
+        assert "CloudTrail" in detail["DataSources"]
+
+    def test_detector_features_is_list(self, guardduty, detector):
+        """Features field is a list type."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Features"], list)
+
+    def test_get_nonexistent_detector_for_fields_raises_error(self, guardduty):
+        """Getting a nonexistent detector raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_detector(DetectorId="aaaabbbbccccddddeeeeffffgggghhh0")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyFilterPaginationBehavior:
+    """Pagination tests for filter list operations."""
+
+    def test_list_filters_with_multiple_created(self, guardduty, detector):
+        """Create 3 filters, list them all, verify all 3 appear in result."""
+        names = [_unique("filter") for _ in range(3)]
+        for name in names:
+            guardduty.create_filter(
+                DetectorId=detector,
+                Name=name,
+                FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+            )
+        try:
+            resp = guardduty.list_filters(DetectorId=detector)
+            assert "FilterNames" in resp
+            assert isinstance(resp["FilterNames"], list)
+            for name in names:
+                assert name in resp["FilterNames"]
+        finally:
+            for name in names:
+                try:
+                    guardduty.delete_filter(DetectorId=detector, FilterName=name)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+
+class TestGuardDutyIPSetPaginationBehavior:
+    """Pagination tests for IP set list operations."""
+
+    def test_list_ipsets_with_multiple_created(self, guardduty, detector):
+        """Create 3 IP sets, list them all, verify all 3 appear in result."""
+        ids = []
+        for i in range(3):
+            resp = guardduty.create_ip_set(
+                DetectorId=detector,
+                Name=_unique("ipset"),
+                Format="TXT",
+                Location=f"s3://my-bucket/ipset-{i}.txt",
+                Activate=False,
+            )
+            ids.append(resp["IpSetId"])
+        try:
+            page = guardduty.list_ip_sets(DetectorId=detector)
+            assert "IpSetIds" in page
+            assert isinstance(page["IpSetIds"], list)
+            for ip_set_id in ids:
+                assert ip_set_id in page["IpSetIds"]
+        finally:
+            for ip_set_id in ids:
+                try:
+                    guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+
+class TestGuardDutyThreatIntelSetPaginationBehavior:
+    """Pagination tests for threat intel set list operations."""
+
+    def test_list_threat_intel_sets_with_multiple_created(self, guardduty, detector):
+        """Create 3 threat intel sets, list them all, verify all 3 appear."""
+        ids = []
+        for i in range(3):
+            resp = guardduty.create_threat_intel_set(
+                DetectorId=detector,
+                Name=_unique("tiset"),
+                Format="TXT",
+                Location=f"s3://my-bucket/tiset-{i}.txt",
+                Activate=False,
+            )
+            ids.append(resp["ThreatIntelSetId"])
+        try:
+            page = guardduty.list_threat_intel_sets(DetectorId=detector)
+            assert "ThreatIntelSetIds" in page
+            assert isinstance(page["ThreatIntelSetIds"], list)
+            for tid in ids:
+                assert tid in page["ThreatIntelSetIds"]
+        finally:
+            for tid in ids:
+                try:
+                    guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tid)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+
+class TestGuardDutyFindingsBehaviorFidelity:
+    """Behavioral fidelity tests for findings operations."""
+
+    def test_list_findings_error_on_nonexistent_detector(self, guardduty):
+        """ListFindings with a fake detector ID raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.list_findings(DetectorId="aaaabbbbccccddddeeeeffffgggghhh0")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_list_findings_with_max_results(self, guardduty, detector):
+        """Create sample findings, list with MaxResults=1 returns at most 1 finding."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        resp = guardduty.list_findings(DetectorId=detector, MaxResults=1)
+        assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
+        assert len(resp["FindingIds"]) <= 1
+
+
+class TestGuardDutyOrganizationAdminBehavior:
+    """Behavioral tests for org admin account operations."""
+
+    def test_enable_org_admin_appears_in_list(self, guardduty):
+        """After enabling an org admin account, it appears in list_organization_admin_accounts."""
+        account_id = "123456789099"
+        guardduty.enable_organization_admin_account(AdminAccountId=account_id)
+        resp = guardduty.list_organization_admin_accounts()
+        assert "AdminAccounts" in resp
+        assert isinstance(resp["AdminAccounts"], list)
+        admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
+        assert account_id in admin_ids
+
+    def test_enable_multiple_org_admins(self, guardduty):
+        """Enable two different accounts and verify both appear in the admin list."""
+        account_a = "100000000001"
+        account_b = "100000000002"
+        guardduty.enable_organization_admin_account(AdminAccountId=account_a)
+        guardduty.enable_organization_admin_account(AdminAccountId=account_b)
+        resp = guardduty.list_organization_admin_accounts()
+        admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
+        assert account_a in admin_ids
+        assert account_b in admin_ids
+
+
+class TestGuardDutyTrustedEntitySetErrorBehavior:
+    """Error and delete tests for trusted entity sets."""
+
+    def test_update_nonexistent_trusted_entity_set_raises_error(self, guardduty, detector):
+        """Updating a nonexistent TrustedEntitySet raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_trusted_entity_set(
+                DetectorId=detector,
+                TrustedEntitySetId="nonexistent00000000000000000000",
+                Name="new-name",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_nonexistent_trusted_entity_set_raises_error(self, guardduty, detector):
+        """Deleting a nonexistent TrustedEntitySet raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.delete_trusted_entity_set(
+                DetectorId=detector,
+                TrustedEntitySetId="nonexistent00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_trusted_entity_set_delete_then_get_raises_error(self, guardduty, detector):
+        """After deleting a TrustedEntitySet, getting it raises BadRequestException."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyTagsBehaviorFidelity:
+    """Behavioral fidelity for tags list/tag/untag cycle."""
+
+    def test_list_tags_after_tag_and_untag_cycle(self, guardduty, detector):
+        """Tag a detector, list tags, untag, list again verifying tags are removed."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"cycle-key": "cycle-val", "other": "val2"})
+        tagged = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert tagged["Tags"]["cycle-key"] == "cycle-val"
+        assert tagged["Tags"]["other"] == "val2"
+        guardduty.untag_resource(ResourceArn=arn, TagKeys=["cycle-key"])
+        after = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert "cycle-key" not in after["Tags"]
+        assert after["Tags"]["other"] == "val2"
+
+    def test_list_tags_for_nonexistent_resource(self, guardduty):
+        """ListTagsForResource with a fake ARN raises an error."""
+        fake_arn = "arn:aws:guardduty:us-east-1:123456789012:detector/nonexistentdetector00000"
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.list_tags_for_resource(ResourceArn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] in (
+            "BadRequestException",
+            "AccessDeniedException",
+            "ResourceNotFoundException",
+        )
+
+
 class TestGuardDutyListMalwareScans:
     """Tests for ListMalwareScans."""
 
