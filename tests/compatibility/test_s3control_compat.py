@@ -481,10 +481,14 @@ class TestS3ControlAccessPoints:
 
     def test_list_access_points_empty(self, s3control):
         """ListAccessPoints returns empty list when no access points exist for a bucket."""
-        resp = s3control.list_access_points(
-            AccountId=ACCOUNT_ID, Bucket=f"nonexistent-bucket-{_uid()}"
-        )
+        nonexistent = f"nonexistent-bucket-{_uid()}"
+        resp = s3control.list_access_points(AccountId=ACCOUNT_ID, Bucket=nonexistent)
         assert resp["AccessPointList"] == []
+        assert isinstance(resp["AccessPointList"], list)
+        # Attempting to get an access point from a nonexistent AP name also errors
+        with pytest.raises(ClientError) as exc:
+            s3control.get_access_point(AccountId=ACCOUNT_ID, Name=f"no-ap-{_uid()}")
+        assert exc.value.response["Error"]["Code"] == "NoSuchAccessPoint"
 
     def test_create_multiple_access_points_same_bucket(self, s3control, s3):
         """Multiple access points can be created for the same bucket."""
@@ -525,8 +529,13 @@ class TestS3ControlAccessPoints:
 
     def test_delete_access_point_idempotent(self, s3control):
         """DeleteAccessPoint for nonexistent name succeeds (idempotent)."""
-        resp = s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=f"nonexistent-{_uid()}")
+        name = f"nonexistent-{_uid()}"
+        resp = s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=name)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # Verify the access point truly doesn't exist after deletion
+        with pytest.raises(ClientError) as exc:
+            s3control.get_access_point(AccountId=ACCOUNT_ID, Name=name)
+        assert exc.value.response["Error"]["Code"] == "NoSuchAccessPoint"
 
     def test_list_access_points_pagination_next_token(self, s3control, s3):
         """ListAccessPoints paginates correctly with NextToken."""
@@ -2031,6 +2040,10 @@ class TestS3ControlAccessPointDeepLifecycle:
         ap_name = f"ap-delpol-{_uid()}"
         try:
             s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            # Verify the AP appears in the list
+            list_resp = s3control.list_access_points(AccountId=ACCOUNT_ID, Bucket=bucket)
+            listed_names = [ap["Name"] for ap in list_resp["AccessPointList"]]
+            assert ap_name in listed_names
             policy = json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -2594,6 +2607,15 @@ class TestS3ControlMRAPRoutes:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify routes are accessible after submit
+        routes_resp = s3control.get_multi_region_access_point_routes(
+            AccountId=ACCOUNT_ID, Mrap=mrap_name
+        )
+        assert "Routes" in routes_resp
+        assert isinstance(routes_resp["Routes"], list)
+        assert len(routes_resp["Routes"]) >= 1
+        route_buckets = [r["Bucket"] for r in routes_resp["Routes"]]
+        assert bucket in route_buckets
 
     def test_get_mrap_routes_not_found(self, s3control):
         """GetMultiRegionAccessPointRoutes for nonexistent MRAP raises error."""
@@ -3683,16 +3705,43 @@ class TestS3ControlIdentityCenterAndNewStubs:
 
     def test_associate_access_grants_identity_center(self, client):
         """AssociateAccessGrantsIdentityCenter returns 200."""
-        resp = client.associate_access_grants_identity_center(
-            AccountId=self.ACCOUNT_ID,
-            IdentityCenterArn="arn:aws:sso:::instance/ssoins-test",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            client.create_access_grants_instance(AccountId=self.ACCOUNT_ID)
+        except ClientError:
+            pass  # may already exist
+        try:
+            resp = client.associate_access_grants_identity_center(
+                AccountId=self.ACCOUNT_ID,
+                IdentityCenterArn="arn:aws:sso:::instance/ssoins-test",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify instance remains accessible after association
+            instance = client.get_access_grants_instance(AccountId=self.ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in instance
+            assert "AccessGrantsInstanceId" in instance
+        finally:
+            try:
+                client.delete_access_grants_instance(AccountId=self.ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
 
     def test_dissociate_access_grants_identity_center(self, client):
         """DissociateAccessGrantsIdentityCenter returns 200."""
-        resp = client.dissociate_access_grants_identity_center(AccountId=self.ACCOUNT_ID)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            client.create_access_grants_instance(AccountId=self.ACCOUNT_ID)
+        except ClientError:
+            pass  # may already exist
+        try:
+            resp = client.dissociate_access_grants_identity_center(AccountId=self.ACCOUNT_ID)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify instance still accessible after dissociation
+            instance = client.get_access_grants_instance(AccountId=self.ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in instance
+        finally:
+            try:
+                client.delete_access_grants_instance(AccountId=self.ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
 
     def test_get_data_access(self, client):
         """GetDataAccess returns 200."""
@@ -3850,19 +3899,45 @@ class TestS3ControlEdgeCases:
 
     def test_associate_dissociate_identity_center_roundtrip(self, client):
         """Associate then dissociate identity center succeeds."""
-        resp = client.associate_access_grants_identity_center(
-            AccountId=ACCOUNT_ID,
-            IdentityCenterArn="arn:aws:sso:::instance/ssoins-test123",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        # Dissociate should also succeed
-        resp2 = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
-        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            client.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            pass  # may already exist
+        try:
+            resp = client.associate_access_grants_identity_center(
+                AccountId=ACCOUNT_ID,
+                IdentityCenterArn="arn:aws:sso:::instance/ssoins-test123",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify instance accessible after association
+            instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in instance
+            # Dissociate should also succeed
+            resp2 = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
+            assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            try:
+                client.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
 
     def test_dissociate_identity_center_idempotent(self, client):
         """DissociateAccessGrantsIdentityCenter succeeds even if not associated."""
-        resp = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            client.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        except ClientError:
+            pass  # may already exist
+        try:
+            resp = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify instance still accessible (dissociate doesn't delete the instance)
+            instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in instance
+        finally:
+            try:
+                client.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
 
     # ── List Access Points empty response fields ──────────────────────────────
 
@@ -4309,6 +4384,13 @@ class TestS3ControlMRAPRoutesEdgeCases:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify routes are accessible after submit
+        routes_resp = client.get_multi_region_access_point_routes(
+            AccountId=ACCOUNT_ID, Mrap=mrap_name
+        )
+        assert "Routes" in routes_resp
+        route_buckets = [r["Bucket"] for r in routes_resp["Routes"]]
+        assert bucket in route_buckets
 
     def test_submit_routes_then_get_has_route_entry(self, client, mrap):
         """After SubmitRoutes, GetRoutes returns a list with the bucket."""
@@ -4357,6 +4439,13 @@ class TestS3ControlMRAPRoutesEdgeCases:
             ],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify routes are still accessible after submit with 0%
+        routes_resp = client.get_multi_region_access_point_routes(
+            AccountId=ACCOUNT_ID, Mrap=mrap_name
+        )
+        assert "Routes" in routes_resp
+        route_buckets = [r["Bucket"] for r in routes_resp["Routes"]]
+        assert bucket in route_buckets
 
     def test_get_routes_not_found_error(self, client):
         """GetRoutes for nonexistent MRAP raises NoSuchMultiRegionAccessPoint."""
@@ -4395,6 +4484,10 @@ class TestS3ControlIdentityCenterBehavior:
             IdentityCenterArn="arn:aws:sso:::instance/ssoins-abc123",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify instance is still accessible after association
+        instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceArn" in instance
+        assert "CreatedAt" in instance
 
     def test_associate_identity_center_different_arns(self, client):
         """Associating a different IdentityCenterArn replaces the old one."""
@@ -4402,11 +4495,17 @@ class TestS3ControlIdentityCenterBehavior:
             AccountId=ACCOUNT_ID,
             IdentityCenterArn="arn:aws:sso:::instance/ssoins-first",
         )
+        # Verify instance accessible after first association
+        instance1 = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceArn" in instance1
         resp = client.associate_access_grants_identity_center(
             AccountId=ACCOUNT_ID,
             IdentityCenterArn="arn:aws:sso:::instance/ssoins-second",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify instance still accessible after second association
+        instance2 = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert instance2["AccessGrantsInstanceArn"] == instance1["AccessGrantsInstanceArn"]
 
     def test_dissociate_identity_center_after_associate(self, client):
         """Dissociate succeeds after associate."""
@@ -4416,6 +4515,9 @@ class TestS3ControlIdentityCenterBehavior:
         )
         resp = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Instance should still be accessible after dissociation
+        instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceArn" in instance
 
     def test_dissociate_without_prior_associate_is_ok(self, client):
         """Dissociate when never associated returns 200 (idempotent)."""
@@ -4427,6 +4529,9 @@ class TestS3ControlIdentityCenterBehavior:
         # Dissociate again
         resp = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Instance should still be accessible
+        instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceId" in instance
 
     def test_associate_roundtrip_dissociate(self, client):
         """Associate then dissociate completes successfully."""
@@ -4435,6 +4540,9 @@ class TestS3ControlIdentityCenterBehavior:
             IdentityCenterArn="arn:aws:sso:::instance/ssoins-rt",
         )
         assert assoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify instance accessible between operations
+        instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceArn" in instance
         dissoc_resp = client.dissociate_access_grants_identity_center(AccountId=ACCOUNT_ID)
         assert dissoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -4446,6 +4554,9 @@ class TestS3ControlIdentityCenterBehavior:
             IdentityCenterArn=arn,
         )
         assert resp1["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Verify instance accessible after first association
+        instance = client.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceArn" in instance
         resp2 = client.associate_access_grants_identity_center(
             AccountId=ACCOUNT_ID,
             IdentityCenterArn=arn,
