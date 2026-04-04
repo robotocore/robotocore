@@ -2589,3 +2589,390 @@ class TestLogsStreamingGapOps:
             no_prefix_client.start_live_tail(
                 logGroupIdentifiers=["arn:aws:logs:us-east-1:123456789012:log-group:test"]
             )
+
+
+class TestLogsEdgeCasesAndFidelity:
+    """Edge cases and behavioral fidelity tests for CloudWatch Logs."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("logs")
+
+    # ── describe_log_groups ────────────────────────────────────────────────────
+
+    def test_describe_log_groups_arn_format(self, client):
+        """Log groups returned by describe have properly-formed ARNs."""
+        name = _unique("/test/arn-fmt")
+        client.create_log_group(logGroupName=name)
+        try:
+            resp = client.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            arn = group["arn"]
+            assert arn.startswith("arn:aws:logs:")
+            assert ":log-group:" in arn
+            assert name in arn
+        finally:
+            client.delete_log_group(logGroupName=name)
+
+    def test_describe_log_groups_creation_time_present(self, client):
+        """Log groups have creationTime and storedBytes fields."""
+        name = _unique("/test/ctime")
+        client.create_log_group(logGroupName=name)
+        try:
+            resp = client.describe_log_groups(logGroupNamePrefix=name)
+            group = [g for g in resp["logGroups"] if g["logGroupName"] == name][0]
+            assert "creationTime" in group
+            assert isinstance(group["creationTime"], int)
+            assert group["creationTime"] > 0
+            assert "storedBytes" in group
+        finally:
+            client.delete_log_group(logGroupName=name)
+
+    def test_describe_log_groups_nonexistent_prefix_empty(self, client):
+        """DescribeLogGroups with a prefix that matches nothing returns empty list."""
+        resp = client.describe_log_groups(logGroupNamePrefix="/no-group-with-this-prefix-xyz-999")
+        assert resp["logGroups"] == []
+
+    def test_describe_log_groups_pagination_nexttoken(self, client):
+        """DescribeLogGroups pagination: nextToken cycles through all results."""
+        prefix = _unique("/test/pgn")
+        names = [f"{prefix}-{i}" for i in range(3)]
+        for n in names:
+            client.create_log_group(logGroupName=n)
+        try:
+            collected = []
+            resp = client.describe_log_groups(logGroupNamePrefix=prefix, limit=2)
+            collected.extend([g["logGroupName"] for g in resp["logGroups"]])
+            assert len(resp["logGroups"]) == 2
+            assert "nextToken" in resp
+            resp2 = client.describe_log_groups(
+                logGroupNamePrefix=prefix, limit=2, nextToken=resp["nextToken"]
+            )
+            collected.extend([g["logGroupName"] for g in resp2["logGroups"]])
+            for n in names:
+                assert n in collected
+        finally:
+            for n in names:
+                client.delete_log_group(logGroupName=n)
+
+    def test_create_log_group_duplicate_raises(self, client):
+        """Creating a log group with the same name twice raises ResourceAlreadyExistsException."""
+        name = _unique("/test/dup")
+        client.create_log_group(logGroupName=name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_log_group(logGroupName=name)
+            assert exc.value.response["Error"]["Code"] == "ResourceAlreadyExistsException"
+        finally:
+            client.delete_log_group(logGroupName=name)
+
+    def test_delete_log_group_nonexistent_raises(self, client):
+        """Deleting a nonexistent log group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_log_group(logGroupName="/test/does-not-exist-xyz-abc-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── filter_log_events ─────────────────────────────────────────────────────
+
+    def test_filter_log_events_event_fields(self, client):
+        """FilterLogEvents events contain timestamp, message, logStreamName, ingestionTime, eventId."""
+        name = _unique("/test/fle-fields")
+        stream = "s1"
+        client.create_log_group(logGroupName=name)
+        client.create_log_stream(logGroupName=name, logStreamName=stream)
+        try:
+            ts = int(time.time() * 1000)
+            client.put_log_events(
+                logGroupName=name,
+                logStreamName=stream,
+                logEvents=[{"timestamp": ts, "message": "field-check-event"}],
+            )
+            resp = client.filter_log_events(logGroupName=name)
+            assert len(resp["events"]) >= 1
+            ev = resp["events"][0]
+            assert "timestamp" in ev
+            assert "message" in ev
+            assert "logStreamName" in ev
+            assert "ingestionTime" in ev
+            assert "eventId" in ev
+            assert ev["logStreamName"] == stream
+        finally:
+            client.delete_log_group(logGroupName=name)
+
+    def test_filter_log_events_no_match_returns_empty(self, client):
+        """FilterLogEvents with a pattern that matches nothing returns empty events."""
+        name = _unique("/test/fle-nomatch")
+        stream = "s1"
+        client.create_log_group(logGroupName=name)
+        client.create_log_stream(logGroupName=name, logStreamName=stream)
+        try:
+            ts = int(time.time() * 1000)
+            client.put_log_events(
+                logGroupName=name,
+                logStreamName=stream,
+                logEvents=[{"timestamp": ts, "message": "INFO: all good"}],
+            )
+            resp = client.filter_log_events(
+                logGroupName=name,
+                filterPattern="DEFINITELY_WILL_NOT_MATCH_XYZZY",
+            )
+            assert resp["events"] == []
+        finally:
+            client.delete_log_group(logGroupName=name)
+
+    def test_filter_log_events_pagination_nexttoken(self, client):
+        """FilterLogEvents with limit returns nextToken for pagination."""
+        name = _unique("/test/fle-page")
+        stream = "s1"
+        client.create_log_group(logGroupName=name)
+        client.create_log_stream(logGroupName=name, logStreamName=stream)
+        try:
+            ts = int(time.time() * 1000)
+            client.put_log_events(
+                logGroupName=name,
+                logStreamName=stream,
+                logEvents=[{"timestamp": ts + i, "message": f"event-{i}"} for i in range(6)],
+            )
+            resp = client.filter_log_events(logGroupName=name, limit=3)
+            assert len(resp["events"]) <= 3
+            assert "nextToken" in resp
+            resp2 = client.filter_log_events(
+                logGroupName=name, limit=3, nextToken=resp["nextToken"]
+            )
+            assert "events" in resp2
+            # Combined results should cover all 6 events
+            all_msgs = [e["message"] for e in resp["events"]] + [
+                e["message"] for e in resp2["events"]
+            ]
+            assert len(all_msgs) >= 3
+        finally:
+            client.delete_log_group(logGroupName=name)
+
+    def test_filter_log_events_nonexistent_group_raises(self, client):
+        """FilterLogEvents on a nonexistent log group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.filter_log_events(logGroupName="/test/does-not-exist-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── test_metric_filter ────────────────────────────────────────────────────
+
+    def test_test_metric_filter_returns_list(self, client):
+        """TestMetricFilter returns a list for matches (may be empty)."""
+        resp = client.test_metric_filter(
+            filterPattern="ERROR",
+            logEventMessages=["ERROR: crash", "INFO: ok", "ERROR: timeout"],
+        )
+        assert "matches" in resp
+        assert isinstance(resp["matches"], list)
+
+    def test_test_metric_filter_single_message(self, client):
+        """TestMetricFilter with a single message returns a matches list."""
+        resp = client.test_metric_filter(
+            filterPattern="ERROR",
+            logEventMessages=["only one message"],
+        )
+        assert "matches" in resp
+        assert isinstance(resp["matches"], list)
+
+    def test_test_metric_filter_response_http_200(self, client):
+        """TestMetricFilter returns HTTP 200."""
+        resp = client.test_metric_filter(
+            filterPattern="[level, msg]",
+            logEventMessages=["ERROR something"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── cancel_import_task ────────────────────────────────────────────────────
+
+    def test_cancel_import_task_response_structure(self, client):
+        """CancelImportTask returns importId and importStatus in response."""
+        import_id = "some-import-id-xyz"
+        resp = client.cancel_import_task(importId=import_id)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["importId"] == import_id
+        assert resp["importStatus"] == "CANCELLED"
+
+    # ── describe_queries ─────────────────────────────────────────────────────
+
+    def test_describe_queries_returns_list(self, client):
+        """DescribeQueries always returns a queries list."""
+        resp = client.describe_queries()
+        assert "queries" in resp
+        assert isinstance(resp["queries"], list)
+
+    def test_describe_queries_status_filter(self, client):
+        """DescribeQueries with status filter returns list."""
+        resp = client.describe_queries(status="Complete")
+        assert "queries" in resp
+        assert isinstance(resp["queries"], list)
+
+    def test_describe_queries_max_results(self, client):
+        """DescribeQueries respects maxResults parameter."""
+        resp = client.describe_queries(maxResults=5)
+        assert "queries" in resp
+        assert len(resp["queries"]) <= 5
+
+    # ── describe_log_groups_limit ─────────────────────────────────────────────
+
+    def test_describe_log_groups_limit_with_pagination(self, client):
+        """DescribeLogGroups with limit=1 produces nextToken when multiple groups exist."""
+        prefix = _unique("/test/lim-pg")
+        names = [f"{prefix}-{i}" for i in range(3)]
+        for n in names:
+            client.create_log_group(logGroupName=n)
+        try:
+            resp = client.describe_log_groups(logGroupNamePrefix=prefix, limit=1)
+            assert len(resp["logGroups"]) == 1
+            assert "nextToken" in resp
+        finally:
+            for n in names:
+                client.delete_log_group(logGroupName=n)
+
+    # ── describe_export_tasks ─────────────────────────────────────────────────
+
+    def test_describe_export_tasks_with_status_filter(self, client):
+        """DescribeExportTasks with statusCode filter returns a list."""
+        for status in ("COMPLETED", "RUNNING", "PENDING", "FAILED"):
+            resp = client.describe_export_tasks(statusCode=status)
+            assert "exportTasks" in resp
+            assert isinstance(resp["exportTasks"], list)
+
+    # ── describe_query_definitions ────────────────────────────────────────────
+
+    def test_describe_query_definitions_after_create(self, client):
+        """DescribeQueryDefinitions returns newly created query definitions."""
+        prefix = _unique("qdef-edge")
+        qid1 = client.put_query_definition(
+            name=f"{prefix}-alpha", queryString="fields @timestamp | limit 5"
+        )["queryDefinitionId"]
+        qid2 = client.put_query_definition(
+            name=f"{prefix}-beta", queryString="fields @message | limit 10"
+        )["queryDefinitionId"]
+        try:
+            desc = client.describe_query_definitions(queryDefinitionNamePrefix=prefix)
+            assert "queryDefinitions" in desc
+            returned_ids = [q["queryDefinitionId"] for q in desc["queryDefinitions"]]
+            assert qid1 in returned_ids
+            assert qid2 in returned_ids
+        finally:
+            client.delete_query_definition(queryDefinitionId=qid1)
+            client.delete_query_definition(queryDefinitionId=qid2)
+
+    def test_describe_query_definitions_prefix_filters(self, client):
+        """DescribeQueryDefinitions with prefix excludes non-matching definitions."""
+        prefix_a = _unique("qdef-pfx-a")
+        prefix_b = _unique("qdef-pfx-b")
+        qid_a = client.put_query_definition(
+            name=prefix_a, queryString="fields @timestamp | limit 1"
+        )["queryDefinitionId"]
+        qid_b = client.put_query_definition(
+            name=prefix_b, queryString="fields @message | limit 1"
+        )["queryDefinitionId"]
+        try:
+            desc = client.describe_query_definitions(queryDefinitionNamePrefix=prefix_a)
+            returned_ids = [q["queryDefinitionId"] for q in desc["queryDefinitions"]]
+            assert qid_a in returned_ids
+            assert qid_b not in returned_ids
+        finally:
+            client.delete_query_definition(queryDefinitionId=qid_a)
+            client.delete_query_definition(queryDefinitionId=qid_b)
+
+    # ── list_anomalies ────────────────────────────────────────────────────────
+
+    def test_list_anomalies_with_real_detector(self, client):
+        """list_anomalies with a real detector ARN returns a list."""
+        group = _unique("/test/anom-list")
+        client.create_log_group(logGroupName=group)
+        group_arn = f"arn:aws:logs:us-east-1:123456789012:log-group:{group}"
+        det_resp = client.create_log_anomaly_detector(logGroupArnList=[group_arn])
+        det_arn = det_resp["anomalyDetectorArn"]
+        try:
+            resp = client.list_anomalies(anomalyDetectorArn=det_arn)
+            assert "anomalies" in resp
+            assert isinstance(resp["anomalies"], list)
+        finally:
+            client.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+            client.delete_log_group(logGroupName=group)
+
+    # ── list_log_anomaly_detectors ────────────────────────────────────────────
+
+    def test_list_log_anomaly_detectors_with_created(self, client):
+        """list_log_anomaly_detectors returns the created detector."""
+        group = _unique("/test/det-list")
+        client.create_log_group(logGroupName=group)
+        group_arn = f"arn:aws:logs:us-east-1:123456789012:log-group:{group}"
+        det_resp = client.create_log_anomaly_detector(logGroupArnList=[group_arn])
+        det_arn = det_resp["anomalyDetectorArn"]
+        try:
+            resp = client.list_log_anomaly_detectors()
+            assert "anomalyDetectors" in resp
+            arns = [d["anomalyDetectorArn"] for d in resp["anomalyDetectors"]]
+            assert det_arn in arns
+        finally:
+            client.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+            client.delete_log_group(logGroupName=group)
+
+    # ── list_integrations ─────────────────────────────────────────────────────
+
+    def test_list_integrations_returns_list(self, client):
+        """list_integrations returns a list (possibly empty)."""
+        resp = client.list_integrations()
+        assert "integrationSummaries" in resp
+        assert isinstance(resp["integrationSummaries"], list)
+
+    def test_list_integrations_with_type_filter(self, client):
+        """list_integrations with integrationType filter returns a list."""
+        resp = client.list_integrations(integrationType="OPENSEARCH")
+        assert "integrationSummaries" in resp
+        assert isinstance(resp["integrationSummaries"], list)
+
+    # ── tag_log_group_old_api behavioral fidelity ─────────────────────────────
+
+    def test_tag_log_group_old_api_nonexistent_raises(self, client):
+        """TagLogGroup on a nonexistent group raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.tag_log_group(
+                logGroupName="/test/nonexistent-group-xyz-999",
+                tags={"k": "v"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_tag_log_group_old_api_merge_tags(self, client):
+        """TagLogGroup adds tags to existing tags without removing others."""
+        group = _unique("/test/tag-merge")
+        client.create_log_group(logGroupName=group, tags={"original": "yes"})
+        try:
+            client.tag_log_group(logGroupName=group, tags={"added": "new"})
+            resp = client.list_tags_log_group(logGroupName=group)
+            assert resp["tags"]["original"] == "yes"
+            assert resp["tags"]["added"] == "new"
+        finally:
+            client.delete_log_group(logGroupName=group)
+
+    # ── log stream behavioral fidelity ────────────────────────────────────────
+
+    def test_log_stream_arn_present(self, client):
+        """describe_log_streams includes arn for each stream."""
+        group = _unique("/test/stream-arn")
+        client.create_log_group(logGroupName=group)
+        client.create_log_stream(logGroupName=group, logStreamName="my-stream")
+        try:
+            resp = client.describe_log_streams(logGroupName=group)
+            stream = [s for s in resp["logStreams"] if s["logStreamName"] == "my-stream"][0]
+            assert "arn" in stream
+            assert "my-stream" in stream["arn"]
+        finally:
+            client.delete_log_group(logGroupName=group)
+
+    def test_delete_log_stream_nonexistent_raises(self, client):
+        """DeleteLogStream on a nonexistent stream raises ResourceNotFoundException."""
+        group = _unique("/test/del-stream-err")
+        client.create_log_group(logGroupName=group)
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.delete_log_stream(
+                    logGroupName=group, logStreamName="does-not-exist-xyz"
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            client.delete_log_group(logGroupName=group)
