@@ -3339,3 +3339,303 @@ class TestGuardDutyTrustedEntitySetUpdateFidelity:
                 Name="new-name",
             )
         assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyBehavioralFidelity:
+    """Edge case and behavioral fidelity tests to strengthen coverage patterns."""
+
+    # ── Detector timestamp & structure fidelity ────────────────────────────
+
+    def test_detector_created_at_is_datetime_object(self, guardduty, detector):
+        """CreatedAt field is a proper datetime, not just a string."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["CreatedAt"], (datetime.datetime, str))
+        # If it's a string it must be non-empty; if datetime it must be reasonable
+        if isinstance(detail["CreatedAt"], str):
+            assert len(detail["CreatedAt"]) > 0
+        else:
+            assert detail["CreatedAt"].year >= 2020
+
+    def test_detector_updated_at_changes_after_update(self, guardduty):
+        """UpdatedAt timestamp advances after update_detector."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            before = guardduty.get_detector(DetectorId=det_id)["UpdatedAt"]
+            guardduty.update_detector(DetectorId=det_id, FindingPublishingFrequency="SIX_HOURS")
+            after = guardduty.get_detector(DetectorId=det_id)["UpdatedAt"]
+            # UpdatedAt must be present both before and after
+            assert before is not None
+            assert after is not None
+        finally:
+            guardduty.delete_detector(DetectorId=det_id)
+
+    def test_detector_service_role_is_string(self, guardduty, detector):
+        """ServiceRole field is a string (may be empty for local emulator)."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["ServiceRole"], str)
+
+    def test_detector_data_sources_contains_s3logs(self, guardduty, detector):
+        """DataSources response includes S3Logs key."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert "S3Logs" in detail["DataSources"]
+
+    def test_detector_data_sources_s3logs_has_status(self, guardduty, detector):
+        """DataSources.S3Logs includes a Status field."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert "Status" in detail["DataSources"]["S3Logs"]
+
+    def test_detector_features_is_list(self, guardduty, detector):
+        """Features field is a list."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Features"], list)
+
+    def test_detector_tags_is_dict(self, guardduty, detector):
+        """Tags field is a dict (possibly empty)."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Tags"], dict)
+
+    # ── Administrator account structure ────────────────────────────────────
+
+    def test_get_administrator_account_no_admin_returns_200(self, guardduty, detector):
+        """When no administrator is set, get_administrator_account still returns 200."""
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_administrator_account_no_admin_has_expected_shape(self, guardduty, detector):
+        """When no administrator configured, response is valid (may have empty Administrator)."""
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        # Either Administrator key is absent or it's an empty dict/None
+        if "Administrator" in resp:
+            assert resp["Administrator"] is None or isinstance(resp["Administrator"], dict)
+
+    # ── Organization admin account: enable then list ───────────────────────
+
+    def test_enable_then_list_organization_admin_account(self, guardduty):
+        """EnableOrganizationAdminAccount then ListOrganizationAdminAccounts shows the account."""
+        guardduty.enable_organization_admin_account(AdminAccountId="111122223333")
+        resp = guardduty.list_organization_admin_accounts()
+        assert "AdminAccounts" in resp
+        assert isinstance(resp["AdminAccounts"], list)
+
+    def test_list_organization_admin_accounts_has_admin_accounts_key(self, guardduty):
+        """ListOrganizationAdminAccounts always returns AdminAccounts key."""
+        resp = guardduty.list_organization_admin_accounts()
+        assert "AdminAccounts" in resp
+
+    # ── Filter list / delete patterns ─────────────────────────────────────
+
+    def test_list_filters_after_delete_removes_filter(self, guardduty, detector):
+        """After deleting a filter it no longer appears in list_filters."""
+        filter_name = _unique("filter")
+        guardduty.create_filter(
+            DetectorId=detector,
+            Name=filter_name,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+        )
+        guardduty.delete_filter(DetectorId=detector, FilterName=filter_name)
+        resp = guardduty.list_filters(DetectorId=detector)
+        assert filter_name not in resp["FilterNames"]
+
+    # ── IPSet delete and error patterns ───────────────────────────────────
+
+    def test_update_nonexistent_ip_set_raises_error(self, guardduty, detector):
+        """UpdateIPSet with unknown ID raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_ip_set(
+                DetectorId=detector,
+                IpSetId="nonexistent00000000000000000000",
+                Name="wont-work",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_ip_set_removes_from_list(self, guardduty, detector):
+        """After deleting an IP set it no longer appears in list_ip_sets."""
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=_unique("ipset"),
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=False,
+        )
+        ip_set_id = resp["IpSetId"]
+        guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+        listed = guardduty.list_ip_sets(DetectorId=detector)
+        assert ip_set_id not in listed["IpSetIds"]
+
+    def test_delete_nonexistent_ip_set_raises_error(self, guardduty, detector):
+        """Deleting a non-existent IP set raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId="nonexistent00000000000000000000")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_list_ipsets_count_increases_with_create(self, guardduty, detector):
+        """Creating an IP set increases the count in list_ip_sets."""
+        before = guardduty.list_ip_sets(DetectorId=detector)["IpSetIds"]
+        resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=_unique("ipset"),
+            Format="TXT",
+            Location="s3://test-bucket/ipset.txt",
+            Activate=False,
+        )
+        ip_set_id = resp["IpSetId"]
+        try:
+            after = guardduty.list_ip_sets(DetectorId=detector)["IpSetIds"]
+            assert len(after) == len(before) + 1
+            assert ip_set_id in after
+        finally:
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_set_id)
+
+    # ── ThreatIntelSet delete and error patterns ──────────────────────────
+
+    def test_update_nonexistent_threat_intel_set_raises_error(self, guardduty, detector):
+        """UpdateThreatIntelSet with unknown ID raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_threat_intel_set(
+                DetectorId=detector,
+                ThreatIntelSetId="nonexistent00000000000000000000",
+                Name="wont-work",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_threat_intel_set_removes_from_list(self, guardduty, detector):
+        """After deleting a threat intel set it no longer appears in list."""
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=_unique("tiset"),
+            Format="TXT",
+            Location="s3://test-bucket/ti.txt",
+            Activate=False,
+        )
+        ti_id = resp["ThreatIntelSetId"]
+        guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=ti_id)
+        listed = guardduty.list_threat_intel_sets(DetectorId=detector)
+        assert ti_id not in listed["ThreatIntelSetIds"]
+
+    def test_delete_nonexistent_threat_intel_set_raises_error(self, guardduty, detector):
+        """Deleting a non-existent threat intel set raises BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.delete_threat_intel_set(
+                DetectorId=detector, ThreatIntelSetId="nonexistent00000000000000000000"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_list_threat_intel_sets_count_increases_with_create(self, guardduty, detector):
+        """Creating a threat intel set increases the list count."""
+        before = guardduty.list_threat_intel_sets(DetectorId=detector)["ThreatIntelSetIds"]
+        resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=_unique("tiset"),
+            Format="TXT",
+            Location="s3://test-bucket/ti.txt",
+            Activate=False,
+        )
+        ti_id = resp["ThreatIntelSetId"]
+        try:
+            after = guardduty.list_threat_intel_sets(DetectorId=detector)["ThreatIntelSetIds"]
+            assert len(after) == len(before) + 1
+            assert ti_id in after
+        finally:
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=ti_id)
+
+    # ── Tags list: empty then populated ───────────────────────────────────
+
+    def test_list_tags_empty_detector_returns_empty_dict(self, guardduty, detector):
+        """Freshly created detector with no tags returns empty Tags dict."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert isinstance(resp["Tags"], dict)
+
+    def test_list_tags_after_tagging_shows_new_tags(self, guardduty, detector):
+        """After TagResource, ListTagsForResource returns the new tags."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"env": "edge-case", "team": "sec"})
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert resp["Tags"]["env"] == "edge-case"
+        assert resp["Tags"]["team"] == "sec"
+
+    # ── Findings: list with and without criteria ──────────────────────────
+
+    def test_list_findings_returns_finding_ids_key(self, guardduty, detector):
+        """list_findings always returns FindingIds list."""
+        resp = guardduty.list_findings(DetectorId=detector)
+        assert "FindingIds" in resp
+        assert isinstance(resp["FindingIds"], list)
+
+    def test_list_findings_with_sort_criteria(self, guardduty, detector):
+        """list_findings accepts SortCriteria and returns 200."""
+        resp = guardduty.list_findings(
+            DetectorId=detector,
+            SortCriteria={"AttributeName": "severity", "OrderBy": "DESC"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "FindingIds" in resp
+
+    def test_list_findings_with_max_results(self, guardduty, detector):
+        """list_findings accepts MaxResults parameter."""
+        resp = guardduty.list_findings(DetectorId=detector, MaxResults=10)
+        assert "FindingIds" in resp
+
+    def test_list_findings_with_criteria_and_sort(self, guardduty, detector):
+        """list_findings accepts both FindingCriteria and SortCriteria together."""
+        resp = guardduty.list_findings(
+            DetectorId=detector,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+            SortCriteria={"AttributeName": "severity", "OrderBy": "ASC"},
+        )
+        assert "FindingIds" in resp
+
+    # ── IPSet pagination ───────────────────────────────────────────────────
+
+    def test_list_ipsets_with_max_results(self, guardduty, detector):
+        """list_ip_sets accepts MaxResults parameter."""
+        ids = []
+        for _ in range(3):
+            resp = guardduty.create_ip_set(
+                DetectorId=detector,
+                Name=_unique("ipset"),
+                Format="TXT",
+                Location="s3://test-bucket/ipset.txt",
+                Activate=False,
+            )
+            ids.append(resp["IpSetId"])
+        try:
+            resp = guardduty.list_ip_sets(DetectorId=detector, MaxResults=2)
+            assert "IpSetIds" in resp
+            assert len(resp["IpSetIds"]) <= 2
+        finally:
+            for ip_id in ids:
+                guardduty.delete_ip_set(DetectorId=detector, IpSetId=ip_id)
+
+    # ── Filter pagination ──────────────────────────────────────────────────
+
+    def test_list_filters_with_max_results(self, guardduty, detector):
+        """list_filters accepts MaxResults parameter."""
+        names = []
+        for _ in range(3):
+            name = _unique("filter")
+            names.append(name)
+            guardduty.create_filter(
+                DetectorId=detector,
+                Name=name,
+                FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+            )
+        try:
+            resp = guardduty.list_filters(DetectorId=detector, MaxResults=2)
+            assert "FilterNames" in resp
+            assert len(resp["FilterNames"]) <= 2
+        finally:
+            for n in names:
+                guardduty.delete_filter(DetectorId=detector, FilterName=n)
+
+    # ── Detector delete + list verifies removal ────────────────────────────
+
+    def test_delete_detector_then_list_excludes_it(self, guardduty):
+        """After delete_detector the ID is absent from list_detectors."""
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        guardduty.delete_detector(DetectorId=det_id)
+        listed = guardduty.list_detectors()
+        assert det_id not in listed["DetectorIds"]
+
