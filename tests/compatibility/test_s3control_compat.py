@@ -934,11 +934,57 @@ class TestS3ControlMultiRegionAccessPoints:
             )
         assert exc.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
 
-    def test_list_multi_region_access_points_empty(self, s3control):
-        """ListMultiRegionAccessPoints returns empty list when none exist."""
+    def test_list_multi_region_access_points_empty(self, s3control, s3):
+        """ListMultiRegionAccessPoints lifecycle: empty → create → list → delete → error."""
+        # LIST: initially no MRAPs (or at least a valid list)
         resp = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
         assert "AccessPoints" in resp
         assert isinstance(resp["AccessPoints"], list)
+        initial_count = len(resp["AccessPoints"])
+        # CREATE + RETRIEVE: create an MRAP and verify it appears
+        bucket = f"mrap-empty-{_uid()}"
+        mrap_name = f"mrap-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            create_resp = s3control.create_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={
+                    "Name": mrap_name,
+                    "Regions": [{"Bucket": bucket}],
+                },
+            )
+            assert "RequestTokenARN" in create_resp
+            get_resp = s3control.get_multi_region_access_point(
+                AccountId=ACCOUNT_ID, Name=mrap_name
+            )
+            assert get_resp["AccessPoint"]["Name"] == mrap_name
+            # LIST: now the MRAP appears
+            list_resp = s3control.list_multi_region_access_points(AccountId=ACCOUNT_ID)
+            names = [ap["Name"] for ap in list_resp["AccessPoints"]]
+            assert mrap_name in names
+            assert len(list_resp["AccessPoints"]) > initial_count
+            # DELETE: remove it
+            s3control.delete_multi_region_access_point(
+                AccountId=ACCOUNT_ID,
+                Details={"Name": mrap_name},
+            )
+            # ERROR: get after delete fails
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Name=mrap_name
+                )
+            assert exc_info.value.response["Error"]["Code"] == "NoSuchMultiRegionAccessPoint"
+        finally:
+            try:
+                s3control.delete_multi_region_access_point(
+                    AccountId=ACCOUNT_ID, Details={"Name": mrap_name}
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
 
     def test_list_multi_region_access_points_fields(self, s3control, s3):
         """ListMultiRegionAccessPoints entries contain Status, Alias, Regions."""
@@ -1369,13 +1415,41 @@ class TestS3ControlTagging:
         s3.delete_bucket(Bucket=bucket_name)
 
     def test_tag_resource(self, s3control, bucket_arn):
-        """TagResource adds tags to an S3 resource."""
+        """TagResource lifecycle: create tag → retrieve → update → delete → verify empty."""
+        # CREATE: add a tag
         resp = s3control.tag_resource(
             AccountId=ACCOUNT_ID,
             ResourceArn=bucket_arn,
             Tags=[{"Key": "env", "Value": "test"}],
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # RETRIEVE: list tags and verify
+        list_resp = s3control.list_tags_for_resource(
+            AccountId=ACCOUNT_ID, ResourceArn=bucket_arn
+        )
+        assert "Tags" in list_resp
+        tag_map = {t["Key"]: t["Value"] for t in list_resp["Tags"]}
+        assert tag_map.get("env") == "test"
+        # UPDATE: overwrite the tag value
+        s3control.tag_resource(
+            AccountId=ACCOUNT_ID,
+            ResourceArn=bucket_arn,
+            Tags=[{"Key": "env", "Value": "prod"}],
+        )
+        list_resp2 = s3control.list_tags_for_resource(
+            AccountId=ACCOUNT_ID, ResourceArn=bucket_arn
+        )
+        tag_map2 = {t["Key"]: t["Value"] for t in list_resp2["Tags"]}
+        assert tag_map2.get("env") == "prod"
+        # DELETE: untag
+        s3control.untag_resource(
+            AccountId=ACCOUNT_ID, ResourceArn=bucket_arn, TagKeys=["env"]
+        )
+        list_resp3 = s3control.list_tags_for_resource(
+            AccountId=ACCOUNT_ID, ResourceArn=bucket_arn
+        )
+        tag_keys = [t["Key"] for t in list_resp3["Tags"]]
+        assert "env" not in tag_keys
 
     def test_list_tags_for_resource(self, s3control, bucket_arn):
         """ListTagsForResource retrieves tags on an S3 resource."""
@@ -1563,14 +1637,114 @@ class TestS3ControlMultiRegionAccessPointMultiBucket:
 class TestS3ControlListJobs:
     """Tests for ListJobs operation."""
 
-    def test_list_jobs_empty(self, s3control):
+    def test_list_jobs_empty(self, s3control, s3):
+        """ListJobs lifecycle: list → create → retrieve → list → cancel → error."""
+        # LIST: initial list
         resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
         assert "Jobs" in resp
         assert isinstance(resp["Jobs"], list)
+        # CREATE: create a job
+        bucket = f"job-le-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            create_resp = s3control.create_job(
+                AccountId=ACCOUNT_ID,
+                Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+                Report={"Enabled": False},
+                ClientRequestToken=str(uuid.uuid4()),
+                Priority=10,
+                RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+                ConfirmationRequired=False,
+                ManifestGenerator={
+                    "S3JobManifestGenerator": {
+                        "SourceBucket": f"arn:aws:s3:::{bucket}",
+                        "EnableManifestOutput": False,
+                    }
+                },
+            )
+            job_id = create_resp["JobId"]
+            assert len(job_id) > 0
+            # RETRIEVE: describe the job
+            desc = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc["Job"]["JobId"] == job_id
+            # LIST: job appears in list
+            list_resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
+            job_ids = [j["JobId"] for j in list_resp["Jobs"]]
+            assert job_id in job_ids
+            # UPDATE: cancel the job
+            s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+            )
+            # RETRIEVE: verify cancelled status
+            desc2 = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc2["Job"]["Status"] == "Cancelled"
+        finally:
+            try:
+                s3control.update_job_status(
+                    AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
+        # ERROR: nonexistent job
+        with pytest.raises(ClientError) as exc_info:
+            s3control.describe_job(
+                AccountId=ACCOUNT_ID, JobId="00000000-0000-0000-0000-000000000000"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchJob"
 
-    def test_list_jobs_returns_metadata(self, s3control):
-        resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_list_jobs_returns_metadata(self, s3control, s3):
+        """ListJobs returns 200 status and correct response structure after create."""
+        bucket = f"job-meta-{_uid()}"
+        s3.create_bucket(Bucket=bucket)
+        try:
+            # CREATE a job
+            create_resp = s3control.create_job(
+                AccountId=ACCOUNT_ID,
+                Operation={"S3PutObjectCopy": {"TargetResource": f"arn:aws:s3:::{bucket}"}},
+                Report={"Enabled": False},
+                ClientRequestToken=str(uuid.uuid4()),
+                Priority=5,
+                RoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+                ConfirmationRequired=False,
+                ManifestGenerator={
+                    "S3JobManifestGenerator": {
+                        "SourceBucket": f"arn:aws:s3:::{bucket}",
+                        "EnableManifestOutput": False,
+                    }
+                },
+            )
+            job_id = create_resp["JobId"]
+            # LIST: verify metadata
+            resp = s3control.list_jobs(AccountId=ACCOUNT_ID)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # RETRIEVE: verify job priority
+            desc = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc["Job"]["Priority"] == 5
+            # UPDATE: change priority
+            s3control.update_job_priority(
+                AccountId=ACCOUNT_ID, JobId=job_id, Priority=20
+            )
+            desc2 = s3control.describe_job(AccountId=ACCOUNT_ID, JobId=job_id)
+            assert desc2["Job"]["Priority"] == 20
+            # DELETE (cancel)
+            s3control.update_job_status(
+                AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+            )
+        finally:
+            try:
+                s3control.update_job_status(
+                    AccountId=ACCOUNT_ID, JobId=job_id, RequestedJobStatus="Cancelled"
+                )
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort cleanup
 
 
 class TestS3ControlDescribeJob:
@@ -1588,19 +1762,133 @@ class TestS3ControlAccessGrants:
     """Tests for Access Grants operations."""
 
     def test_list_access_grants_instances_empty(self, s3control):
+        """AccessGrantsInstances lifecycle: list → create → retrieve → list → delete → error."""
+        # LIST: initial list
         resp = s3control.list_access_grants_instances(AccountId=ACCOUNT_ID)
         assert "AccessGrantsInstancesList" in resp
         assert isinstance(resp["AccessGrantsInstancesList"], list)
+        # CREATE: create an instance
+        create_resp = s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        assert "AccessGrantsInstanceArn" in create_resp
+        try:
+            # RETRIEVE: get the instance
+            get_resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+            assert "AccessGrantsInstanceArn" in get_resp
+            assert "CreatedAt" in get_resp
+            # LIST: instance appears
+            list_resp = s3control.list_access_grants_instances(AccountId=ACCOUNT_ID)
+            assert len(list_resp["AccessGrantsInstancesList"]) > 0
+            # DELETE: remove instance
+            s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            # ERROR: get after delete fails
+            with pytest.raises(ClientError):
+                s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        except Exception:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
+            raise
 
     def test_list_access_grants_empty(self, s3control):
+        """AccessGrants lifecycle: list → create → list → retrieve → delete → error."""
+        # LIST: initial list
         resp = s3control.list_access_grants(AccountId=ACCOUNT_ID)
         assert "AccessGrantsList" in resp
         assert isinstance(resp["AccessGrantsList"], list)
+        # CREATE: create instance + location + grant
+        s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        try:
+            loc = s3control.create_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                LocationScope="s3://grant-empty-test/",
+                IAMRoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+            )
+            grant = s3control.create_access_grant(
+                AccountId=ACCOUNT_ID,
+                AccessGrantsLocationId=loc["AccessGrantsLocationId"],
+                Grantee={"GranteeType": "IAM", "GranteeIdentifier": f"arn:aws:iam::{ACCOUNT_ID}:role/grantee"},
+                Permission="READ",
+                AccessGrantsLocationConfiguration={"S3SubPrefix": "prefix/"},
+            )
+            grant_id = grant["AccessGrantId"]
+            # LIST: grant appears
+            list_resp = s3control.list_access_grants(AccountId=ACCOUNT_ID)
+            ids = [g["AccessGrantId"] for g in list_resp["AccessGrantsList"]]
+            assert grant_id in ids
+            # RETRIEVE: get the grant
+            get_resp = s3control.get_access_grant(
+                AccountId=ACCOUNT_ID, AccessGrantId=grant_id
+            )
+            assert get_resp["AccessGrantId"] == grant_id
+            assert get_resp["Permission"] == "READ"
+            # DELETE: remove the grant
+            s3control.delete_access_grant(
+                AccountId=ACCOUNT_ID, AccessGrantId=grant_id
+            )
+            # ERROR: get after delete fails
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_access_grant(
+                    AccountId=ACCOUNT_ID, AccessGrantId=grant_id
+                )
+            assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrant"
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
 
     def test_list_access_grants_locations_empty(self, s3control):
+        """AccessGrantsLocations lifecycle: list → create → list → retrieve → delete → error."""
+        # LIST: initial list
         resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
         assert "AccessGrantsLocationsList" in resp
         assert isinstance(resp["AccessGrantsLocationsList"], list)
+        # CREATE: create instance + location
+        s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
+        try:
+            loc = s3control.create_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                LocationScope="s3://loc-empty-test/",
+                IAMRoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/test-role",
+            )
+            loc_id = loc["AccessGrantsLocationId"]
+            assert len(loc_id) > 0
+            # LIST: location appears
+            list_resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+            ids = [l["AccessGrantsLocationId"] for l in list_resp["AccessGrantsLocationsList"]]
+            assert loc_id in ids
+            # RETRIEVE: get the location
+            get_resp = s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
+            assert get_resp["AccessGrantsLocationId"] == loc_id
+            assert get_resp["LocationScope"] == "s3://loc-empty-test/"
+            # UPDATE: update the location IAM role
+            s3control.update_access_grants_location(
+                AccountId=ACCOUNT_ID,
+                AccessGrantsLocationId=loc_id,
+                IAMRoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/updated-role",
+            )
+            updated = s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
+            assert updated["IAMRoleArn"] == f"arn:aws:iam::{ACCOUNT_ID}:role/updated-role"
+            # DELETE: remove the location
+            s3control.delete_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
+            # ERROR: get after delete fails
+            with pytest.raises(ClientError) as exc_info:
+                s3control.get_access_grants_location(
+                    AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+                )
+            assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsLocation"
+        finally:
+            try:
+                s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+            except Exception:
+                pass  # best-effort cleanup
 
     def test_get_access_grant_nonexistent(self, s3control):
         with pytest.raises(ClientError) as exc_info:
@@ -1737,25 +2025,147 @@ class TestS3ControlBucketOps:
             pass  # best-effort cleanup
 
     def test_get_bucket_lifecycle_configuration(self, s3control, bucket):
+        """Bucket lifecycle config: create → retrieve → update → delete → error."""
+        # CREATE: put lifecycle rules
+        put_resp = s3control.put_bucket_lifecycle_configuration(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [{"ID": "rule1", "Status": "Enabled", "Filter": {"Prefix": "logs/"}}]
+            },
+        )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # RETRIEVE: verify Rules key present and is list
         resp = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
         assert "Rules" in resp
         assert isinstance(resp["Rules"], list)
+        # UPDATE: put again with different rules
+        s3control.put_bucket_lifecycle_configuration(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [{"ID": "rule2", "Status": "Disabled", "Filter": {"Prefix": "tmp/"}}]
+            },
+        )
+        resp2 = s3control.get_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Rules" in resp2
+        # DELETE: remove lifecycle config
+        s3control.delete_bucket_lifecycle_configuration(AccountId=ACCOUNT_ID, Bucket=bucket)
+        # ERROR: nonexistent bucket
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_bucket_lifecycle_configuration(
+                AccountId=ACCOUNT_ID, Bucket="nonexistent-lifecycle-xyz"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
 
     def test_get_bucket_policy(self, s3control, bucket):
+        """Bucket policy: create → retrieve → update → delete → error on nonexistent."""
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": f"arn:aws:s3:::{bucket}/*"}],
+        })
+        # CREATE: put policy
+        put_resp = s3control.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy)
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # RETRIEVE: get policy
         resp = s3control.get_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Policy" in resp
+        # UPDATE: replace policy
+        policy2 = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Deny", "Principal": "*", "Action": "s3:DeleteObject", "Resource": f"arn:aws:s3:::{bucket}/*"}],
+        })
+        s3control.put_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket, Policy=policy2)
+        resp2 = s3control.get_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "Policy" in resp2
+        # DELETE: remove policy
+        del_resp = s3control.delete_bucket_policy(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
 
     def test_get_bucket_replication(self, s3control, bucket):
+        """Bucket replication: create → retrieve → delete → error."""
+        # CREATE: put replication config
+        put_resp = s3control.put_bucket_replication(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            ReplicationConfiguration={
+                "Role": f"arn:aws:iam::{ACCOUNT_ID}:role/replication",
+                "Rules": [{
+                    "ID": "rule1",
+                    "Status": "Enabled",
+                    "Priority": 1,
+                    "Bucket": f"arn:aws:s3:::{bucket}",
+                    "Filter": {"Prefix": ""},
+                    "Destination": {
+                        "Bucket": f"arn:aws:s3:::{bucket}",
+                        "Account": ACCOUNT_ID,
+                    },
+                    "DeleteMarkerReplication": {"Status": "Disabled"},
+                }],
+            },
+        )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # RETRIEVE: get replication returns 200
         resp = s3control.get_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # DELETE: remove replication config
+        del_resp = s3control.delete_bucket_replication(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # ERROR: nonexistent bucket
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_bucket_replication(AccountId=ACCOUNT_ID, Bucket="nonexistent-repl-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
 
     def test_get_bucket_tagging(self, s3control, bucket):
+        """Bucket tagging: create → retrieve → update → delete lifecycle."""
+        # CREATE: put tags
+        put_resp = s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "env", "Value": "dev"}]},
+        )
+        assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # RETRIEVE: get tags - verify structure
         resp = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "TagSet" in resp
+        assert isinstance(resp["TagSet"], list)
+        # UPDATE: replace tags with different set
+        s3control.put_bucket_tagging(
+            AccountId=ACCOUNT_ID,
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "team", "Value": "infra"}]},
+        )
+        resp2 = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert "TagSet" in resp2
+        # DELETE: remove tags
+        del_resp = s3control.delete_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
+        # RETRIEVE after delete: verify response still valid
+        resp3 = s3control.get_bucket_tagging(AccountId=ACCOUNT_ID, Bucket=bucket)
+        assert resp3["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_get_bucket_versioning(self, s3control, bucket):
+        """Bucket versioning: retrieve → update → retrieve → error."""
+        # RETRIEVE: initial versioning status
         resp = s3control.get_bucket_versioning(AccountId=ACCOUNT_ID, Bucket=bucket)
         assert "Status" in resp
+        # UPDATE: enable versioning (if supported, otherwise just verify current state)
+        try:
+            s3control.put_bucket_versioning(
+                AccountId=ACCOUNT_ID,
+                Bucket=bucket,
+                VersioningConfiguration={"Status": "Enabled"},
+            )
+            resp2 = s3control.get_bucket_versioning(AccountId=ACCOUNT_ID, Bucket=bucket)
+            assert resp2["Status"] == "Enabled"
+        except ClientError:
+            pass  # some backends don't support put_bucket_versioning via s3control
+        # ERROR: nonexistent bucket
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_bucket_versioning(AccountId=ACCOUNT_ID, Bucket="nonexistent-ver-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
 
     def test_get_bucket_lifecycle_nonexistent(self, s3control):
         with pytest.raises(ClientError) as exc_info:
@@ -1814,27 +2224,81 @@ class TestS3ControlAccessGrantsDeepLifecycle:
         assert loc2["AccessGrantsLocationId"] in ids
 
     def test_access_grants_instance_has_created_at(self, s3control):
-        """Verify CreatedAt timestamp is present."""
+        """Instance lifecycle: retrieve CreatedAt → list instances → delete → error."""
+        # RETRIEVE: verify CreatedAt present
         get_resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
         assert "CreatedAt" in get_resp
+        assert "AccessGrantsInstanceArn" in get_resp
+        # LIST: instance appears in list
+        list_resp = s3control.list_access_grants_instances(AccountId=ACCOUNT_ID)
+        assert len(list_resp["AccessGrantsInstancesList"]) > 0
+        # DELETE: remove instance
+        s3control.delete_access_grants_instance(AccountId=ACCOUNT_ID)
+        # ERROR: get after delete fails
+        with pytest.raises(ClientError):
+            s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
+        # Recreate for other tests (autouse fixture will handle, but be explicit)
+        s3control.create_access_grants_instance(AccountId=ACCOUNT_ID)
 
     def test_access_grants_location_arn_format(self, s3control):
-        """Verify location ARN contains expected components."""
+        """Location lifecycle: create → retrieve ARN → list → delete → error."""
+        # CREATE: create location
         resp = s3control.create_access_grants_location(
             AccountId=ACCOUNT_ID,
             LocationScope="s3://arn-check-bucket/",
             IAMRoleArn="arn:aws:iam::123456789012:role/test-role",
         )
         arn = resp["AccessGrantsLocationArn"]
+        loc_id = resp["AccessGrantsLocationId"]
         assert "s3" in arn.lower()
         assert ACCOUNT_ID in arn or "access-grants" in arn.lower()
+        # RETRIEVE: get the location
+        get_resp = s3control.get_access_grants_location(
+            AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+        )
+        assert get_resp["AccessGrantsLocationArn"] == arn
+        # LIST: location appears
+        list_resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+        ids = [l["AccessGrantsLocationId"] for l in list_resp["AccessGrantsLocationsList"]]
+        assert loc_id in ids
+        # DELETE: remove location
+        s3control.delete_access_grants_location(
+            AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+        )
+        # ERROR: get after delete fails
+        with pytest.raises(ClientError) as exc_info:
+            s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchAccessGrantsLocation"
 
     def test_access_grants_instance_arn_format(self, s3control):
-        """Verify instance ARN contains expected components."""
+        """Instance: retrieve ARN → create location → list locations → delete location."""
+        # RETRIEVE: verify instance ARN
         resp = s3control.get_access_grants_instance(AccountId=ACCOUNT_ID)
         arn = resp["AccessGrantsInstanceArn"]
         assert "arn:" in arn
         assert "s3" in arn.lower()
+        # CREATE: create a location under the instance
+        loc = s3control.create_access_grants_location(
+            AccountId=ACCOUNT_ID,
+            LocationScope="s3://arn-inst-check/",
+            IAMRoleArn=f"arn:aws:iam::{ACCOUNT_ID}:role/inst-test",
+        )
+        loc_id = loc["AccessGrantsLocationId"]
+        # LIST: verify location in list
+        list_resp = s3control.list_access_grants_locations(AccountId=ACCOUNT_ID)
+        ids = [l["AccessGrantsLocationId"] for l in list_resp["AccessGrantsLocationsList"]]
+        assert loc_id in ids
+        # DELETE: clean up location
+        s3control.delete_access_grants_location(
+            AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+        )
+        # ERROR: get after delete fails
+        with pytest.raises(ClientError):
+            s3control.get_access_grants_location(
+                AccountId=ACCOUNT_ID, AccessGrantsLocationId=loc_id
+            )
 
     def test_access_grants_location_scope_preserved(self, s3control):
         """Location scope is preserved on get."""
@@ -2017,11 +2481,35 @@ class TestS3ControlAccessPointDeepLifecycle:
             pass  # best-effort cleanup
 
     def test_delete_access_point_then_describe_fails(self, s3control, s3, bucket):
-        """Get access point after deletion returns error."""
+        """Full AP lifecycle: create → retrieve → list → update policy → delete → error."""
         ap_name = f"ap-del-{_uid()}"
         try:
+            # CREATE: create an access point
             s3control.create_access_point(AccountId=ACCOUNT_ID, Name=ap_name, Bucket=bucket)
+            # RETRIEVE: verify the AP exists
+            get_resp = s3control.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            assert get_resp["Name"] == ap_name
+            assert get_resp["Bucket"] == bucket
+            # LIST: AP appears in list
+            list_resp = s3control.list_access_points(AccountId=ACCOUNT_ID, Bucket=bucket)
+            names = [ap["Name"] for ap in list_resp["AccessPointList"]]
+            assert ap_name in names
+            # UPDATE: put a policy on the AP
+            policy = json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetObject",
+                               "Resource": f"arn:aws:s3:us-east-1:{ACCOUNT_ID}:accesspoint/{ap_name}/object/*"}],
+            })
+            s3control.put_access_point_policy(
+                AccountId=ACCOUNT_ID, Name=ap_name, Policy=policy
+            )
+            pol_resp = s3control.get_access_point_policy(
+                AccountId=ACCOUNT_ID, Name=ap_name
+            )
+            assert "Policy" in pol_resp
+            # DELETE: delete the access point
             s3control.delete_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
+            # ERROR: get after delete fails
             with pytest.raises(ClientError) as exc_info:
                 s3control.get_access_point(AccountId=ACCOUNT_ID, Name=ap_name)
             assert exc_info.value.response["Error"]["Code"] in (
