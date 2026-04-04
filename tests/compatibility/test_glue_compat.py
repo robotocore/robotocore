@@ -631,19 +631,74 @@ class TestGlueAutoCoverage:
             pass  # Operation exists
 
     def test_get_connections(self, client):
-        """GetConnections returns a response."""
-        resp = client.get_connections()
-        assert "ConnectionList" in resp
+        """GetConnections includes a created connection; nonexistent raises error."""
+        conn_name = _unique("conn")
+        client.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        try:
+            resp = client.get_connections()
+            assert "ConnectionList" in resp
+            names = [c["Name"] for c in resp["ConnectionList"]]
+            assert conn_name in names
+            # verify individual retrieval
+            get_resp = client.get_connection(Name=conn_name)
+            assert get_resp["Connection"]["Name"] == conn_name
+            # error: nonexistent connection
+            with pytest.raises(ClientError) as exc:
+                client.get_connection(Name="does-not-exist-conn-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_connection(ConnectionName=conn_name)
 
     def test_get_data_catalog_encryption_settings(self, client):
-        """GetDataCatalogEncryptionSettings returns a response."""
+        """GetDataCatalogEncryptionSettings reflects PutDataCatalogEncryptionSettings."""
+        # update: put settings first
+        client.put_data_catalog_encryption_settings(
+            DataCatalogEncryptionSettings={
+                "ConnectionPasswordEncryption": {"ReturnConnectionPasswordEncrypted": False},
+                "EncryptionAtRest": {"CatalogEncryptionMode": "DISABLED"},
+            }
+        )
+        # retrieve: get confirms the settings
         resp = client.get_data_catalog_encryption_settings()
         assert "DataCatalogEncryptionSettings" in resp
+        assert "ConnectionPasswordEncryption" in resp["DataCatalogEncryptionSettings"]
+        assert "EncryptionAtRest" in resp["DataCatalogEncryptionSettings"]
+        # error: nonexistent connection to prove catalog is live
+        with pytest.raises(ClientError) as exc:
+            client.get_connection(Name="does-not-exist-enc-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_dev_endpoints(self, client):
-        """GetDevEndpoints returns a response."""
-        resp = client.get_dev_endpoints()
-        assert "DevEndpoints" in resp
+        """GetDevEndpoints includes a created dev endpoint."""
+        ep_name = _unique("de")
+        client.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = client.get_dev_endpoints()
+            assert "DevEndpoints" in resp
+            names = [d["EndpointName"] for d in resp["DevEndpoints"]]
+            assert ep_name in names
+            # retrieve individual endpoint
+            get_resp = client.get_dev_endpoint(EndpointName=ep_name)
+            assert get_resp["DevEndpoint"]["EndpointName"] == ep_name
+            # error: nonexistent endpoint
+            with pytest.raises(ClientError) as exc:
+                client.get_dev_endpoint(EndpointName="does-not-exist-ep-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_dev_endpoint(EndpointName=ep_name)
 
     def test_get_resource_policy(self, client):
         """GetResourcePolicy returns a response or EntityNotFoundException when no policy exists."""
@@ -653,44 +708,179 @@ class TestGlueAutoCoverage:
             assert e.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_security_configurations(self, client):
-        """GetSecurityConfigurations returns a response."""
-        resp = client.get_security_configurations()
-        assert "SecurityConfigurations" in resp
+        """GetSecurityConfigurations includes a created config; delete removes it."""
+        name = _unique("sc")
+        client.create_security_configuration(
+            Name=name,
+            EncryptionConfiguration={
+                "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+                "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+                "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+            },
+        )
+        try:
+            resp = client.get_security_configurations()
+            assert "SecurityConfigurations" in resp
+            names_in_list = [sc["Name"] for sc in resp["SecurityConfigurations"]]
+            assert name in names_in_list
+            # retrieve individual config
+            get_resp = client.get_security_configuration(Name=name)
+            assert get_resp["SecurityConfiguration"]["Name"] == name
+            # error: nonexistent config
+            with pytest.raises(ClientError) as exc:
+                client.get_security_configuration(Name="does-not-exist-sc-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_security_configuration(Name=name)
 
     def test_get_triggers(self, client):
-        """GetTriggers returns a response."""
-        resp = client.get_triggers()
-        assert "Triggers" in resp
+        """GetTriggers includes a created trigger; delete removes it."""
+        trig_name = _unique("trig")
+        client.create_trigger(
+            Name=trig_name,
+            Type="ON_DEMAND",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            resp = client.get_triggers()
+            assert "Triggers" in resp
+            names = [t["Name"] for t in resp["Triggers"]]
+            assert trig_name in names
+            # retrieve individual trigger
+            get_resp = client.get_trigger(Name=trig_name)
+            assert get_resp["Trigger"]["Name"] == trig_name
+            # error: nonexistent trigger
+            with pytest.raises(ClientError) as exc:
+                client.get_trigger(Name="does-not-exist-trig-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_trigger(Name=trig_name)
 
     def test_list_crawlers(self, client):
-        """ListCrawlers returns a response."""
-        resp = client.list_crawlers()
-        assert "CrawlerNames" in resp
+        """ListCrawlers includes a created crawler; get_crawlers confirms it."""
+        cr_name = _unique("cr")
+        client.create_crawler(
+            Name=cr_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Targets={"S3Targets": [{"Path": "s3://bucket/path"}]},
+            DatabaseName="default",
+        )
+        try:
+            resp = client.list_crawlers()
+            assert "CrawlerNames" in resp
+            assert cr_name in resp["CrawlerNames"]
+            # retrieve individual crawler
+            get_resp = client.get_crawler(Name=cr_name)
+            assert get_resp["Crawler"]["Name"] == cr_name
+            # error: nonexistent crawler
+            with pytest.raises(ClientError) as exc:
+                client.get_crawler(Name="does-not-exist-cr-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_crawler(Name=cr_name)
 
     def test_list_jobs(self, client):
-        """ListJobs returns a response."""
-        resp = client.list_jobs()
-        assert "JobNames" in resp
+        """ListJobs includes a created job; get_job retrieves it."""
+        job_name = _unique("job")
+        client.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = client.list_jobs()
+            assert "JobNames" in resp
+            assert job_name in resp["JobNames"]
+            # retrieve individual job
+            get_resp = client.get_job(JobName=job_name)
+            assert get_resp["Job"]["Name"] == job_name
+            # error: nonexistent job
+            with pytest.raises(ClientError) as exc:
+                client.get_job(JobName="does-not-exist-job-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_job(JobName=job_name)
 
     def test_list_registries(self, client):
-        """ListRegistries returns a response."""
-        resp = client.list_registries()
-        assert "Registries" in resp
+        """ListRegistries includes a created registry; get_registry retrieves it."""
+        reg_name = _unique("reg")
+        client.create_registry(RegistryName=reg_name, Description="for list test")
+        try:
+            resp = client.list_registries()
+            assert "Registries" in resp
+            names = [r["RegistryName"] for r in resp["Registries"]]
+            assert reg_name in names
+            # retrieve individual registry
+            get_resp = client.get_registry(RegistryId={"RegistryName": reg_name})
+            assert get_resp["RegistryName"] == reg_name
+            # error: nonexistent registry
+            with pytest.raises(ClientError) as exc:
+                client.get_registry(RegistryId={"RegistryName": "does-not-exist-reg-xyz"})
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_registry(RegistryId={"RegistryName": reg_name})
 
     def test_list_sessions(self, client):
-        """ListSessions returns a response."""
-        resp = client.list_sessions()
-        assert "Ids" in resp
+        """ListSessions includes a created session; get_session retrieves it."""
+        sess_id = _unique("sess")
+        client.create_session(
+            Id=sess_id,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        try:
+            resp = client.list_sessions()
+            assert "Ids" in resp
+            assert sess_id in resp["Ids"]
+            # retrieve individual session
+            get_resp = client.get_session(Id=sess_id)
+            assert get_resp["Session"]["Id"] == sess_id
+            # error: nonexistent session
+            with pytest.raises(ClientError) as exc:
+                client.get_session(Id="does-not-exist-sess-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_session(Id=sess_id)
 
     def test_list_triggers(self, client):
-        """ListTriggers returns a response."""
-        resp = client.list_triggers()
-        assert "TriggerNames" in resp
+        """ListTriggers includes a created trigger; get_trigger retrieves it."""
+        trig_name = _unique("trig2")
+        client.create_trigger(
+            Name=trig_name,
+            Type="ON_DEMAND",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            resp = client.list_triggers()
+            assert "TriggerNames" in resp
+            assert trig_name in resp["TriggerNames"]
+            # retrieve individual trigger
+            get_resp = client.get_trigger(Name=trig_name)
+            assert get_resp["Trigger"]["Name"] == trig_name
+            # error: nonexistent trigger
+            with pytest.raises(ClientError) as exc:
+                client.get_trigger(Name="does-not-exist-trig2-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_trigger(Name=trig_name)
 
     def test_list_workflows(self, client):
-        """ListWorkflows returns a response."""
-        resp = client.list_workflows()
-        assert "Workflows" in resp
+        """ListWorkflows includes a created workflow; get_workflow retrieves it."""
+        wf_name = _unique("wf")
+        client.create_workflow(Name=wf_name, Description="for list test")
+        try:
+            resp = client.list_workflows()
+            assert "Workflows" in resp
+            assert wf_name in resp["Workflows"]
+            # retrieve individual workflow
+            get_resp = client.get_workflow(Name=wf_name)
+            assert get_resp["Workflow"]["Name"] == wf_name
+            # error: nonexistent workflow
+            with pytest.raises(ClientError) as exc:
+                client.get_workflow(Name="does-not-exist-wf-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            client.delete_workflow(Name=wf_name)
 
     def test_get_connection_nonexistent(self, client):
         """GetConnection with fake name returns EntityNotFoundException."""
@@ -787,12 +977,38 @@ class TestGluePartitionAndTableVersionOps:
         client.delete_database(Name=db_name)
 
     def test_get_partitions_empty(self, client):
-        """GetPartitions on a table with no partitions returns empty list."""
+        """GetPartitions on a table with no partitions returns empty list; create then list."""
         db_name, tbl_name = self._make_db_and_table(client)
         try:
+            # list empty
             resp = client.get_partitions(DatabaseName=db_name, TableName=tbl_name)
             assert "Partitions" in resp
             assert resp["Partitions"] == []
+            # create a partition
+            client.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2024"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2024",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            # retrieve: now list should have 1
+            resp2 = client.get_partitions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(resp2["Partitions"]) == 1
+            assert resp2["Partitions"][0]["Values"] == ["2024"]
+            # error: nonexistent db raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_partitions(DatabaseName="no-such-db-xyz", TableName=tbl_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
         finally:
             self._cleanup(client, db_name, tbl_name)
 
@@ -823,37 +1039,124 @@ class TestGluePartitionAndTableVersionOps:
             self._cleanup(client, db_name, tbl_name)
 
     def test_get_partition_indexes(self, client):
-        """GetPartitionIndexes returns index list (possibly empty)."""
+        """GetPartitionIndexes returns index list; create partition then check indexes; error case."""
         db_name, tbl_name = self._make_db_and_table(client)
         try:
+            # retrieve: initially empty index list
             resp = client.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
             assert "PartitionIndexDescriptorList" in resp
+            initial_count = len(resp["PartitionIndexDescriptorList"])
+            # create a partition to prove table is usable
+            client.create_partition(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionInput={
+                    "Values": ["2024"],
+                    "StorageDescriptor": {
+                        "Columns": [{"Name": "col1", "Type": "string"}],
+                        "Location": "s3://bucket/path/year=2024",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                },
+            )
+            # list partitions confirms table has partition data
+            parts_resp = client.get_partitions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(parts_resp["Partitions"]) == 1
+            # indexes count unchanged (no new index was created)
+            resp2 = client.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
+            assert len(resp2["PartitionIndexDescriptorList"]) == initial_count
+            # error: get a nonexistent partition raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_partition(
+                    DatabaseName=db_name, TableName=tbl_name, PartitionValues=["9999"]
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
         finally:
             self._cleanup(client, db_name, tbl_name)
 
     def test_get_table_versions(self, client):
-        """GetTableVersions returns version list for a table."""
+        """GetTableVersions returns version list; update table creates new version; error case."""
         db_name, tbl_name = self._make_db_and_table(client)
         try:
+            # retrieve: initially 1 version after create
             resp = client.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
             assert "TableVersions" in resp
             assert len(resp["TableVersions"]) >= 1
+            # update: add a column to create a new version
+            client.update_table(
+                DatabaseName=db_name,
+                TableInput={
+                    "Name": tbl_name,
+                    "StorageDescriptor": {
+                        "Columns": [
+                            {"Name": "col1", "Type": "string"},
+                            {"Name": "col2", "Type": "int"},
+                        ],
+                        "Location": "s3://bucket/path",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                    "PartitionKeys": [{"Name": "year", "Type": "string"}],
+                },
+            )
+            # list: now there should be 2 versions
+            resp2 = client.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(resp2["TableVersions"]) >= 2
+            # error: nonexistent database raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_table_versions(DatabaseName="no-such-db-xyz", TableName=tbl_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
         finally:
             self._cleanup(client, db_name, tbl_name)
 
     def test_get_table_version(self, client):
-        """GetTableVersion returns a specific version of a table."""
+        """GetTableVersion retrieves specific version; update creates new; error case."""
         db_name, tbl_name = self._make_db_and_table(client)
         try:
-            # Get versions first to find a valid version ID
+            # retrieve: get versions to find a valid version ID
             versions_resp = client.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
             version_id = versions_resp["TableVersions"][0]["VersionId"]
-
             resp = client.get_table_version(
                 DatabaseName=db_name, TableName=tbl_name, VersionId=str(version_id)
             )
             assert "TableVersion" in resp
             assert resp["TableVersion"]["Table"]["Name"] == tbl_name
+            # update: create a new version via update_table
+            client.update_table(
+                DatabaseName=db_name,
+                TableInput={
+                    "Name": tbl_name,
+                    "StorageDescriptor": {
+                        "Columns": [
+                            {"Name": "col1", "Type": "string"},
+                            {"Name": "col3", "Type": "bigint"},
+                        ],
+                        "Location": "s3://bucket/path",
+                        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",  # noqa: E501
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"  # noqa: E501
+                        },
+                    },
+                    "PartitionKeys": [{"Name": "year", "Type": "string"}],
+                },
+            )
+            # list: now there are at least 2 versions
+            list_resp = client.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+            assert len(list_resp["TableVersions"]) >= 2
+            # error: nonexistent database raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_table_version(
+                    DatabaseName="no-such-db-xyz", TableName=tbl_name, VersionId="1"
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
         finally:
             self._cleanup(client, db_name, tbl_name)
 
@@ -6372,6 +6675,12 @@ class TestGlueCheckSchemaVersionValidityEnhanced:
             list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
             names = [s["SchemaName"] for s in list_resp["Schemas"]]
             assert schema_name in names
+            # UPDATE: change compatibility
+            update_resp = glue.update_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                Compatibility="BACKWARD",
+            )
+            assert update_resp["SchemaName"] == schema_name
             # check JSON validity
             resp = glue.check_schema_version_validity(DataFormat="JSON", SchemaDefinition=definition)
             assert resp["Valid"] is True
