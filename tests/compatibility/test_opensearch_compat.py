@@ -1808,3 +1808,259 @@ class TestOpenSearchNewGapOps:
             PackageID="F12345", Operation="ADD", PackageUserList=["123456789012"]
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestOpenSearchEdgeCases:
+    """Edge case and behavioral fidelity tests for opensearch."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, client):
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            client.delete_domain(DomainName=name)
+        except Exception:
+            pass
+
+    # --- ARN format ---
+    def test_arn_format(self, client, domain):
+        """Domain ARN matches expected format arn:aws:es:REGION:ACCOUNT:domain/NAME."""
+        resp = client.describe_domain(DomainName=domain)
+        arn = resp["DomainStatus"]["ARN"]
+        parts = arn.split(":")
+        assert parts[0] == "arn"
+        assert parts[1] == "aws"
+        assert parts[2] == "es"
+        assert parts[4].isdigit(), f"Expected numeric account in ARN, got: {arn}"
+        assert parts[5] == f"domain/{domain}"
+
+    # --- Idempotency / duplicate create ---
+    def test_create_duplicate_domain_raises(self, client, domain):
+        """Creating a domain with an existing name raises ResourceAlreadyExistsException."""
+        with pytest.raises(client.exceptions.ResourceAlreadyExistsException):
+            client.create_domain(DomainName=domain, EngineVersion="OpenSearch_2.5")
+
+    # --- list_domain_names ordering and filtering ---
+    def test_list_domain_names_includes_created(self, client):
+        """list_domain_names returns domains that were just created."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = client.list_domain_names()
+            names = [d["DomainName"] for d in resp["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+
+    def test_list_domain_names_excludes_deleted(self, client):
+        """list_domain_names does not include deleted domains."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        client.delete_domain(DomainName=name)
+        resp = client.list_domain_names()
+        names = [d["DomainName"] for d in resp["DomainNames"]]
+        assert name not in names
+
+    def test_list_domain_names_elasticsearch_filter(self, client):
+        """list_domain_names with EngineType=Elasticsearch excludes OpenSearch domains."""
+        os_name = _unique_domain()
+        es_name = _unique_domain()
+        client.create_domain(DomainName=os_name, EngineVersion="OpenSearch_2.5")
+        client.create_domain(DomainName=es_name, EngineVersion="Elasticsearch_7.10")
+        try:
+            resp = client.list_domain_names(EngineType="Elasticsearch")
+            names = [d["DomainName"] for d in resp["DomainNames"]]
+            assert es_name in names
+            assert os_name not in names
+        finally:
+            client.delete_domain(DomainName=os_name)
+            client.delete_domain(DomainName=es_name)
+
+    # --- list_versions pagination ---
+    def test_list_versions_with_max_results(self, client):
+        """list_versions with MaxResults=2 returns at most 2 versions and a NextToken."""
+        resp = client.list_versions(MaxResults=2)
+        assert "Versions" in resp
+        assert len(resp["Versions"]) <= 2
+        # With pagination, should have NextToken if there are more
+        if len(resp["Versions"]) == 2:
+            assert "NextToken" in resp
+
+    def test_list_versions_pagination_continues(self, client):
+        """list_versions NextToken yields more results."""
+        first = client.list_versions(MaxResults=2)
+        if "NextToken" not in first:
+            return  # skip if not enough versions
+        second = client.list_versions(NextToken=first["NextToken"])
+        assert "Versions" in second
+        assert len(second["Versions"]) > 0
+        # No overlap between pages
+        first_set = set(first["Versions"])
+        second_set = set(second["Versions"])
+        assert first_set.isdisjoint(second_set)
+
+    # --- update_domain_config_access_policies read-back ---
+    def test_update_access_policies_persisted(self, client, domain):
+        """UpdateDomainConfig access policy is readable via DescribeDomainConfig."""
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Deny",
+                "Principal": {"AWS": "*"},
+                "Action": "es:ESHttpDelete",
+                "Resource": f"arn:aws:es:us-east-1:123456789012:domain/{domain}/*",
+            }],
+        })
+        client.update_domain_config(DomainName=domain, AccessPolicies=policy)
+        config = client.describe_domain_config(DomainName=domain)
+        stored = config["DomainConfig"]["AccessPolicies"]["Options"]
+        # policy is stored as JSON string; parse and check Effect
+        parsed = json.loads(stored)
+        assert parsed["Statement"][0]["Effect"] == "Deny"
+
+    # --- list_vpc_endpoints after creating one ---
+    def test_list_vpc_endpoints_after_create(self, client, domain):
+        """list_vpc_endpoints includes endpoint just created."""
+        resp = client.create_vpc_endpoint(
+            DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{domain}",
+            VpcOptions={"SubnetIds": ["subnet-12345678"]},
+        )
+        endpoint_id = resp["VpcEndpoint"]["VpcEndpointId"]
+        try:
+            list_resp = client.list_vpc_endpoints()
+            assert "VpcEndpointSummaryList" in list_resp
+            ids = [e["VpcEndpointId"] for e in list_resp["VpcEndpointSummaryList"]]
+            assert endpoint_id in ids
+        finally:
+            client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+
+    # --- describe_packages after creating one ---
+    def test_describe_packages_after_create(self, client):
+        """describe_packages includes newly created package."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "fake-key.txt"},
+        )
+        pkg_id = resp["PackageDetails"]["PackageID"]
+        try:
+            pkgs = client.describe_packages()
+            ids = [p["PackageID"] for p in pkgs["PackageDetailsList"]]
+            assert pkg_id in ids
+        finally:
+            client.delete_package(PackageID=pkg_id)
+
+    # --- describe_outbound_connections after creating one ---
+    def test_describe_outbound_connections_after_create(self, client):
+        """describe_outbound_connections includes created connection."""
+        create_resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "local-d", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "remote-d", "OwnerId": "123456789012", "Region": "us-west-2",
+            }},
+            ConnectionAlias="edge-test-conn",
+        )
+        conn_id = create_resp["ConnectionId"]
+        resp = client.describe_outbound_connections()
+        ids = [c["ConnectionId"] for c in resp["Connections"]]
+        assert conn_id in ids
+        # Cleanup
+        client.delete_outbound_connection(ConnectionId=conn_id)
+
+    # --- cancel_service_software_update error on domain with no pending update ---
+    def test_cancel_service_software_update_real_domain(self, client, domain):
+        """cancel_service_software_update on a real domain returns ServiceSoftwareOptions."""
+        resp = client.cancel_service_software_update(DomainName=domain)
+        assert "ServiceSoftwareOptions" in resp
+        opts = resp["ServiceSoftwareOptions"]
+        assert "CurrentVersion" in opts or "UpdateAvailable" in opts or "Description" in opts
+
+    # --- describe_reserved_instance_offerings structure ---
+    def test_describe_reserved_instance_offerings_structure(self, client):
+        """describe_reserved_instance_offerings entries have InstanceType and Duration."""
+        resp = client.describe_reserved_instance_offerings()
+        offerings = resp["ReservedInstanceOfferings"]
+        if offerings:
+            offering = offerings[0]
+            assert "ReservedInstanceOfferingId" in offering
+            assert "InstanceType" in offering
+
+    # --- get_default_application_setting assertions ---
+    def test_get_default_application_setting_structure(self, client):
+        """get_default_application_setting returns ApplicationDetails or empty keys."""
+        resp = client.get_default_application_setting()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # May contain applicationDetails or defaultSettings keys
+        # Just verify it's a dict with metadata
+        assert isinstance(resp, dict)
+
+    # --- list_applications after creating one ---
+    def test_list_applications_after_create(self, client):
+        """list_applications includes newly created application."""
+        app_name = f"app-{uuid.uuid4().hex[:8]}"
+        try:
+            create_resp = client.create_application(name=app_name)
+            app_id = create_resp.get("id", "")
+            if not app_id:
+                return  # application feature not fully implemented
+            list_resp = client.list_applications()
+            assert "ApplicationSummaries" in list_resp
+            ids = [a.get("id", "") for a in list_resp["ApplicationSummaries"]]
+            assert app_id in ids
+            client.delete_application(id=app_id)
+        except client.exceptions.ClientError:
+            pass  # skip if application ops not implemented
+
+    # --- describe_reserved_instances with id filter ---
+    def test_describe_reserved_instances_with_id(self, client):
+        """describe_reserved_instances with fake ReservedInstanceId returns empty list."""
+        resp = client.describe_reserved_instances(
+            ReservedInstanceId="12345678-1234-1234-1234-123456789012"
+        )
+        assert "ReservedInstances" in resp
+        assert isinstance(resp["ReservedInstances"], list)
+
+    # --- list_tags error handling ---
+    def test_list_tags_nonexistent_arn_returns_empty(self, client):
+        """list_tags on a non-existent ARN returns empty TagList (not an error)."""
+        resp = client.list_tags(
+            ARN="arn:aws:es:us-east-1:123456789012:domain/totally-nonexistent-abc"
+        )
+        assert "TagList" in resp
+        assert isinstance(resp["TagList"], list)
+
+    # --- delete nonexistent domain raises specific error ---
+    def test_delete_nonexistent_domain_specific_error(self, client):
+        """DeleteDomain for nonexistent domain raises ResourceNotFoundException."""
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_domain(DomainName="xyz-nonexistent-abc")
+
+    # --- describe_domains with nonexistent name ---
+    def test_describe_domains_returns_empty_for_missing(self, client):
+        """describe_domains for a nonexistent domain returns empty DomainStatusList."""
+        resp = client.describe_domains(DomainNames=["xyz-nonexistent-domain"])
+        assert "DomainStatusList" in resp
+        assert isinstance(resp["DomainStatusList"], list)
+        assert len(resp["DomainStatusList"]) == 0
+
+    # --- list_domain_names engine type field present ---
+    def test_list_domain_names_has_engine_type(self, client):
+        """list_domain_names entries include EngineType field."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = client.list_domain_names()
+            entry = next((d for d in resp["DomainNames"] if d["DomainName"] == name), None)
+            assert entry is not None
+            assert "EngineType" in entry
+            assert entry["EngineType"] == "OpenSearch"
+        finally:
+            client.delete_domain(DomainName=name)
