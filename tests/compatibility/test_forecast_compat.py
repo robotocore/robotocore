@@ -967,3 +967,852 @@ class TestForecastDatasetEdgeCases:
             assert desc.get("DatasetArns", []) == []
         finally:
             client.delete_dataset_group(DatasetGroupArn=arn)
+
+
+class TestForecastListOpEdgeCases:
+    """Edge cases and behavioral fidelity tests for Forecast list operations.
+
+    Covers CREATE+LIST+DELETE patterns and ERROR cases for resources that
+    previously only had bare list-empty tests.
+    """
+
+    SCHEMA = {
+        "Attributes": [
+            {"AttributeName": "item_id", "AttributeType": "string"},
+            {"AttributeName": "timestamp", "AttributeType": "timestamp"},
+            {"AttributeName": "target_value", "AttributeType": "float"},
+        ]
+    }
+
+    @pytest.fixture
+    def client(self):
+        return make_client("forecast")
+
+    # -------------------------------------------------------------------------
+    # DatasetGroup — CREATE + RETRIEVE + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_dataset_group_full_lifecycle(self, client):
+        """CREATE → describe → verify fields → DELETE."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-edge-dsg-lifecycle", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        assert "dataset-group/test-edge-dsg-lifecycle" in arn
+
+        desc = client.describe_dataset_group(DatasetGroupArn=arn)
+        assert desc["DatasetGroupName"] == "test-edge-dsg-lifecycle"
+        assert desc["Domain"] == "RETAIL"
+        assert desc["Status"] == "ACTIVE"
+
+        client.delete_dataset_group(DatasetGroupArn=arn)
+
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_group(DatasetGroupArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_dataset_groups_created_item_has_required_fields(self, client):
+        """list_dataset_groups entries must have ARN, name, and timestamps."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-edge-dsg-list-fields", Domain="CUSTOM"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            resp = client.list_dataset_groups()
+            match = next(
+                (g for g in resp["DatasetGroups"] if g["DatasetGroupArn"] == arn), None
+            )
+            assert match is not None
+            assert match["DatasetGroupName"] == "test-edge-dsg-list-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_list_dataset_groups_arn_format(self, client):
+        """ARN returned by list_dataset_groups must follow forecast ARN pattern."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-edge-dsg-arn-fmt", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            resp = client.list_dataset_groups()
+            match = next(
+                (g for g in resp["DatasetGroups"] if g["DatasetGroupArn"] == arn), None
+            )
+            assert match is not None
+            parts = match["DatasetGroupArn"].split(":")
+            assert parts[0] == "arn"
+            assert parts[1] == "aws"
+            assert parts[2] == "forecast"
+            assert "dataset-group/test-edge-dsg-arn-fmt" in match["DatasetGroupArn"]
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_delete_nonexistent_dataset_group_error_message(self, client):
+        """DELETE of nonexistent dataset group includes a Message in the error."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_dataset_group(
+                DatasetGroupArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:dataset-group/no-such-dsg"
+                )
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err or "message" in err
+
+    # -------------------------------------------------------------------------
+    # DatasetImportJob — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_dataset_import_job_create_list_delete(self, client):
+        """CREATE import job → verify in list → DELETE → no longer in list."""
+        r = client.create_dataset_import_job(
+            DatasetImportJobName="test-edge-import-job",
+            DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/dummy",
+            DataSource={
+                "S3Config": {
+                    "Path": "s3://test-bucket/data.csv",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+            TimestampFormat="yyyy-MM-dd HH:mm:ss",
+        )
+        job_arn = r["DatasetImportJobArn"]
+        assert "dataset-import-job/test-edge-import-job" in job_arn
+
+        resp = client.list_dataset_import_jobs()
+        arns = [j["DatasetImportJobArn"] for j in resp["DatasetImportJobs"]]
+        assert job_arn in arns
+
+        client.delete_dataset_import_job(DatasetImportJobArn=job_arn)
+        resp2 = client.list_dataset_import_jobs()
+        arns2 = [j["DatasetImportJobArn"] for j in resp2["DatasetImportJobs"]]
+        assert job_arn not in arns2
+
+    def test_list_dataset_import_jobs_entry_fields(self, client):
+        """Each entry in list_dataset_import_jobs must have ARN, name, timestamps."""
+        r = client.create_dataset_import_job(
+            DatasetImportJobName="test-edge-import-fields",
+            DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/dummy",
+            DataSource={
+                "S3Config": {
+                    "Path": "s3://test-bucket/data.csv",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+            TimestampFormat="yyyy-MM-dd HH:mm:ss",
+        )
+        job_arn = r["DatasetImportJobArn"]
+        try:
+            resp = client.list_dataset_import_jobs()
+            match = next(
+                (j for j in resp["DatasetImportJobs"] if j["DatasetImportJobArn"] == job_arn),
+                None,
+            )
+            assert match is not None
+            assert match["DatasetImportJobName"] == "test-edge-import-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_dataset_import_job(DatasetImportJobArn=job_arn)
+
+    def test_delete_nonexistent_dataset_import_job(self, client):
+        """DELETE of nonexistent import job returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_dataset_import_job(
+                DatasetImportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:"
+                    "dataset-import-job/noexist/00000000-0000-0000-0000-000000000000"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_nonexistent_dataset_import_job(self, client):
+        """DESCRIBE of nonexistent import job returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_import_job(
+                DatasetImportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:"
+                    "dataset-import-job/noexist/00000000-0000-0000-0000-000000000000"
+                )
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err or "message" in err
+
+    def test_list_dataset_import_jobs_no_next_token_when_empty(self, client):
+        """When list_dataset_import_jobs has no results, NextToken should be absent."""
+        # Delete all existing import jobs first
+        existing = client.list_dataset_import_jobs()["DatasetImportJobs"]
+        for job in existing:
+            try:
+                client.delete_dataset_import_job(
+                    DatasetImportJobArn=job["DatasetImportJobArn"]
+                )
+            except ClientError:
+                pass
+        resp = client.list_dataset_import_jobs()
+        assert "DatasetImportJobs" in resp
+        assert resp.get("NextToken") is None or "NextToken" not in resp
+
+    # -------------------------------------------------------------------------
+    # PredictorBacktestExportJob — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_predictor_backtest_export_create_list_delete(self, client):
+        """CREATE backtest export → verify in list → DELETE → gone."""
+        r = client.create_predictor_backtest_export_job(
+            PredictorBacktestExportJobName="test-edge-backtest-export",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/backtest/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        job_arn = r["PredictorBacktestExportJobArn"]
+        assert "predictor-backtest-export-job" in job_arn
+
+        resp = client.list_predictor_backtest_export_jobs()
+        arns = [j["PredictorBacktestExportJobArn"] for j in resp["PredictorBacktestExportJobs"]]
+        assert job_arn in arns
+
+        client.delete_predictor_backtest_export_job(PredictorBacktestExportJobArn=job_arn)
+        resp2 = client.list_predictor_backtest_export_jobs()
+        arns2 = [j["PredictorBacktestExportJobArn"] for j in resp2["PredictorBacktestExportJobs"]]
+        assert job_arn not in arns2
+
+    def test_list_predictor_backtest_export_jobs_entry_fields(self, client):
+        """Entries in list_predictor_backtest_export_jobs must have required fields."""
+        r = client.create_predictor_backtest_export_job(
+            PredictorBacktestExportJobName="test-edge-backtest-fields",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/backtest/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        job_arn = r["PredictorBacktestExportJobArn"]
+        try:
+            resp = client.list_predictor_backtest_export_jobs()
+            match = next(
+                (
+                    j
+                    for j in resp["PredictorBacktestExportJobs"]
+                    if j["PredictorBacktestExportJobArn"] == job_arn
+                ),
+                None,
+            )
+            assert match is not None
+            assert match["PredictorBacktestExportJobName"] == "test-edge-backtest-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_predictor_backtest_export_job(PredictorBacktestExportJobArn=job_arn)
+
+    def test_delete_nonexistent_predictor_backtest_export_job(self, client):
+        """DELETE of nonexistent backtest export job returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_predictor_backtest_export_job(
+                PredictorBacktestExportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:"
+                    "predictor-backtest-export-job/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # -------------------------------------------------------------------------
+    # Explainability — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_explainability_create_list_delete(self, client):
+        """CREATE explainability → verify in list → DELETE → gone."""
+        r = client.create_explainability(
+            ExplainabilityName="test-edge-explainability",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            ExplainabilityConfig={
+                "TimeSeriesGranularity": "ALL",
+                "TimePointGranularity": "ALL",
+            },
+        )
+        exp_arn = r["ExplainabilityArn"]
+        assert "explainability/test-edge-explainability" in exp_arn
+
+        resp = client.list_explainabilities()
+        arns = [e["ExplainabilityArn"] for e in resp["Explainabilities"]]
+        assert exp_arn in arns
+
+        client.delete_explainability(ExplainabilityArn=exp_arn)
+        resp2 = client.list_explainabilities()
+        arns2 = [e["ExplainabilityArn"] for e in resp2["Explainabilities"]]
+        assert exp_arn not in arns2
+
+    def test_list_explainabilities_entry_fields(self, client):
+        """Entries in list_explainabilities must have ARN, name, timestamps, status."""
+        r = client.create_explainability(
+            ExplainabilityName="test-edge-exp-fields",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            ExplainabilityConfig={
+                "TimeSeriesGranularity": "ALL",
+                "TimePointGranularity": "ALL",
+            },
+        )
+        exp_arn = r["ExplainabilityArn"]
+        try:
+            resp = client.list_explainabilities()
+            match = next(
+                (e for e in resp["Explainabilities"] if e["ExplainabilityArn"] == exp_arn),
+                None,
+            )
+            assert match is not None
+            assert match["ExplainabilityName"] == "test-edge-exp-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_explainability(ExplainabilityArn=exp_arn)
+
+    def test_delete_nonexistent_explainability(self, client):
+        """DELETE of nonexistent explainability returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_explainability(
+                ExplainabilityArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:explainability/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # -------------------------------------------------------------------------
+    # ExplainabilityExport — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_explainability_export_create_list_delete(self, client):
+        """CREATE explainability export → verify in list → DELETE → gone."""
+        r = client.create_explainability_export(
+            ExplainabilityExportName="test-edge-exp-export",
+            ExplainabilityArn=(
+                "arn:aws:forecast:us-east-1:123456789012:explainability/dummy-exp"
+            ),
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/explainability/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["ExplainabilityExportArn"]
+        assert "explainability-export/test-edge-exp-export" in export_arn
+
+        resp = client.list_explainability_exports()
+        arns = [e["ExplainabilityExportArn"] for e in resp["ExplainabilityExports"]]
+        assert export_arn in arns
+
+        client.delete_explainability_export(ExplainabilityExportArn=export_arn)
+        resp2 = client.list_explainability_exports()
+        arns2 = [e["ExplainabilityExportArn"] for e in resp2["ExplainabilityExports"]]
+        assert export_arn not in arns2
+
+    def test_list_explainability_exports_entry_fields(self, client):
+        """Entries in list_explainability_exports must have ARN, name, timestamps, status."""
+        r = client.create_explainability_export(
+            ExplainabilityExportName="test-edge-expexp-fields",
+            ExplainabilityArn=(
+                "arn:aws:forecast:us-east-1:123456789012:explainability/dummy-exp"
+            ),
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/explainability/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["ExplainabilityExportArn"]
+        try:
+            resp = client.list_explainability_exports()
+            match = next(
+                (e for e in resp["ExplainabilityExports"] if e["ExplainabilityExportArn"] == export_arn),
+                None,
+            )
+            assert match is not None
+            assert match["ExplainabilityExportName"] == "test-edge-expexp-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_explainability_export(ExplainabilityExportArn=export_arn)
+
+    def test_delete_nonexistent_explainability_export(self, client):
+        """DELETE of nonexistent explainability export returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_explainability_export(
+                ExplainabilityExportArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:explainability-export/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # -------------------------------------------------------------------------
+    # Monitor — CREATE + LIST + DELETE + RESUME lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_monitor_create_list_delete(self, client):
+        """CREATE monitor → verify in list → DELETE → gone."""
+        r = client.create_monitor(
+            MonitorName="test-edge-monitor",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        assert "monitor/test-edge-monitor" in monitor_arn
+
+        resp = client.list_monitors()
+        arns = [m["MonitorArn"] for m in resp["Monitors"]]
+        assert monitor_arn in arns
+
+        client.delete_monitor(MonitorArn=monitor_arn)
+        resp2 = client.list_monitors()
+        arns2 = [m["MonitorArn"] for m in resp2["Monitors"]]
+        assert monitor_arn not in arns2
+
+    def test_list_monitors_entry_fields(self, client):
+        """Entries in list_monitors must have ARN, name, timestamps, status."""
+        r = client.create_monitor(
+            MonitorName="test-edge-monitor-fields",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            resp = client.list_monitors()
+            match = next(
+                (m for m in resp["Monitors"] if m["MonitorArn"] == monitor_arn),
+                None,
+            )
+            assert match is not None
+            assert match["MonitorName"] == "test-edge-monitor-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
+
+    def test_resume_resource_on_existing_monitor(self, client):
+        """ResumeResource on an existing monitor succeeds (CREATE + RESUME pattern)."""
+        r = client.create_monitor(
+            MonitorName="test-edge-monitor-resume",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            # Should not raise for an existing resource
+            client.resume_resource(ResourceArn=monitor_arn)
+            # Verify monitor still exists after resume
+            resp = client.list_monitors()
+            arns = [m["MonitorArn"] for m in resp["Monitors"]]
+            assert monitor_arn in arns
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
+
+    def test_delete_nonexistent_monitor(self, client):
+        """DELETE of nonexistent monitor returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_monitor(
+                MonitorArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:monitor/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_resume_resource_not_found_with_message(self, client):
+        """ResumeResource on nonexistent resource returns error with Message field."""
+        with pytest.raises(ClientError) as exc:
+            client.resume_resource(
+                ResourceArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:monitor/noexist-resume"
+                )
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] in ("ResourceNotFoundException", "InvalidInputException")
+        assert "Message" in err or "message" in err
+
+    # -------------------------------------------------------------------------
+    # WhatIfAnalysis — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_what_if_analysis_create_list_delete(self, client):
+        """CREATE what-if analysis → verify in list → DELETE → gone."""
+        r = client.create_what_if_analysis(
+            WhatIfAnalysisName="test-edge-wia",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+        )
+        wia_arn = r["WhatIfAnalysisArn"]
+        assert "what-if-analysis/test-edge-wia" in wia_arn
+
+        resp = client.list_what_if_analyses()
+        arns = [w["WhatIfAnalysisArn"] for w in resp["WhatIfAnalyses"]]
+        assert wia_arn in arns
+
+        client.delete_what_if_analysis(WhatIfAnalysisArn=wia_arn)
+        resp2 = client.list_what_if_analyses()
+        arns2 = [w["WhatIfAnalysisArn"] for w in resp2["WhatIfAnalyses"]]
+        assert wia_arn not in arns2
+
+    def test_list_what_if_analyses_entry_fields(self, client):
+        """Entries in list_what_if_analyses must have ARN, name, timestamps, status."""
+        r = client.create_what_if_analysis(
+            WhatIfAnalysisName="test-edge-wia-fields",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+        )
+        wia_arn = r["WhatIfAnalysisArn"]
+        try:
+            resp = client.list_what_if_analyses()
+            match = next(
+                (w for w in resp["WhatIfAnalyses"] if w["WhatIfAnalysisArn"] == wia_arn),
+                None,
+            )
+            assert match is not None
+            assert match["WhatIfAnalysisName"] == "test-edge-wia-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_what_if_analysis(WhatIfAnalysisArn=wia_arn)
+
+    def test_delete_nonexistent_what_if_analysis(self, client):
+        """DELETE of nonexistent what-if analysis returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_what_if_analysis(
+                WhatIfAnalysisArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_describe_nonexistent_what_if_analysis(self, client):
+        """DESCRIBE of nonexistent what-if analysis returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_what_if_analysis(
+                WhatIfAnalysisArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/noexist"
+                )
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err or "message" in err
+
+    # -------------------------------------------------------------------------
+    # WhatIfForecast — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_what_if_forecast_create_list_delete(self, client):
+        """CREATE what-if forecast → verify in list → DELETE → gone."""
+        r = client.create_what_if_forecast(
+            WhatIfForecastName="test-edge-wif",
+            WhatIfAnalysisArn=(
+                "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/dummy-wia"
+            ),
+        )
+        wif_arn = r["WhatIfForecastArn"]
+        assert "what-if-forecast/test-edge-wif" in wif_arn
+
+        resp = client.list_what_if_forecasts()
+        arns = [w["WhatIfForecastArn"] for w in resp["WhatIfForecasts"]]
+        assert wif_arn in arns
+
+        client.delete_what_if_forecast(WhatIfForecastArn=wif_arn)
+        resp2 = client.list_what_if_forecasts()
+        arns2 = [w["WhatIfForecastArn"] for w in resp2["WhatIfForecasts"]]
+        assert wif_arn not in arns2
+
+    def test_list_what_if_forecasts_entry_fields(self, client):
+        """Entries in list_what_if_forecasts must have ARN, name, timestamps, status."""
+        r = client.create_what_if_forecast(
+            WhatIfForecastName="test-edge-wif-fields",
+            WhatIfAnalysisArn=(
+                "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/dummy-wia"
+            ),
+        )
+        wif_arn = r["WhatIfForecastArn"]
+        try:
+            resp = client.list_what_if_forecasts()
+            match = next(
+                (w for w in resp["WhatIfForecasts"] if w["WhatIfForecastArn"] == wif_arn),
+                None,
+            )
+            assert match is not None
+            assert match["WhatIfForecastName"] == "test-edge-wif-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_what_if_forecast(WhatIfForecastArn=wif_arn)
+
+    def test_delete_nonexistent_what_if_forecast(self, client):
+        """DELETE of nonexistent what-if forecast returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_what_if_forecast(
+                WhatIfForecastArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-forecast/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # -------------------------------------------------------------------------
+    # WhatIfForecastExport — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_what_if_forecast_export_create_list_delete(self, client):
+        """CREATE what-if forecast export → verify in list → DELETE → gone."""
+        r = client.create_what_if_forecast_export(
+            WhatIfForecastExportName="test-edge-wife",
+            WhatIfForecastArns=[
+                "arn:aws:forecast:us-east-1:123456789012:what-if-forecast/dummy-wif"
+            ],
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/what-if/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["WhatIfForecastExportArn"]
+        assert "what-if-forecast-export/test-edge-wife" in export_arn
+
+        resp = client.list_what_if_forecast_exports()
+        arns = [e["WhatIfForecastExportArn"] for e in resp["WhatIfForecastExports"]]
+        assert export_arn in arns
+
+        client.delete_what_if_forecast_export(WhatIfForecastExportArn=export_arn)
+        resp2 = client.list_what_if_forecast_exports()
+        arns2 = [e["WhatIfForecastExportArn"] for e in resp2["WhatIfForecastExports"]]
+        assert export_arn not in arns2
+
+    def test_list_what_if_forecast_exports_entry_fields(self, client):
+        """Entries in list_what_if_forecast_exports must have ARN, name, timestamps, status."""
+        r = client.create_what_if_forecast_export(
+            WhatIfForecastExportName="test-edge-wife-fields",
+            WhatIfForecastArns=[
+                "arn:aws:forecast:us-east-1:123456789012:what-if-forecast/dummy-wif"
+            ],
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/what-if/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["WhatIfForecastExportArn"]
+        try:
+            resp = client.list_what_if_forecast_exports()
+            match = next(
+                (e for e in resp["WhatIfForecastExports"] if e["WhatIfForecastExportArn"] == export_arn),
+                None,
+            )
+            assert match is not None
+            assert match["WhatIfForecastExportName"] == "test-edge-wife-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_what_if_forecast_export(WhatIfForecastExportArn=export_arn)
+
+    def test_delete_nonexistent_what_if_forecast_export(self, client):
+        """DELETE of nonexistent what-if forecast export returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_what_if_forecast_export(
+                WhatIfForecastExportArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:what-if-forecast-export/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # -------------------------------------------------------------------------
+    # Forecast — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_forecast_create_list_delete(self, client):
+        """CREATE forecast → verify in list → DELETE → gone."""
+        r = client.create_forecast(
+            ForecastName="test-edge-forecast",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        fc_arn = r["ForecastArn"]
+        assert "forecast/test-edge-forecast" in fc_arn
+
+        resp = client.list_forecasts()
+        arns = [f["ForecastArn"] for f in resp["Forecasts"]]
+        assert fc_arn in arns
+
+        client.delete_forecast(ForecastArn=fc_arn)
+        resp2 = client.list_forecasts()
+        arns2 = [f["ForecastArn"] for f in resp2["Forecasts"]]
+        assert fc_arn not in arns2
+
+    def test_list_forecasts_entry_fields(self, client):
+        """Entries in list_forecasts must have ARN, name, timestamps, status."""
+        r = client.create_forecast(
+            ForecastName="test-edge-forecast-fields",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        fc_arn = r["ForecastArn"]
+        try:
+            resp = client.list_forecasts()
+            match = next(
+                (f for f in resp["Forecasts"] if f["ForecastArn"] == fc_arn),
+                None,
+            )
+            assert match is not None
+            assert match["ForecastName"] == "test-edge-forecast-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_forecast(ForecastArn=fc_arn)
+
+    def test_delete_nonexistent_forecast(self, client):
+        """DELETE of nonexistent forecast returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_forecast(
+                ForecastArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:forecast/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_forecasts_no_next_token_when_empty(self, client):
+        """When list_forecasts has no results, NextToken should be absent."""
+        existing = client.list_forecasts()["Forecasts"]
+        for fc in existing:
+            try:
+                client.delete_forecast(ForecastArn=fc["ForecastArn"])
+            except ClientError:
+                pass
+        resp = client.list_forecasts()
+        assert "Forecasts" in resp
+        assert resp.get("NextToken") is None or "NextToken" not in resp
+
+    # -------------------------------------------------------------------------
+    # ForecastExportJob — CREATE + LIST + DELETE lifecycle
+    # -------------------------------------------------------------------------
+
+    def test_forecast_export_job_create_list_delete(self, client):
+        """CREATE forecast export job → verify in list → DELETE → gone."""
+        r = client.create_forecast_export_job(
+            ForecastExportJobName="test-edge-fc-export",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/forecasts/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["ForecastExportJobArn"]
+        assert "forecast-export-job/test-edge-fc-export" in export_arn
+
+        resp = client.list_forecast_export_jobs()
+        arns = [e["ForecastExportJobArn"] for e in resp["ForecastExportJobs"]]
+        assert export_arn in arns
+
+        client.delete_forecast_export_job(ForecastExportJobArn=export_arn)
+        resp2 = client.list_forecast_export_jobs()
+        arns2 = [e["ForecastExportJobArn"] for e in resp2["ForecastExportJobs"]]
+        assert export_arn not in arns2
+
+    def test_list_forecast_export_jobs_entry_fields(self, client):
+        """Entries in list_forecast_export_jobs must have ARN, name, timestamps, status."""
+        r = client.create_forecast_export_job(
+            ForecastExportJobName="test-edge-fc-export-fields",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/forecasts/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["ForecastExportJobArn"]
+        try:
+            resp = client.list_forecast_export_jobs()
+            match = next(
+                (e for e in resp["ForecastExportJobs"] if e["ForecastExportJobArn"] == export_arn),
+                None,
+            )
+            assert match is not None
+            assert match["ForecastExportJobName"] == "test-edge-fc-export-fields"
+            assert "CreationTime" in match
+            assert "LastModificationTime" in match
+            assert "Status" in match
+        finally:
+            client.delete_forecast_export_job(ForecastExportJobArn=export_arn)
+
+    def test_delete_nonexistent_forecast_export_job(self, client):
+        """DELETE of nonexistent forecast export job returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.delete_forecast_export_job(
+                ForecastExportJobArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:forecast-export-job/noexist"
+                )
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_forecast_export_jobs_no_next_token_when_empty(self, client):
+        """When list_forecast_export_jobs has no results, NextToken should be absent."""
+        existing = client.list_forecast_export_jobs()["ForecastExportJobs"]
+        for job in existing:
+            try:
+                client.delete_forecast_export_job(
+                    ForecastExportJobArn=job["ForecastExportJobArn"]
+                )
+            except ClientError:
+                pass
+        resp = client.list_forecast_export_jobs()
+        assert "ForecastExportJobs" in resp
+        assert resp.get("NextToken") is None or "NextToken" not in resp
+
+    # -------------------------------------------------------------------------
+    # Cross-resource ARN format verification
+    # -------------------------------------------------------------------------
+
+    def test_created_resource_arn_account_and_region(self, client):
+        """ARNs from created resources must contain correct region and account."""
+        r = client.create_monitor(
+            MonitorName="test-edge-arn-check",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            parts = monitor_arn.split(":")
+            assert parts[3] == "us-east-1", f"Expected region 'us-east-1', got {parts[3]!r}"
+            assert parts[4] == "123456789012", f"Expected account '123456789012', got {parts[4]!r}"
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
+
+    def test_resource_timestamps_are_datetime_objects(self, client):
+        """CreationTime and LastModificationTime must be datetime objects, not strings."""
+        from datetime import datetime
+
+        r = client.create_monitor(
+            MonitorName="test-edge-ts-type",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            resp = client.list_monitors()
+            match = next(
+                (m for m in resp["Monitors"] if m["MonitorArn"] == monitor_arn),
+                None,
+            )
+            assert match is not None
+            assert isinstance(match["CreationTime"], datetime), (
+                f"CreationTime should be datetime, got {type(match['CreationTime'])}"
+            )
+            assert isinstance(match["LastModificationTime"], datetime), (
+                f"LastModificationTime should be datetime, got {type(match['LastModificationTime'])}"
+            )
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
