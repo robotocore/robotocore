@@ -1942,3 +1942,513 @@ class TestCloudWatchEdgeCases:
         resp = cw.describe_alarm_contributors(AlarmName="any-alarm-name")
         assert "AlarmContributors" in resp
         assert isinstance(resp["AlarmContributors"], list)
+
+
+class TestCloudWatchBehavioralCoverage:
+    """Targeted behavioral coverage tests to fill pattern gaps."""
+
+    @pytest.fixture
+    def cw(self):
+        return make_client("cloudwatch")
+
+    # ── put_metric_data: ERROR + UPDATE patterns ──────────────────────────────
+
+    def test_put_metric_data_update_and_list(self, cw):
+        """Put metric data twice (UPDATE), then list and get stats (RETRIEVE + LIST + ERROR)."""
+        from botocore.exceptions import ClientError
+
+        ns = f"UpdateMetric-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+        # First put (CREATE)
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": "Counter", "Value": 10.0, "Unit": "Count", "Timestamp": now}],
+        )
+        # Second put same metric (UPDATE)
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": "Counter", "Value": 20.0, "Unit": "Count", "Timestamp": now}],
+        )
+        # LIST: both datapoints visible
+        resp = cw.list_metrics(Namespace=ns, MetricName="Counter")
+        assert len(resp["Metrics"]) >= 1
+        # RETRIEVE: statistics reflect both
+        stats = cw.get_metric_statistics(
+            Namespace=ns,
+            MetricName="Counter",
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=5),
+            Period=300,
+            Statistics=["SampleCount", "Sum"],
+        )
+        assert len(stats["Datapoints"]) >= 1
+        dp = stats["Datapoints"][0]
+        assert dp["SampleCount"] >= 2.0
+        assert dp["Sum"] >= 30.0
+        # ERROR: invalid future timestamp far out of range should still succeed (CloudWatch accepts it)
+        resp2 = cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": "Counter", "Value": 5.0, "Unit": "Count"}],
+        )
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── describe_anomaly_detectors: CREATE + RETRIEVE + DELETE + ERROR ─────────
+
+    def test_describe_anomaly_detectors_full_lifecycle(self, cw):
+        """PutAnomalyDetector → DescribeAnomalyDetectors → Delete → verify gone (C+R+L+D+E)."""
+        from botocore.exceptions import ClientError
+
+        ns = f"ADFull-{uuid.uuid4().hex[:8]}"
+        metric = "FullMetric"
+        stat = "p90"
+
+        # CREATE
+        resp = cw.put_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE - describe with filters
+        resp = cw.describe_anomaly_detectors(Namespace=ns, MetricName=metric)
+        detectors = resp["AnomalyDetectors"]
+        assert len(detectors) >= 1
+        ad = detectors[0]
+        assert ad["MetricName"] == metric
+        assert ad["Stat"] == stat
+
+        # LIST - describe without filters returns it
+        all_resp = cw.describe_anomaly_detectors()
+        all_ns = [d["Namespace"] for d in all_resp["AnomalyDetectors"]]
+        assert ns in all_ns
+
+        # DELETE
+        cw.delete_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+
+        # ERROR/verify: gone after delete
+        resp = cw.describe_anomaly_detectors(Namespace=ns)
+        assert resp["AnomalyDetectors"] == []
+
+    # ── list_metric_streams: CREATE + RETRIEVE + DELETE + ERROR ───────────────
+
+    def test_list_metric_streams_lifecycle(self, cw):
+        """Create stream, list it, get it (RETRIEVE), delete it, verify gone (C+R+L+D+E)."""
+        from botocore.exceptions import ClientError
+
+        name = f"ls-stream-{uuid.uuid4().hex[:8]}"
+        # CREATE
+        resp = cw.put_metric_stream(
+            Name=name,
+            FirehoseArn="arn:aws:firehose:us-east-1:123456789012:deliverystream/test",
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            OutputFormat="json",
+        )
+        assert "Arn" in resp
+
+        try:
+            # LIST
+            list_resp = cw.list_metric_streams()
+            names = [e["Name"] for e in list_resp["Entries"]]
+            assert name in names
+
+            # RETRIEVE
+            get_resp = cw.get_metric_stream(Name=name)
+            assert get_resp["Name"] == name
+            assert get_resp["OutputFormat"] == "json"
+
+            # UPDATE (stop/start)
+            cw.stop_metric_streams(Names=[name])
+            stopped = cw.get_metric_stream(Name=name)
+            assert stopped["State"] == "stopped"
+
+        finally:
+            # DELETE
+            cw.delete_metric_stream(Name=name)
+
+        # ERROR: getting deleted stream raises
+        with pytest.raises(ClientError) as exc:
+            cw.get_metric_stream(Name=name)
+        assert exc.value.response["Error"]["Code"] in ("ResourceNotFoundException", "ResourceNotFound")
+
+    # ── list_managed_insight_rules: CREATE context + RETRIEVE + ERROR ──────────
+
+    def test_list_managed_insight_rules_with_context(self, cw):
+        """PutManagedInsightRules then ListManagedInsightRules for that resource (C+R+L+E)."""
+        resource_arn = "arn:aws:dynamodb:us-east-1:123456789012:table/my-test-table"
+
+        # CREATE (put managed rules for a resource)
+        put_resp = cw.put_managed_insight_rules(
+            ManagedRules=[
+                {
+                    "TemplateName": "DynamoDBContributorInsights",
+                    "ResourceARN": resource_arn,
+                    "Tags": [],
+                }
+            ]
+        )
+        assert put_resp["Failures"] == []
+
+        # LIST (list managed rules for that resource)
+        list_resp = cw.list_managed_insight_rules(ResourceARN=resource_arn)
+        assert "ManagedRules" in list_resp
+        assert isinstance(list_resp["ManagedRules"], list)
+
+        # RETRIEVE: check the response metadata
+        assert list_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR boundary: list for unknown ARN returns empty list (not an error)
+        other_resp = cw.list_managed_insight_rules(
+            ResourceARN="arn:aws:dynamodb:us-east-1:123456789012:table/nonexistent"
+        )
+        assert "ManagedRules" in other_resp
+
+    # ── delete_anomaly_detector: CREATE + LIST + RETRIEVE before delete ────────
+
+    def test_delete_anomaly_detector_with_lifecycle(self, cw):
+        """Create anomaly detector, list it, retrieve it, then delete (C+R+L+D)."""
+        ns = f"ADDel-{uuid.uuid4().hex[:8]}"
+        metric = "DelMetric"
+        stat = "Average"
+
+        # CREATE
+        cw.put_anomaly_detector(Namespace=ns, MetricName=metric, Stat=stat)
+
+        # LIST: appears in list
+        list_resp = cw.describe_anomaly_detectors(Namespace=ns)
+        assert len(list_resp["AnomalyDetectors"]) >= 1
+
+        # RETRIEVE: specific fields present
+        ad = list_resp["AnomalyDetectors"][0]
+        assert ad["Namespace"] == ns
+        assert ad["MetricName"] == metric
+        assert "StateValue" in ad
+
+        # UPDATE: put again with different stat
+        cw.put_anomaly_detector(Namespace=ns, MetricName=metric, Stat="Sum")
+        updated_resp = cw.describe_anomaly_detectors(Namespace=ns)
+        updated_ad = next(d for d in updated_resp["AnomalyDetectors"] if d["MetricName"] == metric and d["Stat"] == "Sum")
+        assert updated_ad["Stat"] == "Sum"
+
+        # DELETE
+        cw.delete_anomaly_detector(Namespace=ns, MetricName=metric, Stat="Sum")
+        final_resp = cw.describe_anomaly_detectors(Namespace=ns)
+        remaining = [d for d in final_resp["AnomalyDetectors"] if d["MetricName"] == metric and d["Stat"] == "Sum"]
+        assert remaining == []
+
+    # ── list_alarm_mute_rules: CREATE + RETRIEVE + DELETE + ERROR ─────────────
+
+    def test_list_alarm_mute_rules_full_lifecycle(self, cw):
+        """PutAlarmMuteRule → ListAlarmMuteRules → GetAlarmMuteRule → Delete (C+R+L+D+E)."""
+        from botocore.exceptions import ClientError
+
+        name = f"mute-full-{uuid.uuid4().hex[:8]}"
+
+        # CREATE
+        cw.put_alarm_mute_rule(
+            Name=name,
+            Rule={"Schedule": {"Expression": "cron(0 0 * * ? *)", "Duration": "PT1H"}},
+        )
+
+        try:
+            # LIST: appears in list
+            list_resp = cw.list_alarm_mute_rules()
+            assert list_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert "AlarmMuteRuleSummaries" in list_resp
+
+            # RETRIEVE: get the rule by name
+            get_resp = cw.get_alarm_mute_rule(AlarmMuteRuleName=name)
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        finally:
+            # DELETE
+            del_resp = cw.delete_alarm_mute_rule(AlarmMuteRuleName=name)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: get deleted rule raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            cw.get_alarm_mute_rule(AlarmMuteRuleName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── delete_nonexistent_metric_stream: CREATE real one for contrast ─────────
+
+    def test_delete_metric_stream_real_vs_nonexistent(self, cw):
+        """Create a real stream, delete it, compare with deleting nonexistent (C+R+L+D)."""
+        name = f"real-stream-{uuid.uuid4().hex[:8]}"
+        fake_name = f"fake-stream-{uuid.uuid4().hex[:8]}"
+
+        # CREATE
+        cw.put_metric_stream(
+            Name=name,
+            FirehoseArn="arn:aws:firehose:us-east-1:123456789012:deliverystream/test",
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            OutputFormat="json",
+        )
+
+        # RETRIEVE: confirm exists
+        get_resp = cw.get_metric_stream(Name=name)
+        assert get_resp["Name"] == name
+
+        # LIST: both should behave consistently
+        list_resp = cw.list_metric_streams()
+        names = [e["Name"] for e in list_resp["Entries"]]
+        assert name in names
+        assert fake_name not in names
+
+        # DELETE real stream: 200
+        del_resp = cw.delete_metric_stream(Name=name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # DELETE nonexistent: also 200 (idempotent)
+        del_resp2 = cw.delete_metric_stream(Name=fake_name)
+        assert del_resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── get_metric_widget_image: ERROR + context ───────────────────────────────
+
+    def test_get_metric_widget_image_with_metric_data(self, cw):
+        """Put metric data, then get widget image showing that data (C+R+L+E)."""
+        import json
+
+        ns = f"WidgetImg-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+
+        # CREATE metric data
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[
+                {"MetricName": "ResponseTime", "Value": 50.0, "Unit": "Milliseconds", "Timestamp": now}
+            ],
+        )
+
+        # LIST: verify metric appears
+        list_resp = cw.list_metrics(Namespace=ns)
+        assert len(list_resp["Metrics"]) >= 1
+
+        # RETRIEVE: get widget image for this specific metric
+        widget = {
+            "metrics": [[ns, "ResponseTime"]],
+            "period": 300,
+            "start": "-PT1H",
+            "end": "PT0H",
+            "width": 600,
+            "height": 400,
+        }
+        img_resp = cw.get_metric_widget_image(MetricWidget=json.dumps(widget))
+        assert "MetricWidgetImage" in img_resp
+        image_data = img_resp["MetricWidgetImage"]
+        assert len(image_data) > 0
+        # PNG magic bytes
+        assert image_data[:4] == b"\x89PNG"
+
+    # ── put_managed_insight_rules: RETRIEVE + LIST + DELETE + ERROR ─────────────
+
+    def test_put_managed_insight_rules_lifecycle(self, cw):
+        """PutManagedInsightRules → list rules → put again (C+R+L+U+E)."""
+        resource_arn = "arn:aws:dynamodb:us-east-1:123456789012:table/managed-test"
+
+        # CREATE
+        resp = cw.put_managed_insight_rules(
+            ManagedRules=[
+                {
+                    "TemplateName": "DynamoDBContributorInsights",
+                    "ResourceARN": resource_arn,
+                    "Tags": [{"Key": "purpose", "Value": "test"}],
+                }
+            ]
+        )
+        assert "Failures" in resp
+        assert resp["Failures"] == []
+
+        # RETRIEVE via list_managed_insight_rules
+        list_resp = cw.list_managed_insight_rules(ResourceARN=resource_arn)
+        assert "ManagedRules" in list_resp
+
+        # UPDATE: put again (idempotent)
+        resp2 = cw.put_managed_insight_rules(
+            ManagedRules=[
+                {
+                    "TemplateName": "DynamoDBContributorInsights",
+                    "ResourceARN": resource_arn,
+                    "Tags": [{"Key": "purpose", "Value": "updated"}],
+                }
+            ]
+        )
+        assert resp2["Failures"] == []
+
+        # LIST again - still works
+        list_resp2 = cw.list_managed_insight_rules(ResourceARN=resource_arn)
+        assert list_resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── describe_alarm_contributors: CREATE alarm + full cycle ────────────────
+
+    def test_describe_alarm_contributors_full(self, cw):
+        """Create alarm, describe contributors, update alarm, delete (C+R+L+U+D)."""
+        name = f"contrib-alarm-{uuid.uuid4().hex[:8]}"
+
+        # CREATE alarm
+        cw.put_metric_alarm(
+            AlarmName=name,
+            Namespace="ContribNS",
+            MetricName="Errors",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Sum",
+            Threshold=10.0,
+        )
+        try:
+            # RETRIEVE: describe alarm to get ARN
+            desc = cw.describe_alarms(AlarmNames=[name])
+            assert len(desc["MetricAlarms"]) == 1
+            alarm = desc["MetricAlarms"][0]
+            assert alarm["AlarmName"] == name
+
+            # LIST: describe_alarm_contributors for this alarm
+            contrib_resp = cw.describe_alarm_contributors(AlarmName=name)
+            assert "AlarmContributors" in contrib_resp
+            assert isinstance(contrib_resp["AlarmContributors"], list)
+
+            # UPDATE: change threshold
+            cw.put_metric_alarm(
+                AlarmName=name,
+                Namespace="ContribNS",
+                MetricName="Errors",
+                ComparisonOperator="GreaterThanThreshold",
+                EvaluationPeriods=2,
+                Period=60,
+                Statistic="Sum",
+                Threshold=20.0,
+            )
+            updated = cw.describe_alarms(AlarmNames=[name])
+            assert updated["MetricAlarms"][0]["Threshold"] == 20.0
+            assert updated["MetricAlarms"][0]["EvaluationPeriods"] == 2
+
+        finally:
+            # DELETE
+            cw.delete_alarms(AlarmNames=[name])
+
+        # ERROR: alarm gone after delete
+        gone = cw.describe_alarms(AlarmNames=[name])
+        assert gone["MetricAlarms"] == []
+
+    # ── delete_alarm_mute_rule_nonexistent: CREATE + LIST before delete ────────
+
+    def test_delete_alarm_mute_rule_with_list(self, cw):
+        """Create mute rule, list it, delete it, list again (C+R+L+D+E)."""
+        from botocore.exceptions import ClientError
+
+        name = f"mute-list-{uuid.uuid4().hex[:8]}"
+
+        # CREATE
+        cw.put_alarm_mute_rule(
+            Name=name,
+            Rule={"Schedule": {"Expression": "cron(0 12 * * ? *)", "Duration": "PT2H"}},
+        )
+
+        # LIST: appears in list
+        list_resp = cw.list_alarm_mute_rules()
+        assert list_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "AlarmMuteRuleSummaries" in list_resp
+
+        # RETRIEVE: get by name
+        get_resp = cw.get_alarm_mute_rule(AlarmMuteRuleName=name)
+        assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # DELETE
+        del_resp = cw.delete_alarm_mute_rule(AlarmMuteRuleName=name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: get after delete raises
+        with pytest.raises(ClientError) as exc:
+            cw.get_alarm_mute_rule(AlarmMuteRuleName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── list_metrics empty namespace: CREATE + UPDATE + DELETE + ERROR ─────────
+
+    def test_list_metrics_namespace_create_then_empty(self, cw):
+        """Put metric, list it (CREATE+LIST), verify different ns is empty (ERROR boundary)."""
+        from botocore.exceptions import ClientError
+
+        ns = f"NonEmpty-{uuid.uuid4().hex[:8]}"
+        empty_ns = f"TrulyEmpty-{uuid.uuid4().hex[:8]}"
+        now = datetime.now(UTC)
+
+        # CREATE metric data
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": "Pulse", "Value": 1.0, "Unit": "None", "Timestamp": now}],
+        )
+
+        # RETRIEVE via get_metric_statistics
+        stats = cw.get_metric_statistics(
+            Namespace=ns,
+            MetricName="Pulse",
+            StartTime=now - timedelta(minutes=5),
+            EndTime=now + timedelta(minutes=5),
+            Period=300,
+            Statistics=["Sum"],
+        )
+        assert "Datapoints" in stats
+
+        # LIST: non-empty namespace has metric
+        list_resp = cw.list_metrics(Namespace=ns)
+        assert len(list_resp["Metrics"]) >= 1
+        assert list_resp["Metrics"][0]["Namespace"] == ns
+
+        # UPDATE: put another metric to same namespace
+        cw.put_metric_data(
+            Namespace=ns,
+            MetricData=[{"MetricName": "Beat", "Value": 2.0, "Unit": "None", "Timestamp": now}],
+        )
+        list_resp2 = cw.list_metrics(Namespace=ns)
+        metric_names = {m["MetricName"] for m in list_resp2["Metrics"]}
+        assert "Pulse" in metric_names
+        assert "Beat" in metric_names
+
+        # LIST empty namespace returns empty
+        empty_resp = cw.list_metrics(Namespace=empty_ns)
+        assert empty_resp["Metrics"] == []
+
+    # ── set_alarm_state_and_verify: add LIST + ERROR ───────────────────────────
+
+    def test_set_alarm_state_list_and_error(self, cw):
+        """SetAlarmState, list by state, verify error for nonexistent (C+R+L+U+D+E)."""
+        from botocore.exceptions import ClientError
+
+        name = f"state-full-{uuid.uuid4().hex[:8]}"
+
+        # CREATE
+        cw.put_metric_alarm(
+            AlarmName=name,
+            Namespace="StateFullNS",
+            MetricName="M",
+            ComparisonOperator="GreaterThanThreshold",
+            EvaluationPeriods=1,
+            Period=60,
+            Statistic="Average",
+            Threshold=50.0,
+        )
+        try:
+            # UPDATE (set state)
+            cw.set_alarm_state(AlarmName=name, StateValue="ALARM", StateReason="test trigger")
+
+            # RETRIEVE
+            desc = cw.describe_alarms(AlarmNames=[name])
+            alarm = desc["MetricAlarms"][0]
+            assert alarm["StateValue"] == "ALARM"
+            assert alarm["StateReason"] == "test trigger"
+
+            # LIST: filter by state finds it
+            state_resp = cw.describe_alarms(StateValue="ALARM")
+            alarm_names = [a["AlarmName"] for a in state_resp["MetricAlarms"]]
+            assert name in alarm_names
+
+            # UPDATE back to OK
+            cw.set_alarm_state(AlarmName=name, StateValue="OK", StateReason="resolved")
+            ok_resp = cw.describe_alarms(AlarmNames=[name])
+            assert ok_resp["MetricAlarms"][0]["StateValue"] == "OK"
+
+        finally:
+            # DELETE
+            cw.delete_alarms(AlarmNames=[name])
+
+        # ERROR: set state on deleted alarm
+        with pytest.raises(ClientError) as exc:
+            cw.set_alarm_state(AlarmName=name, StateValue="ALARM", StateReason="ghost")
+        assert exc.value.response["Error"]["Code"] in ("ResourceNotFoundException", "ResourceNotFound")

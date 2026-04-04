@@ -38,6 +38,17 @@ _composite_lock = threading.Lock()
 _dashboards: dict[str, dict[str, dict]] = {}
 _dashboard_lock = threading.Lock()
 
+# Alarm mute rules: {region: {rule_name: MuteRuleData}}
+_alarm_mute_rules: dict[str, dict[str, dict]] = {}
+_alarm_mute_rule_lock = threading.Lock()
+
+
+def _get_alarm_mute_rules_store(region: str) -> dict[str, dict]:
+    with _alarm_mute_rule_lock:
+        if region not in _alarm_mute_rules:
+            _alarm_mute_rules[region] = {}
+        return _alarm_mute_rules[region]
+
 
 class CloudWatchError(Exception):
     def __init__(self, code: str, message: str, status: int = 400):
@@ -1097,28 +1108,45 @@ def _handle_describe_alarm_contributors(params: dict, region: str, account_id: s
 
 
 def _handle_put_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
-    """Stub for PutAlarmMuteRule - accept and return empty."""
+    """Store alarm mute rule in memory."""
+    name = params.get("Name", "")
+    rule = params.get("Rule", {})
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        store[name] = {"Name": name, "Rule": rule}
     return {}
 
 
 def _handle_get_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
-    """Stub for GetAlarmMuteRule."""
-    name = params.get("MuteRuleName", params.get("Name", ""))
-    raise CloudWatchError(
-        "ResourceNotFoundException",
-        f"Mute rule {name} does not exist",
-        status=404,
-    )
+    """Retrieve alarm mute rule by name."""
+    name = params.get("AlarmMuteRuleName", params.get("Name", ""))
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        rule = store.get(name)
+    if rule is None:
+        raise CloudWatchError(
+            "ResourceNotFoundException",
+            f"Mute rule {name} does not exist",
+            status=404,
+        )
+    return {"MuteRule": rule}
 
 
 def _handle_delete_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
-    """Stub for DeleteAlarmMuteRule - no-op."""
+    """Delete alarm mute rule - idempotent."""
+    name = params.get("AlarmMuteRuleName", params.get("Name", ""))
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        store.pop(name, None)
     return {}
 
 
 def _handle_list_alarm_mute_rules(params: dict, region: str, account_id: str) -> dict:
-    """ListAlarmMuteRules — return empty list with required response key."""
-    return {"AlarmMuteRuleSummaries": []}
+    """ListAlarmMuteRules — return all stored rules as summaries."""
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        summaries = [{"Name": r["Name"]} for r in store.values()]
+    return {"AlarmMuteRuleSummaries": summaries}
 
 
 # ---------------------------------------------------------------------------
