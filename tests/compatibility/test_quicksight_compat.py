@@ -2587,6 +2587,449 @@ class TestQuickSightSearchOpsExpanded:
         assert "RequestId" in resp
 
 
+class TestQuickSightPredictQAResultsBehavioral:
+    """Behavioral fidelity tests for predict_qa_results."""
+
+    def test_predict_qa_results_returns_status_200(self, quicksight):
+        resp = quicksight.predict_qa_results(AwsAccountId=ACCOUNT_ID, QueryText="show me sales")
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_predict_qa_results_with_different_queries(self, quicksight):
+        for query in ["revenue by region", "top customers", "monthly trends"]:
+            resp = quicksight.predict_qa_results(AwsAccountId=ACCOUNT_ID, QueryText=query)
+            assert resp["Status"] == 200
+            assert "RequestId" in resp
+
+    def test_predict_qa_results_response_shape(self, quicksight):
+        resp = quicksight.predict_qa_results(AwsAccountId=ACCOUNT_ID, QueryText="test query")
+        assert resp["Status"] == 200
+        # PredictQAResults should return either PrimaryVisual or Analyses or at minimum RequestId
+        assert "PrimaryVisual" in resp or "Analyses" in resp or "RequestId" in resp
+
+
+class TestQuickSightAccountSettingsBehavioral:
+    """Behavioral fidelity tests for account settings."""
+
+    def test_describe_account_settings_has_expected_fields(self, quicksight):
+        response = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        settings = response["AccountSettings"]
+        assert "AccountName" in settings or "Edition" in settings or "DefaultNamespace" in settings
+
+    def test_update_then_describe_account_settings(self, quicksight):
+        quicksight.update_account_settings(
+            AwsAccountId=ACCOUNT_ID,
+            DefaultNamespace="default",
+        )
+        response = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        assert "AccountSettings" in response
+
+    def test_update_public_sharing_settings_enable_then_disable(self, quicksight):
+        enable_resp = quicksight.update_public_sharing_settings(
+            AwsAccountId=ACCOUNT_ID,
+            PublicSharingEnabled=True,
+        )
+        assert enable_resp["Status"] == 200
+
+        disable_resp = quicksight.update_public_sharing_settings(
+            AwsAccountId=ACCOUNT_ID,
+            PublicSharingEnabled=False,
+        )
+        assert disable_resp["Status"] == 200
+
+
+class TestQuickSightListWithContentBehavioral:
+    """Verify list operations return resources that were created."""
+
+    def test_list_dashboards_with_content(self, quicksight):
+        dash_id = _unique("dash")
+        quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name="Listed Dashboard",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        response = quicksight.list_dashboards(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        dash_ids = [d["DashboardId"] for d in response["DashboardSummaryList"]]
+        assert dash_id in dash_ids
+
+    def test_list_analyses_with_content(self, quicksight):
+        aid = _unique("analysis")
+        quicksight.create_analysis(
+            AwsAccountId=ACCOUNT_ID,
+            AnalysisId=aid,
+            Name="Listed Analysis",
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        response = quicksight.list_analyses(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        analysis_ids = [a["AnalysisId"] for a in response["AnalysisSummaryList"]]
+        assert aid in analysis_ids
+
+    def test_list_data_sets_with_content(self, quicksight):
+        ds_id = _unique("ds")
+        dset_id = _unique("dset")
+        quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID,
+            DataSourceId=ds_id,
+            Name="DS for list test",
+            Type="S3",
+            DataSourceParameters={
+                "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+            },
+        )
+        try:
+            quicksight.create_data_set(
+                AwsAccountId=ACCOUNT_ID,
+                DataSetId=dset_id,
+                Name="Listed Dataset",
+                PhysicalTableMap={
+                    "t1": {
+                        "S3Source": {
+                            "DataSourceArn": (
+                                f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:datasource/{ds_id}"
+                            ),
+                            "InputColumns": [{"Name": "col1", "Type": "STRING"}],
+                        }
+                    }
+                },
+                ImportMode="SPICE",
+            )
+            response = quicksight.list_data_sets(AwsAccountId=ACCOUNT_ID)
+            assert response["Status"] == 200
+            dataset_ids = [d["DataSetId"] for d in response["DataSetSummaries"]]
+            assert dset_id in dataset_ids
+        finally:
+            quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+
+    def test_list_folders_with_content(self, quicksight):
+        folder_id = _unique("folder")
+        quicksight.create_folder(
+            AwsAccountId=ACCOUNT_ID,
+            FolderId=folder_id,
+            Name="Listed Folder",
+            FolderType="SHARED",
+        )
+        response = quicksight.list_folders(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        folder_ids = [f["FolderId"] for f in response["FolderSummaryList"]]
+        assert folder_id in folder_ids
+
+    def test_list_templates_with_content(self, quicksight):
+        tmpl_id = _unique("tmpl")
+        quicksight.create_template(
+            AwsAccountId=ACCOUNT_ID,
+            TemplateId=tmpl_id,
+            Name="Listed Template",
+            SourceEntity={
+                "SourceAnalysis": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:analysis/fake",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+        response = quicksight.list_templates(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        tmpl_ids = [t["TemplateId"] for t in response["TemplateSummaryList"]]
+        assert tmpl_id in tmpl_ids
+
+    def test_list_themes_with_content(self, quicksight):
+        theme_id = _unique("theme")
+        quicksight.create_theme(
+            AwsAccountId=ACCOUNT_ID,
+            ThemeId=theme_id,
+            Name="Listed Theme",
+            BaseThemeId="CLASSIC",
+            Configuration={"DataColorPalette": {"Colors": ["#FF0000"]}},
+        )
+        response = quicksight.list_themes(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        theme_ids = [t["ThemeId"] for t in response["ThemeSummaryList"]]
+        assert theme_id in theme_ids
+
+    def test_list_namespaces_is_list(self, quicksight):
+        response = quicksight.list_namespaces(AwsAccountId=ACCOUNT_ID)
+        assert response["Status"] == 200
+        assert isinstance(response["Namespaces"], list)
+
+    def test_list_groups_after_create(self, quicksight):
+        group_name = _unique("grp")
+        quicksight.create_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        try:
+            response = quicksight.list_groups(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE)
+            assert response["Status"] == 200
+            group_names = [g["GroupName"] for g in response["GroupList"]]
+            assert group_name in group_names
+        finally:
+            quicksight.delete_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+
+    def test_list_users_after_register(self, quicksight):
+        user_name = _unique("user")
+        quicksight.register_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Email=f"{user_name}@example.com",
+            IdentityType="QUICKSIGHT",
+            UserRole="READER",
+            UserName=user_name,
+        )
+        try:
+            response = quicksight.list_users(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE)
+            assert response["Status"] == 200
+            user_names = [u["UserName"] for u in response["UserList"]]
+            assert user_name in user_names
+        finally:
+            quicksight.delete_user(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name
+            )
+
+
+class TestQuickSightSearchGroupsBehavioral:
+    """Behavioral edge cases for search_groups."""
+
+    def test_search_groups_retrieve_result(self, quicksight):
+        group_name = _unique("srchgrp")
+        create_resp = quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        try:
+            assert "Group" in create_resp
+            search_resp = quicksight.search_groups(
+                AwsAccountId=ACCOUNT_ID,
+                Namespace=NAMESPACE,
+                Filters=[
+                    {"Operator": "StartsWith", "Name": "GROUP_NAME", "Value": group_name[:6]}
+                ],
+            )
+            assert search_resp["Status"] == 200
+            found = [g for g in search_resp["GroupList"] if g["GroupName"] == group_name]
+            assert len(found) == 1
+            assert found[0]["GroupName"] == group_name
+            assert "Arn" in found[0]
+            assert ACCOUNT_ID in found[0]["Arn"]
+        finally:
+            quicksight.delete_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+
+    def test_search_groups_no_match_returns_empty(self, quicksight):
+        search_resp = quicksight.search_groups(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Filters=[
+                {
+                    "Operator": "StartsWith",
+                    "Name": "GROUP_NAME",
+                    "Value": "zzz-nonexistent-prefix-xyz",
+                }
+            ],
+        )
+        assert search_resp["Status"] == 200
+        assert search_resp["GroupList"] == []
+
+    def test_search_groups_deleted_group_not_found(self, quicksight):
+        group_name = _unique("delgrp")
+        quicksight.create_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        search_resp = quicksight.search_groups(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Filters=[
+                {"Operator": "StartsWith", "Name": "GROUP_NAME", "Value": group_name}
+            ],
+        )
+        assert search_resp["Status"] == 200
+        found = [g for g in search_resp["GroupList"] if g["GroupName"] == group_name]
+        assert len(found) == 0
+
+
+class TestQuickSightARNFidelity:
+    """Verify ARN format and structure for created resources."""
+
+    def test_group_arn_format(self, quicksight):
+        group_name = _unique("grp")
+        resp = quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        try:
+            arn = resp["Group"]["Arn"]
+            assert arn.startswith("arn:aws:quicksight:")
+            assert ACCOUNT_ID in arn
+            assert group_name in arn
+        finally:
+            quicksight.delete_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+
+    def test_user_arn_format(self, quicksight):
+        user_name = _unique("user")
+        resp = quicksight.register_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Email=f"{user_name}@example.com",
+            IdentityType="QUICKSIGHT",
+            UserRole="READER",
+            UserName=user_name,
+        )
+        try:
+            arn = resp["User"]["Arn"]
+            assert arn.startswith("arn:aws:quicksight:")
+            assert ACCOUNT_ID in arn
+            assert user_name in arn
+        finally:
+            quicksight.delete_user(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name)
+
+    def test_data_source_arn_format(self, quicksight):
+        ds_id = _unique("ds")
+        resp = quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID,
+            DataSourceId=ds_id,
+            Name="ARN Test DS",
+            Type="S3",
+            DataSourceParameters={
+                "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+            },
+        )
+        try:
+            arn = resp["Arn"]
+            assert arn.startswith("arn:aws:quicksight:")
+            assert ACCOUNT_ID in arn
+            assert ds_id in arn
+        finally:
+            quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+
+
+class TestQuickSightIdempotency:
+    """Test lifecycle and recreate behaviors."""
+
+    def test_delete_then_recreate_group(self, quicksight):
+        group_name = _unique("recreate")
+        quicksight.create_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        resp = quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        assert resp["Status"] == 200
+        assert resp["Group"]["GroupName"] == group_name
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+
+    def test_create_dashboard_same_id_returns_success(self, quicksight):
+        dash_id = _unique("idem-dash")
+        source = {
+            "SourceTemplate": {
+                "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                "DataSetReferences": [
+                    {
+                        "DataSetPlaceholder": "ph",
+                        "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                    }
+                ],
+            }
+        }
+        r1 = quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID, DashboardId=dash_id, Name="First", SourceEntity=source
+        )
+        assert r1["Status"] in (200, 201, 202)
+        r2 = quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID, DashboardId=dash_id, Name="Second", SourceEntity=source
+        )
+        assert r2["Status"] in (200, 201, 202)
+        assert r2["DashboardId"] == dash_id
+
+    def test_create_data_source_then_delete_then_recreate(self, quicksight):
+        ds_id = _unique("ds-lifecycle")
+        params = {"S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}}
+        quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id, Name="DS v1", Type="S3",
+            DataSourceParameters=params,
+        )
+        quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+        resp = quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id, Name="DS v2", Type="S3",
+            DataSourceParameters=params,
+        )
+        assert resp["Status"] in (200, 201, 202)
+        assert resp["DataSourceId"] == ds_id
+        quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+
+
+class TestQuickSightDescribeAfterDelete:
+    """Verify describe operations fail after deletion."""
+
+    def test_describe_group_after_delete_raises(self, quicksight):
+        group_name = _unique("deltest")
+        quicksight.create_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        quicksight.delete_group(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name)
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.describe_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_describe_user_after_delete_raises(self, quicksight):
+        user_name = _unique("deluser")
+        quicksight.register_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Email=f"{user_name}@example.com",
+            IdentityType="QUICKSIGHT",
+            UserRole="READER",
+            UserName=user_name,
+        )
+        quicksight.delete_user(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name)
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.describe_user(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name
+            )
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+    def test_describe_data_source_after_delete_raises(self, quicksight):
+        ds_id = _unique("delds")
+        quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID,
+            DataSourceId=ds_id,
+            Name="To Delete DS",
+            Type="S3",
+            DataSourceParameters={
+                "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+            },
+        )
+        quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+        with pytest.raises(quicksight.exceptions.ClientError) as exc_info:
+            quicksight.describe_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+        assert "ResourceNotFoundException" in str(exc_info.value)
+
+
 class TestQuickSightVPCConnectionCRUD:
     """Test VPC connection create/update/describe/delete lifecycle."""
 
