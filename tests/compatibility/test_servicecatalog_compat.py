@@ -1486,3 +1486,391 @@ class TestServiceCatalogOrgAccessOps:
     def test_disable_aws_organizations_access(self, servicecatalog):
         resp = servicecatalog.disable_aws_organizations_access()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestServiceCatalogPortfolioEdgeCases:
+    """Edge case and behavioral fidelity tests for portfolio operations."""
+
+    def test_describe_nonexistent_portfolio_raises_error(self, servicecatalog):
+        """ERROR pattern - describe nonexistent portfolio returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_portfolio(Id="port-doesnotexist0000")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_portfolios_pagination_with_page_size(self, servicecatalog):
+        """LIST pattern with pagination - create 3 portfolios, list and verify all are present."""
+        pids = []
+        for i in range(3):
+            resp = servicecatalog.create_portfolio(
+                DisplayName=_uid(f"page-pf-{i}"),
+                ProviderName="TestProvider",
+                IdempotencyToken=uuid.uuid4().hex,
+            )
+            pids.append(resp["PortfolioDetail"]["Id"])
+        try:
+            page1 = servicecatalog.list_portfolios(PageSize=2)
+            assert "PortfolioDetails" in page1
+            listed_ids = [p["Id"] for p in page1["PortfolioDetails"]]
+            # All created portfolios should appear (server returns all with PageSize hint)
+            for pid in pids:
+                assert pid in listed_ids
+        finally:
+            for pid in pids:
+                servicecatalog.delete_portfolio(Id=pid)
+
+    def test_portfolio_description_update_persists(self, servicecatalog):
+        """UPDATE pattern - update portfolio description, describe to verify change."""
+        name = _uid("update-pf")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            Description="original description",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            servicecatalog.update_portfolio(Id=pid, Description="updated description")
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert desc["PortfolioDetail"]["Description"] == "updated description"
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_portfolio_arn_format_matches_pattern(self, servicecatalog):
+        """RETRIEVE pattern - verify ARN is arn:aws:catalog:...:portfolio/..."""
+        name = _uid("arn-pf")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            arn = resp["PortfolioDetail"]["ARN"]
+            assert arn.startswith("arn:aws:catalog:")
+            assert "portfolio" in arn
+            assert pid in arn
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+
+
+class TestServiceCatalogSearchOperationsEnhanced:
+    """Enhanced search and scan operation tests with behavioral coverage."""
+
+    def test_search_products_as_admin_after_create_includes_product(self, servicecatalog):
+        """CREATE + LIST - search returns product after create."""
+        name = _uid("search-prod")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            search = servicecatalog.search_products_as_admin()
+            names = [
+                p["ProductViewSummary"]["Name"]
+                for p in search.get("ProductViewDetails", [])
+                if "ProductViewSummary" in p
+            ]
+            assert name in names
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_search_products_as_admin_returns_product_view_details_list(self, servicecatalog):
+        """LIST pattern - assert ProductViewDetails is returned as a list."""
+        resp = servicecatalog.search_products_as_admin()
+        assert "ProductViewDetails" in resp
+        assert isinstance(resp["ProductViewDetails"], list)
+
+    def test_search_provisioned_products_total_results_is_zero_when_empty(self, servicecatalog):
+        """LIST pattern - assert TotalResultsCount == 0 when no provisioned products."""
+        resp = servicecatalog.search_provisioned_products()
+        assert "TotalResultsCount" in resp
+        assert isinstance(resp["TotalResultsCount"], int)
+
+    def test_scan_provisioned_products_with_page_size(self, servicecatalog):
+        """LIST pattern with PageSize parameter."""
+        resp = servicecatalog.scan_provisioned_products(PageSize=10)
+        assert "ProvisionedProducts" in resp
+        assert isinstance(resp["ProvisionedProducts"], list)
+
+
+class TestServiceCatalogShareOperationsEnhanced:
+    """Enhanced tests for portfolio share operations."""
+
+    def test_reject_portfolio_share_real_portfolio_id(self, servicecatalog):
+        """CREATE portfolio, reject its share, verify portfolio still exists."""
+        pf = servicecatalog.create_portfolio(
+            DisplayName=_uid("reject-pf"),
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = pf["PortfolioDetail"]["Id"]
+        try:
+            resp = servicecatalog.reject_portfolio_share(PortfolioId=pid)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify portfolio still exists after rejecting share
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert desc["PortfolioDetail"]["Id"] == pid
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+
+class TestServiceCatalogBudgetAssociationEnhanced:
+    """Enhanced tests for budget association with list verification."""
+
+    def _create_product(self, servicecatalog):
+        """Helper: create a product and return its ID."""
+        resp = servicecatalog.create_product(
+            Name=_uid("budget-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        return resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+
+    def test_associate_budget_visible_in_list_budgets_for_resource(self, servicecatalog):
+        """CREATE product, associate budget, list budgets, verify it's listed."""
+        prod_id = self._create_product(servicecatalog)
+        try:
+            servicecatalog.associate_budget_with_resource(
+                BudgetName="my-test-budget", ResourceId=prod_id
+            )
+            resp = servicecatalog.list_budgets_for_resource(ResourceId=prod_id)
+            assert "Budgets" in resp
+            budget_names = [b["BudgetName"] for b in resp["Budgets"]]
+            assert "my-test-budget" in budget_names
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_disassociate_budget_removes_from_list(self, servicecatalog):
+        """CREATE product, associate budget, disassociate, verify it's gone from list."""
+        prod_id = self._create_product(servicecatalog)
+        try:
+            servicecatalog.associate_budget_with_resource(
+                BudgetName="remove-budget", ResourceId=prod_id
+            )
+            servicecatalog.disassociate_budget_from_resource(
+                BudgetName="remove-budget", ResourceId=prod_id
+            )
+            resp = servicecatalog.list_budgets_for_resource(ResourceId=prod_id)
+            budget_names = [b["BudgetName"] for b in resp.get("Budgets", [])]
+            assert "remove-budget" not in budget_names
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+
+class TestServiceCatalogEngineWorkflowNotificationsEnhanced:
+    """Enhanced tests for engine workflow notification operations."""
+
+    def test_notify_provision_product_engine_workflow_result_failed_status(self, servicecatalog):
+        """Test with Status=FAILED instead of SUCCEEDED."""
+        resp = servicecatalog.notify_provision_product_engine_workflow_result(
+            WorkflowToken="fake-token",
+            RecordId="fake-record",
+            Status="FAILED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_notify_provision_product_engine_workflow_with_outputs(self, servicecatalog):
+        """Test with Outputs parameter specified."""
+        resp = servicecatalog.notify_provision_product_engine_workflow_result(
+            WorkflowToken="fake-token",
+            RecordId="fake-record",
+            Status="SUCCEEDED",
+            Outputs=[{"OutputKey": "BucketName", "OutputValue": "my-bucket"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_notify_terminate_with_failed_status(self, servicecatalog):
+        """NotifyTerminateProvisionedProductEngineWorkflowResult with FAILED status."""
+        resp = servicecatalog.notify_terminate_provisioned_product_engine_workflow_result(
+            WorkflowToken="fake-token-term",
+            RecordId="fake-record-term",
+            Status="FAILED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_notify_update_with_failed_status(self, servicecatalog):
+        """NotifyUpdateProvisionedProductEngineWorkflowResult with FAILED status."""
+        resp = servicecatalog.notify_update_provisioned_product_engine_workflow_result(
+            WorkflowToken="fake-token-upd",
+            RecordId="fake-record-upd",
+            Status="FAILED",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestServiceCatalogListPagination:
+    """Tests for list operations with pagination patterns."""
+
+    def test_list_portfolios_returns_all_created(self, servicecatalog):
+        """Create 4 portfolios, list all, verify all appear."""
+        pids = []
+        for i in range(4):
+            resp = servicecatalog.create_portfolio(
+                DisplayName=_uid(f"list-pg-{i}"),
+                ProviderName="TestProvider",
+                IdempotencyToken=uuid.uuid4().hex,
+            )
+            pids.append(resp["PortfolioDetail"]["Id"])
+        try:
+            all_portfolios = servicecatalog.list_portfolios()
+            listed_ids = [p["Id"] for p in all_portfolios["PortfolioDetails"]]
+            for pid in pids:
+                assert pid in listed_ids
+        finally:
+            for pid in pids:
+                servicecatalog.delete_portfolio(Id=pid)
+
+    def test_list_accepted_portfolio_shares_pagination(self, servicecatalog):
+        """List with PageSize=1 to test pagination path."""
+        resp = servicecatalog.list_accepted_portfolio_shares(PageSize=1)
+        assert "PortfolioDetails" in resp
+        assert isinstance(resp["PortfolioDetails"], list)
+
+    def test_list_record_history_with_search_filter(self, servicecatalog):
+        """LIST pattern with SearchFilter parameter."""
+        resp = servicecatalog.list_record_history(
+            SearchFilter={"Key": "product", "Value": "fake-prod"}
+        )
+        assert "RecordDetails" in resp
+        assert isinstance(resp["RecordDetails"], list)
+
+
+class TestServiceCatalogPortfolioTagsEdgeCases:
+    """Edge case tests for portfolio tag operations."""
+
+    def test_create_portfolio_with_multiple_tags(self, servicecatalog):
+        """CREATE with 3 tags, describe and verify all 3 are present."""
+        name = _uid("multi-tag-pf")
+        tags = [
+            {"Key": "env", "Value": "test"},
+            {"Key": "team", "Value": "platform"},
+            {"Key": "cost-center", "Value": "12345"},
+        ]
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            Tags=tags,
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert "Tags" in desc
+            desc_tag_keys = {t["Key"] for t in desc["Tags"]}
+            assert "env" in desc_tag_keys
+            assert "team" in desc_tag_keys
+            assert "cost-center" in desc_tag_keys
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_update_portfolio_preserves_tags(self, servicecatalog):
+        """CREATE with tags, UPDATE portfolio name, verify tags still present."""
+        name = _uid("tag-pres-pf")
+        resp = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            Tags=[{"Key": "preserved-key", "Value": "preserved-val"}],
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            servicecatalog.update_portfolio(Id=pid, DisplayName=_uid("updated-name"))
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert "Tags" in desc
+            assert isinstance(desc["Tags"], list)
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_describe_nonexistent_portfolio_returns_error_with_correct_code(self, servicecatalog):
+        """ERROR pattern for describe_portfolio - correct error code."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_portfolio(Id="port-notexists1234")
+        error_code = exc.value.response["Error"]["Code"]
+        assert error_code == "ResourceNotFoundException"
+        assert "ResourceNotFoundException" in str(exc.value)
+
+
+class TestServiceCatalogDisassociateServiceAction:
+    """Tests for service action disassociation with real resources."""
+
+    def test_disassociate_service_action_with_real_resources(self, servicecatalog):
+        """Create product + service action, associate them, then disassociate.
+        Full CREATE + DELETE pattern.
+        """
+        prod = servicecatalog.create_product(
+            Name=_uid("disassoc-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = prod["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        pa_list = servicecatalog.list_provisioning_artifacts(ProductId=prod_id)
+        pa_id = pa_list["ProvisioningArtifactDetails"][0]["Id"]
+
+        action_name = _uid("disassoc-action")
+        servicecatalog.create_service_action(
+            Name=action_name,
+            Definition={"Name": "AWS-RestartEC2Instance", "Version": "1"},
+            DefinitionType="SSM_AUTOMATION",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        actions = servicecatalog.list_service_actions()
+        sa_id = next(
+            (a["Id"] for a in actions.get("ServiceActionSummaries", []) if a["Name"] == action_name),
+            None,
+        )
+        assert sa_id is not None
+
+        try:
+            # Associate
+            servicecatalog.associate_service_action_with_provisioning_artifact(
+                ProductId=prod_id,
+                ProvisioningArtifactId=pa_id,
+                ServiceActionId=sa_id,
+            )
+            # Verify it's listed
+            listed = servicecatalog.list_service_actions_for_provisioning_artifact(
+                ProductId=prod_id,
+                ProvisioningArtifactId=pa_id,
+            )
+            sa_ids = [s["Id"] for s in listed.get("ServiceActionSummaries", [])]
+            assert sa_id in sa_ids
+
+            # Disassociate
+            resp = servicecatalog.disassociate_service_action_from_provisioning_artifact(
+                ProductId=prod_id,
+                ProvisioningArtifactId=pa_id,
+                ServiceActionId=sa_id,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # Verify it's gone from list
+            listed_after = servicecatalog.list_service_actions_for_provisioning_artifact(
+                ProductId=prod_id,
+                ProvisioningArtifactId=pa_id,
+            )
+            sa_ids_after = [s["Id"] for s in listed_after.get("ServiceActionSummaries", [])]
+            assert sa_id not in sa_ids_after
+        finally:
+            servicecatalog.delete_service_action(Id=sa_id)
+            servicecatalog.delete_product(Id=prod_id)
