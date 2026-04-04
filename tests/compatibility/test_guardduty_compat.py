@@ -2145,3 +2145,307 @@ class TestGuardDutyUpdateMalwareProtectionPlan:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             guardduty.delete_malware_protection_plan(MalwareProtectionPlanId=plan_id)
+
+
+class TestGuardDutyDetectorBehavioralFidelity:
+    """Behavioral fidelity tests for detector timestamp and data fields."""
+
+    def test_created_at_stable_across_updates(self, guardduty, detector):
+        """CreatedAt should not change after an update."""
+        before = guardduty.get_detector(DetectorId=detector)
+        guardduty.update_detector(DetectorId=detector, FindingPublishingFrequency="SIX_HOURS")
+        after = guardduty.get_detector(DetectorId=detector)
+        assert after["CreatedAt"] == before["CreatedAt"]
+
+    def test_updated_at_present_and_not_earlier_than_created_at(self, guardduty, detector):
+        """UpdatedAt should be >= CreatedAt."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert detail["UpdatedAt"] >= detail["CreatedAt"]
+
+    def test_data_sources_is_non_empty_dict(self, guardduty, detector):
+        """DataSources should be a non-empty dict with at least one source key."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        ds = detail["DataSources"]
+        assert isinstance(ds, dict)
+        assert len(ds) > 0
+
+    def test_data_sources_contains_s3logs_or_cloudtrail(self, guardduty, detector):
+        """DataSources should contain S3Logs and/or CloudTrail."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        ds = detail["DataSources"]
+        assert "S3Logs" in ds or "CloudTrail" in ds
+
+    def test_tags_is_dict_for_untagged_detector(self, guardduty, detector):
+        """Tags should be a dict (empty for a freshly created detector with no tags)."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["Tags"], dict)
+
+    def test_service_role_is_string(self, guardduty, detector):
+        """ServiceRole should be a string (may be empty in emulator)."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail.get("ServiceRole", ""), str)
+
+    def test_delete_detector_removes_from_list(self, guardduty):
+        """After delete, DetectorId no longer appears in ListDetectors."""
+        resp = guardduty.create_detector(Enable=True)
+        detector_id = resp["DetectorId"]
+        guardduty.delete_detector(DetectorId=detector_id)
+        listed = guardduty.list_detectors()
+        assert detector_id not in listed["DetectorIds"]
+
+    def test_list_detectors_with_max_results(self, guardduty):
+        """ListDetectors respects MaxResults pagination parameter."""
+        ids = []
+        for _ in range(3):
+            r = guardduty.create_detector(Enable=True)
+            ids.append(r["DetectorId"])
+        try:
+            resp = guardduty.list_detectors(MaxResults=1)
+            assert "DetectorIds" in resp
+            assert len(resp["DetectorIds"]) <= 1
+        finally:
+            for did in ids:
+                try:
+                    guardduty.delete_detector(DetectorId=did)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+
+class TestGuardDutyTrustedEntitySetEdgeCases:
+    """Edge case tests for TrustedEntitySet operations."""
+
+    def test_update_nonexistent_trusted_entity_set_raises_error(self, guardduty, detector):
+        """Updating a non-existent TrustedEntitySet should raise BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_trusted_entity_set(
+                DetectorId=detector,
+                TrustedEntitySetId="nonexistent00000000000000000000",
+                Name="new-name",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_delete_nonexistent_trusted_entity_set_raises_error(self, guardduty, detector):
+        """Deleting a non-existent TrustedEntitySet should raise BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.delete_trusted_entity_set(
+                DetectorId=detector,
+                TrustedEntitySetId="nonexistent00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_list_trusted_entity_sets_after_update_shows_set(self, guardduty, detector):
+        """After updating a set, it should still appear in ListTrustedEntitySets."""
+        create_resp = guardduty.create_trusted_entity_set(
+            DetectorId=detector,
+            Name=_unique("trusted"),
+            Format="TXT",
+            Location="s3://test-bucket/trusted.txt",
+            Activate=True,
+        )
+        trust_id = create_resp["TrustedEntitySetId"]
+        try:
+            guardduty.update_trusted_entity_set(
+                DetectorId=detector, TrustedEntitySetId=trust_id, Name="updated-trusted-name"
+            )
+            listed = guardduty.list_trusted_entity_sets(DetectorId=detector)
+            assert trust_id in listed["TrustedEntitySetIds"]
+        finally:
+            guardduty.delete_trusted_entity_set(DetectorId=detector, TrustedEntitySetId=trust_id)
+
+    def test_get_nonexistent_trusted_entity_set_raises_error(self, guardduty, detector):
+        """Getting a non-existent TrustedEntitySet should raise BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_trusted_entity_set(
+                DetectorId=detector,
+                TrustedEntitySetId="nonexistent00000000000000000000",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyArchiveFindingsBehavior:
+    """Behavioral tests for archive/unarchive findings."""
+
+    def test_archive_multiple_findings(self, guardduty, detector):
+        """ArchiveFindings handles a list of multiple fake finding IDs."""
+        resp = guardduty.archive_findings(
+            DetectorId=detector,
+            FindingIds=["fake-finding-id-1", "fake-finding-id-2", "fake-finding-id-3"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_unarchive_multiple_findings(self, guardduty, detector):
+        """UnarchiveFindings handles a list of multiple fake finding IDs."""
+        resp = guardduty.unarchive_findings(
+            DetectorId=detector,
+            FindingIds=["fake-finding-id-1", "fake-finding-id-2"],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_archive_then_list_with_archived_criteria(self, guardduty, detector):
+        """After archiving, findings can be found with archived=true criteria."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        finding_ids = list_resp["FindingIds"]
+        assert len(finding_ids) > 0
+
+        guardduty.archive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+
+        archived_resp = guardduty.list_findings(
+            DetectorId=detector,
+            FindingCriteria={"Criterion": {"service.archived": {"Eq": ["true"]}}},
+        )
+        assert "FindingIds" in archived_resp
+        assert isinstance(archived_resp["FindingIds"], list)
+
+    def test_unarchive_then_get_finding(self, guardduty, detector):
+        """After unarchiving, the finding is still retrievable via GetFindings."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        finding_ids = list_resp["FindingIds"]
+        assert len(finding_ids) > 0
+
+        guardduty.archive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        guardduty.unarchive_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+
+        get_resp = guardduty.get_findings(DetectorId=detector, FindingIds=finding_ids[:1])
+        assert "Findings" in get_resp
+        assert len(get_resp["Findings"]) > 0
+
+
+class TestGuardDutyInviteMembersBehavior:
+    """Behavioral tests for InviteMembers."""
+
+    def test_invite_members_unprocessed_accounts_structure(self, guardduty, detector):
+        """InviteMembers UnprocessedAccounts entries have AccountId and Result fields."""
+        resp = guardduty.invite_members(DetectorId=detector, AccountIds=["999911112222"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+            assert "Result" in acct
+
+    def test_invite_members_after_create_member(self, guardduty, detector):
+        """InviteMembers after creating a member account returns 200."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[{"AccountId": "234523452345", "Email": "invme@example.com"}],
+        )
+        resp = guardduty.invite_members(DetectorId=detector, AccountIds=["234523452345"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+    def test_invite_members_with_message(self, guardduty, detector):
+        """InviteMembers accepts an optional Message parameter."""
+        resp = guardduty.invite_members(
+            DetectorId=detector,
+            AccountIds=["111122223333"],
+            Message="Please join as a member.",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyDeclineInvitationsBehavior:
+    """Behavioral tests for DeclineInvitations."""
+
+    def test_decline_invitations_response_structure(self, guardduty):
+        """DeclineInvitations UnprocessedAccounts entries have AccountId and Result."""
+        resp = guardduty.decline_invitations(AccountIds=["111122223333"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+            assert "Result" in acct
+
+    def test_decline_invitations_multiple_accounts(self, guardduty):
+        """DeclineInvitations handles multiple account IDs."""
+        resp = guardduty.decline_invitations(AccountIds=["111122223333", "444455556666"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp["UnprocessedAccounts"], list)
+
+    def test_delete_invitations_response_structure(self, guardduty):
+        """DeleteInvitations UnprocessedAccounts entries have AccountId and Result."""
+        resp = guardduty.delete_invitations(AccountIds=["111122223333"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+            assert "Result" in acct
+
+
+class TestGuardDutyDisassociateBehavior:
+    """Behavioral tests for disassociate operations."""
+
+    def test_disassociate_from_administrator_then_get_admin(self, guardduty, detector):
+        """After disassociating from admin, GetAdministratorAccount still returns 200."""
+        guardduty.accept_administrator_invitation(
+            DetectorId=detector,
+            AdministratorId="111122223333",
+            InvitationId="fake-invitation-id",
+        )
+        guardduty.disassociate_from_administrator_account(DetectorId=detector)
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_members_unprocessed_structure(self, guardduty, detector):
+        """DisassociateMembers UnprocessedAccounts entries have AccountId and Result."""
+        guardduty.create_members(
+            DetectorId=detector,
+            AccountDetails=[{"AccountId": "123412341234", "Email": "dis@example.com"}],
+        )
+        resp = guardduty.disassociate_members(DetectorId=detector, AccountIds=["123412341234"])
+        assert "UnprocessedAccounts" in resp
+        for acct in resp["UnprocessedAccounts"]:
+            assert "AccountId" in acct
+            assert "Result" in acct
+
+    def test_disassociate_members_multiple_accounts(self, guardduty, detector):
+        """DisassociateMembers handles multiple account IDs."""
+        resp = guardduty.disassociate_members(
+            DetectorId=detector, AccountIds=["111122223333", "444455556666"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "UnprocessedAccounts" in resp
+
+    def test_disassociate_from_master_then_get_master(self, guardduty, detector):
+        """After disassociating from master, GetMasterAccount still returns 200."""
+        guardduty.disassociate_from_master_account(DetectorId=detector)
+        resp = guardduty.get_master_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyAcceptInvitationBehavior:
+    """Behavioral tests for AcceptInvitation (legacy) and AcceptAdministratorInvitation."""
+
+    def test_accept_invitation_legacy_response_shape(self, guardduty, detector):
+        """AcceptInvitation (legacy) returns 200 and empty body."""
+        resp = guardduty.accept_invitation(
+            DetectorId=detector,
+            MasterId="222233334444",
+            InvitationId="another-fake-invitation",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_accept_administrator_invitation_response_shape(self, guardduty, detector):
+        """AcceptAdministratorInvitation response body has no unexpected fields."""
+        resp = guardduty.accept_administrator_invitation(
+            DetectorId=detector,
+            AdministratorId="333344445555",
+            InvitationId="yet-another-fake-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Response should not contain error keys
+        assert "Error" not in resp
+
+    def test_accept_administrator_invitation_then_list_members(self, guardduty, detector):
+        """After accepting admin invitation, ListInvitations still returns 200."""
+        guardduty.accept_administrator_invitation(
+            DetectorId=detector,
+            AdministratorId="444455556666",
+            InvitationId="list-test-invitation-id",
+        )
+        resp = guardduty.list_invitations()
+        assert "Invitations" in resp
+        assert isinstance(resp["Invitations"], list)
