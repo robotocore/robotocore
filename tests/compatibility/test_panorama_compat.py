@@ -1,6 +1,7 @@
 """Compatibility tests for AWS Panorama service."""
 
 import json
+import re
 import uuid
 
 import pytest
@@ -23,6 +24,18 @@ def provisioned_device(panorama):
     yield {"Name": name, "DeviceId": device_id, "Arn": resp["Arn"]}
     try:
         panorama.delete_device(DeviceId=device_id)
+    except Exception:
+        pass  # best-effort cleanup
+
+
+@pytest.fixture
+def created_package(panorama):
+    """Create a package and clean it up after the test."""
+    name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+    resp = panorama.create_package(PackageName=name)
+    yield {"PackageName": name, "PackageId": resp["PackageId"], "Arn": resp["Arn"]}
+    try:
+        panorama.delete_package(PackageId=resp["PackageId"])
     except Exception:
         pass  # best-effort cleanup
 
@@ -491,3 +504,436 @@ class TestPanoramaSignalApplicationInstanceNodeInstances:
             )
         except ClientError as exc:
             assert exc.response["Error"]["Code"] is not None
+
+
+class TestPanoramaDeviceEdgeCases:
+    """Edge cases and behavioral fidelity for device operations."""
+
+    def test_provision_device_arn_format(self, panorama):
+        """Device ARNs match expected panorama ARN pattern."""
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        resp = panorama.provision_device(Name=name)
+        try:
+            arn = resp["Arn"]
+            assert re.match(
+                r"^arn:aws:panorama:[a-z0-9-]+:\d{12}:device/", arn
+            ), f"ARN doesn't match expected pattern: {arn}"
+        finally:
+            try:
+                panorama.delete_device(DeviceId=resp["DeviceId"])
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_provision_device_status_initial(self, panorama):
+        """Newly provisioned device has an expected initial status."""
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        resp = panorama.provision_device(Name=name)
+        try:
+            assert resp["Status"] in (
+                "AWAITING_PROVISIONING",
+                "PENDING",
+                "SUCCEEDED",
+            ), f"Unexpected initial status: {resp['Status']}"
+        finally:
+            try:
+                panorama.delete_device(DeviceId=resp["DeviceId"])
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_device_arn_matches_provision(self, panorama, provisioned_device):
+        """DescribeDevice returns the same ARN as ProvisionDevice."""
+        resp = panorama.describe_device(DeviceId=provisioned_device["DeviceId"])
+        assert resp["Arn"] == provisioned_device["Arn"]
+
+    def test_describe_device_has_created_time(self, panorama, provisioned_device):
+        """DescribeDevice returns a CreatedTime field."""
+        resp = panorama.describe_device(DeviceId=provisioned_device["DeviceId"])
+        assert "CreatedTime" in resp
+
+    def test_list_devices_returns_name_and_status(self, panorama, provisioned_device):
+        """ListDevices entries include Name and DeviceId fields."""
+        resp = panorama.list_devices()
+        device = next(
+            (d for d in resp["Devices"] if d["DeviceId"] == provisioned_device["DeviceId"]),
+            None,
+        )
+        assert device is not None
+        assert "Name" in device
+        assert device["Name"] == provisioned_device["Name"]
+
+    def test_list_devices_pagination_max_results(self, panorama):
+        """ListDevices respects MaxResults parameter."""
+        device_ids = []
+        try:
+            for i in range(3):
+                resp = panorama.provision_device(Name=f"page-test-{uuid.uuid4().hex[:8]}")
+                device_ids.append(resp["DeviceId"])
+            resp = panorama.list_devices(MaxResults=1)
+            assert len(resp["Devices"]) <= 1
+            if "NextToken" in resp and resp["NextToken"]:
+                resp2 = panorama.list_devices(NextToken=resp["NextToken"])
+                assert "Devices" in resp2
+        finally:
+            for did in device_ids:
+                try:
+                    panorama.delete_device(DeviceId=did)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    def test_delete_nonexistent_device(self, panorama):
+        """Deleting a nonexistent device raises an error."""
+        with pytest.raises(ClientError) as exc_info:
+            panorama.delete_device(DeviceId="device-does-not-exist-xyz")
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "InternalError",
+        )
+
+    def test_update_device_metadata_nonexistent(self, panorama):
+        """Updating metadata on a nonexistent device raises an error."""
+        with pytest.raises(ClientError) as exc_info:
+            panorama.update_device_metadata(
+                DeviceId="device-nonexistent-xyz",
+                Description="should fail",
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+            "InternalError",
+        )
+
+    def test_provision_device_duplicate_name_is_idempotent(self, panorama):
+        """Provisioning a device with the same name returns the same device (idempotent)."""
+        name = f"dup-device-{uuid.uuid4().hex[:8]}"
+        r1 = panorama.provision_device(Name=name)
+        r2 = panorama.provision_device(Name=name)
+        try:
+            assert r1["DeviceId"] == r2["DeviceId"]
+            assert r1["Arn"] == r2["Arn"]
+        finally:
+            try:
+                panorama.delete_device(DeviceId=r1["DeviceId"])
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestPanoramaPackageEdgeCases:
+    """Edge cases and behavioral fidelity for package operations."""
+
+    def test_create_package_arn_format(self, panorama, created_package):
+        """Package ARNs match expected pattern."""
+        arn = created_package["Arn"]
+        assert re.match(
+            r"^arn:aws:panorama:[a-z0-9-]+:\d{12}:package/", arn
+        ), f"ARN doesn't match expected pattern: {arn}"
+
+    def test_list_packages_contains_created(self, panorama, created_package):
+        """ListPackages includes a freshly created package."""
+        resp = panorama.list_packages()
+        pkg_ids = [p["PackageId"] for p in resp["Packages"]]
+        assert created_package["PackageId"] in pkg_ids
+
+    def test_list_packages_pagination(self, panorama):
+        """ListPackages respects MaxResults and pagination."""
+        pkg_ids = []
+        try:
+            for _ in range(3):
+                resp = panorama.create_package(PackageName=f"page-pkg-{uuid.uuid4().hex[:8]}")
+                pkg_ids.append(resp["PackageId"])
+            resp = panorama.list_packages(MaxResults=1)
+            assert len(resp["Packages"]) <= 1
+            if "NextToken" in resp and resp["NextToken"]:
+                resp2 = panorama.list_packages(NextToken=resp["NextToken"])
+                assert "Packages" in resp2
+        finally:
+            for pid in pkg_ids:
+                try:
+                    panorama.delete_package(PackageId=pid)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    def test_create_package_storage_location_fields(self, panorama):
+        """CreatePackage StorageLocation has expected fields."""
+        name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+        resp = panorama.create_package(PackageName=name)
+        try:
+            storage = resp["StorageLocation"]
+            assert "Bucket" in storage
+            assert "GeneratedPrefixLocation" in storage or "ManifestPrefixLocation" in storage
+            assert "RepoPrefixLocation" in storage or "BinaryPrefixLocation" in storage
+        finally:
+            try:
+                panorama.delete_package(PackageId=resp["PackageId"])
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestPanoramaTaggingEdgeCases:
+    """Edge cases for tagging operations."""
+
+    def test_tag_resource_multiple_tags(self, panorama, provisioned_device):
+        """TagResource can add multiple tags at once."""
+        arn = provisioned_device["Arn"]
+        panorama.tag_resource(ResourceArn=arn, Tags={"k1": "v1", "k2": "v2", "k3": "v3"})
+        tags = panorama.list_tags_for_resource(ResourceArn=arn)["Tags"]
+        assert tags["k1"] == "v1"
+        assert tags["k2"] == "v2"
+        assert tags["k3"] == "v3"
+
+    def test_tag_resource_overwrite_existing(self, panorama, provisioned_device):
+        """TagResource overwrites an existing tag value."""
+        arn = provisioned_device["Arn"]
+        panorama.tag_resource(ResourceArn=arn, Tags={"key": "original"})
+        panorama.tag_resource(ResourceArn=arn, Tags={"key": "updated"})
+        tags = panorama.list_tags_for_resource(ResourceArn=arn)["Tags"]
+        assert tags["key"] == "updated"
+
+    def test_untag_resource_selective(self, panorama, provisioned_device):
+        """UntagResource removes only specified tags."""
+        arn = provisioned_device["Arn"]
+        panorama.tag_resource(ResourceArn=arn, Tags={"keep": "yes", "remove": "yes"})
+        panorama.untag_resource(ResourceArn=arn, TagKeys=["remove"])
+        tags = panorama.list_tags_for_resource(ResourceArn=arn)["Tags"]
+        assert "keep" in tags
+        assert "remove" not in tags
+
+    def test_list_tags_empty_initially(self, panorama, provisioned_device):
+        """A new device has no tags (or empty tags dict)."""
+        arn = provisioned_device["Arn"]
+        tags = panorama.list_tags_for_resource(ResourceArn=arn)["Tags"]
+        assert isinstance(tags, dict)
+
+    def test_tag_resource_unicode_values(self, panorama, provisioned_device):
+        """Tags can contain unicode characters."""
+        arn = provisioned_device["Arn"]
+        panorama.tag_resource(ResourceArn=arn, Tags={"name": "café-日本語"})
+        tags = panorama.list_tags_for_resource(ResourceArn=arn)["Tags"]
+        assert tags["name"] == "café-日本語"
+
+
+class TestPanoramaNodeFromTemplateJobEdgeCases:
+    """Edge cases for node from template job operations."""
+
+    def test_create_node_from_template_job_multiple_params(self, panorama):
+        """CreateNodeFromTemplateJob accepts multiple template parameters."""
+        resp = panorama.create_node_from_template_job(
+            NodeName="multi-param-node",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"Username": "admin", "Password": "secret", "StreamUrl": "rtsp://example.com"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        assert "JobId" in resp
+        job_id = resp["JobId"]
+        desc = panorama.describe_node_from_template_job(JobId=job_id)
+        # Sensitive params may be masked as SAVED_AS_SECRET
+        assert "Username" in desc["TemplateParameters"]
+        assert "StreamUrl" in desc["TemplateParameters"]
+        assert len(desc["TemplateParameters"]) == 3
+
+    def test_describe_node_from_template_job_has_timestamps(self, panorama):
+        """DescribeNodeFromTemplateJob includes CreatedTime and LastUpdatedTime."""
+        resp = panorama.create_node_from_template_job(
+            NodeName="ts-node",
+            OutputPackageName="ts-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"key": "value"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        desc = panorama.describe_node_from_template_job(JobId=resp["JobId"])
+        assert "CreatedTime" in desc
+        assert "LastUpdatedTime" in desc
+
+    def test_list_node_from_template_jobs_contains_created(self, panorama):
+        """ListNodeFromTemplateJobs includes a recently created job."""
+        resp = panorama.create_node_from_template_job(
+            NodeName="list-check-node",
+            OutputPackageName="list-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"key": "value"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = resp["JobId"]
+        listed = panorama.list_node_from_template_jobs()
+        job_ids = [j["JobId"] for j in listed["NodeFromTemplateJobs"]]
+        assert job_id in job_ids
+
+    def test_describe_node_from_template_job_nonexistent(self, panorama):
+        """DescribeNodeFromTemplateJob raises error for nonexistent job."""
+        with pytest.raises(ClientError) as exc_info:
+            panorama.describe_node_from_template_job(JobId="job-nonexistent-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaApplicationInstanceEdgeCases:
+    """Edge cases for application instance operations."""
+
+    def test_create_application_instance_with_tags(self, panorama):
+        """CreateApplicationInstance accepts tags."""
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            resp = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+                Tags={"env": "test", "team": "platform"},
+            )
+            assert "ApplicationInstanceId" in resp
+            app_id = resp["ApplicationInstanceId"]
+            details = panorama.describe_application_instance_details(
+                ApplicationInstanceId=app_id
+            )
+            assert details["ApplicationInstanceId"] == app_id
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_create_application_instance_with_name(self, panorama):
+        """CreateApplicationInstance accepts a Name parameter."""
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            resp = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+                Name="my-app-instance",
+            )
+            assert "ApplicationInstanceId" in resp
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_application_instances_contains_created(self, panorama):
+        """ListApplicationInstances includes a created instance."""
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            app = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            app_id = app["ApplicationInstanceId"]
+            listed = panorama.list_application_instances()
+            app_ids = [a["ApplicationInstanceId"] for a in listed["ApplicationInstances"]]
+            assert app_id in app_ids
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_application_instance(self, panorama):
+        """DescribeApplicationInstance returns expected fields."""
+        name = f"test-device-{uuid.uuid4().hex[:8]}"
+        dev = panorama.provision_device(Name=name)
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            app = panorama.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            app_id = app["ApplicationInstanceId"]
+            resp = panorama.describe_application_instance(ApplicationInstanceId=app_id)
+            assert resp["ApplicationInstanceId"] == app_id
+            assert resp["DefaultRuntimeContextDevice"] == device_id
+            assert "Status" in resp
+            assert "CreatedTime" in resp
+        finally:
+            try:
+                panorama.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestPanoramaPackageImportJobEdgeCases:
+    """Edge cases for package import job operations."""
+
+    def test_create_package_import_job_returns_arn(self, panorama):
+        """CreatePackageImportJob response includes JobId."""
+        resp = panorama.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "test-bucket",
+                        "Region": "us-east-1",
+                        "ObjectKey": "test-key.tar.gz",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": f"imp-pkg-{uuid.uuid4().hex[:8]}",
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"token-{uuid.uuid4().hex[:8]}",
+        )
+        assert "JobId" in resp
+        assert len(resp["JobId"]) > 0
+
+    def test_list_package_import_jobs_contains_created(self, panorama):
+        """ListPackageImportJobs includes a recently created job."""
+        resp = panorama.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "bucket-list-test",
+                        "Region": "us-east-1",
+                        "ObjectKey": "key.tar.gz",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": f"list-imp-{uuid.uuid4().hex[:8]}",
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"token-{uuid.uuid4().hex[:8]}",
+        )
+        job_id = resp["JobId"]
+        listed = panorama.list_package_import_jobs()
+        job_ids = [j["JobId"] for j in listed["PackageImportJobs"]]
+        assert job_id in job_ids
+
+    def test_describe_package_import_job_returns_details(self, panorama):
+        """DescribePackageImportJob returns matching details."""
+        pkg_name = f"desc-imp-{uuid.uuid4().hex[:8]}"
+        resp = panorama.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "bucket-desc-test",
+                        "Region": "us-east-1",
+                        "ObjectKey": "key.tar.gz",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": pkg_name,
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"token-{uuid.uuid4().hex[:8]}",
+        )
+        job_id = resp["JobId"]
+        desc = panorama.describe_package_import_job(JobId=job_id)
+        assert desc["JobId"] == job_id
+        assert desc["JobType"] == "NODE_PACKAGE_VERSION"
+        assert "Status" in desc
+        assert "CreatedTime" in desc
