@@ -11,11 +11,57 @@ def personalize():
     return make_client("personalize")
 
 
+SCHEMA_JSON = (
+    '{"type":"record","name":"Interactions",'
+    '"namespace":"com.amazonaws.personalize.schema",'
+    '"fields":['
+    '{"name":"USER_ID","type":"string"},'
+    '{"name":"ITEM_ID","type":"string"},'
+    '{"name":"TIMESTAMP","type":"long"}'
+    '],"version":"1.0"}'
+)
+
+BASE_ARN = "arn:aws:personalize:us-east-1:123456789012"
+SOL_VERSION_ARN = f"{BASE_ARN}:solution/test-sol/solutionVersion/abc123"
+DG_ARN = f"{BASE_ARN}:dataset-group/test-dg"
+RECIPE_ARN = "arn:aws:personalize:::recipe/aws-ecomm-popular-items-by-purchases"
+ROLE_ARN = "arn:aws:iam::123456789012:role/PersonalizeRole"
+FILTER_EXPR = "EXCLUDE itemId WHERE Items.genre IN ($GENRES)"
+METRICS_OUTPUT = {
+    "s3DataDestination": {"path": "s3://bucket/prefix/"},
+    "roleArn": ROLE_ARN,
+}
+METRICS = [{"eventType": "click", "expression": "SUM(DatasetType.INTERACTIONS)", "metricName": "click-metric"}]
+JOB_INPUT = {"s3DataSource": {"path": "s3://bucket/input/"}}
+JOB_OUTPUT = {"s3DataDestination": {"path": "s3://bucket/output/"}}
+
+
 class TestPersonalizeOperations:
     def test_list_schemas(self, personalize):
+        # Create a schema so list is non-trivial
+        r = personalize.create_schema(name="test-ops-list-schema", schema=SCHEMA_JSON)
+        arn = r["schemaArn"]
+        assert "schema" in arn
+
+        # LIST: verify created schema appears
         resp = personalize.list_schemas()
         assert "schemas" in resp
         assert isinstance(resp["schemas"], list)
+        arns = [s["schemaArn"] for s in resp["schemas"]]
+        assert arn in arns
+
+        # RETRIEVE: describe it
+        desc = personalize.describe_schema(schemaArn=arn)["schema"]
+        assert desc["name"] == "test-ops-list-schema"
+        assert desc["schemaArn"] == arn
+
+        # DELETE: clean up
+        personalize.delete_schema(schemaArn=arn)
+
+        # ERROR: deleted resource is gone
+        with pytest.raises(ClientError) as exc:
+            personalize.describe_schema(schemaArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_nonexistent_schema(self, personalize):
         with pytest.raises(ClientError) as exc:
@@ -33,56 +79,364 @@ class TestPersonalizeGapListOps:
         return make_client("personalize")
 
     def test_list_datasets(self, client):
-        resp = client.list_datasets()
+        # CREATE a dataset group so the filter call is real
+        r = client.create_dataset_group(name="test-gap-list-datasets-dg")
+        dg_arn = r["datasetGroupArn"]
+
+        # LIST datasets filtered by that group (empty but valid)
+        resp = client.list_datasets(datasetGroupArn=dg_arn)
         assert "datasets" in resp
+        assert isinstance(resp["datasets"], list)
+
+        # ERROR: describe a nonexistent dataset
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset(datasetArn=f"{BASE_ARN}:dataset/test-dg/nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # DELETE dataset group
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
 
     def test_list_dataset_groups(self, client):
+        # CREATE
+        r = client.create_dataset_group(name="test-gap-list-dg")
+        arn = r["datasetGroupArn"]
+        assert "dataset-group" in arn
+
+        # LIST: verify it appears
         resp = client.list_dataset_groups()
         assert "datasetGroups" in resp
+        arns = [dg["datasetGroupArn"] for dg in resp["datasetGroups"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_dataset_group(datasetGroupArn=arn)
+        assert desc["datasetGroup"]["name"] == "test-gap-list-dg"
+
+        # DELETE
+        client.delete_dataset_group(datasetGroupArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_group(datasetGroupArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_campaigns(self, client):
+        # CREATE
+        r = client.create_campaign(name="test-gap-list-camp", solutionVersionArn=SOL_VERSION_ARN)
+        arn = r["campaignArn"]
+        assert "campaign" in arn
+
+        # LIST: verify it appears
         resp = client.list_campaigns()
         assert "campaigns" in resp
+        arns = [c["campaignArn"] for c in resp["campaigns"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_campaign(campaignArn=arn)
+        assert desc["campaign"]["name"] == "test-gap-list-camp"
+
+        # UPDATE
+        upd = client.update_campaign(campaignArn=arn, minProvisionedTPS=3)
+        assert upd["campaignArn"] == arn
+
+        # DELETE
+        client.delete_campaign(campaignArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_campaign(campaignArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_solutions(self, client):
+        # CREATE
+        r = client.create_solution(name="test-gap-list-sol", datasetGroupArn=DG_ARN)
+        arn = r["solutionArn"]
+        assert "solution" in arn
+
+        # LIST: verify it appears
         resp = client.list_solutions()
         assert "solutions" in resp
+        arns = [s["solutionArn"] for s in resp["solutions"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_solution(solutionArn=arn)
+        assert desc["solution"]["name"] == "test-gap-list-sol"
+
+        # DELETE
+        client.delete_solution(solutionArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution(solutionArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_solution_versions(self, client):
-        resp = client.list_solution_versions()
+        # CREATE solution first, then solution version
+        sol = client.create_solution(name="test-gap-list-sv-sol", datasetGroupArn=DG_ARN)
+        sol_arn = sol["solutionArn"]
+
+        sv = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv["solutionVersionArn"]
+        assert "solution" in sv_arn
+
+        # LIST: verify it appears
+        resp = client.list_solution_versions(solutionArn=sol_arn)
         assert "solutionVersions" in resp
+        arns = [sv["solutionVersionArn"] for sv in resp["solutionVersions"]]
+        assert sv_arn in arns
+
+        # RETRIEVE
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        assert desc["solutionVersion"]["solutionVersionArn"] == sv_arn
+
+        # ERROR: nonexistent solution version
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution_version(
+                solutionVersionArn=f"{BASE_ARN}:solution/nonexistent/version/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # DELETE solution (versions deleted with it)
+        client.delete_solution(solutionArn=sol_arn)
 
     def test_list_recommenders(self, client):
+        # CREATE
+        r = client.create_recommender(
+            name="test-gap-list-rec", datasetGroupArn=DG_ARN, recipeArn=RECIPE_ARN
+        )
+        arn = r["recommenderArn"]
+        assert "recommender" in arn
+
+        # LIST: verify it appears
         resp = client.list_recommenders()
         assert "recommenders" in resp
+        arns = [rec["recommenderArn"] for rec in resp["recommenders"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_recommender(recommenderArn=arn)
+        assert desc["recommender"]["name"] == "test-gap-list-rec"
+
+        # UPDATE
+        upd = client.update_recommender(
+            recommenderArn=arn,
+            recommenderConfig={"minRecommendationRequestsPerSecond": 2},
+        )
+        assert upd["recommenderArn"] == arn
+
+        # DELETE
+        client.delete_recommender(recommenderArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_recommender(recommenderArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_filters(self, client):
+        # CREATE
+        r = client.create_filter(
+            name="test-gap-list-filter",
+            datasetGroupArn=DG_ARN,
+            filterExpression=FILTER_EXPR,
+        )
+        arn = r["filterArn"]
+        assert "filter" in arn
+
+        # LIST: verify it appears
         resp = client.list_filters()
         assert "Filters" in resp
+        arns = [f["filterArn"] for f in resp["Filters"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_filter(filterArn=arn)
+        assert desc["filter"]["name"] == "test-gap-list-filter"
+
+        # DELETE
+        client.delete_filter(filterArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_filter(filterArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_recipes(self, client):
+        # LIST recipes (AWS-provided, always present)
         resp = client.list_recipes()
         assert "recipes" in resp
+        assert isinstance(resp["recipes"], list)
+
+        # RETRIEVE a known recipe if available
+        if resp["recipes"]:
+            recipe_arn = resp["recipes"][0]["recipeArn"]
+            desc = client.describe_recipe(recipeArn=recipe_arn)
+            assert "recipe" in desc
+            assert desc["recipe"]["recipeArn"] == recipe_arn
+
+        # RETRIEVE: describe a known AWS recipe works
+        known_arn = "arn:aws:personalize:::recipe/aws-hrnn"
+        try:
+            desc2 = client.describe_recipe(recipeArn=known_arn)
+            assert "recipe" in desc2
+        except ClientError as exc:
+            # Some emulators may not have all built-in recipes
+            assert exc.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidInputException",
+            )
 
     def test_list_event_trackers(self, client):
+        # CREATE
+        r = client.create_event_tracker(name="test-gap-list-et", datasetGroupArn=DG_ARN)
+        arn = r["eventTrackerArn"]
+        tracking_id = r["trackingId"]
+        assert "event-tracker" in arn
+        assert tracking_id
+
+        # LIST: verify it appears
         resp = client.list_event_trackers()
         assert "eventTrackers" in resp
+        arns = [et["eventTrackerArn"] for et in resp["eventTrackers"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_event_tracker(eventTrackerArn=arn)
+        assert desc["eventTracker"]["name"] == "test-gap-list-et"
+        assert desc["eventTracker"]["trackingId"] == tracking_id
+
+        # DELETE
+        client.delete_event_tracker(eventTrackerArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_event_tracker(eventTrackerArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_batch_inference_jobs(self, client):
+        # CREATE
+        r = client.create_batch_inference_job(
+            jobName="test-gap-list-bij",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
+        )
+        arn = r["batchInferenceJobArn"]
+        assert "batch-inference-job" in arn
+
+        # LIST: verify it appears
         resp = client.list_batch_inference_jobs()
         assert "batchInferenceJobs" in resp
+        arns = [j["batchInferenceJobArn"] for j in resp["batchInferenceJobs"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_batch_inference_job(batchInferenceJobArn=arn)
+        assert desc["batchInferenceJob"]["jobName"] == "test-gap-list-bij"
+        assert desc["batchInferenceJob"]["status"] == "ACTIVE"
+
+        # ERROR: nonexistent
+        with pytest.raises(ClientError) as exc:
+            client.describe_batch_inference_job(
+                batchInferenceJobArn=f"{BASE_ARN}:batch-inference-job/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_batch_segment_jobs(self, client):
+        # CREATE
+        r = client.create_batch_segment_job(
+            jobName="test-gap-list-bsj",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
+        )
+        arn = r["batchSegmentJobArn"]
+        assert "batch-segment-job" in arn
+
+        # LIST: verify it appears
         resp = client.list_batch_segment_jobs()
         assert "batchSegmentJobs" in resp
+        arns = [j["batchSegmentJobArn"] for j in resp["batchSegmentJobs"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_batch_segment_job(batchSegmentJobArn=arn)
+        assert desc["batchSegmentJob"]["jobName"] == "test-gap-list-bsj"
+        assert desc["batchSegmentJob"]["status"] == "ACTIVE"
+
+        # ERROR: nonexistent
+        with pytest.raises(ClientError) as exc:
+            client.describe_batch_segment_job(
+                batchSegmentJobArn=f"{BASE_ARN}:batch-segment-job/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_metric_attributions(self, client):
+        # CREATE
+        r = client.create_metric_attribution(
+            name="test-gap-list-ma",
+            datasetGroupArn=DG_ARN,
+            metrics=METRICS,
+            metricsOutputConfig=METRICS_OUTPUT,
+        )
+        arn = r["metricAttributionArn"]
+        assert "metric-attribution" in arn
+
+        # LIST: verify it appears
         resp = client.list_metric_attributions()
         assert "metricAttributions" in resp
+        arns = [ma["metricAttributionArn"] for ma in resp["metricAttributions"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_metric_attribution(metricAttributionArn=arn)
+        assert desc["metricAttribution"]["name"] == "test-gap-list-ma"
+
+        # UPDATE
+        upd = client.update_metric_attribution(
+            metricAttributionArn=arn, metricsOutputConfig=METRICS_OUTPUT
+        )
+        assert upd["metricAttributionArn"] == arn
+
+        # DELETE
+        client.delete_metric_attribution(metricAttributionArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_metric_attribution(metricAttributionArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_data_deletion_jobs(self, client):
+        # CREATE
+        r = client.create_data_deletion_job(
+            jobName="test-gap-list-ddj",
+            datasetGroupArn=DG_ARN,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=ROLE_ARN,
+        )
+        arn = r["dataDeletionJobArn"]
+        assert "data-deletion-job" in arn
+
+        # LIST: verify it appears
         resp = client.list_data_deletion_jobs()
         assert "dataDeletionJobs" in resp
+        arns = [j["dataDeletionJobArn"] for j in resp["dataDeletionJobs"]]
+        assert arn in arns
+
+        # RETRIEVE
+        desc = client.describe_data_deletion_job(dataDeletionJobArn=arn)
+        assert desc["dataDeletionJob"]["jobName"] == "test-gap-list-ddj"
+        assert desc["dataDeletionJob"]["status"] == "ACTIVE"
+
+        # ERROR: nonexistent
+        with pytest.raises(ClientError) as exc:
+            client.describe_data_deletion_job(
+                dataDeletionJobArn=f"{BASE_ARN}:data-deletion-job/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_tags_for_resource(self, client):
         arn = "arn:aws:personalize:us-east-1:123456789012:solution/test"
@@ -91,15 +445,52 @@ class TestPersonalizeGapListOps:
         assert "tags" in resp
 
     def test_list_dataset_export_jobs_no_params(self, client):
+        # LIST with no params (no datasets exist, returns empty list)
         resp = client.list_dataset_export_jobs()
         assert "datasetExportJobs" in resp
         assert isinstance(resp["datasetExportJobs"], list)
 
+        # RETRIEVE error: describe a nonexistent export job
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_export_job(
+                datasetExportJobArn=f"{BASE_ARN}:dataset-export-job/test-dg/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # RETRIEVE error: describe a nonexistent import job
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_import_job(
+                datasetImportJobArn=f"{BASE_ARN}:dataset-import-job/test-dg/nonexistent"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_list_metric_attribution_metrics(self, client):
-        resp = client.list_metric_attribution_metrics(
-            metricAttributionArn="arn:aws:personalize:us-east-1:123456789012:metric-attribution/fake"
+        # CREATE a real metric attribution
+        r = client.create_metric_attribution(
+            name="test-gap-ma-metrics",
+            datasetGroupArn=DG_ARN,
+            metrics=METRICS,
+            metricsOutputConfig=METRICS_OUTPUT,
         )
+        arn = r["metricAttributionArn"]
+        assert "metric-attribution" in arn
+
+        # LIST metrics for that attribution
+        resp = client.list_metric_attribution_metrics(metricAttributionArn=arn)
         assert "metrics" in resp
+        assert isinstance(resp["metrics"], list)
+
+        # RETRIEVE: describe the attribution itself
+        desc = client.describe_metric_attribution(metricAttributionArn=arn)
+        assert desc["metricAttribution"]["metricAttributionArn"] == arn
+
+        # DELETE
+        client.delete_metric_attribution(metricAttributionArn=arn)
+
+        # ERROR: metrics of deleted attribution
+        with pytest.raises(ClientError) as exc:
+            client.describe_metric_attribution(metricAttributionArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestPersonalizeSchemaCRUD:
@@ -642,68 +1033,229 @@ class TestPersonalizeListFilters:
         return make_client("personalize")
 
     def test_list_campaigns_with_solution_arn_filter(self, client):
-        resp = client.list_campaigns(
-            solutionArn="arn:aws:personalize:us-east-1:123456789012:solution/nonexistent"
-        )
+        # CREATE a campaign with a known solution ARN
+        sol_arn = f"{BASE_ARN}:solution/filter-test-sol"
+        r = client.create_campaign(name="test-camp-sol-filter", solutionVersionArn=SOL_VERSION_ARN)
+        camp_arn = r["campaignArn"]
+
+        # LIST filtered - campaigns exist
+        resp = client.list_campaigns()
         assert "campaigns" in resp
-        assert isinstance(resp["campaigns"], list)
+        all_arns = [c["campaignArn"] for c in resp["campaigns"]]
+        assert camp_arn in all_arns
+
+        # LIST filtered by a different solution (empty result is fine)
+        resp2 = client.list_campaigns(solutionArn=sol_arn)
+        assert "campaigns" in resp2
+        assert isinstance(resp2["campaigns"], list)
+
+        # RETRIEVE the campaign
+        desc = client.describe_campaign(campaignArn=camp_arn)
+        assert desc["campaign"]["campaignArn"] == camp_arn
+
+        # DELETE
+        client.delete_campaign(campaignArn=camp_arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_campaign(campaignArn=camp_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_solution_versions_with_solution_arn_filter(self, client):
-        resp = client.list_solution_versions(
-            solutionArn="arn:aws:personalize:us-east-1:123456789012:solution/nonexistent"
-        )
+        # CREATE solution + version so filter is non-trivial
+        sol = client.create_solution(name="test-filter-sv-sol", datasetGroupArn=DG_ARN)
+        sol_arn = sol["solutionArn"]
+        sv = client.create_solution_version(solutionArn=sol_arn)
+        sv_arn = sv["solutionVersionArn"]
+
+        # LIST filtered by solution ARN - should include the created version
+        resp = client.list_solution_versions(solutionArn=sol_arn)
         assert "solutionVersions" in resp
-        assert isinstance(resp["solutionVersions"], list)
+        arns = [sv["solutionVersionArn"] for sv in resp["solutionVersions"]]
+        assert sv_arn in arns
+
+        # RETRIEVE the solution version
+        desc = client.describe_solution_version(solutionVersionArn=sv_arn)
+        assert desc["solutionVersion"]["solutionVersionArn"] == sv_arn
+
+        # DELETE solution (versions go with it)
+        client.delete_solution(solutionArn=sol_arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution(solutionArn=sol_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_recommenders_with_dataset_group_filter(self, client):
+        # CREATE dataset group and recommender in it
         r = client.create_dataset_group(name="test-dg-recommenders-filter")
-        arn = r["datasetGroupArn"]
-        resp = client.list_recommenders(datasetGroupArn=arn)
+        dg_arn = r["datasetGroupArn"]
+        rec = client.create_recommender(
+            name="test-rec-dg-filter", datasetGroupArn=dg_arn, recipeArn=RECIPE_ARN
+        )
+        rec_arn = rec["recommenderArn"]
+
+        # LIST filtered by dataset group - should include the recommender
+        resp = client.list_recommenders(datasetGroupArn=dg_arn)
         assert "recommenders" in resp
-        assert isinstance(resp["recommenders"], list)
-        client.delete_dataset_group(datasetGroupArn=arn)
+        arns = [r["recommenderArn"] for r in resp["recommenders"]]
+        assert rec_arn in arns
+
+        # RETRIEVE the recommender
+        desc = client.describe_recommender(recommenderArn=rec_arn)
+        assert desc["recommender"]["recommenderArn"] == rec_arn
+
+        # DELETE
+        client.delete_recommender(recommenderArn=rec_arn)
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_recommender(recommenderArn=rec_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_solutions_with_dataset_group_filter(self, client):
+        # CREATE dataset group and solution in it
         r = client.create_dataset_group(name="test-dg-solutions-filter")
-        arn = r["datasetGroupArn"]
-        resp = client.list_solutions(datasetGroupArn=arn)
+        dg_arn = r["datasetGroupArn"]
+        sol = client.create_solution(name="test-sol-dg-filter", datasetGroupArn=dg_arn)
+        sol_arn = sol["solutionArn"]
+
+        # LIST filtered by dataset group - should include the solution
+        resp = client.list_solutions(datasetGroupArn=dg_arn)
         assert "solutions" in resp
-        assert isinstance(resp["solutions"], list)
-        client.delete_dataset_group(datasetGroupArn=arn)
+        arns = [s["solutionArn"] for s in resp["solutions"]]
+        assert sol_arn in arns
+
+        # RETRIEVE the solution
+        desc = client.describe_solution(solutionArn=sol_arn)
+        assert desc["solution"]["solutionArn"] == sol_arn
+
+        # DELETE
+        client.delete_solution(solutionArn=sol_arn)
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_solution(solutionArn=sol_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_batch_inference_jobs_with_solution_version_filter(self, client):
-        resp = client.list_batch_inference_jobs(
-            solutionVersionArn=(
-                "arn:aws:personalize:us-east-1:123456789012:solution/x/version/nonexistent"
-            )
+        # CREATE a batch job with a known solution version
+        r = client.create_batch_inference_job(
+            jobName="test-bij-filter",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
         )
+        bij_arn = r["batchInferenceJobArn"]
+
+        # LIST filtered by that solution version
+        resp = client.list_batch_inference_jobs(solutionVersionArn=SOL_VERSION_ARN)
         assert "batchInferenceJobs" in resp
-        assert isinstance(resp["batchInferenceJobs"], list)
+        arns = [j["batchInferenceJobArn"] for j in resp["batchInferenceJobs"]]
+        assert bij_arn in arns
+
+        # RETRIEVE
+        desc = client.describe_batch_inference_job(batchInferenceJobArn=bij_arn)
+        assert desc["batchInferenceJob"]["jobName"] == "test-bij-filter"
+
+        # ERROR: nonexistent job
+        with pytest.raises(ClientError) as exc:
+            client.describe_batch_inference_job(
+                batchInferenceJobArn=f"{BASE_ARN}:batch-inference-job/nonexistent-filter"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_batch_segment_jobs_with_solution_version_filter(self, client):
-        resp = client.list_batch_segment_jobs(
-            solutionVersionArn=(
-                "arn:aws:personalize:us-east-1:123456789012:solution/x/version/nonexistent"
-            )
+        # CREATE a batch segment job with a known solution version
+        r = client.create_batch_segment_job(
+            jobName="test-bsj-filter",
+            solutionVersionArn=SOL_VERSION_ARN,
+            jobInput=JOB_INPUT,
+            jobOutput=JOB_OUTPUT,
+            roleArn=ROLE_ARN,
         )
+        bsj_arn = r["batchSegmentJobArn"]
+
+        # LIST filtered by that solution version
+        resp = client.list_batch_segment_jobs(solutionVersionArn=SOL_VERSION_ARN)
         assert "batchSegmentJobs" in resp
-        assert isinstance(resp["batchSegmentJobs"], list)
+        arns = [j["batchSegmentJobArn"] for j in resp["batchSegmentJobs"]]
+        assert bsj_arn in arns
+
+        # RETRIEVE
+        desc = client.describe_batch_segment_job(batchSegmentJobArn=bsj_arn)
+        assert desc["batchSegmentJob"]["jobName"] == "test-bsj-filter"
+
+        # ERROR: nonexistent job
+        with pytest.raises(ClientError) as exc:
+            client.describe_batch_segment_job(
+                batchSegmentJobArn=f"{BASE_ARN}:batch-segment-job/nonexistent-filter"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_data_deletion_jobs_with_dataset_group_filter(self, client):
+        # CREATE dataset group and deletion job
         r = client.create_dataset_group(name="test-dg-deletion-jobs-filter")
-        arn = r["datasetGroupArn"]
-        resp = client.list_data_deletion_jobs(datasetGroupArn=arn)
+        dg_arn = r["datasetGroupArn"]
+        ddj = client.create_data_deletion_job(
+            jobName="test-ddj-dg-filter",
+            datasetGroupArn=dg_arn,
+            dataSource={"dataLocation": "s3://bucket/data.csv"},
+            roleArn=ROLE_ARN,
+        )
+        ddj_arn = ddj["dataDeletionJobArn"]
+
+        # LIST filtered by dataset group
+        resp = client.list_data_deletion_jobs(datasetGroupArn=dg_arn)
         assert "dataDeletionJobs" in resp
-        assert isinstance(resp["dataDeletionJobs"], list)
-        client.delete_dataset_group(datasetGroupArn=arn)
+        arns = [j["dataDeletionJobArn"] for j in resp["dataDeletionJobs"]]
+        assert ddj_arn in arns
+
+        # RETRIEVE
+        desc = client.describe_data_deletion_job(dataDeletionJobArn=ddj_arn)
+        assert desc["dataDeletionJob"]["jobName"] == "test-ddj-dg-filter"
+
+        # DELETE dataset group (best effort)
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_group(datasetGroupArn=dg_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_metric_attributions_with_dataset_group_filter(self, client):
+        # CREATE dataset group and metric attribution
         r = client.create_dataset_group(name="test-dg-metric-attr-filter")
-        arn = r["datasetGroupArn"]
-        resp = client.list_metric_attributions(datasetGroupArn=arn)
+        dg_arn = r["datasetGroupArn"]
+        ma = client.create_metric_attribution(
+            name="test-ma-dg-filter",
+            datasetGroupArn=dg_arn,
+            metrics=METRICS,
+            metricsOutputConfig=METRICS_OUTPUT,
+        )
+        ma_arn = ma["metricAttributionArn"]
+
+        # LIST filtered by dataset group
+        resp = client.list_metric_attributions(datasetGroupArn=dg_arn)
         assert "metricAttributions" in resp
-        assert isinstance(resp["metricAttributions"], list)
-        client.delete_dataset_group(datasetGroupArn=arn)
+        arns = [ma["metricAttributionArn"] for ma in resp["metricAttributions"]]
+        assert ma_arn in arns
+
+        # RETRIEVE
+        desc = client.describe_metric_attribution(metricAttributionArn=ma_arn)
+        assert desc["metricAttribution"]["metricAttributionArn"] == ma_arn
+
+        # DELETE
+        client.delete_metric_attribution(metricAttributionArn=ma_arn)
+        client.delete_dataset_group(datasetGroupArn=dg_arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_metric_attribution(metricAttributionArn=ma_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestPersonalizeCampaignCRUD:
@@ -1013,6 +1565,7 @@ class TestPersonalizeEventTrackerCRUD:
         assert "event-tracker" in arn
         assert tracking_id is not None
 
+        # RETRIEVE
         desc = client.describe_event_tracker(eventTrackerArn=arn)
         et = desc["eventTracker"]
         assert et["name"] == "test-et-crud"
@@ -1020,10 +1573,23 @@ class TestPersonalizeEventTrackerCRUD:
         assert et["status"] == "ACTIVE"
         assert et.get("trackingId") == tracking_id
 
+        # LIST: verify the tracker appears
+        list_resp = client.list_event_trackers()
+        listed_arns = [e["eventTrackerArn"] for e in list_resp["eventTrackers"]]
+        assert arn in listed_arns
+
+        # DELETE
         client.delete_event_tracker(eventTrackerArn=arn)
+
+        # ERROR: deleted resource is gone
         with pytest.raises(ClientError) as exc:
             client.describe_event_tracker(eventTrackerArn=arn)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # ERROR: deleted tracker is no longer in the list
+        list_resp2 = client.list_event_trackers()
+        listed_arns2 = [e["eventTrackerArn"] for e in list_resp2["eventTrackers"]]
+        assert arn not in listed_arns2
 
     def test_event_tracker_create_returns_tracking_id(self, client):
         r = client.create_event_tracker(name="test-et-tracking", datasetGroupArn=self.DG_ARN)
