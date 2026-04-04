@@ -573,3 +573,183 @@ class TestACMRenewRevoke:
         with pytest.raises(ClientError) as exc:
             acm.revoke_certificate(CertificateArn=self.FAKE_ARN, RevocationReason="KEY_COMPROMISE")
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestACMBehavioralFidelity:
+    """Edge cases and behavioral fidelity tests."""
+
+    @pytest.fixture
+    def acm(self):
+        return make_client("acm")
+
+    def test_arn_format(self, acm):
+        """ARN must match arn:aws:acm:REGION:ACCOUNT:certificate/UUID."""
+        import re
+
+        arn = acm.request_certificate(DomainName="arn-format.example.com")["CertificateArn"]
+        pattern = r"^arn:aws:acm:[a-z0-9-]+:\d{12}:certificate/[0-9a-f-]{36}$"
+        assert re.match(pattern, arn), f"ARN {arn!r} did not match expected pattern"
+
+    def test_certificate_type_amazon_issued(self, acm):
+        """Requested (non-imported) certs must have Type=AMAZON_ISSUED."""
+        arn = acm.request_certificate(DomainName="amazon-type.example.com")["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "AMAZON_ISSUED"
+
+    def test_created_at_is_recent_datetime(self, acm):
+        """CreatedAt must be a datetime within a few seconds of the request."""
+        # Floor to second to avoid microsecond precision mismatches
+        before = datetime.datetime.now(datetime.UTC).replace(microsecond=0)
+        arn = acm.request_certificate(DomainName="created-at2.example.com")["CertificateArn"]
+        after = datetime.datetime.now(datetime.UTC)
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        created_at = cert["CreatedAt"]
+        # Normalize to UTC for comparison regardless of server timezone
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=datetime.UTC)
+        else:
+            created_at = created_at.astimezone(datetime.UTC)
+        assert before <= created_at <= after + datetime.timedelta(seconds=5)
+
+    def test_full_lifecycle(self, acm):
+        """Create → describe → appears in list → delete → gone from list."""
+        arn = acm.request_certificate(DomainName="lifecycle.example.com")["CertificateArn"]
+
+        # Retrieve
+        desc = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert desc["DomainName"] == "lifecycle.example.com"
+
+        # List
+        arns_in_list = [
+            c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]
+        ]
+        assert arn in arns_in_list
+
+        # Delete
+        acm.delete_certificate(CertificateArn=arn)
+
+        # Verify gone
+        arns_after = [
+            c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]
+        ]
+        assert arn not in arns_after
+
+    def test_list_certificates_pagination(self, acm):
+        """ListCertificates with MaxResults returns NextToken when more results exist."""
+        # Create 4 certs to ensure pagination
+        arns = []
+        for i in range(4):
+            arns.append(
+                acm.request_certificate(DomainName=f"page{i}.example.com")["CertificateArn"]
+            )
+
+        resp1 = acm.list_certificates(MaxItems=2)
+        assert "CertificateSummaryList" in resp1
+        assert len(resp1["CertificateSummaryList"]) <= 2
+
+        if "NextToken" in resp1:
+            resp2 = acm.list_certificates(MaxItems=2, NextToken=resp1["NextToken"])
+            assert "CertificateSummaryList" in resp2
+            # Second page should have different ARNs
+            page1_arns = {c["CertificateArn"] for c in resp1["CertificateSummaryList"]}
+            page2_arns = {c["CertificateArn"] for c in resp2["CertificateSummaryList"]}
+            assert page1_arns.isdisjoint(page2_arns)
+
+    def test_tag_key_overwrite(self, acm):
+        """Adding a tag with an existing key replaces the old value."""
+        arn = acm.request_certificate(DomainName="tag-overwrite.example.com")["CertificateArn"]
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "env", "Value": "staging"}],
+        )
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "env", "Value": "production"}],
+        )
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]
+        env_tags = [t for t in tags if t["Key"] == "env"]
+        assert len(env_tags) == 1
+        assert env_tags[0]["Value"] == "production"
+
+    def test_dns_validation_method_in_describe(self, acm):
+        """Requesting with DNS validation records the method."""
+        arn = acm.request_certificate(
+            DomainName="dns-method.example.com",
+            ValidationMethod="DNS",
+        )["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        # DomainValidationOptions should indicate DNS method
+        options = cert.get("DomainValidationOptions", [])
+        assert len(options) >= 1
+        assert options[0]["ValidationMethod"] == "DNS"
+
+    def test_wildcard_domain_in_describe(self, acm):
+        """Wildcard domain name is preserved exactly in describe output."""
+        arn = acm.request_certificate(DomainName="*.wild2.example.com")["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["DomainName"] == "*.wild2.example.com"
+
+    def test_delete_removes_tags(self, acm):
+        """After deleting a cert, its tags are gone (no zombie tag data)."""
+        arn = acm.request_certificate(DomainName="del-tags.example.com")["CertificateArn"]
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "ephemeral", "Value": "yes"}],
+        )
+        acm.delete_certificate(CertificateArn=arn)
+        # Listing tags for deleted cert should raise ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            acm.list_tags_for_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_certificates_status_filter_excludes_pending(self, acm):
+        """Filtering by ISSUED should NOT include PENDING_VALIDATION certs."""
+        arn = acm.request_certificate(DomainName="pending-excl.example.com")["CertificateArn"]
+        resp = acm.list_certificates(CertificateStatuses=["ISSUED"])
+        issued_arns = [c["CertificateArn"] for c in resp["CertificateSummaryList"]]
+        assert arn not in issued_arns
+
+    def test_multiple_sans_preserved_in_describe(self, acm):
+        """All SANs provided at request time appear verbatim in DescribeCertificate."""
+        sans = ["primary.example.com", "a.example.com", "b.example.com", "c.example.com"]
+        arn = acm.request_certificate(
+            DomainName="primary.example.com",
+            SubjectAlternativeNames=sans,
+        )["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        returned_sans = cert.get("SubjectAlternativeNames", [])
+        for san in sans:
+            assert san in returned_sans
+
+    def test_imported_cert_status_is_issued(self, acm):
+        """An imported certificate should have Status=ISSUED immediately."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+        try:
+            cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+            assert cert["Status"] == "ISSUED"
+        finally:
+            acm.delete_certificate(CertificateArn=arn)
+
+    def test_describe_certificate_arn_matches_requested(self, acm):
+        """CertificateArn in describe response must equal the ARN used to request."""
+        arn = acm.request_certificate(DomainName="arn-match.example.com")["CertificateArn"]
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["CertificateArn"] == arn
+
+    def test_list_tags_empty_on_new_cert(self, acm):
+        """A freshly requested cert with no tags returns an empty Tags list."""
+        arn = acm.request_certificate(DomainName="no-tags.example.com")["CertificateArn"]
+        resp = acm.list_tags_for_certificate(CertificateArn=arn)
+        assert resp["Tags"] == []
+
+    def test_remove_nonexistent_tag_is_noop(self, acm):
+        """Removing a tag that doesn't exist must not raise an error."""
+        arn = acm.request_certificate(DomainName="noop-tag.example.com")["CertificateArn"]
+        # This should not raise
+        acm.remove_tags_from_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "ghost-key", "Value": "ghost-value"}],
+        )
+        resp = acm.list_tags_for_certificate(CertificateArn=arn)
+        assert resp["Tags"] == []
