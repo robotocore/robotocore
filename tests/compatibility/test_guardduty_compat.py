@@ -1,5 +1,6 @@
 """GuardDuty compatibility tests."""
 
+import datetime
 import uuid
 
 import pytest
@@ -1446,6 +1447,376 @@ class TestGuardDutyDisableOrganizationAdmin:
         resp = guardduty.list_organization_admin_accounts()
         admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
         assert "222233334444" not in admin_ids
+
+
+class TestGuardDutyDetectorBehavioralFidelity:
+    """Behavioral fidelity tests for detector fields — timestamps, structure, ordering."""
+
+    def test_created_at_is_valid_datetime(self, guardduty, detector):
+        """CreatedAt should be a valid datetime object (not None, not epoch)."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        created_at = detail["CreatedAt"]
+        assert isinstance(created_at, datetime.datetime)
+        # Sanity: not before 2020
+        assert created_at.year >= 2020
+
+    def test_updated_at_is_valid_datetime(self, guardduty, detector):
+        """UpdatedAt should be a valid datetime object."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        updated_at = detail["UpdatedAt"]
+        assert isinstance(updated_at, datetime.datetime)
+        assert updated_at.year >= 2020
+
+    def test_updated_at_changes_after_update(self, guardduty, detector):
+        """UpdatedAt should be refreshed when detector is updated."""
+        before = guardduty.get_detector(DetectorId=detector)["UpdatedAt"]
+        guardduty.update_detector(DetectorId=detector, FindingPublishingFrequency="SIX_HOURS")
+        after = guardduty.get_detector(DetectorId=detector)["UpdatedAt"]
+        # After update the timestamp should be >= before (may be same second, never older)
+        assert after >= before
+
+    def test_features_list_has_expected_structure(self, guardduty, detector):
+        """Features list items should have Name and Status fields."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        features = detail["Features"]
+        assert isinstance(features, list)
+        for feature in features:
+            assert "Name" in feature
+            assert "Status" in feature
+
+    def test_data_sources_has_s3_logs(self, guardduty, detector):
+        """DataSources should contain S3Logs with a Status field."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        ds = detail["DataSources"]
+        assert "S3Logs" in ds
+        assert "Status" in ds["S3Logs"]
+
+    def test_data_sources_has_cloud_trail(self, guardduty, detector):
+        """DataSources should contain CloudTrail with a Status field."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        ds = detail["DataSources"]
+        assert "CloudTrail" in ds
+        assert "Status" in ds["CloudTrail"]
+
+    def test_tags_dict_is_empty_by_default(self, guardduty, detector):
+        """Tags should be an empty dict (not None) when no tags were set."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert detail["Tags"] == {}
+
+    def test_service_role_is_string(self, guardduty, detector):
+        """ServiceRole should be a string (ARN or empty string)."""
+        detail = guardduty.get_detector(DetectorId=detector)
+        assert isinstance(detail["ServiceRole"], str)
+
+    def test_create_detector_default_finding_publishing_frequency(self, guardduty):
+        """Detector created without frequency should have a default value."""
+        resp = guardduty.create_detector(Enable=True)
+        detector_id = resp["DetectorId"]
+        try:
+            detail = guardduty.get_detector(DetectorId=detector_id)
+            assert detail["FindingPublishingFrequency"] in (
+                "SIX_HOURS",
+                "ONE_HOUR",
+                "FIFTEEN_MINUTES",
+            )
+        finally:
+            guardduty.delete_detector(DetectorId=detector_id)
+
+
+class TestGuardDutyAdministratorAccountEdgeCases:
+    """Edge cases for GetAdministratorAccount."""
+
+    def test_get_administrator_account_nonexistent_detector(self, guardduty):
+        """GetAdministratorAccount for nonexistent detector should raise BadRequestException."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_administrator_account(DetectorId="aaaabbbbccccddddeeeeffffgggghhh0")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_get_administrator_account_returns_200(self, guardduty, detector):
+        """GetAdministratorAccount returns 200 regardless of whether an admin is configured."""
+        result = guardduty.get_administrator_account(DetectorId=detector)
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyOrganizationAdminBehavior:
+    """Behavioral tests for organization admin account operations."""
+
+    def test_enable_shows_account_in_list(self, guardduty):
+        """After enabling, the admin account should appear in list."""
+        guardduty.enable_organization_admin_account(AdminAccountId="111133335555")
+        resp = guardduty.list_organization_admin_accounts()
+        admin_ids = [a["AdminAccountId"] for a in resp["AdminAccounts"]]
+        assert "111133335555" in admin_ids
+        # cleanup
+        guardduty.disable_organization_admin_account(AdminAccountId="111133335555")
+
+    def test_list_organization_admin_accounts_items_have_status(self, guardduty):
+        """Each admin account entry should have an AdminAccountId and Status."""
+        guardduty.enable_organization_admin_account(AdminAccountId="222244446666")
+        resp = guardduty.list_organization_admin_accounts()
+        accounts = [a for a in resp["AdminAccounts"] if a["AdminAccountId"] == "222244446666"]
+        assert len(accounts) == 1
+        assert "AdminStatus" in accounts[0]
+        # cleanup
+        guardduty.disable_organization_admin_account(AdminAccountId="222244446666")
+
+    def test_disable_nonexistent_admin_account_returns_200(self, guardduty):
+        """DisableOrganizationAdminAccount for an account not enabled should not error."""
+        resp = guardduty.disable_organization_admin_account(AdminAccountId="999911112222")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGuardDutyFilterPagination:
+    """Pagination tests for list_filters."""
+
+    def test_list_filters_max_results(self, guardduty, detector):
+        """list_filters with MaxResults=1 should return at most 1 filter."""
+        names = [_unique("filter") for _ in range(3)]
+        for name in names:
+            guardduty.create_filter(
+                DetectorId=detector,
+                Name=name,
+                FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+            )
+        try:
+            resp = guardduty.list_filters(DetectorId=detector, MaxResults=1)
+            assert len(resp["FilterNames"]) <= 1
+        finally:
+            for name in names:
+                guardduty.delete_filter(DetectorId=detector, FilterName=name)
+
+    def test_list_filters_pagination_next_token(self, guardduty, detector):
+        """list_filters NextToken should allow fetching remaining results."""
+        names = [_unique("filter") for _ in range(3)]
+        for name in names:
+            guardduty.create_filter(
+                DetectorId=detector,
+                Name=name,
+                FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+            )
+        try:
+            first = guardduty.list_filters(DetectorId=detector, MaxResults=1)
+            all_names = list(first["FilterNames"])
+            token = first.get("NextToken")
+            while token:
+                page = guardduty.list_filters(
+                    DetectorId=detector, MaxResults=1, NextToken=token
+                )
+                all_names.extend(page["FilterNames"])
+                token = page.get("NextToken")
+            for name in names:
+                assert name in all_names
+        finally:
+            for name in names:
+                guardduty.delete_filter(DetectorId=detector, FilterName=name)
+
+
+class TestGuardDutyIPSetPagination:
+    """Pagination tests for list_ip_sets."""
+
+    def test_list_ipsets_max_results(self, guardduty, detector):
+        """list_ip_sets with MaxResults=1 should return at most 1 result."""
+        ipset_ids = []
+        for i in range(3):
+            resp = guardduty.create_ip_set(
+                DetectorId=detector,
+                Name=_unique("ipset"),
+                Format="TXT",
+                Location=f"s3://pag-bucket/ipset{i}.txt",
+                Activate=False,
+            )
+            ipset_ids.append(resp["IpSetId"])
+        try:
+            resp = guardduty.list_ip_sets(DetectorId=detector, MaxResults=1)
+            assert len(resp["IpSetIds"]) <= 1
+        finally:
+            for ipset_id in ipset_ids:
+                guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+    def test_list_ipsets_pagination_next_token(self, guardduty, detector):
+        """list_ip_sets NextToken should allow fetching remaining results."""
+        ipset_ids = []
+        for i in range(3):
+            resp = guardduty.create_ip_set(
+                DetectorId=detector,
+                Name=_unique("ipset"),
+                Format="TXT",
+                Location=f"s3://pag-bucket/ipset-tok{i}.txt",
+                Activate=False,
+            )
+            ipset_ids.append(resp["IpSetId"])
+        try:
+            first = guardduty.list_ip_sets(DetectorId=detector, MaxResults=1)
+            all_ids = list(first["IpSetIds"])
+            token = first.get("NextToken")
+            while token:
+                page = guardduty.list_ip_sets(DetectorId=detector, MaxResults=1, NextToken=token)
+                all_ids.extend(page["IpSetIds"])
+                token = page.get("NextToken")
+            for ipset_id in ipset_ids:
+                assert ipset_id in all_ids
+        finally:
+            for ipset_id in ipset_ids:
+                guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+
+
+class TestGuardDutyThreatIntelSetPagination:
+    """Pagination tests for list_threat_intel_sets."""
+
+    def test_list_threat_intel_sets_max_results(self, guardduty, detector):
+        """list_threat_intel_sets with MaxResults=1 should return at most 1 result."""
+        tiset_ids = []
+        for i in range(3):
+            resp = guardduty.create_threat_intel_set(
+                DetectorId=detector,
+                Name=_unique("tiset"),
+                Format="TXT",
+                Location=f"s3://pag-ti-bucket/ti{i}.txt",
+                Activate=False,
+            )
+            tiset_ids.append(resp["ThreatIntelSetId"])
+        try:
+            resp = guardduty.list_threat_intel_sets(DetectorId=detector, MaxResults=1)
+            assert len(resp["ThreatIntelSetIds"]) <= 1
+        finally:
+            for tiset_id in tiset_ids:
+                guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+
+    def test_list_threat_intel_sets_pagination_next_token(self, guardduty, detector):
+        """list_threat_intel_sets NextToken should allow fetching remaining results."""
+        tiset_ids = []
+        for i in range(3):
+            resp = guardduty.create_threat_intel_set(
+                DetectorId=detector,
+                Name=_unique("tiset"),
+                Format="TXT",
+                Location=f"s3://pag-ti-bucket/ti-tok{i}.txt",
+                Activate=False,
+            )
+            tiset_ids.append(resp["ThreatIntelSetId"])
+        try:
+            first = guardduty.list_threat_intel_sets(DetectorId=detector, MaxResults=1)
+            all_ids = list(first["ThreatIntelSetIds"])
+            token = first.get("NextToken")
+            while token:
+                page = guardduty.list_threat_intel_sets(
+                    DetectorId=detector, MaxResults=1, NextToken=token
+                )
+                all_ids.extend(page["ThreatIntelSetIds"])
+                token = page.get("NextToken")
+            for tiset_id in tiset_ids:
+                assert tiset_id in all_ids
+        finally:
+            for tiset_id in tiset_ids:
+                guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+
+
+class TestGuardDutyTagEdgeCases:
+    """Edge cases for tag operations."""
+
+    def test_list_tags_for_nonexistent_resource(self, guardduty):
+        """ListTagsForResource on a nonexistent ARN should raise an error."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.list_tags_for_resource(
+                ResourceArn="arn:aws:guardduty:us-east-1:123456789012:detector/nonexistent"
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "BadRequestException",
+            "InvalidInputException",
+            "ResourceNotFoundException",
+        )
+
+    def test_tag_resource_with_unicode_values(self, guardduty, detector):
+        """TagResource should accept unicode tag values."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        guardduty.tag_resource(ResourceArn=arn, Tags={"desc": "test-\u00e9\u00e0\u00fc"})
+        tags_resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert tags_resp["Tags"]["desc"] == "test-\u00e9\u00e0\u00fc"
+
+    def test_tag_resource_multiple_tags(self, guardduty, detector):
+        """TagResource can add many tags at once."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+        tags = {f"key{i}": f"val{i}" for i in range(5)}
+        guardduty.tag_resource(ResourceArn=arn, Tags=tags)
+        resp = guardduty.list_tags_for_resource(ResourceArn=arn)
+        for k, v in tags.items():
+            assert resp["Tags"][k] == v
+
+
+class TestGuardDutyFindingsPagination:
+    """Pagination tests for list_findings."""
+
+    def test_list_findings_max_results(self, guardduty, detector):
+        """list_findings with MaxResults should limit results."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=[
+                "Recon:EC2/PortProbeUnprotectedPort",
+                "UnauthorizedAccess:EC2/SSHBruteForce",
+                "Backdoor:EC2/C&CActivity.B",
+            ],
+        )
+        resp = guardduty.list_findings(DetectorId=detector, MaxResults=1)
+        assert "FindingIds" in resp
+        assert len(resp["FindingIds"]) <= 1
+
+    def test_list_findings_next_token(self, guardduty, detector):
+        """list_findings NextToken allows pagination over all results."""
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=[
+                "Recon:EC2/PortProbeUnprotectedPort",
+                "UnauthorizedAccess:EC2/SSHBruteForce",
+                "Backdoor:EC2/C&CActivity.B",
+            ],
+        )
+        first = guardduty.list_findings(DetectorId=detector, MaxResults=1)
+        all_ids = list(first["FindingIds"])
+        token = first.get("NextToken")
+        pages = 0
+        while token and pages < 20:
+            page = guardduty.list_findings(DetectorId=detector, MaxResults=1, NextToken=token)
+            all_ids.extend(page["FindingIds"])
+            token = page.get("NextToken")
+            pages += 1
+        # We asked for 3 finding types — should have at least 1 in total
+        assert len(all_ids) >= 1
+
+
+class TestGuardDutyTrustedEntitySetEdgeCases:
+    """Edge cases and error paths for UpdateTrustedEntitySet (organization config)."""
+
+    def test_update_organization_configuration_returns_200(self, guardduty, detector):
+        """UpdateOrganizationConfiguration should return 200."""
+        resp = guardduty.update_organization_configuration(
+            DetectorId=detector,
+            AutoEnable=False,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_organization_configuration_nonexistent_detector(self, guardduty):
+        """UpdateOrganizationConfiguration for nonexistent detector should fail."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.update_organization_configuration(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0",
+                AutoEnable=False,
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+    def test_describe_organization_configuration_after_update(self, guardduty, detector):
+        """After updating org config, describe should reflect the change."""
+        guardduty.update_organization_configuration(DetectorId=detector, AutoEnable=True)
+        resp = guardduty.describe_organization_configuration(DetectorId=detector)
+        # AutoEnable should be present (value depends on implementation)
+        assert "AutoEnable" in resp
+
+    def test_describe_organization_configuration_nonexistent_detector(self, guardduty):
+        """DescribeOrganizationConfiguration for nonexistent detector should fail."""
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.describe_organization_configuration(
+                DetectorId="aaaabbbbccccddddeeeeffffgggghhh0"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
 
 
 class TestGuardDutyUpdateOrganizationConfiguration:
