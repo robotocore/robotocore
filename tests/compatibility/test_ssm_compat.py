@@ -4368,3 +4368,333 @@ class TestSSMEdgeCasesAndBehavioralFidelity:
         resp = ssm.describe_inventory_deletions(MaxResults=10)
         assert "InventoryDeletions" in resp
         assert isinstance(resp["InventoryDeletions"], list)
+
+
+class TestSSMBehavioralFidelityGapFills:
+    """Targeted tests to fill behavioral fidelity gaps in SSM coverage."""
+
+    @pytest.fixture
+    def ssm(self):
+        return make_client("ssm")
+
+    # --- Association UPDATE + ERROR patterns ---
+
+    def test_update_association_schedule_expression(self, ssm):
+        """UpdateAssociation changes ScheduleExpression and is reflected in describe."""
+        import json
+        doc_name = _unique("upd-assoc-doc")
+        content = json.dumps({
+            "schemaVersion": "2.2",
+            "description": "Update association test",
+            "mainSteps": [{"action": "aws:runShellScript", "name": "run",
+                           "inputs": {"runCommand": ["echo hi"]}}],
+        })
+        ssm.create_document(Content=content, Name=doc_name,
+                            DocumentType="Command", DocumentFormat="JSON")
+        try:
+            resp = ssm.create_association(
+                Name=doc_name,
+                Targets=[{"Key": "instanceids", "Values": ["i-00000001"]}],
+                ScheduleExpression="rate(1 day)",
+            )
+            assoc_id = resp["AssociationDescription"]["AssociationId"]
+            try:
+                upd = ssm.update_association(
+                    AssociationId=assoc_id,
+                    ScheduleExpression="rate(7 days)",
+                )
+                assert upd["AssociationDescription"]["ScheduleExpression"] == "rate(7 days)"
+                desc = ssm.describe_association(AssociationId=assoc_id)
+                assert desc["AssociationDescription"]["ScheduleExpression"] == "rate(7 days)"
+            finally:
+                ssm.delete_association(AssociationId=assoc_id)
+        finally:
+            ssm.delete_document(Name=doc_name)
+
+    def test_update_association_nonexistent_raises(self, ssm):
+        """UpdateAssociation on a nonexistent ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            ssm.update_association(
+                AssociationId="00000000-0000-0000-0000-000000000099",
+                ScheduleExpression="rate(1 hour)",
+            )
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("AssociationDoesNotExist", "DoesNotExistException")
+
+    # --- list_compliance_items: put + list structure ---
+
+    def test_list_compliance_items_returns_list(self, ssm):
+        """ListComplianceItems always returns a list (even if empty)."""
+        resp = ssm.list_compliance_items()
+        assert "ComplianceItems" in resp
+        assert isinstance(resp["ComplianceItems"], list)
+
+    def test_put_compliance_items_then_list_structure(self, ssm):
+        """put_compliance_items succeeds; list_compliance_items returns list type."""
+        rid = _unique("i")
+        ssm.put_compliance_items(
+            ResourceId=rid,
+            ResourceType="ManagedInstance",
+            ComplianceType="Custom:MyCheck",
+            ExecutionSummary={"ExecutionTime": "2024-01-01T00:00:00Z"},
+            Items=[
+                {"Id": "item-1", "Title": "Check 1", "Status": "COMPLIANT", "Severity": "MEDIUM"},
+            ],
+        )
+        resp = ssm.list_compliance_items(
+            ResourceIds=[rid],
+            ResourceTypes=["ManagedInstance"],
+        )
+        assert "ComplianceItems" in resp
+        assert isinstance(resp["ComplianceItems"], list)
+
+    # --- list_compliance_summaries ---
+
+    def test_list_compliance_summaries_structure(self, ssm):
+        """ListComplianceSummaries returns ComplianceSummaryItems list."""
+        resp = ssm.list_compliance_summaries()
+        assert "ComplianceSummaryItems" in resp
+        assert isinstance(resp["ComplianceSummaryItems"], list)
+
+    def test_list_compliance_summaries_with_filter(self, ssm):
+        """ListComplianceSummaries with ComplianceType filter returns list."""
+        resp = ssm.list_compliance_summaries(
+            Filters=[{"Key": "ComplianceType", "Values": ["Custom:Check"], "Type": "EQUAL"}]
+        )
+        assert "ComplianceSummaryItems" in resp
+        assert isinstance(resp["ComplianceSummaryItems"], list)
+
+    # --- list_resource_compliance_summaries ---
+
+    def test_list_resource_compliance_summaries_structure(self, ssm):
+        """ListResourceComplianceSummaries returns ResourceComplianceSummaryItems list."""
+        resp = ssm.list_resource_compliance_summaries()
+        assert "ResourceComplianceSummaryItems" in resp
+        assert isinstance(resp["ResourceComplianceSummaryItems"], list)
+
+    # --- describe_available_patches ---
+
+    def test_describe_available_patches_returns_list(self, ssm):
+        """DescribeAvailablePatches returns a Patches list."""
+        resp = ssm.describe_available_patches()
+        assert "Patches" in resp
+        assert isinstance(resp["Patches"], list)
+
+    def test_describe_available_patches_with_product_filter(self, ssm):
+        """DescribeAvailablePatches accepts PRODUCT filter and returns list."""
+        resp = ssm.describe_available_patches(
+            Filters=[{"Key": "PRODUCT", "Values": ["AmazonLinux2"]}]
+        )
+        assert "Patches" in resp
+        assert isinstance(resp["Patches"], list)
+
+    # --- list_ops_item_events ---
+
+    def test_list_ops_item_events_returns_summaries_list(self, ssm):
+        """ListOpsItemEvents returns a Summaries list."""
+        resp = ssm.list_ops_item_events()
+        assert "Summaries" in resp
+        assert isinstance(resp["Summaries"], list)
+
+    def test_list_ops_item_events_with_ops_item_filter(self, ssm):
+        """ListOpsItemEvents with OpsItemId filter returns Summaries list."""
+        r = ssm.create_ops_item(
+            Title="Event test item",
+            Description="Created for event test",
+            Source="test-source",
+            Severity="3",
+            Category="Availability",
+        )
+        ops_item_id = r["OpsItemId"]
+        try:
+            resp = ssm.list_ops_item_events(
+                Filters=[{"Key": "OpsItemId", "Values": [ops_item_id], "Operator": "Equal"}]
+            )
+            assert "Summaries" in resp
+            assert isinstance(resp["Summaries"], list)
+        finally:
+            ssm.update_ops_item(OpsItemId=ops_item_id, Status="Resolved")
+
+    # --- describe_inventory_deletions ---
+
+    def test_describe_inventory_deletions_by_deletion_id(self, ssm):
+        """DeleteInventory returns DeletionId; describe_inventory_deletions accepts it."""
+        resp = ssm.delete_inventory(TypeName="AWS:Application", DryRun=True)
+        assert "DeletionId" in resp
+        assert "TypeName" in resp
+        assert resp["TypeName"] == "AWS:Application"
+        deletion_id = resp["DeletionId"]
+        # describe accepts the deletion_id without error
+        desc = ssm.describe_inventory_deletions(DeletionId=deletion_id)
+        assert "InventoryDeletions" in desc
+        assert isinstance(desc["InventoryDeletions"], list)
+
+    def test_delete_inventory_returns_summary(self, ssm):
+        """DeleteInventory returns DeletionSummary with TotalCount and RemainingCount."""
+        resp = ssm.delete_inventory(TypeName="AWS:Network", DryRun=True)
+        assert "DeletionSummary" in resp
+        summary = resp["DeletionSummary"]
+        assert "TotalCount" in summary
+        assert "RemainingCount" in summary
+        assert isinstance(summary["TotalCount"], int)
+
+    # --- get_inventory ---
+
+    def test_get_inventory_returns_entities_list(self, ssm):
+        """GetInventory returns Entities list."""
+        resp = ssm.get_inventory()
+        assert "Entities" in resp
+        assert isinstance(resp["Entities"], list)
+
+    def test_put_inventory_succeeds(self, ssm):
+        """PutInventory returns 200 and accepts valid inventory data."""
+        instance_id = _unique("i")
+        resp = ssm.put_inventory(
+            InstanceId=instance_id,
+            Items=[{
+                "TypeName": "AWS:Application",
+                "SchemaVersion": "1.1",
+                "CaptureTime": "2024-01-01T00:00:00Z",
+                "Content": [{"Name": "TestApp", "Version": "1.0"}],
+            }],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # --- get_inventory_schema ---
+
+    def test_get_inventory_schema_returns_schemas_list(self, ssm):
+        """GetInventorySchema returns a Schemas list."""
+        resp = ssm.get_inventory_schema()
+        assert "Schemas" in resp
+        assert isinstance(resp["Schemas"], list)
+
+    def test_get_inventory_schema_with_type_name_filter(self, ssm):
+        """GetInventorySchema with TypeName filter returns list without error."""
+        resp = ssm.get_inventory_schema(TypeName="AWS:Application")
+        assert "Schemas" in resp
+        assert isinstance(resp["Schemas"], list)
+
+    # --- list_ops_metadata: CREATE + RETRIEVE + UPDATE + DELETE ---
+
+    def test_list_ops_metadata_create_and_retrieve(self, ssm):
+        """CreateOpsMetadata appears in ListOpsMetadata with correct ResourceId."""
+        resource_id = f"arn:aws:ec2:us-east-1:123456789012:instance/{_unique('i')}"
+        resp = ssm.create_ops_metadata(
+            ResourceId=resource_id,
+            Metadata={"environment": {"Value": "staging"}},
+        )
+        arn = resp["OpsMetadataArn"]
+        try:
+            items = ssm.list_ops_metadata().get("OpsMetadataList", [])
+            found = [i for i in items if i.get("OpsMetadataArn") == arn]
+            assert len(found) == 1
+            assert found[0]["ResourceId"] == resource_id
+        finally:
+            ssm.delete_ops_metadata(OpsMetadataArn=arn)
+
+    def test_update_ops_metadata_reflects_new_key(self, ssm):
+        """UpdateOpsMetadata adds new key visible via GetOpsMetadata."""
+        resource_id = f"arn:aws:ec2:us-east-1:123456789012:instance/{_unique('i')}"
+        arn = ssm.create_ops_metadata(
+            ResourceId=resource_id,
+            Metadata={"initial_key": {"Value": "initial_val"}},
+        )["OpsMetadataArn"]
+        try:
+            ssm.update_ops_metadata(
+                OpsMetadataArn=arn,
+                MetadataToUpdate={"new_key": {"Value": "new_val"}},
+            )
+            meta = ssm.get_ops_metadata(OpsMetadataArn=arn)["Metadata"]
+            assert "new_key" in meta
+            assert meta["new_key"]["Value"] == "new_val"
+            assert "initial_key" in meta
+        finally:
+            ssm.delete_ops_metadata(OpsMetadataArn=arn)
+
+    def test_delete_ops_metadata_removes_from_list(self, ssm):
+        """DeleteOpsMetadata removes entry; it no longer appears in ListOpsMetadata."""
+        resource_id = f"arn:aws:ec2:us-east-1:123456789012:instance/{_unique('i')}"
+        arn = ssm.create_ops_metadata(
+            ResourceId=resource_id,
+            Metadata={"key": {"Value": "val"}},
+        )["OpsMetadataArn"]
+        ssm.delete_ops_metadata(OpsMetadataArn=arn)
+        items = ssm.list_ops_metadata().get("OpsMetadataList", [])
+        arns = [i.get("OpsMetadataArn") for i in items]
+        assert arn not in arns
+
+    # --- describe_activations: CREATE + DELETE then verify gone ---
+
+    def test_describe_activations_create_shows_fields(self, ssm):
+        """CreateActivation fields (IamRole, RegistrationLimit) appear in DescribeActivations."""
+        resp = ssm.create_activation(
+            Description="test activation fidelity",
+            IamRole="SSMServiceRole",
+            RegistrationLimit=3,
+        )
+        activation_id = resp["ActivationId"]
+        try:
+            desc = ssm.describe_activations()
+            found = [a for a in desc.get("ActivationList", []) if a["ActivationId"] == activation_id]
+            assert len(found) == 1
+            act = found[0]
+            assert act["IamRole"] == "SSMServiceRole"
+            assert act["RegistrationLimit"] == 3
+            assert act["Description"] == "test activation fidelity"
+            assert act["Expired"] is False
+        finally:
+            ssm.delete_activation(ActivationId=activation_id)
+
+    def test_describe_activations_delete_removes_entry(self, ssm):
+        """DeleteActivation removes it from DescribeActivations results."""
+        resp = ssm.create_activation(
+            Description="delete test activation",
+            IamRole="SSMServiceRole",
+            RegistrationLimit=1,
+        )
+        activation_id = resp["ActivationId"]
+        ssm.delete_activation(ActivationId=activation_id)
+        desc = ssm.describe_activations()
+        found = [a for a in desc.get("ActivationList", []) if a["ActivationId"] == activation_id]
+        assert len(found) == 0
+
+    # --- list_resource_data_sync: CREATE + assertions on fields ---
+
+    def test_list_resource_data_sync_create_and_fields(self, ssm):
+        """CreateResourceDataSync appears in list with SyncName, SyncType, S3Destination."""
+        sync_name = _unique("sync")
+        ssm.create_resource_data_sync(
+            SyncName=sync_name,
+            S3Destination={
+                "BucketName": "my-sync-bucket",
+                "SyncFormat": "JsonSerDe",
+                "Region": "us-east-1",
+            },
+        )
+        try:
+            items = ssm.list_resource_data_sync().get("ResourceDataSyncItems", [])
+            found = [i for i in items if i.get("SyncName") == sync_name]
+            assert len(found) == 1
+            sync = found[0]
+            assert sync["SyncName"] == sync_name
+            assert sync["SyncType"] == "SyncToDestination"
+            assert sync["S3Destination"]["BucketName"] == "my-sync-bucket"
+            assert sync["S3Destination"]["SyncFormat"] == "JsonSerDe"
+        finally:
+            ssm.delete_resource_data_sync(SyncName=sync_name)
+
+    def test_list_resource_data_sync_delete_removes_entry(self, ssm):
+        """DeleteResourceDataSync removes sync from list."""
+        sync_name = _unique("sync")
+        ssm.create_resource_data_sync(
+            SyncName=sync_name,
+            S3Destination={
+                "BucketName": "my-sync-bucket-del",
+                "SyncFormat": "JsonSerDe",
+                "Region": "us-east-1",
+            },
+        )
+        ssm.delete_resource_data_sync(SyncName=sync_name)
+        items = ssm.list_resource_data_sync().get("ResourceDataSyncItems", [])
+        names = [i.get("SyncName") for i in items]
+        assert sync_name not in names
