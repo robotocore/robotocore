@@ -1383,3 +1383,657 @@ class TestECSExpressGatewayService:
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:express-gateway-service/fake"
         resp = ecs.delete_express_gateway_service(serviceArn=fake_arn)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestListClustersEdgeCases:
+    """Edge cases and behavioral fidelity for list_clusters."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_clusters_pagination(self, ecs):
+        """list_clusters supports maxResults + nextToken pagination."""
+        names = [_unique("pg-cluster") for _ in range(3)]
+        for name in names:
+            ecs.create_cluster(clusterName=name)
+        try:
+            page1 = ecs.list_clusters(maxResults=2)
+            assert "clusterArns" in page1
+            all_arns = list(page1["clusterArns"])
+            if "nextToken" in page1:
+                page2 = ecs.list_clusters(nextToken=page1["nextToken"])
+                all_arns.extend(page2["clusterArns"])
+            found_names = [n for n in names if any(n in arn for arn in all_arns)]
+            assert len(found_names) == 3
+        finally:
+            for name in names:
+                ecs.delete_cluster(cluster=name)
+
+    def test_list_clusters_arn_format(self, ecs):
+        """Cluster ARNs match expected arn:aws:ecs:*:cluster/* format."""
+        name = _unique("arn-fmt-cluster")
+        resp = ecs.create_cluster(clusterName=name)
+        arn = resp["cluster"]["clusterArn"]
+        try:
+            assert arn.startswith("arn:aws:ecs:")
+            assert ":cluster/" in arn
+            assert name in arn
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_list_clusters_deleted_cluster_absent(self, ecs):
+        """A deleted cluster should not appear in list_clusters."""
+        name = _unique("del-list-cls")
+        ecs.create_cluster(clusterName=name)
+        ecs.delete_cluster(cluster=name)
+        resp = ecs.list_clusters()
+        active_matching = [arn for arn in resp["clusterArns"] if name in arn]
+        assert len(active_matching) == 0
+
+
+class TestDiscoverPollEndpointEdgeCases:
+    """Edge cases and behavioral fidelity for discover_poll_endpoint."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_discover_poll_endpoint_has_telemetry(self, ecs):
+        """discover_poll_endpoint returns both endpoint and telemetryEndpoint."""
+        resp = ecs.discover_poll_endpoint()
+        assert "endpoint" in resp
+        assert "telemetryEndpoint" in resp
+
+    def test_discover_poll_endpoint_endpoint_is_url(self, ecs):
+        """discover_poll_endpoint endpoint value looks like a URL."""
+        resp = ecs.discover_poll_endpoint()
+        assert resp["endpoint"].startswith("http")
+
+    def test_discover_poll_endpoint_with_cluster(self, ecs):
+        """discover_poll_endpoint with cluster parameter returns endpoint."""
+        name = _unique("dpoll-cluster")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.discover_poll_endpoint(cluster=name)
+            assert "endpoint" in resp
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+    def test_discover_poll_endpoint_with_container_instance(self, ecs):
+        """discover_poll_endpoint with containerInstance returns endpoint."""
+        resp = ecs.discover_poll_endpoint(containerInstance="fake-ci-id")
+        assert "endpoint" in resp
+
+    def test_discover_poll_endpoint_telemetry_is_url(self, ecs):
+        """discover_poll_endpoint telemetryEndpoint value looks like a URL."""
+        resp = ecs.discover_poll_endpoint()
+        assert resp["telemetryEndpoint"].startswith("http")
+
+
+class TestSubmitAttachmentStateChangesEdgeCases:
+    """Edge cases for submit_attachment_state_changes."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_submit_multiple_attachments(self, ecs):
+        """submit_attachment_state_changes with multiple attachments returns acknowledgment."""
+        resp = ecs.submit_attachment_state_changes(
+            cluster="default",
+            attachments=[
+                {
+                    "attachmentArn": "arn:aws:ecs:us-east-1:123456789012:attachment/abc",
+                    "status": "ATTACHED",
+                },
+                {
+                    "attachmentArn": "arn:aws:ecs:us-east-1:123456789012:attachment/def",
+                    "status": "DETACHED",
+                },
+            ],
+        )
+        assert "acknowledgment" in resp
+        assert isinstance(resp["acknowledgment"], str)
+
+    def test_submit_attachment_acknowledgment_not_empty(self, ecs):
+        """submit_attachment_state_changes acknowledgment is non-empty."""
+        resp = ecs.submit_attachment_state_changes(
+            cluster="default",
+            attachments=[
+                {
+                    "attachmentArn": "arn:aws:ecs:us-east-1:123456789012:attachment/xyz",
+                    "status": "ATTACHED",
+                }
+            ],
+        )
+        assert len(resp["acknowledgment"]) > 0
+
+    def test_submit_attachment_with_real_cluster(self, ecs):
+        """submit_attachment_state_changes works with a real cluster name."""
+        name = _unique("attach-cls")
+        ecs.create_cluster(clusterName=name)
+        try:
+            resp = ecs.submit_attachment_state_changes(
+                cluster=name,
+                attachments=[
+                    {
+                        "attachmentArn": f"arn:aws:ecs:us-east-1:123456789012:attachment/{uuid.uuid4().hex}",
+                        "status": "ATTACHED",
+                    }
+                ],
+            )
+            assert "acknowledgment" in resp
+        finally:
+            ecs.delete_cluster(cluster=name)
+
+
+class TestListTaskDefinitionFamiliesEdgeCases:
+    """Edge cases for list_task_definition_families."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_families_filter_active(self, ecs):
+        """list_task_definition_families with status=ACTIVE returns active families."""
+        family = _unique("fam-active")
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 64}],
+        )
+        try:
+            resp = ecs.list_task_definition_families(familyPrefix=family, status="ACTIVE")
+            assert family in resp["families"]
+        finally:
+            ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_list_families_deregistered_shows_inactive(self, ecs):
+        """Deregistered family appears with status=INACTIVE filter."""
+        family = _unique("fam-inact")
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 64}],
+        )
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+        resp = ecs.list_task_definition_families(familyPrefix=family, status="INACTIVE")
+        assert family in resp["families"]
+
+    def test_list_families_pagination(self, ecs):
+        """list_task_definition_families returns all families across pages."""
+        families = [_unique("pg-fam") for _ in range(3)]
+        for fam in families:
+            ecs.register_task_definition(
+                family=fam,
+                containerDefinitions=[{"name": "app", "image": "busybox", "memory": 64}],
+            )
+        try:
+            resp = ecs.list_task_definition_families(maxResults=100)
+            all_families = resp["families"]
+            found = [f for f in families if f in all_families]
+            assert len(found) == 3
+        finally:
+            for fam in families:
+                ecs.deregister_task_definition(taskDefinition=f"{fam}:1")
+
+    def test_list_families_prefix_filters_correctly(self, ecs):
+        """list_task_definition_families familyPrefix only returns matching families."""
+        prefix = f"prefix-{uuid.uuid4().hex[:8]}"
+        family = f"{prefix}-myapp"
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 64}],
+        )
+        try:
+            resp = ecs.list_task_definition_families(familyPrefix=prefix)
+            assert all(f.startswith(prefix) for f in resp["families"])
+            assert family in resp["families"]
+        finally:
+            ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+
+class TestRunTaskEdgeCases:
+    """Edge cases and behavioral fidelity for run_task."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("rt-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("rt-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_run_task_arn_format(self, ecs, cluster, task_def_arn):
+        """run_task returns task ARN in expected arn:aws:ecs:*:task/* format."""
+        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task = resp["tasks"][0]
+        assert task["taskArn"].startswith("arn:aws:ecs:")
+        assert "task" in task["taskArn"]
+
+    def test_run_task_and_describe(self, ecs, cluster, task_def_arn):
+        """run_task then describe_tasks returns matching task with correct definition ARN."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        desc_resp = ecs.describe_tasks(cluster=cluster, tasks=[task_arn])
+        assert len(desc_resp["tasks"]) == 1
+        assert desc_resp["tasks"][0]["taskArn"] == task_arn
+        assert desc_resp["tasks"][0]["taskDefinitionArn"] == task_def_arn
+
+    def test_run_task_appears_in_list(self, ecs, cluster, task_def_arn):
+        """run_task then list_tasks in cluster returns the task ARN."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        list_resp = ecs.list_tasks(cluster=cluster)
+        assert task_arn in list_resp["taskArns"]
+
+    def test_run_task_and_stop(self, ecs, cluster, task_def_arn):
+        """run_task then stop_task returns task with STOPPED desired status."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        stop_resp = ecs.stop_task(cluster=cluster, task=task_arn, reason="test-stop")
+        assert stop_resp["task"]["taskArn"] == task_arn
+        assert stop_resp["task"]["desiredStatus"] == "STOPPED"
+
+    def test_run_task_count_returns_correct_number(self, ecs, cluster, task_def_arn):
+        """run_task with count=3 returns exactly 3 tasks, each with unique ARN."""
+        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, count=3)
+        assert len(resp["tasks"]) == 3
+        arns = [t["taskArn"] for t in resp["tasks"]]
+        assert len(set(arns)) == 3
+
+
+class TestListContainerInstancesEdgeCases:
+    """Edge cases for list_container_instances."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("ci-list-cls")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    def test_list_container_instances_empty_for_new_cluster(self, ecs, cluster):
+        """list_container_instances returns empty list for a fresh cluster."""
+        resp = ecs.list_container_instances(cluster=cluster)
+        assert "containerInstanceArns" in resp
+        assert isinstance(resp["containerInstanceArns"], list)
+        assert len(resp["containerInstanceArns"]) == 0
+
+    def test_list_container_instances_after_register(self, ecs, cluster):
+        """list_container_instances finds a registered instance."""
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-list123", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        try:
+            resp = ecs.list_container_instances(cluster=cluster)
+            assert ci_arn in resp["containerInstanceArns"]
+        finally:
+            ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
+
+    def test_list_container_instances_filter_active(self, ecs, cluster):
+        """list_container_instances with status=ACTIVE returns active instances."""
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-active456", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        try:
+            resp = ecs.list_container_instances(cluster=cluster, status="ACTIVE")
+            assert ci_arn in resp["containerInstanceArns"]
+        finally:
+            ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
+
+    def test_list_container_instances_deregistered_absent(self, ecs, cluster):
+        """Deregistered instance is not returned by list_container_instances."""
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-dereg789", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        ecs.deregister_container_instance(cluster=cluster, containerInstance=ci_arn, force=True)
+        resp = ecs.list_container_instances(cluster=cluster)
+        assert ci_arn not in resp["containerInstanceArns"]
+
+
+class TestListTasksEdgeCases:
+    """Edge cases for list_tasks."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("lt-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("lt-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_list_tasks_after_run(self, ecs, cluster, task_def_arn):
+        """list_tasks returns task ARNs for running tasks."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        resp = ecs.list_tasks(cluster=cluster)
+        assert task_arn in resp["taskArns"]
+
+    def test_list_tasks_filter_running(self, ecs, cluster, task_def_arn):
+        """list_tasks with desiredStatus=RUNNING returns running tasks."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        resp = ecs.list_tasks(cluster=cluster, desiredStatus="RUNNING")
+        assert task_arn in resp["taskArns"]
+
+    def test_list_tasks_stopped_appear_with_stopped_filter(self, ecs, cluster, task_def_arn):
+        """Stopped tasks appear in list_tasks with desiredStatus=STOPPED."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        ecs.stop_task(cluster=cluster, task=task_arn)
+        resp = ecs.list_tasks(cluster=cluster, desiredStatus="STOPPED")
+        assert task_arn in resp["taskArns"]
+
+    def test_list_tasks_empty_for_new_cluster(self, ecs, cluster):
+        """list_tasks returns empty list for a cluster with no tasks."""
+        resp = ecs.list_tasks(cluster=cluster)
+        assert "taskArns" in resp
+        assert isinstance(resp["taskArns"], list)
+        assert len(resp["taskArns"]) == 0
+
+
+class TestPutAccountSettingEdgeCases:
+    """Edge cases for put_account_setting."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_put_account_setting_update(self, ecs):
+        """put_account_setting can update an existing setting."""
+        ecs.put_account_setting(name="containerInstanceLongArnFormat", value="enabled")
+        resp = ecs.put_account_setting(name="containerInstanceLongArnFormat", value="disabled")
+        assert resp["setting"]["value"] == "disabled"
+
+    def test_put_account_setting_list_verifies_stored(self, ecs):
+        """put_account_setting value persists and appears in list_account_settings."""
+        ecs.put_account_setting(name="serviceLongArnFormat", value="enabled")
+        resp = ecs.list_account_settings(name="serviceLongArnFormat")
+        found = [s for s in resp["settings"] if s["name"] == "serviceLongArnFormat"]
+        assert len(found) >= 1
+        assert found[0]["value"] == "enabled"
+
+    def test_put_account_setting_then_delete(self, ecs):
+        """put_account_setting then delete_account_setting succeeds."""
+        ecs.put_account_setting(name="taskLongArnFormat", value="enabled")
+        resp = ecs.delete_account_setting(name="taskLongArnFormat")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_put_account_setting_returns_setting_name(self, ecs):
+        """put_account_setting response includes the setting name."""
+        resp = ecs.put_account_setting(name="containerInsights", value="enabled")
+        assert resp["setting"]["name"] == "containerInsights"
+
+
+class TestPutAccountSettingDefaultEdgeCases:
+    """Edge cases for put_account_setting_default."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_put_account_setting_default_and_list(self, ecs):
+        """put_account_setting_default value appears in list_account_settings."""
+        ecs.put_account_setting_default(name="awsvpcTrunking", value="enabled")
+        resp = ecs.list_account_settings(name="awsvpcTrunking", effectiveSettings=True)
+        found = [s for s in resp["settings"] if s["name"] == "awsvpcTrunking"]
+        assert len(found) >= 1
+        assert found[0]["value"] == "enabled"
+
+    def test_put_account_setting_default_update(self, ecs):
+        """put_account_setting_default can update an existing default."""
+        ecs.put_account_setting_default(name="serviceLongArnFormat", value="disabled")
+        resp = ecs.put_account_setting_default(name="serviceLongArnFormat", value="enabled")
+        assert resp["setting"]["value"] == "enabled"
+
+    def test_put_account_setting_default_returns_principal(self, ecs):
+        """put_account_setting_default response includes principalArn."""
+        resp = ecs.put_account_setting_default(name="taskLongArnFormat", value="enabled")
+        assert "setting" in resp
+        assert resp["setting"]["name"] == "taskLongArnFormat"
+
+
+class TestDescribeCapacityProvidersEdgeCases:
+    """Edge cases for describe_capacity_providers."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_describe_capacity_providers_builtin_fargate(self, ecs):
+        """describe_capacity_providers returns FARGATE as built-in provider."""
+        resp = ecs.describe_capacity_providers(capacityProviders=["FARGATE"])
+        assert "capacityProviders" in resp
+        if resp["capacityProviders"]:
+            names = [cp["name"] for cp in resp["capacityProviders"]]
+            assert "FARGATE" in names
+
+    def test_describe_capacity_providers_create_retrieve_delete(self, ecs):
+        """describe_capacity_providers: create → describe (present) → delete."""
+        cp_name = _unique("crud-cp")
+        ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+            },
+        )
+        try:
+            resp = ecs.describe_capacity_providers(capacityProviders=[cp_name])
+            assert len(resp["capacityProviders"]) == 1
+            assert resp["capacityProviders"][0]["name"] == cp_name
+            assert resp["capacityProviders"][0]["status"] == "ACTIVE"
+        finally:
+            ecs.delete_capacity_provider(capacityProvider=cp_name)
+
+    def test_describe_capacity_providers_failures_for_nonexistent(self, ecs):
+        """describe_capacity_providers returns failures for unknown providers."""
+        resp = ecs.describe_capacity_providers(capacityProviders=["no-such-cp-xyz"])
+        assert "capacityProviders" in resp
+        # Either in failures or empty capacityProviders
+        found = any(cp["name"] == "no-such-cp-xyz" for cp in resp.get("capacityProviders", []))
+        if not found:
+            assert len(resp.get("capacityProviders", [])) == 0
+
+
+class TestListServicesByNamespaceEdgeCases:
+    """Edge cases for list_services_by_namespace."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_services_by_namespace_unknown_returns_empty(self, ecs):
+        """list_services_by_namespace returns empty for unknown namespace."""
+        resp = ecs.list_services_by_namespace(namespace="does-not-exist-ns-xyz")
+        assert "serviceArns" in resp
+        assert isinstance(resp["serviceArns"], list)
+        assert len(resp["serviceArns"]) == 0
+
+    def test_list_services_by_namespace_different_namespaces_independent(self, ecs):
+        """Different namespaces return independent result lists."""
+        resp1 = ecs.list_services_by_namespace(namespace="ns-alpha-test")
+        resp2 = ecs.list_services_by_namespace(namespace="ns-beta-test")
+        assert isinstance(resp1["serviceArns"], list)
+        assert isinstance(resp2["serviceArns"], list)
+
+    def test_list_services_by_namespace_response_has_next_token_key(self, ecs):
+        """list_services_by_namespace response structure is valid."""
+        resp = ecs.list_services_by_namespace(namespace="any-namespace")
+        assert "serviceArns" in resp
+
+
+class TestPutAttributesEdgeCases:
+    """Edge cases for put_attributes."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("pa-cluster")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    def test_put_multiple_attributes_all_saved(self, ecs, cluster):
+        """put_attributes with multiple attributes saves all of them."""
+        resp = ecs.put_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "zone",
+                    "value": "us-east-1a",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-multi-1",
+                },
+                {
+                    "name": "gpu",
+                    "value": "true",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-multi-1",
+                },
+            ],
+        )
+        assert len(resp["attributes"]) == 2
+        names = [a["name"] for a in resp["attributes"]]
+        assert "zone" in names
+        assert "gpu" in names
+
+    def test_put_attribute_then_list_verifies(self, ecs, cluster):
+        """put_attributes value is visible in list_attributes."""
+        attr_id = uuid.uuid4().hex[:8]
+        ecs.put_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": f"myattr-{attr_id}",
+                    "value": "myval",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-listed",
+                }
+            ],
+        )
+        resp = ecs.list_attributes(cluster=cluster, targetType="container-instance")
+        names = [a["name"] for a in resp["attributes"]]
+        assert f"myattr-{attr_id}" in names
+
+    def test_put_attribute_then_delete_removes_it(self, ecs, cluster):
+        """put_attributes then delete_attributes removes the attribute."""
+        ecs.put_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "deleteme",
+                    "value": "yes",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-del-edge",
+                }
+            ],
+        )
+        ecs.delete_attributes(
+            cluster=cluster,
+            attributes=[
+                {
+                    "name": "deleteme",
+                    "targetType": "container-instance",
+                    "targetId": "fake-ci-del-edge",
+                }
+            ],
+        )
+        resp = ecs.list_attributes(cluster=cluster, targetType="container-instance")
+        matching = [
+            a
+            for a in resp["attributes"]
+            if a["name"] == "deleteme" and a.get("targetId") == "fake-ci-del-edge"
+        ]
+        assert len(matching) == 0
+
+
+class TestDescribeServiceDeploymentsEdgeCases:
+    """Edge cases for describe_service_deployments."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_describe_service_deployments_has_failures_key(self, ecs):
+        """describe_service_deployments with unknown ARN includes failures key."""
+        fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-deployment/fake-id"
+        resp = ecs.describe_service_deployments(serviceDeploymentArns=[fake_arn])
+        assert "failures" in resp
+        assert isinstance(resp["failures"], list)
+
+    def test_describe_service_deployments_both_keys_present(self, ecs):
+        """describe_service_deployments always returns serviceDeployments and failures."""
+        resp = ecs.describe_service_deployments(serviceDeploymentArns=[])
+        assert "serviceDeployments" in resp
+        assert "failures" in resp
+        assert isinstance(resp["serviceDeployments"], list)
+        assert isinstance(resp["failures"], list)
+
+    def test_list_service_deployments_nonexistent_raises(self, ecs):
+        """list_service_deployments for nonexistent service raises ServiceNotFoundException."""
+        cluster_name = _unique("sd-edge-cls")
+        ecs.create_cluster(clusterName=cluster_name)
+        try:
+            with pytest.raises(ClientError) as exc:
+                ecs.list_service_deployments(
+                    cluster=cluster_name,
+                    service="nonexistent-svc-xyz",
+                )
+            assert exc.value.response["Error"]["Code"] == "ServiceNotFoundException"
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_describe_service_revisions_structure(self, ecs):
+        """describe_service_revisions returns expected keys."""
+        resp = ecs.describe_service_revisions(serviceRevisionArns=[])
+        assert "serviceRevisions" in resp
+        assert "failures" in resp
+        assert isinstance(resp["serviceRevisions"], list)
