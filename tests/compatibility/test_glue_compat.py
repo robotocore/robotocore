@@ -5192,3 +5192,347 @@ class TestGlueNewGapOps:
                 },
             )
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+# ── Edge case and behavioral fidelity tests added to strengthen coverage ──────
+
+
+class TestGlueUpdateDatabaseEdgeCases:
+    """Edge cases for UpdateDatabase."""
+
+    def test_update_nonexistent_database(self, glue):
+        """UpdateDatabase on a nonexistent database raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.update_database(
+                Name="nonexistent-db-xyz",
+                DatabaseInput={"Name": "nonexistent-db-xyz", "Description": "nope"},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_database_unicode_description(self, glue):
+        """UpdateDatabase stores and retrieves a unicode description correctly."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name, "Description": "original"})
+        try:
+            glue.update_database(
+                Name=db_name,
+                DatabaseInput={"Name": db_name, "Description": "beschreibung test"},
+            )
+            resp = glue.get_database(Name=db_name)
+            assert resp["Database"]["Description"] == "beschreibung test"
+        finally:
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueBatchGetJobsMixed:
+    """Mixed found/missing cases for BatchGetJobs."""
+
+    def test_batch_get_jobs_mixed_found_and_missing(self, glue):
+        """BatchGetJobs with one real and one fake job splits results correctly."""
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.batch_get_jobs(JobNames=[job_name, "nonexistent-job-xyz"])
+            found_names = [j["Name"] for j in resp["Jobs"]]
+            assert job_name in found_names
+            assert "nonexistent-job-xyz" in resp["JobsNotFound"]
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueBatchGetCrawlersMixed:
+    """Mixed found/missing cases for BatchGetCrawlers."""
+
+    def test_batch_get_crawlers_mixed_found_and_missing(self, glue):
+        """BatchGetCrawlers with one real and one fake crawler splits results correctly."""
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            resp = glue.batch_get_crawlers(
+                CrawlerNames=[crawler_name, "nonexistent-crawler-xyz"]
+            )
+            found_names = [c["Name"] for c in resp["Crawlers"]]
+            assert crawler_name in found_names
+            assert "nonexistent-crawler-xyz" in resp["CrawlersNotFound"]
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueBatchGetTriggersMixed:
+    """Mixed found/missing cases for BatchGetTriggers."""
+
+    def test_batch_get_triggers_mixed_found_and_missing(self, glue):
+        """BatchGetTriggers with one real and one fake trigger splits results correctly."""
+        trigger_name = _unique("trigger")
+        glue.create_trigger(
+            Name=trigger_name,
+            Type="SCHEDULED",
+            Schedule="cron(0 12 * * ? *)",
+            Actions=[{"JobName": "dummy-job"}],
+        )
+        try:
+            resp = glue.batch_get_triggers(
+                TriggerNames=[trigger_name, "nonexistent-trigger-xyz"]
+            )
+            found_names = [t["Name"] for t in resp["Triggers"]]
+            assert trigger_name in found_names
+            assert "nonexistent-trigger-xyz" in resp["TriggersNotFound"]
+        finally:
+            glue.delete_trigger(Name=trigger_name)
+
+
+class TestGlueBatchGetWorkflowsMixed:
+    """Mixed found/missing cases for BatchGetWorkflows."""
+
+    def test_batch_get_workflows_mixed_found_and_missing(self, glue):
+        """BatchGetWorkflows with one real and one fake workflow splits results correctly."""
+        wf_name = _unique("wf")
+        glue.create_workflow(Name=wf_name, Description="mixed test")
+        try:
+            resp = glue.batch_get_workflows(Names=[wf_name, "nonexistent-wf-xyz"])
+            found_names = [w["Name"] for w in resp["Workflows"]]
+            assert wf_name in found_names
+            assert "nonexistent-wf-xyz" in resp["MissingWorkflows"]
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+
+class TestGlueSearchTablesEdgeCases:
+    """Behavioral edge cases for SearchTables."""
+
+    def test_search_tables_finds_created_table(self, glue):
+        """SearchTables with SearchText matching a table name returns that table."""
+        db_name = _unique("db")
+        tbl_name = _unique("srchtbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": (
+                        "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+                    ),
+                    "SerdeInfo": {
+                        "SerializationLibrary": (
+                            "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                        )
+                    },
+                },
+            },
+        )
+        try:
+            resp = glue.search_tables(SearchText=tbl_name)
+            assert "TableList" in resp
+            found = [t["Name"] for t in resp["TableList"]]
+            assert tbl_name in found
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_search_tables_pagination_keys(self, glue):
+        """SearchTables response always contains TableList key regardless of results."""
+        resp = glue.search_tables(MaxResults=1)
+        assert "TableList" in resp
+        assert isinstance(resp["TableList"], list)
+
+
+class TestGlueImportCatalogStatus:
+    """Behavioral test for ImportCatalogToGlue + GetCatalogImportStatus."""
+
+    def test_import_catalog_then_get_status(self, glue):
+        """After ImportCatalogToGlue, GetCatalogImportStatus reports completion."""
+        glue.import_catalog_to_glue()
+        resp = glue.get_catalog_import_status()
+        assert "ImportStatus" in resp
+        status = resp["ImportStatus"]
+        assert "ImportCompleted" in status
+
+
+class TestGlueCheckSchemaVersionValidityEdgeCases:
+    """Stronger validity checks for CheckSchemaVersionValidity."""
+
+    def test_valid_avro_schema_returns_true(self, glue):
+        """A valid AVRO schema definition returns Valid=True."""
+        resp = glue.check_schema_version_validity(
+            DataFormat="AVRO",
+            SchemaDefinition=(
+                '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"}]}'
+            ),
+        )
+        assert resp["Valid"] is True
+
+
+
+class TestGlueBatchGetDevEndpointsEdgeCases:
+    """Stronger behavioral tests for BatchGetDevEndpoints."""
+
+    def test_batch_get_dev_endpoints_not_found_in_response(self, glue):
+        """Requesting a nonexistent endpoint name returns it in DevEndpointsNotFound."""
+        resp = glue.batch_get_dev_endpoints(DevEndpointNames=["nonexistent-de-xyz"])
+        assert "DevEndpointsNotFound" in resp
+        assert "nonexistent-de-xyz" in resp["DevEndpointsNotFound"]
+
+    def test_batch_get_dev_endpoints_existing(self, glue):
+        """A created DevEndpoint is returned in DevEndpoints by BatchGetDevEndpoints."""
+        ep_name = _unique("de")
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/glue-role",
+        )
+        try:
+            resp = glue.batch_get_dev_endpoints(DevEndpointNames=[ep_name])
+            found_names = [e["EndpointName"] for e in resp.get("DevEndpoints", [])]
+            assert ep_name in found_names
+        finally:
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+
+
+class TestGlueBatchPutDQAnnotationEdgeCases:
+    """Stronger behavioral tests for BatchPutDataQualityStatisticAnnotation."""
+
+    def test_batch_put_dq_annotation_with_data(self, glue):
+        """BatchPutDataQualityStatisticAnnotation with an annotation returns a list."""
+        resp = glue.batch_put_data_quality_statistic_annotation(
+            InclusionAnnotations=[
+                {
+                    "ProfileId": "fake-profile-id",
+                    "StatisticId": "fake-stat-id",
+                    "InclusionAnnotation": "INCLUDE",
+                }
+            ]
+        )
+        assert "FailedInclusionAnnotations" in resp
+        assert isinstance(resp["FailedInclusionAnnotations"], list)
+
+
+class TestGlueCancelDQRunsEdgeCases:
+    """Verify cancel DQ run responses include standard metadata."""
+
+    def test_cancel_dq_recommendation_run_response_keys(self, glue):
+        """CancelDataQualityRuleRecommendationRun returns HTTP 200."""
+        resp = glue.cancel_data_quality_rule_recommendation_run(RunId="fake-run-id-2")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_dq_evaluation_run_response_keys(self, glue):
+        """CancelDataQualityRulesetEvaluationRun returns HTTP 200."""
+        resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId="fake-run-id-2")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestGlueGetConnectionsEdgeCases:
+    """Stronger behavioral tests for GetConnections."""
+
+    def test_get_connections_includes_created_with_jdbc_url(self, glue):
+        """A JDBC connection is returned with its JDBC_CONNECTION_URL in ConnectionProperties."""
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/mydb",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        try:
+            resp = glue.get_connections()
+            conns = {c["Name"]: c for c in resp["ConnectionList"]}
+            assert conn_name in conns
+            assert "JDBC_CONNECTION_URL" in conns[conn_name]["ConnectionProperties"]
+            assert conns[conn_name]["ConnectionProperties"]["JDBC_CONNECTION_URL"] == (
+                "jdbc:mysql://host:3306/mydb"
+            )
+        finally:
+            glue.delete_connection(ConnectionName=conn_name)
+
+
+class TestGlueBehavioralFidelity:
+    """Behavioral fidelity tests verifying AWS-accurate response shapes."""
+
+    def test_database_has_create_time(self, glue):
+        """A newly created database includes CreateTime in its metadata."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        try:
+            resp = glue.get_database(Name=db_name)
+            assert "CreateTime" in resp["Database"]
+        finally:
+            glue.delete_database(Name=db_name)
+
+    def test_job_has_created_on(self, glue):
+        """A newly created job includes CreatedOn in its metadata."""
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.get_job(JobName=job_name)
+            assert "CreatedOn" in resp["Job"]
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_crawler_state_ready_after_create(self, glue):
+        """A newly created crawler is in READY state."""
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        try:
+            resp = glue.get_crawler(Name=crawler_name)
+            assert resp["Crawler"]["State"] == "READY"
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_duplicate_database_error_message(self, glue):
+        """Creating a duplicate database raises AlreadyExistsException with a message."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        try:
+            with pytest.raises(ClientError) as exc:
+                glue.create_database(DatabaseInput={"Name": db_name})
+            error = exc.value.response["Error"]
+            assert error["Code"] == "AlreadyExistsException"
+            assert "Message" in error
+        finally:
+            glue.delete_database(Name=db_name)
+
+    def test_get_databases_lists_all_created(self, glue):
+        """GetDatabases returns a DatabaseList that includes all created databases."""
+        db_names = [_unique("pgdb") for _ in range(3)]
+        for name in db_names:
+            glue.create_database(DatabaseInput={"Name": name})
+        try:
+            resp = glue.get_databases()
+            assert "DatabaseList" in resp
+            listed = [db["Name"] for db in resp["DatabaseList"]]
+            for name in db_names:
+                assert name in listed
+        finally:
+            for name in db_names:
+                glue.delete_database(Name=name)
