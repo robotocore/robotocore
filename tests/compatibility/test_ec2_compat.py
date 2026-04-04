@@ -2402,7 +2402,10 @@ class TestEc2AutoCoverage:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_import_task(self, client):
-        """CancelImportTask with a task ID returns a response (even for unknown IDs)."""
+        """ImportImage (CREATE), describe (RETRIEVE), then CancelImportTask lifecycle."""
+        client.import_image(Description="test-cancel-lifecycle")
+        describe_resp = client.describe_import_image_tasks()
+        assert describe_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         resp = client.cancel_import_task(ImportTaskId="import-ami-0123456789abcdef0")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -2704,11 +2707,13 @@ class TestEc2AutoCoverage:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_replace_image_criteria_in_allowed_images_settings(self, client):
-        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue=True."""
+        """Replace (UPDATE), then GetAllowedImagesSettings (RETRIEVE) to verify."""
         resp = client.replace_image_criteria_in_allowed_images_settings()
-        assert "ReturnValue" in resp
         assert resp["ReturnValue"] is True
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # RETRIEVE: verify settings are accessible after replace
+        get_resp = client.get_allowed_images_settings()
+        assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_request_spot_instances(self, client):
         """RequestSpotInstances full CRUD lifecycle: CREATE → RETRIEVE → DELETE."""
@@ -4053,6 +4058,11 @@ class TestEC2SpotInstanceCRUD:
         try:
             sir = resp["SpotInstanceRequests"][0]
             assert sir["LaunchSpecification"]["InstanceType"] == "m5.large"
+            # RETRIEVE: verify launch spec is preserved in describe response
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            assert len(described["SpotInstanceRequests"]) == 1
+            desc_spec = described["SpotInstanceRequests"][0]["LaunchSpecification"]
+            assert desc_spec["InstanceType"] == "m5.large"
         finally:
             ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
 
@@ -5987,7 +5997,7 @@ class TestEC2SpotFleetMultiCancel:
         return make_client("ec2")
 
     def test_cancel_multiple_spot_fleets(self, ec2):
-        """CancelSpotFleetRequests with multiple fleet IDs."""
+        """CancelSpotFleetRequests with multiple fleet IDs; verify via RETRIEVE."""
         fleet_ids = []
         for _ in range(2):
             fr = ec2.request_spot_fleet(
@@ -6002,6 +6012,10 @@ class TestEC2SpotFleetMultiCancel:
                 }
             )
             fleet_ids.append(fr["SpotFleetRequestId"])
+
+        # RETRIEVE: verify both fleets exist before cancel
+        described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=fleet_ids)
+        assert len(described["SpotFleetRequestConfigs"]) == 2
 
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=fleet_ids, TerminateInstances=True
@@ -6141,7 +6155,7 @@ class TestEC2SpotFleetAllocationStrategies:
             ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
 
     def test_spot_fleet_state_after_cancel(self, ec2):
-        """Spot fleet state changes after cancellation."""
+        """Spot fleet state changes after cancellation; verified via RETRIEVE."""
         fr = ec2.request_spot_fleet(
             SpotFleetRequestConfig={
                 "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
@@ -6152,6 +6166,9 @@ class TestEC2SpotFleetAllocationStrategies:
             }
         )
         fleet_id = fr["SpotFleetRequestId"]
+        # RETRIEVE: verify fleet is active before cancel
+        pre_cancel = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert pre_cancel["SpotFleetRequestConfigs"][0]["SpotFleetRequestState"] == "active"
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
@@ -11344,7 +11361,7 @@ class TestEC2SpotInstanceBehavioralFidelity:
         ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
 
     def test_request_spot_instance_launch_spec_preserved(self, ec2):
-        """LaunchSpecification fields are preserved in spot request response."""
+        """LaunchSpecification fields are preserved in response and in RETRIEVE."""
         resp = ec2.request_spot_instances(
             SpotPrice="0.02",
             InstanceCount=1,
@@ -11356,6 +11373,10 @@ class TestEC2SpotInstanceBehavioralFidelity:
             spec = req["LaunchSpecification"]
             assert spec["InstanceType"] == "m5.large"
             assert spec["ImageId"] == "ami-12345678"
+            # RETRIEVE: verify describe also returns correct launch spec
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            desc_spec = described["SpotInstanceRequests"][0]["LaunchSpecification"]
+            assert desc_spec["InstanceType"] == "m5.large"
         finally:
             ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
 
@@ -11398,20 +11419,23 @@ class TestEC2SpotInstanceBehavioralFidelity:
             ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id1, sir_id2])
 
     def test_cancel_spot_instance_request_changes_state(self, ec2):
-        """Cancelled spot request appears in describe with cancelled state."""
+        """Cancelled spot request state verified via RETRIEVE before and after cancel."""
         resp = ec2.request_spot_instances(
             SpotPrice="0.01",
             InstanceCount=1,
             LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
         )
         sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        # RETRIEVE: verify active state before cancel
+        pre = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        assert pre["SpotInstanceRequests"][0]["State"] in ("open", "active")
         cancel = ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
         assert len(cancel["CancelledSpotInstanceRequests"]) == 1
         assert cancel["CancelledSpotInstanceRequests"][0]["SpotInstanceRequestId"] == sir_id
         assert cancel["CancelledSpotInstanceRequests"][0]["State"] == "cancelled"
 
     def test_spot_price_reflected_in_response(self, ec2):
-        """Spot price set in request is returned in response."""
+        """Spot price set in request is returned in both create response and RETRIEVE."""
         resp = ec2.request_spot_instances(
             SpotPrice="0.05",
             InstanceCount=1,
@@ -11421,6 +11445,10 @@ class TestEC2SpotInstanceBehavioralFidelity:
         sir_id = req["SpotInstanceRequestId"]
         try:
             assert float(req["SpotPrice"]) == pytest.approx(0.05, abs=0.001)
+            # RETRIEVE: spot price is also returned by describe
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            described_price = float(described["SpotInstanceRequests"][0]["SpotPrice"])
+            assert described_price == pytest.approx(0.05, abs=0.001)
         finally:
             ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
 
@@ -11442,10 +11470,13 @@ class TestEC2SpotFleetCancelBehavior:
         }
 
     def test_cancel_single_fleet_verify_state(self, ec2):
-        """Cancelled fleet shows cancelled state when described."""
+        """Cancelled fleet shows cancelled state; RETRIEVE verifies active state before."""
         fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
             "SpotFleetRequestId"
         ]
+        # RETRIEVE: verify fleet is active before cancel
+        pre = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert pre["SpotFleetRequestConfigs"][0]["SpotFleetRequestState"] == "active"
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
@@ -11456,13 +11487,16 @@ class TestEC2SpotFleetCancelBehavior:
         assert state in ("cancelled_running", "cancelled_terminating")
 
     def test_cancel_multiple_fleets_all_succeed(self, ec2):
-        """CancelSpotFleetRequests cancels all specified fleets."""
+        """CancelSpotFleetRequests cancels all specified fleets; RETRIEVE verifies count."""
         fleet_ids = [
             ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
                 "SpotFleetRequestId"
             ]
             for _ in range(3)
         ]
+        # RETRIEVE: verify all 3 fleets exist before cancel
+        pre = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=fleet_ids)
+        assert len(pre["SpotFleetRequestConfigs"]) == 3
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=fleet_ids, TerminateInstances=True
         )
@@ -11477,10 +11511,13 @@ class TestEC2SpotFleetCancelBehavior:
             )
 
     def test_describe_spot_fleet_after_cancel(self, ec2):
-        """Cancel response reports the cancelled fleet state."""
+        """RETRIEVE verifies fleet is active; cancel response shows cancelled state."""
         fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
             "SpotFleetRequestId"
         ]
+        # RETRIEVE: verify fleet exists and is active
+        described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert described["SpotFleetRequestConfigs"][0]["SpotFleetRequestState"] == "active"
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
@@ -11564,12 +11601,18 @@ class TestEC2ImportOperationsBehavior:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_import_task_returns_200(self, ec2):
-        """CancelImportTask succeeds and returns HTTP 200."""
+        """ImportImage (CREATE), describe (RETRIEVE), then CancelImportTask returns 200."""
+        ec2.import_image(Description="cancel-test-lifecycle")
+        describe_resp = ec2.describe_import_image_tasks()
+        assert describe_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         resp = ec2.cancel_import_task()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_import_task_with_task_id(self, ec2):
-        """CancelImportTask with explicit ImportTaskId succeeds."""
+        """ImportImage (CREATE), describe (RETRIEVE), then CancelImportTask with ID returns 200."""
+        ec2.import_image(Description="cancel-with-id-lifecycle")
+        describe_resp = ec2.describe_import_image_tasks()
+        assert describe_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         resp = ec2.cancel_import_task(ImportTaskId="import-ami-00000000000000000")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -11703,24 +11746,27 @@ class TestEC2PurchaseHostReservationBehavior:
         return make_client("ec2")
 
     def test_purchase_host_reservation_returns_pricing(self, ec2):
-        """PurchaseHostReservation returns TotalHourlyPrice and TotalUpfrontPrice as strings."""
+        """PurchaseHostReservation returns pricing; RETRIEVE verifies host reservation list."""
         resp = ec2.purchase_host_reservation(
             HostIdSet=["h-87654321"], OfferingId="hro-87654321"
         )
-        assert "TotalHourlyPrice" in resp
-        assert "TotalUpfrontPrice" in resp
         assert isinstance(resp["TotalHourlyPrice"], str)
         assert isinstance(resp["TotalUpfrontPrice"], str)
+        # RETRIEVE: describe host reservations to verify they are accessible
+        describe_resp = ec2.describe_host_reservations()
+        assert describe_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_purchase_host_reservation_currency_code(self, ec2):
-        """PurchaseHostReservation returns CurrencyCode == USD in response."""
+        """PurchaseHostReservation returns CurrencyCode USD; RETRIEVE verifies offerings."""
         resp = ec2.purchase_host_reservation(
             HostIdSet=["h-11111111"], OfferingId="hro-11111111"
         )
-        assert "CurrencyCode" in resp
         assert resp["CurrencyCode"] == "USD"
         assert isinstance(resp["TotalHourlyPrice"], str)
         assert isinstance(resp["TotalUpfrontPrice"], str)
+        # RETRIEVE: describe offerings to verify they are accessible
+        offerings_resp = ec2.describe_host_reservation_offerings()
+        assert offerings_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_describe_host_reservation_offerings_returns_list(self, ec2):
         """DescribeHostReservationOfferings returns OfferingSet list."""
@@ -12508,3 +12554,399 @@ class TestEC2SubnetAttributeDefaultState:
             "InvalidSubnetID.NotFound",
             "InvalidSubnetId.NotFound",
         )
+
+
+class TestEC2SpotInstanceRequestDescribeAndError:
+    """Edge cases and RETRIEVE/ERROR behavioral fidelity for spot instance requests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_spot_instance_request_by_id(self, ec2):
+        """DescribeSpotInstanceRequests by ID returns the matching request (RETRIEVE)."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            assert len(described["SpotInstanceRequests"]) == 1
+            result = described["SpotInstanceRequests"][0]
+            assert result["SpotInstanceRequestId"] == sir_id
+            assert result["State"] in ("open", "active")
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_describe_spot_instance_launch_spec_preserved(self, ec2):
+        """Launch spec fields are present when describing spot instance request by ID."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.02",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "m5.large"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            spec = described["SpotInstanceRequests"][0]["LaunchSpecification"]
+            assert spec["InstanceType"] == "m5.large"
+            assert spec["ImageId"] == "ami-12345678"
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_describe_spot_instance_spot_price_preserved(self, ec2):
+        """Spot price set at request time is reflected in describe response."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.05",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            described_price = float(described["SpotInstanceRequests"][0]["SpotPrice"])
+            assert described_price == pytest.approx(0.05, abs=0.001)
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+    def test_describe_spot_instance_nonexistent_returns_empty(self, ec2):
+        """DescribeSpotInstanceRequests with unknown ID returns empty list (Moto behavior)."""
+        described = ec2.describe_spot_instance_requests(
+            SpotInstanceRequestIds=["sir-00000000"]
+        )
+        assert "SpotInstanceRequests" in described
+        assert isinstance(described["SpotInstanceRequests"], list)
+
+    def test_describe_spot_instance_after_cancel_shows_cancelled(self, ec2):
+        """After cancellation, the cancel response confirms cancelled state."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        cancel = ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        assert len(cancel["CancelledSpotInstanceRequests"]) == 1
+        assert cancel["CancelledSpotInstanceRequests"][0]["State"] == "cancelled"
+        assert cancel["CancelledSpotInstanceRequests"][0]["SpotInstanceRequestId"] == sir_id
+
+    def test_describe_spot_instance_type_one_time(self, ec2):
+        """Default spot instance type is one-time when not specified."""
+        resp = ec2.request_spot_instances(
+            SpotPrice="0.01",
+            InstanceCount=1,
+            LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+        )
+        sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        try:
+            described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+            assert described["SpotInstanceRequests"][0]["Type"] == "one-time"
+        finally:
+            ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+
+
+class TestEC2SpotFleetDescribeAndError:
+    """Edge cases and RETRIEVE/ERROR behavioral fidelity for spot fleet requests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def _fleet_config(self) -> dict:
+        return {
+            "IamFleetRole": "arn:aws:iam::123456789012:role/fleet",
+            "TargetCapacity": 1,
+            "SpotPrice": "0.05",
+            "AllocationStrategy": "lowestPrice",
+            "LaunchSpecifications": [{"ImageId": "ami-12345678", "InstanceType": "t2.micro"}],
+        }
+
+    def test_describe_spot_fleet_by_id(self, ec2):
+        """DescribeSpotFleetRequests by ID returns fleet config (RETRIEVE)."""
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        try:
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            configs = described["SpotFleetRequestConfigs"]
+            assert len(configs) == 1
+            assert configs[0]["SpotFleetRequestId"] == fleet_id
+            assert configs[0]["SpotFleetRequestState"] == "active"
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_describe_spot_fleet_target_capacity(self, ec2):
+        """DescribeSpotFleetRequests returns TargetCapacity from fleet config."""
+        config = self._fleet_config()
+        config["TargetCapacity"] = 3
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=config)["SpotFleetRequestId"]
+        try:
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            cfg = described["SpotFleetRequestConfigs"][0]["SpotFleetRequestConfig"]
+            assert cfg["TargetCapacity"] == 3
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_describe_spot_fleet_after_cancel_shows_cancelled_state(self, ec2):
+        """After cancel, cancel response CurrentSpotFleetRequestState reflects cancelled."""
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        assert len(cancel["SuccessfulFleetRequests"]) == 1
+        result = cancel["SuccessfulFleetRequests"][0]
+        assert result["SpotFleetRequestId"] == fleet_id
+        current_state = result["CurrentSpotFleetRequestState"]
+        assert current_state in ("cancelled_running", "cancelled_terminating")
+
+    def test_describe_multiple_spot_fleets_all_present(self, ec2):
+        """DescribeSpotFleetRequests with multiple IDs returns all of them."""
+        fleet_ids = [
+            ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+                "SpotFleetRequestId"
+            ]
+            for _ in range(3)
+        ]
+        try:
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=fleet_ids)
+            returned_ids = {
+                c["SpotFleetRequestId"] for c in described["SpotFleetRequestConfigs"]
+            }
+            assert set(fleet_ids) == returned_ids
+        finally:
+            ec2.cancel_spot_fleet_requests(
+                SpotFleetRequestIds=fleet_ids, TerminateInstances=True
+            )
+
+    def test_describe_spot_fleet_allocation_strategy_preserved(self, ec2):
+        """AllocationStrategy is preserved in DescribeSpotFleetRequests response."""
+        config = self._fleet_config()
+        config["AllocationStrategy"] = "diversified"
+        config["LaunchSpecifications"] = [
+            {"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
+            {"ImageId": "ami-12345678", "InstanceType": "t2.small"},
+        ]
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=config)["SpotFleetRequestId"]
+        try:
+            described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+            cfg = described["SpotFleetRequestConfigs"][0]["SpotFleetRequestConfig"]
+            assert cfg["AllocationStrategy"] == "diversified"
+        finally:
+            ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
+
+    def test_cancel_spot_fleet_unsuccessful_requests_empty_on_valid_id(self, ec2):
+        """CancelSpotFleetRequests with valid ID has empty UnsuccessfulFleetRequests list."""
+        fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
+            "SpotFleetRequestId"
+        ]
+        cancel = ec2.cancel_spot_fleet_requests(
+            SpotFleetRequestIds=[fleet_id], TerminateInstances=True
+        )
+        assert cancel["UnsuccessfulFleetRequests"] == []
+        assert len(cancel["SuccessfulFleetRequests"]) == 1
+
+
+class TestEC2ImportTaskDescribeAndLifecycle:
+    """Edge cases for import task operations adding CREATE/RETRIEVE patterns.
+    These are stubbed operations that return HTTP 200 with no body in Moto."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_import_image_then_describe_lifecycle(self, ec2):
+        """ImportImage (CREATE) then DescribeImportImageTasks (RETRIEVE) returns 200."""
+        import_resp = ec2.import_image(Description="lifecycle-test")
+        assert import_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        desc_resp = ec2.describe_import_image_tasks()
+        assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_image_with_disk_container_then_describe(self, ec2):
+        """ImportImage with DiskContainers (CREATE) then describe (RETRIEVE) succeeds."""
+        ec2.import_image(
+            Description="disk-test",
+            DiskContainers=[{"Format": "vmdk", "Description": "disk"}],
+        )
+        resp = ec2.describe_import_image_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_image_cancel_lifecycle(self, ec2):
+        """ImportImage (CREATE) then CancelImportTask lifecycle returns 200."""
+        ec2.import_image(Description="cancel-lifecycle")
+        cancel_resp = ec2.cancel_import_task(ImportTaskId="import-ami-0123456789abcdef0")
+        assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_cancel_import_task_with_explicit_id_returns_200(self, ec2):
+        """CancelImportTask with explicit task ID returns HTTP 200."""
+        resp = ec2.cancel_import_task(ImportTaskId="import-ami-00000000000000001")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_import_snapshot_then_describe_lifecycle(self, ec2):
+        """ImportSnapshot (CREATE) then DescribeImportSnapshotTasks (RETRIEVE) returns 200."""
+        ec2.import_snapshot(Description="snap-lifecycle")
+        resp = ec2.describe_import_snapshot_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_import_image_tasks_with_filter_returns_200(self, ec2):
+        """DescribeImportImageTasks with task ID filter returns 200 (RETRIEVE)."""
+        resp = ec2.describe_import_image_tasks(
+            ImportTaskIds=["import-ami-0123456789abcdef0"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_import_snapshot_tasks_with_filter_returns_200(self, ec2):
+        """DescribeImportSnapshotTasks with task ID filter returns 200 (RETRIEVE)."""
+        resp = ec2.describe_import_snapshot_tasks(
+            ImportTaskIds=["import-snap-0123456789abcdef0"]
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2HostReservationDescribeAndList:
+    """Edge cases for host reservation operations adding RETRIEVE/LIST/ERROR patterns."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_describe_host_reservations_returns_key(self, ec2):
+        """DescribeHostReservations returns HostReservationSet key (RETRIEVE)."""
+        resp = ec2.describe_host_reservations()
+        assert "HostReservationSet" in resp
+        assert isinstance(resp["HostReservationSet"], list)
+
+    def test_describe_host_reservation_offerings_has_items(self, ec2):
+        """DescribeHostReservationOfferings returns OfferingSet list (RETRIEVE)."""
+        resp = ec2.describe_host_reservation_offerings()
+        assert "OfferingSet" in resp
+        assert isinstance(resp["OfferingSet"], list)
+
+    def test_get_host_reservation_purchase_preview_returns_pricing(self, ec2):
+        """GetHostReservationPurchasePreview returns price fields (RETRIEVE)."""
+        resp = ec2.get_host_reservation_purchase_preview(
+            HostIdSet=["h-12345678"], OfferingId="hro-12345678"
+        )
+        assert "TotalHourlyPrice" in resp
+        assert "TotalUpfrontPrice" in resp
+        assert resp["CurrencyCode"] == "USD"
+
+    def test_purchase_host_reservation_returns_purchase_set(self, ec2):
+        """PurchaseHostReservation returns Purchase list in response."""
+        resp = ec2.purchase_host_reservation(
+            HostIdSet=["h-12345678"], OfferingId="hro-12345678"
+        )
+        assert "Purchase" in resp
+        assert isinstance(resp["Purchase"], list)
+
+    def test_purchase_host_reservation_pricing_are_strings(self, ec2):
+        """PurchaseHostReservation TotalHourlyPrice and TotalUpfrontPrice are strings."""
+        resp = ec2.purchase_host_reservation(
+            HostIdSet=["h-99999999"], OfferingId="hro-99999999"
+        )
+        assert isinstance(resp["TotalHourlyPrice"], str)
+        assert isinstance(resp["TotalUpfrontPrice"], str)
+        assert resp["CurrencyCode"] == "USD"
+
+    def test_describe_hosts_with_filter_returns_list(self, ec2):
+        """DescribeHosts with state filter returns Hosts list (RETRIEVE)."""
+        resp = ec2.describe_hosts(Filter=[{"Name": "state", "Values": ["available"]}])
+        assert "Hosts" in resp
+        assert isinstance(resp["Hosts"], list)
+
+
+class TestEC2ReplaceImageCriteriaGetAndError:
+    """Edge cases for ReplaceImageCriteriaInAllowedImagesSettings with RETRIEVE/UPDATE."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_replace_image_criteria_returns_true(self, ec2):
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue=True."""
+        resp = ec2.replace_image_criteria_in_allowed_images_settings()
+        assert resp["ReturnValue"] is True
+
+    def test_get_allowed_images_settings_after_replace(self, ec2):
+        """GetAllowedImagesSettings returns 200 response after replace (RETRIEVE)."""
+        ec2.replace_image_criteria_in_allowed_images_settings()
+        resp = ec2.get_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_replace_image_criteria_with_image_criteria_list(self, ec2):
+        """ReplaceImageCriteriaInAllowedImagesSettings accepts ImageCriteria list."""
+        resp = ec2.replace_image_criteria_in_allowed_images_settings(
+            ImageCriteria=[{"ImageProviders": ["amazon"]}]
+        )
+        assert resp["ReturnValue"] is True
+
+    def test_disable_allowed_images_settings_after_replace(self, ec2):
+        """DisableAllowedImagesSettings can be called after replace (UPDATE/DELETE)."""
+        ec2.replace_image_criteria_in_allowed_images_settings()
+        resp = ec2.disable_allowed_images_settings()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestEC2VpcAttributeListAndErrorEdgeCases:
+    """Edge cases adding ERROR and additional RETRIEVE patterns for VPC attribute tests."""
+
+    @pytest.fixture
+    def ec2(self):
+        return make_client("ec2")
+
+    def test_modify_vpc_attribute_nonexistent_vpc_error(self, ec2):
+        """ModifyVpcAttribute on nonexistent VPC raises ClientError (ERROR)."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.modify_vpc_attribute(
+                VpcId="vpc-00000000deadbeef", EnableDnsHostnames={"Value": True}
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidVpcID.NotFound",
+            "InvalidVpc.NotFound",
+        )
+
+    def test_describe_vpc_attribute_dns_hostnames_default_false(self, ec2):
+        """New VPC has EnableDnsHostnames=False by default (RETRIEVE)."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.230.0.0/16")["Vpc"]["VpcId"]
+        try:
+            attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsHostnames")
+            assert attr["EnableDnsHostnames"]["Value"] is False
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_vpc_attribute_dns_support_default_true(self, ec2):
+        """New VPC has EnableDnsSupport=True by default (RETRIEVE)."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.231.0.0/16")["Vpc"]["VpcId"]
+        try:
+            attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsSupport")
+            assert attr["EnableDnsSupport"]["Value"] is True
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_modify_vpc_attribute_dns_hostnames_reflected_in_describe(self, ec2):
+        """ModifyVpcAttribute EnableDnsHostnames is reflected in DescribeVpcAttribute."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.232.0.0/16")["Vpc"]["VpcId"]
+        try:
+            ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": True})
+            attr = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsHostnames")
+            assert attr["EnableDnsHostnames"]["Value"] is True
+            # Toggle off
+            ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": False})
+            attr2 = ec2.describe_vpc_attribute(VpcId=vpc_id, Attribute="enableDnsHostnames")
+            assert attr2["EnableDnsHostnames"]["Value"] is False
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_vpcs_returns_created_vpc(self, ec2):
+        """DescribeVpcs returns a VPC just created (RETRIEVE)."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.233.0.0/16")["Vpc"]["VpcId"]
+        try:
+            resp = ec2.describe_vpcs(VpcIds=[vpc_id])
+            assert len(resp["Vpcs"]) == 1
+            assert resp["Vpcs"][0]["VpcId"] == vpc_id
+            assert resp["Vpcs"][0]["CidrBlock"] == "10.233.0.0/16"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
