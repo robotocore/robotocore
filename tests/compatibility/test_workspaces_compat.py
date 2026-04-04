@@ -48,9 +48,19 @@ def registered_directory(workspaces, ec2, ds):
 
     yield {"directory_id": dir_id, "subnet_ids": [sub1, sub2]}
 
-    # Cleanup: deregister directory
+    # Cleanup: deregister from WorkSpaces, delete DS directory, and VPC resources
     try:
         workspaces.deregister_workspace_directory(DirectoryId=dir_id)
+    except Exception:
+        pass  # best-effort cleanup
+    try:
+        ds.delete_directory(DirectoryId=dir_id)
+    except Exception:
+        pass  # best-effort cleanup
+    try:
+        ec2.delete_subnet(SubnetId=sub1)
+        ec2.delete_subnet(SubnetId=sub2)
+        ec2.delete_vpc(VpcId=vpc_id)
     except Exception:
         pass  # best-effort cleanup
 
@@ -1047,6 +1057,261 @@ class TestWorkSpacesTerminateWorkspacesPoolSession:
             SessionId="00000000-0000-0000-0000-000000000000"
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesImageLifecycle:
+    """Tests for workspace image import/copy/retrieve/delete lifecycle."""
+
+    def test_import_workspace_image_and_retrieve(self, workspaces):
+        """Import an image, then retrieve it by ID from describe."""
+        name = _unique("img-retrieve")
+        import_resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-import12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=name,
+            ImageDescription="retrieve test image",
+        )
+        assert "ImageId" in import_resp
+        image_id = import_resp["ImageId"]
+
+        desc_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert "Images" in desc_resp
+        assert len(desc_resp["Images"]) == 1
+        assert desc_resp["Images"][0]["ImageId"] == image_id
+
+    def test_import_workspace_image_name_stored(self, workspaces):
+        """Import image name and description are preserved in describe response."""
+        name = _unique("img-name")
+        import_resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-name12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=name,
+            ImageDescription="name fidelity test",
+        )
+        image_id = import_resp["ImageId"]
+
+        desc_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        img = desc_resp["Images"][0]
+        assert img["Name"] == name
+        assert img["Description"] == "name fidelity test"
+
+    def test_import_multiple_images_appear_in_list(self, workspaces):
+        """Import 3 images and verify all appear in the list."""
+        imported_ids = []
+        for i in range(3):
+            resp = workspaces.import_workspace_image(
+                Ec2ImageId="ami-multi99999",
+                IngestionProcess="BYOL_REGULAR",
+                ImageName=_unique(f"img-list{i}"),
+                ImageDescription=f"multi-list test {i}",
+            )
+            imported_ids.append(resp["ImageId"])
+
+        list_resp = workspaces.describe_workspace_images()
+        listed_ids = [img["ImageId"] for img in list_resp["Images"]]
+        for img_id in imported_ids:
+            assert img_id in listed_ids
+
+    def test_copy_workspace_image_and_retrieve(self, workspaces):
+        """Copy a workspace image, then retrieve the copy by ID."""
+        copy_resp = workspaces.copy_workspace_image(
+            Name=_unique("copy-retrieve"),
+            SourceImageId="wsi-fake12345",
+            SourceRegion="us-west-2",
+        )
+        assert "ImageId" in copy_resp
+        copy_id = copy_resp["ImageId"]
+
+        desc_resp = workspaces.describe_workspace_images(ImageIds=[copy_id])
+        assert "Images" in desc_resp
+        assert len(desc_resp["Images"]) == 1
+        assert desc_resp["Images"][0]["ImageId"] == copy_id
+
+    def test_delete_then_describe_image_gone(self, workspaces):
+        """Delete an imported image, then verify it no longer appears in describe."""
+        import_resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-delete12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img-delete"),
+            ImageDescription="to be deleted",
+        )
+        image_id = import_resp["ImageId"]
+
+        # Verify it exists
+        before_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert len(before_resp["Images"]) == 1
+
+        # Delete it
+        del_resp = workspaces.delete_workspace_image(ImageId=image_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify it's gone
+        after_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert after_resp["Images"] == []
+
+    def test_import_workspace_image_id_format(self, workspaces):
+        """Imported image ID has the expected wsi- prefix format."""
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-format12345",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img-format"),
+            ImageDescription="format test",
+        )
+        assert resp["ImageId"].startswith("wsi-")
+
+    def test_copy_workspace_image_id_format(self, workspaces):
+        """Copied image ID has the expected wsi- prefix format."""
+        resp = workspaces.copy_workspace_image(
+            Name=_unique("copy-format"),
+            SourceImageId="wsi-fakesource",
+            SourceRegion="us-east-1",
+        )
+        assert resp["ImageId"].startswith("wsi-")
+
+
+class TestWorkSpacesApplicationAssociationLifecycle:
+    """Tests for workspace application association lifecycle."""
+
+    def test_associate_workspace_application_response_fields(self, workspaces):
+        """AssociateWorkspaceApplication response Association includes WorkspaceId and State."""
+        resp = workspaces.associate_workspace_application(
+            WorkspaceId="ws-fake12345",
+            ApplicationId="wsa-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Association" in resp
+        assert resp["Association"]["WorkspaceId"] == "ws-fake12345"
+        assert "State" in resp["Association"]
+        assert "AssociatedResourceType" in resp["Association"]
+
+    def test_disassociate_workspace_application_response_fields(self, workspaces):
+        """DisassociateWorkspaceApplication response Association includes WorkspaceId and State."""
+        resp = workspaces.disassociate_workspace_application(
+            WorkspaceId="ws-fake12345",
+            ApplicationId="wsa-fake12345",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Association" in resp
+        assert resp["Association"]["WorkspaceId"] == "ws-fake12345"
+        assert "State" in resp["Association"]
+
+    def test_deploy_workspace_applications_response_fields(self, workspaces):
+        """DeployWorkspaceApplications response has Deployment with Associations list."""
+        resp = workspaces.deploy_workspace_applications(
+            WorkspaceId="ws-fake12345",
+            Force=False,
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Deployment" in resp
+        assert "Associations" in resp["Deployment"]
+        assert isinstance(resp["Deployment"]["Associations"], list)
+
+    def test_associate_then_disassociate_application(self, workspaces):
+        """Associate then disassociate an application both succeed."""
+        assoc_resp = workspaces.associate_workspace_application(
+            WorkspaceId="ws-assoc12345",
+            ApplicationId="wsa-assoc12345",
+        )
+        assert assoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        disassoc_resp = workspaces.disassociate_workspace_application(
+            WorkspaceId="ws-assoc12345",
+            ApplicationId="wsa-assoc12345",
+        )
+        assert disassoc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesRebuildRebootLifecycle:
+    """Tests for rebuild/reboot with error detail assertions."""
+
+    def test_rebuild_nonexistent_has_error_message(self, workspaces):
+        """RebuildWorkspaces for nonexistent workspace FailedRequests has ErrorCode and ErrorMessage."""
+        result = workspaces.rebuild_workspaces(
+            RebuildWorkspaceRequests=[{"WorkspaceId": "ws-rebuildnone"}]
+        )
+        assert len(result["FailedRequests"]) == 1
+        entry = result["FailedRequests"][0]
+        assert "ErrorCode" in entry
+        assert "ErrorMessage" in entry
+        assert entry["WorkspaceId"] == "ws-rebuildnone"
+
+    def test_reboot_nonexistent_has_error_message(self, workspaces):
+        """RebootWorkspaces for nonexistent workspace FailedRequests has ErrorCode and ErrorMessage."""
+        result = workspaces.reboot_workspaces(
+            RebootWorkspaceRequests=[{"WorkspaceId": "ws-rebootnone"}]
+        )
+        assert len(result["FailedRequests"]) == 1
+        entry = result["FailedRequests"][0]
+        assert "ErrorCode" in entry
+        assert "ErrorMessage" in entry
+        assert entry["WorkspaceId"] == "ws-rebootnone"
+
+    def test_rebuild_workspace(self, workspace, workspaces):
+        """RebuildWorkspaces for existing workspace returns no FailedRequests."""
+        result = workspaces.rebuild_workspaces(
+            RebuildWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 0
+
+    def test_reboot_workspace(self, workspace, workspaces):
+        """RebootWorkspaces for existing workspace returns no FailedRequests."""
+        result = workspaces.reboot_workspaces(
+            RebootWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert len(result["FailedRequests"]) == 0
+
+
+class TestWorkSpacesDirectoryLifecycle:
+    """Tests for directory registration and listing lifecycle."""
+
+    def test_registered_directory_appears_in_list(self, registered_directory, workspaces):
+        """Registering a directory makes it appear in describe_workspace_directories."""
+        result = workspaces.describe_workspace_directories()
+        dir_ids = [d["DirectoryId"] for d in result["Directories"]]
+        assert registered_directory["directory_id"] in dir_ids
+
+    def test_registered_directory_has_fields(self, registered_directory, workspaces):
+        """Registered directory has DirectoryId and State fields."""
+        dir_id = registered_directory["directory_id"]
+        result = workspaces.describe_workspace_directories(DirectoryIds=[dir_id])
+        assert len(result["Directories"]) >= 1
+        directory = next(d for d in result["Directories"] if d["DirectoryId"] == dir_id)
+        assert "DirectoryId" in directory
+        assert directory["DirectoryId"] == dir_id
+
+
+class TestWorkSpacesWorkspaceLifecycle:
+    """Tests for workspace create/describe/filter lifecycle."""
+
+    def test_created_workspace_appears_in_describe(self, workspace, workspaces):
+        """Created workspace appears in describe_workspaces by workspace ID."""
+        result = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        assert "Workspaces" in result
+        assert len(result["Workspaces"]) >= 1
+        ws_ids = [ws["WorkspaceId"] for ws in result["Workspaces"]]
+        assert workspace in ws_ids
+
+    def test_created_workspace_has_fields(self, workspace, workspaces):
+        """Created workspace response has WorkspaceId, DirectoryId, UserName fields."""
+        result = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        ws = result["Workspaces"][0]
+        assert "WorkspaceId" in ws
+        assert "DirectoryId" in ws
+        assert "UserName" in ws
+
+    def test_created_workspace_appears_in_full_list(self, workspace, workspaces):
+        """Created workspace appears in full describe_workspaces list (no filter)."""
+        result = workspaces.describe_workspaces()
+        ws_ids = [ws["WorkspaceId"] for ws in result["Workspaces"]]
+        assert workspace in ws_ids
+
+    def test_describe_workspaces_empty_result_has_key(self, workspaces):
+        """describe_workspaces with nonexistent ID returns Workspaces key with empty list."""
+        result = workspaces.describe_workspaces(WorkspaceIds=["ws-nonexistent00"])
+        assert "Workspaces" in result
+        assert result["Workspaces"] == []
 
 
 class TestWorkspacesTagOps:
