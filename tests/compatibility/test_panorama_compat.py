@@ -937,3 +937,372 @@ class TestPanoramaPackageImportJobEdgeCases:
         assert desc["JobType"] == "NODE_PACKAGE_VERSION"
         assert "Status" in desc
         assert "CreatedTime" in desc
+
+
+class TestPanoramaApplicationInstanceLifecycle:
+    """Lifecycle tests for application instances: create, describe, delete, error."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def _make_app_instance(self, client):
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        manifest = json.dumps({"PayloadData": "test"})
+        app_resp = client.create_application_instance(
+            DefaultRuntimeContextDevice=device_id,
+            ManifestPayload={"PayloadData": manifest},
+        )
+        return device_id, app_resp["ApplicationInstanceId"]
+
+    def test_describe_application_instance_arn_field(self, client):
+        """DescribeApplicationInstance includes an ARN starting with arn:aws:panorama:."""
+        device_id, app_id = self._make_app_instance(client)
+        try:
+            resp = client.describe_application_instance(ApplicationInstanceId=app_id)
+            assert "Arn" in resp
+            assert resp["Arn"].startswith("arn:aws:panorama:")
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_application_instance_status_field(self, client):
+        """DescribeApplicationInstance includes a Status field."""
+        device_id, app_id = self._make_app_instance(client)
+        try:
+            resp = client.describe_application_instance(ApplicationInstanceId=app_id)
+            assert "Status" in resp
+            assert isinstance(resp["Status"], str)
+            assert len(resp["Status"]) > 0
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_application_instance_created_time(self, client):
+        """DescribeApplicationInstance includes a CreatedTime field."""
+        device_id, app_id = self._make_app_instance(client)
+        try:
+            resp = client.describe_application_instance(ApplicationInstanceId=app_id)
+            assert "CreatedTime" in resp
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_remove_application_instance(self, client):
+        """RemoveApplicationInstance removes the instance from list."""
+        device_id, app_id = self._make_app_instance(client)
+        try:
+            client.remove_application_instance(ApplicationInstanceId=app_id)
+            listed = client.list_application_instances()
+            app_ids = [a["ApplicationInstanceId"] for a in listed["ApplicationInstances"]]
+            assert app_id not in app_ids
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_describe_application_instance_error_wrong_id(self, client):
+        """DescribeApplicationInstance raises ResourceNotFoundException for fake ID."""
+        with pytest.raises(ClientError) as exc_info:
+            client.describe_application_instance(
+                ApplicationInstanceId="applicationInstance-totallyfakeid-xyz"
+            )
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaPackageBehaviorFidelity:
+    """Behavioral fidelity tests for package operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def test_create_package_arn_format_direct(self, client):
+        """CreatePackage returns an ARN matching the panorama package ARN pattern."""
+        pkg_name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(PackageName=pkg_name)
+        try:
+            arn = resp["Arn"]
+            assert re.match(
+                r"^arn:aws:panorama:[a-z0-9-]+:\d{12}:package/", arn
+            ), f"ARN doesn't match expected pattern: {arn}"
+        finally:
+            try:
+                client.delete_package(PackageId=resp["PackageId"])
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_packages_contains_created_package(self, client):
+        """ListPackages includes the PackageId of a freshly created package."""
+        pkg_name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(PackageName=pkg_name)
+        pkg_id = resp["PackageId"]
+        try:
+            listed = client.list_packages()
+            pkg_ids = [p["PackageId"] for p in listed["Packages"]]
+            assert pkg_id in pkg_ids
+        finally:
+            try:
+                client.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_packages_entries_have_name_field(self, client):
+        """ListPackages entries include the PackageName field."""
+        pkg_name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(PackageName=pkg_name)
+        pkg_id = resp["PackageId"]
+        try:
+            listed = client.list_packages()
+            matching = [p for p in listed["Packages"] if p["PackageId"] == pkg_id]
+            assert len(matching) == 1
+            assert matching[0]["PackageName"] == pkg_name
+        finally:
+            try:
+                client.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_delete_package_removes_from_list(self, client):
+        """DeletePackage removes the package from ListPackages."""
+        pkg_name = f"test-pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(PackageName=pkg_name)
+        pkg_id = resp["PackageId"]
+        client.delete_package(PackageId=pkg_id)
+        listed = client.list_packages()
+        pkg_ids = [p["PackageId"] for p in listed["Packages"]]
+        assert pkg_id not in pkg_ids
+
+
+class TestPanoramaNodeFromTemplateJobFidelity:
+    """Behavioral fidelity tests for node-from-template job operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def test_list_node_from_template_jobs_contains_created(self, client):
+        """ListNodeFromTemplateJobs includes the JobId of a recently created job."""
+        resp = client.create_node_from_template_job(
+            NodeName=f"node-{uuid.uuid4().hex[:8]}",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"key": "value"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = resp["JobId"]
+        listed = client.list_node_from_template_jobs()
+        job_ids = [j["JobId"] for j in listed["NodeFromTemplateJobs"]]
+        assert job_id in job_ids
+
+    def test_describe_node_from_template_job_template_params(self, client):
+        """DescribeNodeFromTemplateJob returns the TemplateType that was specified."""
+        resp = client.create_node_from_template_job(
+            NodeName=f"node-{uuid.uuid4().hex[:8]}",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"StreamUrl": "rtsp://cam.example.com/stream"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = resp["JobId"]
+        desc = client.describe_node_from_template_job(JobId=job_id)
+        assert desc["TemplateType"] == "RTSP_CAMERA_STREAM"
+
+    def test_list_node_from_template_jobs_has_required_fields(self, client):
+        """ListNodeFromTemplateJobs job entries include a Status field."""
+        resp = client.create_node_from_template_job(
+            NodeName=f"node-{uuid.uuid4().hex[:8]}",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"key": "value"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = resp["JobId"]
+        listed = client.list_node_from_template_jobs()
+        matching = [j for j in listed["NodeFromTemplateJobs"] if j["JobId"] == job_id]
+        assert len(matching) == 1
+        assert "Status" in matching[0]
+
+
+class TestPanoramaPackageImportJobFidelity:
+    """Behavioral fidelity tests for package import job operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def _make_import_job(self, client):
+        return client.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "test-bucket",
+                        "Region": "us-east-1",
+                        "ObjectKey": "test-key",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": f"test-pkg-{uuid.uuid4().hex[:8]}",
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"token-{uuid.uuid4().hex[:8]}",
+        )
+
+    def test_list_package_import_jobs_contains_created(self, client):
+        """ListPackageImportJobs includes the JobId of a recently created import job."""
+        resp = self._make_import_job(client)
+        job_id = resp["JobId"]
+        listed = client.list_package_import_jobs()
+        job_ids = [j["JobId"] for j in listed["PackageImportJobs"]]
+        assert job_id in job_ids
+
+    def test_describe_package_import_job(self, client):
+        """DescribePackageImportJob returns matching JobId and JobType fields."""
+        resp = self._make_import_job(client)
+        job_id = resp["JobId"]
+        desc = client.describe_package_import_job(JobId=job_id)
+        assert desc["JobId"] == job_id
+        assert desc["JobType"] == "NODE_PACKAGE_VERSION"
+
+    def test_list_package_import_jobs_has_status_field(self, client):
+        """ListPackageImportJobs job entries include a Status field."""
+        resp = self._make_import_job(client)
+        job_id = resp["JobId"]
+        listed = client.list_package_import_jobs()
+        matching = [j for j in listed["PackageImportJobs"] if j["JobId"] == job_id]
+        assert len(matching) == 1
+        assert "Status" in matching[0]
+
+
+class TestPanoramaListOperationsFidelity:
+    """Behavioral fidelity tests for list operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def test_list_application_instances_contains_created(self, client):
+        """ListApplicationInstances includes the ApplicationInstanceId of a created instance."""
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            app_resp = client.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            app_id = app_resp["ApplicationInstanceId"]
+            listed = client.list_application_instances()
+            app_ids = [a["ApplicationInstanceId"] for a in listed["ApplicationInstances"]]
+            assert app_id in app_ids
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_nodes_has_required_fields(self, client):
+        """ListNodes entries (if any) include a NodeId field."""
+        resp = client.list_nodes()
+        assert "Nodes" in resp
+        nodes = resp["Nodes"]
+        for node in nodes:
+            assert "NodeId" in node
+
+    def test_list_devices_jobs_with_real_device(self, client):
+        """ListDevicesJobs with a real DeviceId returns DeviceJobs as a list."""
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        try:
+            resp = client.list_devices_jobs(DeviceId=device_id)
+            assert "DeviceJobs" in resp
+            assert isinstance(resp["DeviceJobs"], list)
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_tag_resource_then_list(self, client):
+        """TagResource persists tags visible via ListTagsForResource."""
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        arn = dev_resp["Arn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags={"project": "robotocore", "env": "test"})
+            tags_resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert tags_resp["Tags"]["project"] == "robotocore"
+            assert tags_resp["Tags"]["env"] == "test"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+
+class TestPanoramaTaggingFidelity:
+    """Behavioral fidelity tests for tagging operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def test_list_tags_for_resource_empty(self, client):
+        """A newly provisioned device with no tags returns empty Tags dict."""
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        arn = dev_resp["Arn"]
+        try:
+            tags_resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert "Tags" in tags_resp
+            assert isinstance(tags_resp["Tags"], dict)
+            assert len(tags_resp["Tags"]) == 0
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_tag_resource_persists(self, client):
+        """Tags added via TagResource are visible in ListTagsForResource."""
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        arn = dev_resp["Arn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags={"persist-key": "persist-value"})
+            tags_resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert tags_resp["Tags"]["persist-key"] == "persist-value"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_untag_then_verify_removed(self, client):
+        """UntagResource removes only the specified tag key."""
+        dev_resp = client.provision_device(Name=f"test-{uuid.uuid4().hex[:8]}")
+        device_id = dev_resp["DeviceId"]
+        arn = dev_resp["Arn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags={"remove-me": "gone", "keep-me": "here"})
+            client.untag_resource(ResourceArn=arn, TagKeys=["remove-me"])
+            tags_resp = client.list_tags_for_resource(ResourceArn=arn)
+            assert "remove-me" not in tags_resp["Tags"]
+            assert tags_resp["Tags"]["keep-me"] == "here"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
