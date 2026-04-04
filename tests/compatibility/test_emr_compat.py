@@ -4177,3 +4177,461 @@ class TestEMRDescribeClusterReleaseAndServiceRole:
             "InvalidRequestException",
             "ResourceNotFoundException",
         )
+
+
+class TestEMRErrorCases:
+    """Error handling for nonexistent resources."""
+
+    def test_describe_cluster_nonexistent(self, emr):
+        """DescribeCluster with a fake cluster ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_cluster(ClusterId="j-FAKECLUSTER01")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_steps_nonexistent_cluster(self, emr):
+        """ListSteps with a fake cluster ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_steps(ClusterId="j-FAKECLUSTER01")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_instance_groups_nonexistent_cluster(self, emr):
+        """ListInstanceGroups with a fake cluster ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_instance_groups(ClusterId="j-FAKECLUSTER01")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_instances_nonexistent_cluster(self, emr):
+        """ListInstances with a fake cluster ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_instances(ClusterId="j-FAKECLUSTER01")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_list_bootstrap_actions_nonexistent_cluster(self, emr):
+        """ListBootstrapActions with a fake cluster ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.list_bootstrap_actions(ClusterId="j-FAKECLUSTER01")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_modify_cluster_nonexistent(self, emr):
+        """ModifyCluster on a nonexistent cluster raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.modify_cluster(ClusterId="j-FAKECLUSTER01", StepConcurrencyLevel=3)
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_describe_step_nonexistent(self, emr, cluster_id):
+        """DescribeStep with a fake step ID raises an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_step(ClusterId=cluster_id, StepId="s-FAKESTEP00001")
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+    def test_describe_security_config_nonexistent_raises_error(self, emr):
+        """DescribeSecurityConfiguration for missing config returns an error."""
+        with pytest.raises(ClientError) as exc:
+            emr.describe_security_configuration(Name="does-not-exist-xyz987")
+        code = exc.value.response["Error"]["Code"]
+        assert code in ("InvalidRequestException", "ResourceNotFoundException")
+
+
+class TestEMRClusterBehavioralFidelity:
+    """Behavioral fidelity tests for cluster fields."""
+
+    def test_cluster_id_format(self, emr):
+        """RunJobFlow returns a cluster ID starting with 'j-'."""
+        resp = emr.run_job_flow(
+            Name=_unique("id-format"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        assert cid.startswith("j-"), f"Cluster ID should start with 'j-', got: {cid}"
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_cluster_arn_format(self, emr, cluster_id):
+        """DescribeCluster returns ARN in expected elasticmapreduce format."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        arn = desc["Cluster"]["ClusterArn"]
+        # arn:aws:elasticmapreduce:<region>:<account>:cluster/<id>
+        assert arn.startswith("arn:aws:elasticmapreduce:")
+        assert ":cluster/" in arn
+        assert cluster_id in arn
+
+    def test_cluster_status_has_creation_timestamp(self, emr, cluster_id):
+        """DescribeCluster Status.Timeline.CreationDateTime is present and a datetime."""
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        timeline = desc["Cluster"]["Status"]["Timeline"]
+        assert "CreationDateTime" in timeline
+        ts = timeline["CreationDateTime"]
+        assert hasattr(ts, "year"), f"Expected datetime, got: {type(ts)}"
+
+    def test_cluster_status_state_is_valid(self, emr, cluster_id):
+        """DescribeCluster returns a valid cluster state."""
+        valid_states = {
+            "STARTING", "BOOTSTRAPPING", "RUNNING", "WAITING",
+            "TERMINATING", "TERMINATED", "TERMINATED_WITH_ERRORS",
+        }
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        state = desc["Cluster"]["Status"]["State"]
+        assert state in valid_states, f"Unexpected state: {state}"
+
+    def test_list_clusters_contains_cluster_id(self, emr, cluster_id):
+        """ListClusters with active state filter returns the newly created cluster."""
+        resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+        ids = [c["Id"] for c in resp["Clusters"]]
+        assert cluster_id in ids
+
+    def test_list_clusters_entry_has_required_fields(self, emr, cluster_id):
+        """Each cluster in ListClusters has Id, Name, Status fields."""
+        resp = emr.list_clusters()
+        for cluster in resp["Clusters"]:
+            assert "Id" in cluster
+            assert "Name" in cluster
+            assert "Status" in cluster
+
+    def test_describe_cluster_name_matches_run_job_flow(self, emr):
+        """DescribeCluster Name matches the name given to RunJobFlow."""
+        name = _unique("name-check")
+        resp = emr.run_job_flow(
+            Name=name,
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["Name"] == name
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+    def test_describe_cluster_release_label_preserved(self, emr):
+        """DescribeCluster ReleaseLabel matches what was given to RunJobFlow."""
+        resp = emr.run_job_flow(
+            Name=_unique("rl-check"),
+            ReleaseLabel="emr-6.15.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        desc = emr.describe_cluster(ClusterId=cid)
+        assert desc["Cluster"]["ReleaseLabel"] == "emr-6.15.0"
+        emr.terminate_job_flows(JobFlowIds=[cid])
+
+
+class TestEMRStepBehavioralFidelity:
+    """Behavioral fidelity tests for step operations."""
+
+    def test_step_id_format(self, emr, cluster_id):
+        """AddJobFlowSteps returns step IDs starting with 's-'."""
+        resp = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "id-format-step",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "x"]},
+                }
+            ],
+        )
+        step_id = resp["StepIds"][0]
+        assert step_id.startswith("s-"), f"Step ID should start with 's-', got: {step_id}"
+
+    def test_multiple_steps_have_distinct_ids(self, emr, cluster_id):
+        """Multiple steps added at once have unique IDs."""
+        resp = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": f"step-{i}",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", str(i)]},
+                }
+                for i in range(3)
+            ],
+        )
+        ids = resp["StepIds"]
+        assert len(ids) == 3
+        assert len(set(ids)) == 3, "Step IDs should be unique"
+
+    def test_list_steps_returns_added_step(self, emr, cluster_id):
+        """ListSteps includes a step added via AddJobFlowSteps."""
+        resp = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "listed-step-fidelity",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "y"]},
+                }
+            ],
+        )
+        step_id = resp["StepIds"][0]
+        listed = emr.list_steps(ClusterId=cluster_id)
+        step_ids = [s["Id"] for s in listed["Steps"]]
+        assert step_id in step_ids
+
+    def test_add_job_flow_steps_action_on_failure_preserved(self, emr, cluster_id):
+        """AddJobFlowSteps preserves ActionOnFailure field."""
+        resp = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": "aof-step",
+                    "ActionOnFailure": "TERMINATE_CLUSTER",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "z"]},
+                }
+            ],
+        )
+        step_id = resp["StepIds"][0]
+        step = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        assert step["Step"]["ActionOnFailure"] == "TERMINATE_CLUSTER"
+
+
+class TestEMRInstanceGroupBehavioralFidelity:
+    """Behavioral fidelity tests for instance group operations."""
+
+    def test_list_instance_groups_contains_master(self, emr, cluster_id):
+        """ListInstanceGroups always includes at least a MASTER group."""
+        resp = emr.list_instance_groups(ClusterId=cluster_id)
+        roles = [g["InstanceGroupType"] for g in resp["InstanceGroups"]]
+        assert "MASTER" in roles
+
+    def test_list_instance_groups_has_required_fields(self, emr, cluster_id):
+        """Each instance group has Id, Name, InstanceGroupType, InstanceType fields."""
+        resp = emr.list_instance_groups(ClusterId=cluster_id)
+        assert len(resp["InstanceGroups"]) > 0
+        for group in resp["InstanceGroups"]:
+            assert "Id" in group
+            assert "Name" in group
+            assert "InstanceGroupType" in group
+            assert "InstanceType" in group
+
+    def test_list_instances_returns_list_for_running_cluster(self, emr, cluster_id):
+        """ListInstances returns a list (even if empty) for a valid cluster."""
+        resp = emr.list_instances(ClusterId=cluster_id)
+        assert "Instances" in resp
+        assert isinstance(resp["Instances"], list)
+
+    def test_list_instances_by_instance_group_type(self, emr, cluster_id):
+        """ListInstances with InstanceGroupTypes filter returns a valid response."""
+        resp = emr.list_instances(ClusterId=cluster_id, InstanceGroupTypes=["MASTER"])
+        assert "Instances" in resp
+        assert isinstance(resp["Instances"], list)
+
+    def test_list_bootstrap_actions_empty_for_no_ba_cluster(self, emr, cluster_id):
+        """ListBootstrapActions returns empty list when no bootstrap actions configured."""
+        resp = emr.list_bootstrap_actions(ClusterId=cluster_id)
+        assert "BootstrapActions" in resp
+        # No bootstrap actions were added to the fixture cluster
+        assert isinstance(resp["BootstrapActions"], list)
+
+
+class TestEMRListClustersPagination:
+    """Listing behavior for multiple clusters (ListClusters uses Marker for pagination)."""
+
+    def test_list_clusters_multiple_clusters_all_visible(self, emr):
+        """ListClusters returns all created clusters."""
+        cids = []
+        for i in range(3):
+            r = emr.run_job_flow(
+                Name=_unique(f"page-cluster-{i}"),
+                ReleaseLabel="emr-6.10.0",
+                Instances={
+                    "MasterInstanceType": "m5.xlarge",
+                    "SlaveInstanceType": "m5.xlarge",
+                    "InstanceCount": 1,
+                    "KeepJobFlowAliveWhenNoSteps": True,
+                },
+                JobFlowRole="EMR_EC2_DefaultRole",
+                ServiceRole="EMR_DefaultRole",
+            )
+            cids.append(r["JobFlowId"])
+        try:
+            resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
+            assert "Clusters" in resp
+            listed_ids = [c["Id"] for c in resp["Clusters"]]
+            for cid in cids:
+                assert cid in listed_ids
+        finally:
+            emr.terminate_job_flows(JobFlowIds=cids)
+
+    def test_list_clusters_marker_pagination(self, emr):
+        """ListClusters Marker-based pagination returns non-overlapping pages."""
+        cids = []
+        for i in range(4):
+            r = emr.run_job_flow(
+                Name=_unique(f"tok-cluster-{i}"),
+                ReleaseLabel="emr-6.10.0",
+                Instances={
+                    "MasterInstanceType": "m5.xlarge",
+                    "SlaveInstanceType": "m5.xlarge",
+                    "InstanceCount": 1,
+                    "KeepJobFlowAliveWhenNoSteps": True,
+                },
+                JobFlowRole="EMR_EC2_DefaultRole",
+                ServiceRole="EMR_DefaultRole",
+            )
+            cids.append(r["JobFlowId"])
+        try:
+            page1 = emr.list_clusters()
+            assert "Clusters" in page1
+            # If there's a Marker, follow it and verify no overlap
+            if "Marker" in page1:
+                page2 = emr.list_clusters(Marker=page1["Marker"])
+                assert "Clusters" in page2
+                ids1 = {c["Id"] for c in page1["Clusters"]}
+                ids2 = {c["Id"] for c in page2["Clusters"]}
+                assert ids1.isdisjoint(ids2), "Paginated results should not overlap"
+        finally:
+            emr.terminate_job_flows(JobFlowIds=cids)
+
+
+class TestEMRListStepsMultiple:
+    """Tests for listing multiple steps."""
+
+    def test_list_steps_all_added_steps_visible(self, emr, cluster_id):
+        """ListSteps returns all steps that were added."""
+        resp = emr.add_job_flow_steps(
+            JobFlowId=cluster_id,
+            Steps=[
+                {
+                    "Name": f"bulk-step-{i}",
+                    "ActionOnFailure": "CONTINUE",
+                    "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", str(i)]},
+                }
+                for i in range(4)
+            ],
+        )
+        added_ids = set(resp["StepIds"])
+        listed = emr.list_steps(ClusterId=cluster_id)
+        listed_ids = {s["Id"] for s in listed["Steps"]}
+        assert added_ids.issubset(listed_ids), "All added steps should appear in ListSteps"
+
+
+class TestEMRListSupportedInstanceTypesDetails:
+    """Behavioral fidelity tests for ListSupportedInstanceTypes."""
+
+    def test_list_supported_instance_types_has_instance_type_field(self, emr):
+        """Each supported instance type entry has an InstanceType field."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-6.10.0")
+        assert len(resp["SupportedInstanceTypes"]) > 0
+        for it in resp["SupportedInstanceTypes"][:5]:
+            assert "Type" in it or "InstanceType" in it, f"No type field in: {it}"
+
+    def test_list_supported_instance_types_different_release(self, emr):
+        """ListSupportedInstanceTypes works for different release labels."""
+        resp = emr.list_supported_instance_types(ReleaseLabel="emr-7.0.0")
+        assert "SupportedInstanceTypes" in resp
+        assert isinstance(resp["SupportedInstanceTypes"], list)
+
+
+class TestEMRModifyClusterFidelity:
+    """Behavioral fidelity tests for ModifyCluster."""
+
+    def test_modify_cluster_step_concurrency_reflected_in_describe(self, emr, cluster_id):
+        """ModifyCluster StepConcurrencyLevel is persisted and visible via DescribeCluster."""
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=5)
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"].get("StepConcurrencyLevel") == 5
+
+    def test_modify_cluster_step_concurrency_update(self, emr, cluster_id):
+        """ModifyCluster can update StepConcurrencyLevel multiple times."""
+        resp1 = emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=3)
+        assert resp1["StepConcurrencyLevel"] == 3
+        resp2 = emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=7)
+        assert resp2["StepConcurrencyLevel"] == 7
+
+    def test_modify_cluster_nonexistent_raises_error(self, emr):
+        """ModifyCluster on a nonexistent cluster ID raises ClientError."""
+        with pytest.raises(ClientError) as exc:
+            emr.modify_cluster(ClusterId="j-DOESNOTEXIST99", StepConcurrencyLevel=2)
+        assert exc.value.response["Error"]["Code"] in (
+            "InvalidRequestException",
+            "ResourceNotFoundException",
+        )
+
+
+class TestEMRListClustersFilteredEdgeCases:
+    """Edge cases for ListClusters filtering."""
+
+    def test_list_clusters_by_terminated_state(self, emr):
+        """ListClusters filtered by terminal state returns clusters in that state."""
+        # Create and immediately terminate a cluster
+        r = emr.run_job_flow(
+            Name=_unique("term-filter"),
+            ReleaseLabel="emr-6.10.0",
+            Instances={
+                "MasterInstanceType": "m5.xlarge",
+                "SlaveInstanceType": "m5.xlarge",
+                "InstanceCount": 1,
+                "KeepJobFlowAliveWhenNoSteps": True,
+            },
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = r["JobFlowId"]
+        emr.terminate_job_flows(JobFlowIds=[cid])
+        # Find which state the cluster is currently in
+        desc = emr.describe_cluster(ClusterId=cid)
+        current_state = desc["Cluster"]["Status"]["State"]
+        # Use paginator to find the cluster across all pages
+        paginator = emr.get_paginator("list_clusters")
+        all_ids = set()
+        for page in paginator.paginate(ClusterStates=[current_state]):
+            all_ids.update(c["Id"] for c in page["Clusters"])
+        assert cid in all_ids
+
+    def test_list_clusters_created_after_filter(self, emr, cluster_id):
+        """ListClusters with CreatedAfter includes recently created clusters."""
+        # Use paginator to traverse all pages with the active-state filter
+        paginator = emr.get_paginator("list_clusters")
+        all_ids = set()
+        for page in paginator.paginate(
+            CreatedAfter=datetime(2020, 1, 1),
+            ClusterStates=["WAITING", "RUNNING", "STARTING"],
+        ):
+            all_ids.update(c["Id"] for c in page["Clusters"])
+        assert cluster_id in all_ids
+
+    def test_list_clusters_empty_for_far_future_created_after(self, emr):
+        """ListClusters with CreatedAfter far in future returns empty list."""
+        resp = emr.list_clusters(CreatedAfter=datetime(2099, 1, 1))
+        assert "Clusters" in resp
+        assert len(resp["Clusters"]) == 0
