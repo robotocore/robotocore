@@ -9582,3 +9582,271 @@ class TestSageMakerComputeQuotasEdgeCases:
         resp = sagemaker.list_compute_quotas()
         assert "ComputeQuotaSummaries" in resp
         assert isinstance(resp["ComputeQuotaSummaries"], list)
+
+
+class TestSageMakerListEdgeCases:
+    """Edge case and behavioral fidelity tests for list operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("sagemaker")
+
+    # --- list_model_metadata ---
+
+    def test_list_model_metadata_max_results(self, client):
+        """list_model_metadata accepts MaxResults parameter."""
+        resp = client.list_model_metadata(MaxResults=5)
+        assert "ModelMetadataSummaries" in resp
+        assert isinstance(resp["ModelMetadataSummaries"], list)
+
+    def test_list_model_metadata_next_token_optional(self, client):
+        """list_model_metadata response may omit NextToken when no more pages."""
+        resp = client.list_model_metadata(MaxResults=100)
+        assert "ModelMetadataSummaries" in resp
+        # NextToken is optional — just verify the key is absent OR a string
+        token = resp.get("NextToken")
+        assert token is None or isinstance(token, str)
+
+    def test_list_model_metadata_sort_params(self, client):
+        """list_model_metadata accepts SearchExpression with multiple filters."""
+        resp = client.list_model_metadata(
+            SearchExpression={"Filters": [{"Name": "Domain", "Value": "NATURAL_LANGUAGE_PROCESSING"}]}
+        )
+        assert "ModelMetadataSummaries" in resp
+        assert isinstance(resp["ModelMetadataSummaries"], list)
+
+    # --- list_projects ---
+
+    def test_list_projects_max_results(self, client):
+        """list_projects accepts MaxResults parameter."""
+        resp = client.list_projects(MaxResults=5)
+        assert "ProjectSummaryList" in resp
+        assert isinstance(resp["ProjectSummaryList"], list)
+
+    def test_list_projects_sort_params(self, client):
+        """list_projects accepts SortBy and SortOrder."""
+        resp = client.list_projects(SortBy="Name", SortOrder="Ascending")
+        assert "ProjectSummaryList" in resp
+        assert isinstance(resp["ProjectSummaryList"], list)
+
+    def test_list_projects_name_contains_no_match(self, client):
+        """list_projects with NameContains filter returns empty list for unknown name."""
+        resp = client.list_projects(NameContains="xyz-not-real-999")
+        assert "ProjectSummaryList" in resp
+        assert isinstance(resp["ProjectSummaryList"], list)
+        assert len(resp["ProjectSummaryList"]) == 0
+
+    # --- list_resource_catalogs ---
+
+    def test_list_resource_catalogs_max_results(self, client):
+        """list_resource_catalogs accepts MaxResults parameter."""
+        resp = client.list_resource_catalogs(MaxResults=5)
+        assert "ResourceCatalogs" in resp
+        assert isinstance(resp["ResourceCatalogs"], list)
+
+    def test_list_resource_catalogs_sort_by(self, client):
+        """list_resource_catalogs accepts SortBy parameter."""
+        resp = client.list_resource_catalogs(SortBy="Name")
+        assert "ResourceCatalogs" in resp
+        assert isinstance(resp["ResourceCatalogs"], list)
+
+    # --- list_spaces ---
+
+    def test_list_spaces_max_results(self, client):
+        """list_spaces accepts MaxResults parameter."""
+        resp = client.list_spaces(MaxResults=5)
+        assert "Spaces" in resp
+        assert isinstance(resp["Spaces"], list)
+
+    def test_list_spaces_domain_filter_no_match(self, client):
+        """list_spaces with DomainIdEquals filter returns empty list for nonexistent domain."""
+        resp = client.list_spaces(DomainIdEquals="nonexistent-domain-xyz-999")
+        assert "Spaces" in resp
+        assert isinstance(resp["Spaces"], list)
+        assert len(resp["Spaces"]) == 0
+
+    # --- list_studio_lifecycle_configs ---
+
+    def test_list_studio_lifecycle_configs_max_results(self, client):
+        """list_studio_lifecycle_configs accepts MaxResults parameter."""
+        resp = client.list_studio_lifecycle_configs(MaxResults=5)
+        assert "StudioLifecycleConfigs" in resp
+        assert isinstance(resp["StudioLifecycleConfigs"], list)
+
+    def test_list_studio_lifecycle_configs_name_contains_no_match(self, client):
+        """list_studio_lifecycle_configs with NameContains filter returns empty list."""
+        resp = client.list_studio_lifecycle_configs(NameContains="xyz-not-real-999")
+        assert "StudioLifecycleConfigs" in resp
+        assert isinstance(resp["StudioLifecycleConfigs"], list)
+        assert len(resp["StudioLifecycleConfigs"]) == 0
+
+    def test_list_studio_lifecycle_configs_app_type_filter(self, client):
+        """list_studio_lifecycle_configs accepts AppTypeEquals filter."""
+        resp = client.list_studio_lifecycle_configs(AppTypeEquals="JupyterServer")
+        assert "StudioLifecycleConfigs" in resp
+        assert isinstance(resp["StudioLifecycleConfigs"], list)
+
+    # --- list_subscribed_workteams ---
+
+    def test_list_subscribed_workteams_max_results(self, client):
+        """list_subscribed_workteams accepts MaxResults parameter."""
+        resp = client.list_subscribed_workteams(MaxResults=5)
+        assert "SubscribedWorkteams" in resp
+        assert isinstance(resp["SubscribedWorkteams"], list)
+
+    def test_list_subscribed_workteams_name_contains_no_match(self, client):
+        """list_subscribed_workteams with NameContains returns empty list for unknown name."""
+        resp = client.list_subscribed_workteams(NameContains="xyz-not-real-999")
+        assert "SubscribedWorkteams" in resp
+        assert isinstance(resp["SubscribedWorkteams"], list)
+        assert len(resp["SubscribedWorkteams"]) == 0
+
+    # --- list_training_plans ---
+
+    def test_list_training_plans_max_results(self, client):
+        """list_training_plans accepts MaxResults parameter."""
+        resp = client.list_training_plans(MaxResults=5)
+        assert "TrainingPlanSummaries" in resp
+        assert isinstance(resp["TrainingPlanSummaries"], list)
+
+    def test_list_training_plans_sort_params(self, client):
+        """list_training_plans accepts SortBy and SortOrder."""
+        resp = client.list_training_plans(SortBy="Name", SortOrder="Ascending")
+        assert "TrainingPlanSummaries" in resp
+        assert isinstance(resp["TrainingPlanSummaries"], list)
+
+    # --- list_user_profiles ---
+
+    def test_list_user_profiles_max_results(self, client):
+        """list_user_profiles accepts MaxResults parameter."""
+        resp = client.list_user_profiles(MaxResults=5)
+        assert "UserProfiles" in resp
+        assert isinstance(resp["UserProfiles"], list)
+
+    def test_list_user_profiles_domain_filter_no_match(self, client):
+        """list_user_profiles with DomainIdEquals returns empty list for nonexistent domain."""
+        resp = client.list_user_profiles(DomainIdEquals="nonexistent-domain-xyz-999")
+        assert "UserProfiles" in resp
+        assert isinstance(resp["UserProfiles"], list)
+        assert len(resp["UserProfiles"]) == 0
+
+    # --- list_workforces ---
+
+    def test_list_workforces_sort_params(self, client):
+        """list_workforces accepts SortBy and SortOrder."""
+        resp = client.list_workforces(SortBy="Name", SortOrder="Ascending")
+        assert "Workforces" in resp
+        assert isinstance(resp["Workforces"], list)
+
+    def test_list_workforces_name_contains_no_match(self, client):
+        """list_workforces with NameContains returns empty list for unknown name."""
+        resp = client.list_workforces(NameContains="xyz-not-real-999")
+        assert "Workforces" in resp
+        assert isinstance(resp["Workforces"], list)
+        assert len(resp["Workforces"]) == 0
+
+    # --- list_workteams ---
+
+    def test_list_workteams_max_results(self, client):
+        """list_workteams accepts MaxResults parameter."""
+        resp = client.list_workteams(MaxResults=5)
+        assert "Workteams" in resp
+        assert isinstance(resp["Workteams"], list)
+
+    def test_list_workteams_sort_params(self, client):
+        """list_workteams accepts SortBy and SortOrder."""
+        resp = client.list_workteams(SortBy="Name", SortOrder="Ascending")
+        assert "Workteams" in resp
+        assert isinstance(resp["Workteams"], list)
+
+    def test_list_workteams_name_contains_no_match(self, client):
+        """list_workteams with NameContains returns empty list for unknown name."""
+        resp = client.list_workteams(NameContains="xyz-not-real-999")
+        assert "Workteams" in resp
+        assert isinstance(resp["Workteams"], list)
+        assert len(resp["Workteams"]) == 0
+
+    # --- list_aliases ---
+
+    def test_list_aliases_nonexistent_version_returns_empty(self, client):
+        """list_aliases returns empty list for nonexistent image version."""
+        resp = client.list_aliases(ImageName="nonexistent-image-xyz", Version=1)
+        assert "SageMakerImageVersionAliases" in resp
+        assert isinstance(resp["SageMakerImageVersionAliases"], list)
+        assert len(resp["SageMakerImageVersionAliases"]) == 0
+
+    def test_list_aliases_response_has_pagination_key(self, client):
+        """list_aliases response includes optional NextToken pagination field."""
+        resp = client.list_aliases(ImageName="nonexistent-image-xyz")
+        assert "SageMakerImageVersionAliases" in resp
+        token = resp.get("NextToken")
+        assert token is None or isinstance(token, str)
+
+    # --- list_candidates_for_auto_ml_job ---
+
+    def test_list_candidates_for_auto_ml_job_sort_params(self, client):
+        """list_candidates_for_auto_ml_job accepts SortBy and SortOrder."""
+        resp = client.list_candidates_for_auto_ml_job(
+            AutoMLJobName="nonexistent",
+            SortBy="FinalObjectiveMetricValue",
+            SortOrder="Ascending",
+        )
+        assert "Candidates" in resp
+        assert isinstance(resp["Candidates"], list)
+
+    def test_list_candidates_for_auto_ml_job_status_filter(self, client):
+        """list_candidates_for_auto_ml_job accepts StatusEquals filter."""
+        resp = client.list_candidates_for_auto_ml_job(
+            AutoMLJobName="nonexistent",
+            StatusEquals="Completed",
+        )
+        assert "Candidates" in resp
+        assert isinstance(resp["Candidates"], list)
+
+    # --- list_devices ---
+
+    def test_list_devices_model_name_filter(self, client):
+        """list_devices accepts ModelName filter."""
+        resp = client.list_devices(DeviceFleetName="nonexistent", ModelName="nonexistent-model")
+        assert "DeviceSummaries" in resp
+        assert isinstance(resp["DeviceSummaries"], list)
+
+    def test_list_devices_max_results(self, client):
+        """list_devices accepts MaxResults parameter."""
+        resp = client.list_devices(DeviceFleetName="nonexistent", MaxResults=5)
+        assert "DeviceSummaries" in resp
+        assert isinstance(resp["DeviceSummaries"], list)
+
+    # --- list_hub_contents ---
+
+    def test_list_hub_contents_max_results_notebook_type(self, client):
+        """list_hub_contents accepts MaxResults with Notebook HubContentType."""
+        resp = client.list_hub_contents(
+            HubName="nonexistent", HubContentType="Notebook", MaxResults=5
+        )
+        assert "HubContentSummaries" in resp
+        assert isinstance(resp["HubContentSummaries"], list)
+
+    def test_list_hub_contents_blueprint_type(self, client):
+        """list_hub_contents accepts Blueprint HubContentType."""
+        resp = client.list_hub_contents(HubName="nonexistent", HubContentType="Blueprint")
+        assert "HubContentSummaries" in resp
+        assert isinstance(resp["HubContentSummaries"], list)
+
+    # --- list_hub_content_versions ---
+
+    def test_list_hub_content_versions_max_results(self, client):
+        """list_hub_content_versions accepts MaxResults parameter."""
+        resp = client.list_hub_content_versions(
+            HubName="h", HubContentName="n", HubContentType="Model", MaxResults=5
+        )
+        assert "HubContentSummaries" in resp
+        assert isinstance(resp["HubContentSummaries"], list)
+
+    def test_list_hub_content_versions_min_version_filter(self, client):
+        """list_hub_content_versions accepts MinVersion filter."""
+        resp = client.list_hub_content_versions(
+            HubName="h", HubContentName="n", HubContentType="Model", MinVersion="1.0.0"
+        )
+        assert "HubContentSummaries" in resp
+        assert isinstance(resp["HubContentSummaries"], list)
