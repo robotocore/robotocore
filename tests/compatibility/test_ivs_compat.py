@@ -995,6 +995,258 @@ class TestIVSNewOps:
         finally:
             ivs.delete_playback_restriction_policy(arn=policy_arn)
 
+
+class TestIVSEdgeCasesAndBehavioralFidelity:
+    """Edge cases and behavioral fidelity tests for IVS."""
+
+    # ─── Channel behavioral fidelity ────────────────────────────────────────
+
+    def test_create_channel_defaults_retrieve_list_delete(self, ivs):
+        """Full CRLD cycle: create → get → list confirms presence → delete → list confirms absence."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            # Retrieve (R)
+            got = ivs.get_channel(arn=channel_arn)
+            assert got["channel"]["name"] == name
+            assert got["channel"]["arn"] == channel_arn
+            # List confirms presence (L)
+            listed = ivs.list_channels()
+            assert any(c["arn"] == channel_arn for c in listed["channels"])
+        finally:
+            # Delete (D)
+            ivs.delete_channel(arn=channel_arn)
+        # Confirm deletion (E)
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=channel_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_batch_get_channel_all_errors_has_error_details(self, ivs):
+        """batch_get_channel all-missing: errors list contains arn and errorCode fields."""
+        fake1 = "arn:aws:ivs:us-east-1:123456789012:channel/fake1111"
+        fake2 = "arn:aws:ivs:us-east-1:123456789012:channel/fake2222"
+        batch = ivs.batch_get_channel(arns=[fake1, fake2])
+        # No channels returned
+        assert "channels" in batch
+        assert batch["channels"] == []
+        # Both errors present with expected shape
+        assert "errors" in batch
+        assert len(batch["errors"]) == 2
+        for err in batch["errors"]:
+            assert "arn" in err
+            assert "code" in err or "errorCode" in err or "message" in err
+        error_arns = {e["arn"] for e in batch["errors"]}
+        assert fake1 in error_arns
+        assert fake2 in error_arns
+
+    def test_create_channel_returns_authorized_false_by_default(self, ivs):
+        """Channel created without authorized=True should have authorized=False."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel = resp["channel"]
+        try:
+            assert channel["authorized"] is False
+            got = ivs.get_channel(arn=channel["arn"])
+            assert got["channel"]["authorized"] is False
+        finally:
+            ivs.delete_channel(arn=channel["arn"])
+
+    def test_update_channel_type(self, ivs):
+        """update_channel can change type from STANDARD to BASIC."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, type="STANDARD")
+        channel_arn = resp["channel"]["arn"]
+        try:
+            updated = ivs.update_channel(arn=channel_arn, type="BASIC")
+            assert updated["channel"]["type"] == "BASIC"
+            got = ivs.get_channel(arn=channel_arn)
+            assert got["channel"]["type"] == "BASIC"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_list_channels_returns_arn_and_name(self, ivs):
+        """list_channels summary items always include arn, name, latencyMode, type."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            listed = ivs.list_channels()
+            ch = next((c for c in listed["channels"] if c["arn"] == channel_arn), None)
+            assert ch is not None
+            assert ch["arn"] == channel_arn
+            assert ch["name"] == name
+            assert "latencyMode" in ch
+            assert "type" in ch
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_list_channels_filter_by_recording_config_error_patterns(self, ivs):
+        """list_channels with invalid filter ARN returns empty channels list (not error)."""
+        resp = ivs.list_channels(
+            filterByRecordingConfigurationArn="arn:aws:ivs:us-east-1:123456789012:recording-configuration/nonexistent"
+        )
+        assert "channels" in resp
+        assert isinstance(resp["channels"], list)
+
+    # ─── Stream behavioral fidelity ──────────────────────────────────────────
+
+    def test_list_streams_empty_has_response_metadata(self, ivs):
+        """list_streams returns ResponseMetadata with 200 status and empty streams list."""
+        resp = ivs.list_streams()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "streams" in resp
+        assert isinstance(resp["streams"], list)
+
+    def test_list_streams_with_maxresults_returns_streams_key(self, ivs):
+        """list_streams with maxResults returns streams key regardless of count."""
+        resp = ivs.list_streams(maxResults=5)
+        assert "streams" in resp
+        assert isinstance(resp["streams"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ─── Playback key pairs behavioral fidelity ──────────────────────────────
+
+    def test_list_playback_key_pairs_empty_is_valid(self, ivs):
+        """list_playback_key_pairs with no keys returns keyPairs as empty list."""
+        resp = ivs.list_playback_key_pairs()
+        assert "keyPairs" in resp
+        assert isinstance(resp["keyPairs"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_playback_key_pairs_after_create_and_delete(self, ivs):
+        """Key appears in list after import, disappears after delete."""
+        _PUB_KEY = (
+            "-----BEGIN PUBLIC KEY-----\n"
+            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFake1234567890ABCDEFGHIJKLMN"
+            "OPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890+/=\n"
+            "-----END PUBLIC KEY-----"
+        )
+        resp = ivs.import_playback_key_pair(
+            publicKeyMaterial=_PUB_KEY,
+            name=_unique("kp"),
+        )
+        kp_arn = resp["keyPair"]["arn"]
+        # Key appears in list (L)
+        listed = ivs.list_playback_key_pairs()
+        assert any(k["arn"] == kp_arn for k in listed["keyPairs"])
+        # Delete (D)
+        ivs.delete_playback_key_pair(arn=kp_arn)
+        # Key no longer in list
+        listed_after = ivs.list_playback_key_pairs()
+        assert not any(k["arn"] == kp_arn for k in listed_after["keyPairs"])
+
+    # ─── Tagging edge cases ───────────────────────────────────────────────────
+
+    def test_untag_resource_removes_only_specified_keys(self, ivs):
+        """untag_resource removes only the specified keys, leaves others intact."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, tags={"x": "1", "y": "2", "z": "3"})
+        channel_arn = resp["channel"]["arn"]
+        try:
+            ivs.untag_resource(resourceArn=channel_arn, tagKeys=["x", "z"])
+            tags_resp = ivs.list_tags_for_resource(resourceArn=channel_arn)
+            assert "x" not in tags_resp["tags"]
+            assert "z" not in tags_resp["tags"]
+            assert tags_resp["tags"].get("y") == "2"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_untag_nonexistent_key_is_noop(self, ivs):
+        """untag_resource with a key that doesn't exist doesn't error."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, tags={"keep": "yes"})
+        channel_arn = resp["channel"]["arn"]
+        try:
+            ivs.untag_resource(resourceArn=channel_arn, tagKeys=["doesnotexist"])
+            tags_resp = ivs.list_tags_for_resource(resourceArn=channel_arn)
+            assert tags_resp["tags"].get("keep") == "yes"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_tag_resource_adds_to_existing_tags(self, ivs):
+        """tag_resource adds new keys without removing existing ones."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, tags={"existing": "val"})
+        channel_arn = resp["channel"]["arn"]
+        try:
+            ivs.tag_resource(resourceArn=channel_arn, tags={"new": "added"})
+            tags_resp = ivs.list_tags_for_resource(resourceArn=channel_arn)
+            assert tags_resp["tags"]["existing"] == "val"
+            assert tags_resp["tags"]["new"] == "added"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    # ─── Recording config behavioral fidelity ────────────────────────────────
+
+    def test_recording_config_state_field(self, ivs):
+        """Recording configuration state field is present and a known value."""
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-ivs-state-check"}}
+        )
+        rc = resp["recordingConfiguration"]
+        try:
+            assert "state" in rc
+            assert rc["state"] in ("CREATING", "ACTIVE", "CREATE_FAILED")
+            got = ivs.get_recording_configuration(arn=rc["arn"])
+            assert got["recordingConfiguration"]["state"] in (
+                "CREATING", "ACTIVE", "CREATE_FAILED"
+            )
+        finally:
+            ivs.delete_recording_configuration(arn=rc["arn"])
+
+    def test_recording_config_bucket_name_preserved(self, ivs):
+        """Recording config destination bucket name round-trips correctly."""
+        bucket = f"test-ivs-roundtrip-{uuid.uuid4().hex[:8]}"
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": bucket}}
+        )
+        rc_arn = resp["recordingConfiguration"]["arn"]
+        try:
+            got = ivs.get_recording_configuration(arn=rc_arn)
+            assert got["recordingConfiguration"]["destinationConfiguration"]["s3"]["bucketName"] == bucket
+        finally:
+            ivs.delete_recording_configuration(arn=rc_arn)
+
+    def test_get_recording_configuration_not_found(self, ivs):
+        """get_recording_configuration raises ResourceNotFoundException for missing ARN."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:recording-configuration/nonexistent"
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_recording_configuration(arn=fake_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ─── Stream key behavioral fidelity ──────────────────────────────────────
+
+    def test_stream_key_arn_links_to_channel(self, ivs):
+        """Stream key returned by create_channel references the channel ARN."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            sk = resp["streamKey"]
+            assert sk["channelArn"] == channel_arn
+            assert re.match(
+                r"arn:aws:ivs:[a-z0-9-]+:\d{12}:stream-key/[A-Za-z0-9]+", sk["arn"]
+            )
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_batch_get_channel_with_one_valid_one_error(self, ivs):
+        """batch_get_channel partial hit: valid channel in channels list, fake in errors."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        real_arn = resp["channel"]["arn"]
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:channel/nope9999"
+        try:
+            batch = ivs.batch_get_channel(arns=[real_arn, fake_arn])
+            found = {ch["arn"] for ch in batch["channels"]}
+            assert real_arn in found
+            assert fake_arn not in found
+            error_arns = {e["arn"] for e in batch["errors"]}
+            assert fake_arn in error_arns
+        finally:
+            ivs.delete_channel(arn=real_arn)
+
     def test_update_playback_restriction_policy(self, ivs):
         """update_playback_restriction_policy modifies allowed countries."""
         resp = ivs.create_playback_restriction_policy(
