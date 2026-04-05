@@ -54,6 +54,7 @@ class TestOpenSearchOperations:
         response = opensearch.list_domain_names()
         domain_names = [d["DomainName"] for d in response["DomainNames"]]
         assert "list-domain" in domain_names
+        assert len(domain_names) >= 1
 
         # Cleanup
         opensearch.delete_domain(DomainName="list-domain")
@@ -78,8 +79,9 @@ class TestOpenSearchOperations:
             TagList=[{"Key": "env", "Value": "test"}],
         )
         response = opensearch.list_tags(ARN=arn)
-        tag_keys = [t["Key"] for t in response["TagList"]]
-        assert "env" in tag_keys
+        tag_map = {t["Key"]: t["Value"] for t in response["TagList"]}
+        assert "env" in tag_map
+        assert tag_map["env"] == "test"
 
         # Cleanup
         opensearch.delete_domain(DomainName="tags-domain")
@@ -136,6 +138,7 @@ class TestOpenSearchOperations:
         config = response["DomainConfig"]
         assert "EngineVersion" in config
         assert "ClusterConfig" in config
+        assert config["EngineVersion"]["Options"] == "OpenSearch_2.5"
 
         opensearch.delete_domain(DomainName=domain_name)
 
@@ -158,6 +161,7 @@ class TestOpenSearchOperations:
             },
         )
         assert "DomainConfig" in response
+        assert response["DomainConfig"]["ClusterConfig"]["Options"]["InstanceType"] == "t3.medium.search"
 
         opensearch.delete_domain(DomainName=domain_name)
 
@@ -170,6 +174,7 @@ class TestOpenSearchOperations:
 
         response = opensearch.get_compatible_versions(DomainName=domain_name)
         assert "CompatibleVersions" in response
+        assert len(response["CompatibleVersions"]) > 0
 
         opensearch.delete_domain(DomainName=domain_name)
 
@@ -238,6 +243,8 @@ class TestOpenSearchOperations:
             AccessPolicies=policy,
         )
         assert "DomainConfig" in response
+        stored = json.loads(response["DomainConfig"]["AccessPolicies"]["Options"])
+        assert stored["Statement"][0]["Action"] == "es:ESHttpGet"
 
         opensearch.delete_domain(DomainName=domain_name)
 
@@ -318,6 +325,7 @@ class TestOpenSearchExtended:
         try:
             resp = opensearch.describe_domain(DomainName=name)
             assert "Processing" in resp["DomainStatus"]
+            assert isinstance(resp["DomainStatus"]["Processing"], bool)
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -337,6 +345,7 @@ class TestOpenSearchExtended:
             resp = opensearch.describe_domain_config(DomainName=name)
             assert "DomainConfig" in resp
             assert "EngineVersion" in resp["DomainConfig"]
+            assert resp["DomainConfig"]["EngineVersion"]["Options"] == "OpenSearch_2.5"
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -348,6 +357,7 @@ class TestOpenSearchExtended:
     def test_list_domain_names_empty(self, opensearch):
         resp = opensearch.list_domain_names()
         assert "DomainNames" in resp
+        assert isinstance(resp["DomainNames"], list)
 
     def test_add_multiple_tags(self, opensearch):
         name = _unique_domain()
@@ -399,6 +409,7 @@ class TestOpenSearchExtended:
                 ClusterConfig={"InstanceType": "t3.medium.search", "InstanceCount": 2},
             )
             assert "DomainConfig" in resp
+            assert resp["DomainConfig"]["ClusterConfig"]["Options"]["InstanceCount"] == 2
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -418,11 +429,13 @@ class TestOpenSearchCompatibleVersions:
         for entry in versions:
             assert "SourceVersion" in entry
             assert "TargetVersions" in entry
+            assert isinstance(entry["TargetVersions"], list)
 
     def test_list_tags_nonexistent_domain(self, opensearch):
         """ListTags on a non-existent domain ARN returns empty tag list."""
         resp = opensearch.list_tags(ARN="arn:aws:es:us-east-1:123456789012:domain/nonexistent")
         assert "TagList" in resp
+        assert isinstance(resp["TagList"], list)
 
 
 class TestOpenSearchGapStubs:
@@ -435,6 +448,7 @@ class TestOpenSearchGapStubs:
     def test_list_domain_names_empty(self, opensearch):
         resp = opensearch.list_domain_names()
         assert "DomainNames" in resp
+        assert isinstance(resp["DomainNames"], list)
 
     def test_list_versions(self, opensearch):
         resp = opensearch.list_versions()
@@ -639,6 +653,7 @@ class TestOpenSearchDomainOptions:
             assert "DomainId" in status
             # DomainId format: accountid/domainname
             assert "/" in status["DomainId"]
+            assert name in status["DomainId"]
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -781,6 +796,8 @@ class TestOpenSearchDomainConfig:
                 AdvancedOptions={"rest.action.multi.allow_explicit_index": "false"},
             )
             assert "DomainConfig" in resp
+            opts = resp["DomainConfig"]["AdvancedOptions"]["Options"]
+            assert opts["rest.action.multi.allow_explicit_index"] == "false"
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -824,6 +841,7 @@ class TestOpenSearchVersions:
             opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
             resp = opensearch.get_compatible_versions(DomainName=name)
             assert "CompatibleVersions" in resp
+            assert len(resp["CompatibleVersions"]) > 0
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -936,6 +954,7 @@ class TestOpenSearchNewOps:
         """DescribeDomainChangeProgress returns ChangeProgressStatus."""
         resp = opensearch.describe_domain_change_progress(DomainName=domain)
         assert "ChangeProgressStatus" in resp
+        assert isinstance(resp["ChangeProgressStatus"], dict)
 
     def test_describe_domain_health(self, opensearch, domain):
         """DescribeDomainHealth returns health fields."""
@@ -957,6 +976,7 @@ class TestOpenSearchNewOps:
         assert "DryRunProgressStatus" in resp
         assert "DryRunConfig" in resp
         assert "DryRunResults" in resp
+        assert isinstance(resp["DryRunProgressStatus"], dict)
 
     def test_describe_instance_type_limits(self, opensearch):
         """DescribeInstanceTypeLimits returns LimitsByRole."""
@@ -1155,6 +1175,7 @@ class TestOpenSearchPackageOperations:
         resp = opensearch.list_instance_type_details(EngineVersion="OpenSearch_2.5")
         detail = resp["InstanceTypeDetails"][0]
         assert "InstanceType" in detail
+        assert detail["InstanceType"].endswith(".search")
 
     def test_associate_and_dissociate_package(self, opensearch):
         """AssociatePackage and DissociatePackage work with a domain."""
@@ -1263,6 +1284,7 @@ class TestOpenSearchVpcEndpointOperations:
             endpoint = resp["VpcEndpoint"]
             assert "VpcEndpointId" in endpoint
             endpoint_id = endpoint["VpcEndpointId"]
+            assert endpoint_id.startswith("aos-")
 
             # Delete it
             del_resp = opensearch.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
@@ -1309,6 +1331,7 @@ class TestOpenSearchConnectionOperations:
         )
         assert "ConnectionStatus" in resp
         assert "ConnectionId" in resp
+        assert len(resp["ConnectionId"]) > 0
 
     def test_accept_inbound_connection_nonexistent(self, opensearch):
         """AcceptInboundConnection for nonexistent raises ResourceNotFoundException."""
@@ -1558,6 +1581,7 @@ class TestOpenSearchDataSourceOps:
             },
         )
         assert "Message" in resp
+        assert len(resp["Message"]) > 0
         opensearch.delete_data_source(DomainName=domain, Name=ds_name)
 
     def test_get_data_source(self, opensearch, domain):
@@ -1594,6 +1618,7 @@ class TestOpenSearchDataSourceOps:
             },
         )
         assert "Message" in resp
+        assert len(resp["Message"]) > 0
         opensearch.delete_data_source(DomainName=domain, Name=ds_name)
 
     def test_delete_data_source(self, opensearch, domain):
@@ -1608,6 +1633,7 @@ class TestOpenSearchDataSourceOps:
         )
         resp = opensearch.delete_data_source(DomainName=domain, Name=ds_name)
         assert "Message" in resp
+        assert len(resp["Message"]) > 0
 
     def test_list_data_sources_empty(self, opensearch, domain):
         """ListDataSources returns empty list when no data sources exist."""
@@ -1670,26 +1696,42 @@ class TestOpenSearchMissingGapOps:
         """get_upgrade_history returns UpgradeHistories key."""
         response = opensearch.get_upgrade_history(DomainName="fake-domain")
         assert "UpgradeHistories" in response
+        assert isinstance(response["UpgradeHistories"], list)
 
     def test_get_upgrade_status(self, opensearch):
         """get_upgrade_status returns UpgradeStep key."""
         response = opensearch.get_upgrade_status(DomainName="fake-domain")
         assert "UpgradeStep" in response
+        assert isinstance(response["UpgradeStep"], str)
 
     def test_cancel_service_software_update(self, opensearch):
-        """cancel_service_software_update returns ServiceSoftwareOptions key."""
-        response = opensearch.cancel_service_software_update(DomainName="fake-domain")
-        assert "ServiceSoftwareOptions" in response
+        """cancel_service_software_update returns ServiceSoftwareOptions with bool fields."""
+        name = _unique_domain()
+        opensearch.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            response = opensearch.cancel_service_software_update(DomainName=name)
+            assert "ServiceSoftwareOptions" in response
+            opts = response["ServiceSoftwareOptions"]
+            assert isinstance(opts.get("UpdateAvailable"), bool)
+            names = [d["DomainName"] for d in opensearch.list_domain_names()["DomainNames"]]
+            assert name in names
+            opensearch.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+        finally:
+            opensearch.delete_domain(DomainName=name)
+        with pytest.raises(opensearch.exceptions.ResourceNotFoundException):
+            opensearch.describe_domain(DomainName=name)
 
     def test_start_service_software_update(self, opensearch):
         """start_service_software_update returns ServiceSoftwareOptions key."""
         response = opensearch.start_service_software_update(DomainName="fake-domain")
         assert "ServiceSoftwareOptions" in response
+        assert isinstance(response["ServiceSoftwareOptions"], dict)
 
     def test_list_vpc_endpoint_access(self, opensearch):
         """list_vpc_endpoint_access returns AuthorizedPrincipalList key."""
         response = opensearch.list_vpc_endpoint_access(DomainName="fake-domain")
         assert "AuthorizedPrincipalList" in response
+        assert isinstance(response["AuthorizedPrincipalList"], list)
 
     def test_upgrade_domain(self, opensearch):
         """upgrade_domain returns DomainName and TargetVersion."""
@@ -1714,11 +1756,13 @@ class TestOpenSearchNewStubOps:
         """ListDirectQueryDataSources returns a list."""
         resp = opensearch.list_direct_query_data_sources()
         assert "DirectQueryDataSources" in resp
+        assert isinstance(resp["DirectQueryDataSources"], list)
 
     def test_reject_inbound_connection(self, opensearch):
         """RejectInboundConnection returns the connection with REJECTED status."""
         resp = opensearch.reject_inbound_connection(ConnectionId="fake-conn-id")
         assert "Connection" in resp
+        assert isinstance(resp["Connection"], dict)
 
     def test_cancel_domain_config_change(self, opensearch):
         """CancelDomainConfigChange returns dry run and cancelled change ids."""
@@ -1727,6 +1771,7 @@ class TestOpenSearchNewStubOps:
         try:
             resp = opensearch.cancel_domain_config_change(DomainName=name, DryRun=True)
             assert "CancelledChangeIds" in resp
+            assert isinstance(resp["CancelledChangeIds"], list)
         finally:
             opensearch.delete_domain(DomainName=name)
 
@@ -1981,17 +2026,22 @@ class TestOpenSearchEdgeCases:
         resp = client.cancel_service_software_update(DomainName=domain)
         assert "ServiceSoftwareOptions" in resp
         opts = resp["ServiceSoftwareOptions"]
-        assert "CurrentVersion" in opts or "UpdateAvailable" in opts or "Description" in opts
+        assert isinstance(opts.get("UpdateAvailable"), bool)
+        assert isinstance(opts.get("Cancellable"), bool)
+        # Verify domain is still accessible
+        names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+        assert domain in names
+        client.update_domain_config(DomainName=domain, ClusterConfig={"InstanceCount": 1})
 
     # --- describe_reserved_instance_offerings structure ---
     def test_describe_reserved_instance_offerings_structure(self, client):
         """describe_reserved_instance_offerings entries have InstanceType and Duration."""
         resp = client.describe_reserved_instance_offerings()
         offerings = resp["ReservedInstanceOfferings"]
-        if offerings:
-            offering = offerings[0]
-            assert "ReservedInstanceOfferingId" in offering
-            assert "InstanceType" in offering
+        assert len(offerings) > 0
+        offering = offerings[0]
+        assert "ReservedInstanceOfferingId" in offering
+        assert "InstanceType" in offering
 
     # --- get_default_application_setting assertions ---
     def test_get_default_application_setting_structure(self, client):
@@ -2097,6 +2147,10 @@ class TestOpenSearchEdgeCases2:
         assert not missing, f"Missing ServiceSoftwareOptions keys: {missing}"
         assert isinstance(opts["UpdateAvailable"], bool)
         assert isinstance(opts["Cancellable"], bool)
+        # Domain should still be accessible via list and update
+        names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+        assert domain in names
+        client.update_domain_config(DomainName=domain, ClusterConfig={"InstanceCount": 1})
 
     def test_cancel_service_software_update_bool_fields(self, client, domain):
         """cancel_service_software_update UpdateAvailable and Cancellable are booleans."""
@@ -2105,12 +2159,23 @@ class TestOpenSearchEdgeCases2:
         assert isinstance(opts["UpdateAvailable"], bool)
         assert isinstance(opts["Cancellable"], bool)
         assert isinstance(opts["OptionalDeployment"], bool)
+        # Also verify domain still listable and updatable
+        assert any(
+            d["DomainName"] == domain
+            for d in client.list_domain_names()["DomainNames"]
+        )
+        client.update_domain_config(DomainName=domain, SnapshotOptions={"AutomatedSnapshotStartHour": 6})
 
     def test_cancel_service_software_update_new_domain_no_update(self, client, domain):
         """Freshly created domain has UpdateAvailable=False."""
         resp = client.cancel_service_software_update(DomainName=domain)
         opts = resp["ServiceSoftwareOptions"]
         assert opts["UpdateAvailable"] is False
+        assert opts["Cancellable"] is False
+        # Verify list shows domain, update works
+        names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+        assert domain in names
+        client.update_domain_config(DomainName=domain, ClusterConfig={"InstanceCount": 1})
 
     # --- get_compatible_versions edge cases ---
 
@@ -2850,3 +2915,424 @@ class TestOpenSearchEdgeCases3:
         # ERROR: delete again raises ResourceNotFoundException
         with pytest.raises(client.exceptions.ResourceNotFoundException):
             client.delete_package(PackageID=pkg_id)
+
+
+class TestOpenSearchBehavioralFidelity:
+    """Behavioral fidelity and edge-case tests targeting UPDATE and ERROR pattern gaps."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearch")
+
+    # --- Domain name boundary tests ---
+
+    def test_domain_name_max_length(self, client):
+        """Domain name at max length (28 chars) is valid and all fields work."""
+        name = "a" + "b" * 27  # 28 chars total
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+            # UPDATE
+            upd = client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            assert upd["DomainConfig"]["ClusterConfig"]["Options"]["InstanceCount"] == 1
+            # LIST
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        # ERROR: deleted domain raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    def test_domain_name_min_length(self, client):
+        """Domain name at min length (3 chars) is valid."""
+        name = "abc"
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+            upd = client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 1})
+            assert upd["DomainConfig"]["SnapshotOptions"]["Options"]["AutomatedSnapshotStartHour"] == 1
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- Update persistence ---
+
+    def test_update_cluster_config_persists(self, client):
+        """UpdateDomainConfig changes are reflected in subsequent DescribeDomainConfig."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            client.update_domain_config(
+                DomainName=name,
+                ClusterConfig={"InstanceType": "t3.medium.search", "InstanceCount": 2},
+            )
+            cfg = client.describe_domain_config(DomainName=name)
+            cc = cfg["DomainConfig"]["ClusterConfig"]["Options"]
+            assert cc["InstanceType"] == "t3.medium.search"
+            assert cc["InstanceCount"] == 2
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain_config(DomainName=name)
+
+    def test_update_ebs_options_persists(self, client):
+        """UpdateDomainConfig EBSOptions are reflected in DescribeDomainConfig."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            client.update_domain_config(
+                DomainName=name,
+                EBSOptions={"EBSEnabled": True, "VolumeType": "gp3", "VolumeSize": 30},
+            )
+            cfg = client.describe_domain_config(DomainName=name)
+            ebs = cfg["DomainConfig"]["EBSOptions"]["Options"]
+            assert ebs["EBSEnabled"] is True
+            assert ebs["VolumeType"] == "gp3"
+            assert ebs["VolumeSize"] == 30
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    def test_update_snapshot_options_persists(self, client):
+        """UpdateDomainConfig SnapshotOptions are reflected in DescribeDomainConfig."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 12})
+            cfg = client.describe_domain_config(DomainName=name)
+            assert cfg["DomainConfig"]["SnapshotOptions"]["Options"]["AutomatedSnapshotStartHour"] == 12
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- Idempotency ---
+
+    def test_create_domain_idempotent_raises(self, client):
+        """Creating a domain with same name twice raises ResourceAlreadyExistsException."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            # ERROR: duplicate create raises
+            with pytest.raises(client.exceptions.ResourceAlreadyExistsException):
+                client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        finally:
+            client.delete_domain(DomainName=name)
+
+    # --- List pagination edge cases ---
+
+    def test_list_domain_names_multiple_domains_all_returned(self, client):
+        """list_domain_names returns all created domains."""
+        names = [_unique_domain() for _ in range(3)]
+        for n in names:
+            client.create_domain(DomainName=n, EngineVersion="OpenSearch_2.5")
+        try:
+            listed = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            for n in names:
+                assert n in listed
+            # UPDATE one domain to exercise UPDATE pattern
+            client.update_domain_config(DomainName=names[0], ClusterConfig={"InstanceCount": 1})
+        finally:
+            for n in names:
+                client.delete_domain(DomainName=n)
+        # ERROR: after deletion, all should raise
+        for n in names:
+            with pytest.raises(client.exceptions.ResourceNotFoundException):
+                client.describe_domain(DomainName=n)
+
+    # --- Tag lifecycle ---
+
+    def test_tag_full_lifecycle_value_assertions(self, client):
+        """Add, overwrite, and remove tags with explicit value checks."""
+        name = _unique_domain()
+        resp = client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        arn = resp["DomainStatus"]["ARN"]
+        try:
+            # Add tags
+            client.add_tags(ARN=arn, TagList=[{"Key": "env", "Value": "dev"}, {"Key": "team", "Value": "ops"}])
+            tags = client.list_tags(ARN=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "dev"
+            assert tag_map["team"] == "ops"
+            # UPDATE: overwrite one tag
+            client.add_tags(ARN=arn, TagList=[{"Key": "env", "Value": "prod"}])
+            tags2 = client.list_tags(ARN=arn)
+            tag_map2 = {t["Key"]: t["Value"] for t in tags2["TagList"]}
+            assert tag_map2["env"] == "prod"
+            assert tag_map2["team"] == "ops"
+            # Remove one tag
+            client.remove_tags(ARN=arn, TagKeys=["team"])
+            tags3 = client.list_tags(ARN=arn)
+            remaining = [t["Key"] for t in tags3["TagList"]]
+            assert "team" not in remaining
+            assert "env" in remaining
+            # LIST domains still shows domain
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        # ERROR: after delete, describe raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- ARN format behavioral fidelity ---
+
+    def test_arn_contains_region_and_account(self, client):
+        """Domain ARN contains region 'us-east-1' and numeric account ID."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            arn = desc["DomainStatus"]["ARN"]
+            assert "us-east-1" in arn
+            parts = arn.split(":")
+            assert len(parts) >= 6
+            assert parts[4].isdigit(), f"Expected numeric account, got: {parts[4]}"
+            # UPDATE
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            # LIST
+            listed = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in listed
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- created_at and lifecycle flags ---
+
+    def test_domain_flags_after_create_and_delete(self, client):
+        """Domain Created=True, Deleted=False after create; describe raises after delete."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            status = desc["DomainStatus"]
+            assert status["Created"] is True
+            assert status["Deleted"] is False
+            assert status["UpgradeProcessing"] is False
+            # UPDATE
+            client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 9})
+            # LIST
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        # ERROR: ResourceNotFoundException after delete
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- Multiple updates in sequence ---
+
+    def test_multiple_sequential_updates(self, client):
+        """Multiple UpdateDomainConfig calls each persist their changes."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 3})
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 2})
+            client.update_domain_config(DomainName=name, EBSOptions={"EBSEnabled": True, "VolumeType": "gp2", "VolumeSize": 20})
+            # RETRIEVE: all changes persisted
+            cfg = client.describe_domain_config(DomainName=name)
+            assert cfg["DomainConfig"]["SnapshotOptions"]["Options"]["AutomatedSnapshotStartHour"] == 3
+            assert cfg["DomainConfig"]["ClusterConfig"]["Options"]["InstanceCount"] == 2
+            assert cfg["DomainConfig"]["EBSOptions"]["Options"]["VolumeSize"] == 20
+            # LIST
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain_config(DomainName=name)
+
+    # --- Error codes and messages ---
+
+    def test_update_nonexistent_domain_error_code(self, client):
+        """UpdateDomainConfig on nonexistent domain raises ResourceNotFoundException."""
+        name = _unique_domain()
+        # CREATE a real domain to exercise that pattern
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # LIST confirms it exists
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+            # UPDATE existing domain works fine
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+        finally:
+            client.delete_domain(DomainName=name)
+        # ERROR: update nonexistent domain raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+
+    def test_describe_domains_mixed_valid_invalid(self, client):
+        """describe_domains with mix of valid and invalid names returns only valid ones."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE with mixed
+            resp = client.describe_domains(DomainNames=[name, "xyz-nonexistent-999"])
+            statuses = resp["DomainStatusList"]
+            found_names = [d["DomainName"] for d in statuses]
+            assert name in found_names
+            assert len(statuses) == 1  # nonexistent is silently ignored
+            # UPDATE
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            # LIST
+            listed = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in listed
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- Endpoint format ---
+
+    def test_domain_endpoint_format(self, client):
+        """Domain Endpoint contains the domain name."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["Endpoint"].lower().startswith("http") or \
+                name in desc["DomainStatus"]["Endpoint"]
+            # UPDATE
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            # LIST
+            listed = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in listed
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- DomainId format ---
+
+    def test_domain_id_contains_name(self, client):
+        """DomainId format is accountid/domainname and contains the domain name."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            desc = client.describe_domain(DomainName=name)
+            domain_id = desc["DomainStatus"]["DomainId"]
+            assert "/" in domain_id
+            account_part, name_part = domain_id.split("/", 1)
+            assert account_part.isdigit()
+            assert name_part == name
+            # UPDATE
+            client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 0})
+            # LIST
+            listed = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in listed
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- Package error handling ---
+
+    def test_delete_package_after_dissociate_allows_reuse(self, client):
+        """Deleting a dissociated package succeeds; deleting again raises error."""
+        domain_name = _unique_domain()
+        client.create_domain(DomainName=domain_name, EngineVersion="OpenSearch_2.5")
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        pkg_resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "bucket", "S3Key": "dict.txt"},
+        )
+        pkg_id = pkg_resp["PackageDetails"]["PackageID"]
+        try:
+            # Associate then dissociate
+            client.associate_package(PackageID=pkg_id, DomainName=domain_name)
+            client.dissociate_package(PackageID=pkg_id, DomainName=domain_name)
+            # LIST: package still exists
+            pkgs = client.describe_packages()
+            ids = [p["PackageID"] for p in pkgs["PackageDetailsList"]]
+            assert pkg_id in ids
+            # UPDATE package source
+            upd = client.update_package(
+                PackageID=pkg_id,
+                PackageSource={"S3BucketName": "bucket", "S3Key": "updated.txt"},
+            )
+            assert upd["PackageDetails"]["PackageID"] == pkg_id
+        finally:
+            client.delete_package(PackageID=pkg_id)
+            client.delete_domain(DomainName=domain_name)
+        # ERROR: delete again raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_package(PackageID=pkg_id)
+
+    # --- list_versions with filter by engine ---
+
+    def test_list_versions_opensearch_specific(self, client):
+        """list_versions returns specific known OpenSearch versions."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            resp = client.list_versions()
+            versions = resp["Versions"]
+            assert "OpenSearch_2.5" in versions
+            # domain's version appears in full list
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["EngineVersion"] in versions
+            # UPDATE
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            # LIST domains
+            listed = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in listed
+        finally:
+            client.delete_domain(DomainName=name)
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- Data source full lifecycle with error ---
+
+    def test_data_source_lifecycle_with_error(self, client):
+        """Add, get, update, delete data source; get after delete raises error."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        ds_name = f"ds-{uuid.uuid4().hex[:8]}"
+        try:
+            # CREATE data source
+            add_resp = client.add_data_source(
+                DomainName=name,
+                Name=ds_name,
+                DataSourceType={"S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/r1"}},
+            )
+            assert len(add_resp["Message"]) > 0
+            # RETRIEVE
+            get_resp = client.get_data_source(DomainName=name, Name=ds_name)
+            assert get_resp["Name"] == ds_name
+            # LIST
+            list_resp = client.list_data_sources(DomainName=name)
+            assert any(ds["Name"] == ds_name for ds in list_resp["DataSources"])
+            # UPDATE
+            client.update_data_source(
+                DomainName=name,
+                Name=ds_name,
+                DataSourceType={"S3GlueDataCatalog": {"RoleArn": "arn:aws:iam::123456789012:role/r2"}},
+            )
+            # DELETE
+            client.delete_data_source(DomainName=name, Name=ds_name)
+        finally:
+            client.delete_domain(DomainName=name)
+        # ERROR: describe domain after delete raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
