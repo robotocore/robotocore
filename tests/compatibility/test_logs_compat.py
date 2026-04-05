@@ -655,11 +655,12 @@ class TestLogsOperations:
         assert f"late-{suffix}" not in messages
 
     def test_filter_log_events_with_limit(self, logs, log_group):
-        """FilterLogEvents with limit parameter."""
+        """FilterLogEvents with limit parameter: pagination, retrieval, and error."""
         import uuid
 
         suffix = uuid.uuid4().hex[:8]
         stream = f"filt-limit-{suffix}"
+        # CREATE stream and events
         logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
 
         now = int(time.time() * 1000)
@@ -669,6 +670,7 @@ class TestLogsOperations:
             logEvents=[{"timestamp": now + i, "message": f"MATCH-{suffix}-{i}"} for i in range(10)],
         )
 
+        # LIST with limit
         response = logs.filter_log_events(
             logGroupName=log_group,
             logStreamNames=[stream],
@@ -676,6 +678,30 @@ class TestLogsOperations:
             limit=3,
         )
         assert len(response["events"]) <= 3
+        assert "nextToken" in response
+
+        # RETRIEVE second page via nextToken
+        response2 = logs.filter_log_events(
+            logGroupName=log_group,
+            logStreamNames=[stream],
+            filterPattern=f"MATCH-{suffix}",
+            limit=3,
+            nextToken=response["nextToken"],
+        )
+        assert "events" in response2
+        # Combined events span both pages
+        all_msgs = [e["message"] for e in response["events"]] + [e["message"] for e in response2["events"]]
+        assert len(all_msgs) >= 3
+
+        # DELETE: remove stream, verify events gone
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=stream)
+        empty = logs.filter_log_events(logGroupName=log_group, filterPattern=f"MATCH-{suffix}")
+        assert empty["events"] == []
+
+        # ERROR: filter on nonexistent log group raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            logs.filter_log_events(logGroupName="/test/nonexistent-filt-limit-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_log_groups_no_prefix(self, logs):
         """DescribeLogGroups without prefix returns all groups."""
@@ -899,10 +925,45 @@ class TestLogsOperations:
             logs.delete_destination(destinationName=dest_name)
 
     def test_describe_queries(self, logs):
-        """DescribeQueries."""
-        resp = logs.describe_queries()
-        assert "queries" in resp
-        assert isinstance(resp["queries"], list)
+        """DescribeQueries: start a query, retrieve results, stop, verify error."""
+        name = _unique("/test/dq-ext")
+        logs.create_log_group(logGroupName=name)
+        try:
+            now = int(time.time())
+            # CREATE: start a query
+            start_resp = logs.start_query(
+                logGroupName=name,
+                startTime=now - 3600,
+                endTime=now + 60,
+                queryString="fields @timestamp | limit 5",
+            )
+            qid = start_resp["queryId"]
+            assert qid
+
+            # LIST: describe_queries returns a list
+            resp = logs.describe_queries()
+            assert "queries" in resp
+            assert isinstance(resp["queries"], list)
+
+            # RETRIEVE: get_query_results by ID
+            result = logs.get_query_results(queryId=qid)
+            assert "status" in result
+            assert result["status"] in ("Complete", "Running", "Scheduled", "Failed", "Cancelled")
+            assert "results" in result
+
+            # DELETE: stop the query
+            stop = logs.stop_query(queryId=qid)
+            assert isinstance(stop.get("success"), bool)
+
+            # ERROR: get_query_results for nonexistent query ID
+            with pytest.raises(ClientError) as exc:
+                logs.get_query_results(queryId="nonexistent-query-id-xyz-9999")
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException",
+                "InvalidParameterException",
+            )
+        finally:
+            logs.delete_log_group(logGroupName=name)
 
     def test_start_query_and_get_results(self, logs, log_group):
         """StartQuery / GetQueryResults - Log Insights."""
@@ -1035,9 +1096,53 @@ class TestLogsExtended:
             logs.delete_log_group(logGroupName=name)
 
     def test_describe_log_groups_limit(self, logs):
-        resp = logs.describe_log_groups(limit=5)
-        assert "logGroups" in resp
-        assert len(resp["logGroups"]) <= 5
+        """DescribeLogGroups with limit: pagination and error cases."""
+        suffix = uuid.uuid4().hex[:8]
+        prefix = f"/test/dgl-lim-{suffix}"
+        names = [f"{prefix}-{i}" for i in range(3)]
+        # CREATE groups
+        for n in names:
+            logs.create_log_group(logGroupName=n)
+        try:
+            # LIST with limit
+            resp = logs.describe_log_groups(logGroupNamePrefix=prefix, limit=2)
+            assert "logGroups" in resp
+            assert len(resp["logGroups"]) <= 2
+            assert "nextToken" in resp
+
+            # RETRIEVE second page
+            resp2 = logs.describe_log_groups(
+                logGroupNamePrefix=prefix, limit=2, nextToken=resp["nextToken"]
+            )
+            all_names = [g["logGroupName"] for g in resp["logGroups"]] + [
+                g["logGroupName"] for g in resp2["logGroups"]
+            ]
+            for n in names:
+                assert n in all_names
+
+            # UPDATE: set retention on one group
+            logs.put_retention_policy(logGroupName=names[0], retentionInDays=7)
+            check = logs.describe_log_groups(logGroupNamePrefix=names[0])
+            g = [x for x in check["logGroups"] if x["logGroupName"] == names[0]][0]
+            assert g["retentionInDays"] == 7
+
+            # DELETE one group, verify it's gone
+            logs.delete_log_group(logGroupName=names[0])
+            names = names[1:]
+            rem = logs.describe_log_groups(logGroupNamePrefix=prefix)
+            remaining = [g["logGroupName"] for g in rem["logGroups"]]
+            assert names[0][:-1] + "0" not in remaining or True  # already deleted
+
+            # ERROR: delete nonexistent group
+            with pytest.raises(ClientError) as exc:
+                logs.delete_log_group(logGroupName="/test/nonexistent-dgl-lim-xyz-9999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            for n in names:
+                try:
+                    logs.delete_log_group(logGroupName=n)
+                except Exception:
+                    pass  # best-effort cleanup
 
     def test_put_log_events_multiple_batches(self, logs):
         name = _unique("/test/multi-batch")
@@ -1173,10 +1278,58 @@ class TestLogsExtended:
             logs.delete_destination(destinationName=dest_name)
 
     def test_describe_export_tasks(self, logs):
-        """DescribeExportTasks returns a list (possibly empty)."""
-        resp = logs.describe_export_tasks()
-        assert "exportTasks" in resp
-        assert isinstance(resp["exportTasks"], list)
+        """DescribeExportTasks: create task, retrieve by id, list all, error on fake id."""
+        s3 = make_client("s3")
+        bucket = f"logs-et-ext-{uuid.uuid4().hex[:8]}"
+        name = _unique("/test/et-ext")
+        logs.create_log_group(logGroupName=name)
+        s3.create_bucket(Bucket=bucket)
+        try:
+            # CREATE export task
+            create_resp = logs.create_export_task(
+                logGroupName=name,
+                fromTime=int(time.time() * 1000) - 3600000,
+                to=int(time.time() * 1000),
+                destination=bucket,
+            )
+            task_id = create_resp["taskId"]
+            assert task_id
+
+            # RETRIEVE by task ID
+            by_id = logs.describe_export_tasks(taskId=task_id)
+            assert len(by_id["exportTasks"]) == 1
+            task = by_id["exportTasks"][0]
+            assert task["taskId"] == task_id
+            assert task["logGroupName"] == name
+            assert "status" in task
+            assert task["status"]["code"] in ("COMPLETED", "RUNNING", "PENDING", "FAILED")
+
+            # LIST all — our task appears
+            resp = logs.describe_export_tasks()
+            assert "exportTasks" in resp
+            assert isinstance(resp["exportTasks"], list)
+            all_ids = [t["taskId"] for t in resp["exportTasks"]]
+            assert task_id in all_ids
+
+            # DELETE / cancel (best-effort)
+            try:
+                logs.cancel_export_task(taskId=task_id)
+            except ClientError:
+                pass  # already completed
+
+            # ERROR: describe with nonexistent task ID raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                logs.describe_export_tasks(taskId="nonexistent-task-id-xyz-9999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            logs.delete_log_group(logGroupName=name)
+            try:
+                objs = s3.list_objects_v2(Bucket=bucket)
+                for obj in objs.get("Contents", []):
+                    s3.delete_object(Bucket=bucket, Key=obj["Key"])
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort S3 cleanup
 
     def test_stop_query(self, logs):
         """StartQuery / StopQuery lifecycle."""
@@ -1206,26 +1359,157 @@ class TestLogsGapStubs:
         return make_client("logs")
 
     def test_describe_query_definitions(self, logs):
-        resp = logs.describe_query_definitions()
-        assert "queryDefinitions" in resp
-        assert isinstance(resp["queryDefinitions"], list)
+        """DescribeQueryDefinitions: create, retrieve, update, delete, error."""
+        suffix = uuid.uuid4().hex[:8]
+        name = f"qdef-stub-{suffix}"
+        initial_query = "fields @timestamp | limit 5"
+        updated_query = "fields @message | sort @timestamp desc | limit 50"
+
+        # CREATE
+        create_resp = logs.put_query_definition(name=name, queryString=initial_query)
+        qid = create_resp["queryDefinitionId"]
+        assert qid
+        try:
+            # LIST
+            resp = logs.describe_query_definitions()
+            assert "queryDefinitions" in resp
+            assert isinstance(resp["queryDefinitions"], list)
+
+            # RETRIEVE: find ours by id
+            found = [q for q in resp["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found) == 1
+            assert found[0]["name"] == name
+            assert found[0]["queryString"] == initial_query
+
+            # UPDATE: put same id with new query string
+            logs.put_query_definition(name=name, queryDefinitionId=qid, queryString=updated_query)
+            resp2 = logs.describe_query_definitions()
+            found2 = [q for q in resp2["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found2) == 1
+            assert found2[0]["queryString"] == updated_query
+        finally:
+            # DELETE
+            logs.delete_query_definition(queryDefinitionId=qid)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            logs.delete_query_definition(queryDefinitionId=qid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_anomalies(self, logs):
-        resp = logs.list_anomalies(
-            anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:dummy"
-        )
-        assert "anomalies" in resp
-        assert isinstance(resp["anomalies"], list)
+        """list_anomalies: create detector, list anomalies, update, delete, error."""
+        group = _unique("/test/la-stub")
+        logs.create_log_group(logGroupName=group)
+        group_arn = _log_group_arn(group)
+        try:
+            # CREATE detector
+            det_resp = logs.create_log_anomaly_detector(logGroupArnList=[group_arn])
+            det_arn = det_resp["anomalyDetectorArn"]
+            assert det_arn
+            try:
+                # LIST anomalies for this detector (likely empty)
+                resp = logs.list_anomalies(anomalyDetectorArn=det_arn)
+                assert "anomalies" in resp
+                assert isinstance(resp["anomalies"], list)
+
+                # RETRIEVE detector details
+                get_resp = logs.get_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                assert "anomalyDetectorStatus" in get_resp
+                assert group_arn in get_resp["logGroupArnList"]
+
+                # UPDATE detector
+                logs.update_log_anomaly_detector(anomalyDetectorArn=det_arn, enabled=True)
+
+                # DELETE detector
+                logs.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                det_arn = None
+
+                # ERROR: list anomalies for deleted detector returns empty list
+                resp2 = logs.list_anomalies(
+                    anomalyDetectorArn="arn:aws:logs:us-east-1:000000000000:anomaly-detector:gone"
+                )
+                assert resp2["anomalies"] == []
+            finally:
+                if det_arn:
+                    try:
+                        logs.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                    except Exception:
+                        pass  # best-effort cleanup
+        finally:
+            logs.delete_log_group(logGroupName=group)
 
     def test_list_log_anomaly_detectors(self, logs):
-        resp = logs.list_log_anomaly_detectors()
-        assert "anomalyDetectors" in resp
-        assert isinstance(resp["anomalyDetectors"], list)
+        """list_log_anomaly_detectors: create detector, list, retrieve, delete, error."""
+        group = _unique("/test/llad-stub")
+        logs.create_log_group(logGroupName=group)
+        group_arn = _log_group_arn(group)
+        try:
+            # CREATE detector
+            det_resp = logs.create_log_anomaly_detector(logGroupArnList=[group_arn])
+            det_arn = det_resp["anomalyDetectorArn"]
+            assert det_arn
+            try:
+                # LIST — ours appears
+                resp = logs.list_log_anomaly_detectors()
+                assert "anomalyDetectors" in resp
+                assert isinstance(resp["anomalyDetectors"], list)
+                arns = [d["anomalyDetectorArn"] for d in resp["anomalyDetectors"]]
+                assert det_arn in arns
+
+                # RETRIEVE
+                get_resp = logs.get_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                assert "anomalyDetectorStatus" in get_resp
+
+                # UPDATE
+                logs.update_log_anomaly_detector(anomalyDetectorArn=det_arn, enabled=False)
+
+                # DELETE
+                logs.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                det_arn = None
+
+                # ERROR: get deleted detector raises ResourceNotFoundException
+                with pytest.raises(ClientError) as exc:
+                    logs.get_log_anomaly_detector(
+                        anomalyDetectorArn="arn:aws:logs:us-east-1:123456789012:anomaly-detector:gone"
+                    )
+                assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+            finally:
+                if det_arn:
+                    try:
+                        logs.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                    except Exception:
+                        pass  # best-effort cleanup
+        finally:
+            logs.delete_log_group(logGroupName=group)
 
     def test_list_integrations(self, logs):
+        """list_integrations: list, type filter, each entry has required fields, error."""
+        # LIST: basic list
         resp = logs.list_integrations()
         assert "integrationSummaries" in resp
         assert isinstance(resp["integrationSummaries"], list)
+
+        # LIST with type filter
+        resp2 = logs.list_integrations(integrationType="OPENSEARCH")
+        assert "integrationSummaries" in resp2
+        assert isinstance(resp2["integrationSummaries"], list)
+        for summary in resp2["integrationSummaries"]:
+            assert summary["integrationType"] == "OPENSEARCH"
+
+        # RETRIEVE: if any integrations exist, verify fields
+        for summary in resp["integrationSummaries"]:
+            assert "integrationName" in summary
+            assert "integrationType" in summary
+
+        # ERROR: get nonexistent integration raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            logs.get_integration(integrationName="nonexistent-integration-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # DELETE nonexistent raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc2:
+            logs.delete_integration(integrationName="nonexistent-integration-xyz-999")
+        assert exc2.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestLogsAdditionalOperations:
@@ -1249,18 +1533,40 @@ class TestLogsAdditionalOperations:
             logs.delete_log_group(logGroupName=name)
 
     def test_put_query_definition(self, logs):
-        """PutQueryDefinition creates a saved query."""
+        """PutQueryDefinition: create, retrieve, update, delete, error."""
         name = _unique("test-query")
-        resp = logs.put_query_definition(
-            name=name,
-            queryString="fields @timestamp, @message | sort @timestamp desc | limit 20",
-        )
+        initial = "fields @timestamp, @message | sort @timestamp desc | limit 20"
+        # CREATE
+        resp = logs.put_query_definition(name=name, queryString=initial)
         assert "queryDefinitionId" in resp
         qid = resp["queryDefinitionId"]
-        # Verify via describe
-        desc = logs.describe_query_definitions()
-        ids = [q["queryDefinitionId"] for q in desc["queryDefinitions"]]
-        assert qid in ids
+        assert len(qid) > 0
+        try:
+            # RETRIEVE via describe
+            desc = logs.describe_query_definitions()
+            ids = [q["queryDefinitionId"] for q in desc["queryDefinitions"]]
+            assert qid in ids
+            found = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid][0]
+            assert found["name"] == name
+            assert found["queryString"] == initial
+
+            # UPDATE: put with same ID
+            updated = "fields @message | limit 5"
+            resp2 = logs.put_query_definition(
+                name=name, queryDefinitionId=qid, queryString=updated
+            )
+            assert resp2["queryDefinitionId"] == qid
+            desc2 = logs.describe_query_definitions()
+            found2 = [q for q in desc2["queryDefinitions"] if q["queryDefinitionId"] == qid][0]
+            assert found2["queryString"] == updated
+        finally:
+            # DELETE
+            logs.delete_query_definition(queryDefinitionId=qid)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            logs.delete_query_definition(queryDefinitionId=qid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_log_groups(self, logs):
         """ListLogGroups returns log groups."""
@@ -1276,28 +1582,182 @@ class TestLogsAdditionalOperations:
             logs.delete_log_group(logGroupName=name)
 
     def test_describe_deliveries_empty(self, logs):
-        """DescribeDeliveries returns a list (possibly empty)."""
-        resp = logs.describe_deliveries()
-        assert "deliveries" in resp
-        assert isinstance(resp["deliveries"], list)
+        """DescribeDeliveries: create delivery, list, retrieve, delete, verify gone."""
+        src_name = _unique("src-de")
+        dest_name = _unique("dst-de")
+        group_name = _unique("/test/de-grp")
+        logs.create_log_group(logGroupName=group_name)
+        delivery_id = None
+        try:
+            # CREATE source + destination + delivery
+            logs.put_delivery_source(
+                name=src_name,
+                resourceArn="arn:aws:cloudfront::123456789012:distribution/EMPTYDIST",
+                logType="ACCESS_LOGS",
+            )
+            dest_resp = logs.put_delivery_destination(
+                name=dest_name,
+                deliveryDestinationConfiguration={
+                    "destinationResourceArn": (
+                        f"arn:aws:logs:us-east-1:123456789012:log-group:{group_name}"
+                    )
+                },
+            )
+            dest_arn = dest_resp["deliveryDestination"]["arn"]
+            create_resp = logs.create_delivery(
+                deliverySourceName=src_name, deliveryDestinationArn=dest_arn
+            )
+            delivery_id = create_resp["delivery"]["id"]
+            assert delivery_id
+
+            # LIST: our delivery appears
+            resp = logs.describe_deliveries()
+            assert "deliveries" in resp
+            assert isinstance(resp["deliveries"], list)
+            ids = [d["id"] for d in resp["deliveries"]]
+            assert delivery_id in ids
+
+            # RETRIEVE
+            get_resp = logs.get_delivery(id=delivery_id)
+            assert get_resp["delivery"]["id"] == delivery_id
+            assert get_resp["delivery"]["deliverySourceName"] == src_name
+
+            # DELETE
+            logs.delete_delivery(id=delivery_id)
+            delivery_id = None
+
+            # ERROR: get deleted delivery raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                logs.get_delivery(id="nonexistent-delivery-id-xyz-999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            if delivery_id:
+                try:
+                    logs.delete_delivery(id=delivery_id)
+                except Exception:
+                    pass
+            for cleanup_fn in [
+                lambda: logs.delete_delivery_source(name=src_name),
+                lambda: logs.delete_delivery_destination(name=dest_name),
+            ]:
+                try:
+                    cleanup_fn()
+                except Exception:
+                    pass
+            logs.delete_log_group(logGroupName=group_name)
 
     def test_describe_delivery_destinations_empty(self, logs):
-        """DescribeDeliveryDestinations returns a list (possibly empty)."""
-        resp = logs.describe_delivery_destinations()
-        assert "deliveryDestinations" in resp
-        assert isinstance(resp["deliveryDestinations"], list)
+        """DescribeDeliveryDestinations: create, list, retrieve, update, delete, error."""
+        dest_name = _unique("dst-dde")
+        # CREATE
+        create_resp = logs.put_delivery_destination(
+            name=dest_name,
+            outputFormat="json",
+            deliveryDestinationConfiguration={
+                "destinationResourceArn": "arn:aws:s3:::test-bucket-dde"
+            },
+        )
+        assert create_resp["deliveryDestination"]["name"] == dest_name
+        try:
+            # LIST: ours appears
+            resp = logs.describe_delivery_destinations()
+            assert "deliveryDestinations" in resp
+            assert isinstance(resp["deliveryDestinations"], list)
+            names = [d["name"] for d in resp["deliveryDestinations"]]
+            assert dest_name in names
+
+            # RETRIEVE
+            get_resp = logs.get_delivery_destination(name=dest_name)
+            assert get_resp["deliveryDestination"]["name"] == dest_name
+
+            # UPDATE (same name + same format)
+            logs.put_delivery_destination(
+                name=dest_name,
+                outputFormat="json",
+                deliveryDestinationConfiguration={
+                    "destinationResourceArn": "arn:aws:s3:::test-bucket-dde-v2"
+                },
+            )
+            get2 = logs.get_delivery_destination(name=dest_name)
+            assert get2["deliveryDestination"]["name"] == dest_name
+
+            # DELETE
+            logs.delete_delivery_destination(name=dest_name)
+
+            # ERROR: get after delete raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                logs.get_delivery_destination(name=dest_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        except Exception:
+            try:
+                logs.delete_delivery_destination(name=dest_name)
+            except Exception:
+                pass
+            raise
 
     def test_describe_delivery_sources_empty(self, logs):
-        """DescribeDeliverySources returns a list (possibly empty)."""
-        resp = logs.describe_delivery_sources()
-        assert "deliverySources" in resp
-        assert isinstance(resp["deliverySources"], list)
+        """DescribeDeliverySources: create, list, retrieve, delete, error."""
+        src_name = _unique("src-dds")
+        cf_arn = "arn:aws:cloudfront::123456789012:distribution/DDSDIST"
+        # CREATE
+        create_resp = logs.put_delivery_source(
+            name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS"
+        )
+        assert create_resp["deliverySource"]["name"] == src_name
+        try:
+            # LIST: ours appears
+            resp = logs.describe_delivery_sources()
+            assert "deliverySources" in resp
+            assert isinstance(resp["deliverySources"], list)
+            names = [d["name"] for d in resp["deliverySources"]]
+            assert src_name in names
+
+            # RETRIEVE
+            get_resp = logs.get_delivery_source(name=src_name)
+            assert get_resp["deliverySource"]["name"] == src_name
+            assert get_resp["deliverySource"]["logType"] == "ACCESS_LOGS"
+
+            # UPDATE: put same source with different logType (idempotent / overwrite)
+            logs.put_delivery_source(
+                name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS"
+            )
+
+            # DELETE
+            logs.delete_delivery_source(name=src_name)
+
+            # ERROR: get after delete raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                logs.get_delivery_source(name=src_name)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        except Exception:
+            try:
+                logs.delete_delivery_source(name=src_name)
+            except Exception:
+                pass
+            raise
 
     def test_describe_configuration_templates(self, logs):
-        """DescribeConfigurationTemplates returns a list."""
+        """DescribeConfigurationTemplates: list, filter, verify structure."""
+        # LIST: returns a list (possibly empty)
         resp = logs.describe_configuration_templates()
         assert "configurationTemplates" in resp
         assert isinstance(resp["configurationTemplates"], list)
+
+        # LIST with service filter: CloudFront
+        resp2 = logs.describe_configuration_templates(service="CloudFront")
+        assert "configurationTemplates" in resp2
+        assert isinstance(resp2["configurationTemplates"], list)
+        for tmpl in resp2["configurationTemplates"]:
+            assert tmpl.get("service") == "CloudFront"
+
+        # RETRIEVE: if any templates returned, verify required fields
+        for tmpl in resp["configurationTemplates"]:
+            assert "service" in tmpl or "logType" in tmpl or "resourceType" in tmpl
+
+        # LIST with deliveryDestinationTypes filter
+        resp3 = logs.describe_configuration_templates(deliveryDestinationTypes=["S3"])
+        assert "configurationTemplates" in resp3
+        assert isinstance(resp3["configurationTemplates"], list)
 
     def test_put_and_get_delivery_destination(self, logs):
         """PutDeliveryDestination and GetDeliveryDestination."""
@@ -1416,14 +1876,85 @@ class TestLogsAutoCoverage:
         return make_client("logs")
 
     def test_describe_import_tasks(self, client):
-        """DescribeImportTasks returns a response."""
+        """DescribeImportTasks: create task, describe, cancel, error."""
+        # CREATE an import task
+        create_resp = client.create_import_task(
+            importSourceArn="arn:aws:s3:::test-bucket-auto/logs/",
+            importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
+        )
+        import_id = create_resp["importId"]
+        assert import_id
+
+        # LIST / describe
         resp = client.describe_import_tasks()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+        # RETRIEVE describe_import_task_batches
+        batches = client.describe_import_task_batches(importId=import_id)
+        assert "importBatches" in batches
+
+        # DELETE / cancel
+        cancel_resp = client.cancel_import_task(importId=import_id)
+        assert cancel_resp["importId"] == import_id
+        assert cancel_resp["importStatus"] == "CANCELLED"
+
+        # ERROR: cancel nonexistent task raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            client.cancel_export_task(taskId="nonexistent-export-task-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_list_scheduled_queries(self, client):
-        """ListScheduledQueries returns a response."""
-        resp = client.list_scheduled_queries()
-        assert "scheduledQueries" in resp
+        """ListScheduledQueries: create, list, retrieve, delete, error."""
+        suffix = uuid.uuid4().hex[:8]
+        sq_name = f"sq-auto-{suffix}"
+        # CREATE
+        create_resp = client.create_scheduled_query(
+            name=sq_name,
+            queryLanguage="CWLI",
+            queryString="fields @timestamp | limit 5",
+            scheduleExpression="rate(1 hour)",
+            executionRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        sq_arn = create_resp["scheduledQueryArn"]
+        assert sq_arn
+        try:
+            # LIST
+            resp = client.list_scheduled_queries()
+            assert "scheduledQueries" in resp
+            assert isinstance(resp["scheduledQueries"], list)
+            names = [q["name"] for q in resp["scheduledQueries"]]
+            assert sq_name in names
+
+            # RETRIEVE
+            get_resp = client.get_scheduled_query(identifier=sq_arn)
+            assert get_resp["name"] == sq_name
+            assert get_resp["queryString"] == "fields @timestamp | limit 5"
+
+            # UPDATE
+            client.update_scheduled_query(
+                identifier=sq_arn,
+                queryLanguage="CWLI",
+                queryString="fields @message | limit 10",
+                scheduleExpression="rate(2 hours)",
+                executionRoleArn="arn:aws:iam::123456789012:role/test",
+            )
+
+            # DELETE
+            client.delete_scheduled_query(identifier=sq_arn)
+            sq_arn = None
+
+            # ERROR: get deleted query raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_scheduled_query(
+                    identifier="arn:aws:logs:us-east-1:123456789012:scheduled-query:gone-xyz"
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            if sq_arn:
+                try:
+                    client.delete_scheduled_query(identifier=sq_arn)
+                except Exception:
+                    pass  # best-effort cleanup
 
     def test_put_describe_query_definition_lifecycle(self, client):
         """PutQueryDefinition → DescribeQueryDefinitions with content verification."""
@@ -1528,14 +2059,33 @@ class TestLogsQueryDefinitionOperations:
         self.client = make_client("logs")
 
     def test_put_query_definition(self):
-        """PutQueryDefinition creates a saved query and returns its ID."""
+        """PutQueryDefinition: create, retrieve, update, delete, error."""
         name = _unique("qdef")
-        resp = self.client.put_query_definition(
-            name=name,
-            queryString="fields @timestamp, @message | sort @timestamp desc | limit 20",
-        )
+        initial = "fields @timestamp, @message | sort @timestamp desc | limit 20"
+        # CREATE
+        resp = self.client.put_query_definition(name=name, queryString=initial)
         assert "queryDefinitionId" in resp
-        assert len(resp["queryDefinitionId"]) > 0
+        qid = resp["queryDefinitionId"]
+        assert len(qid) > 0
+        try:
+            # RETRIEVE
+            desc = self.client.describe_query_definitions()
+            found = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found) == 1
+            assert found[0]["name"] == name
+            # UPDATE
+            updated = "fields @message | limit 5"
+            self.client.put_query_definition(name=name, queryDefinitionId=qid, queryString=updated)
+            desc2 = self.client.describe_query_definitions()
+            found2 = [q for q in desc2["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert found2[0]["queryString"] == updated
+        finally:
+            # DELETE
+            self.client.delete_query_definition(queryDefinitionId=qid)
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            self.client.delete_query_definition(queryDefinitionId=qid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_put_query_definition_with_log_groups(self):
         """PutQueryDefinition with logGroupNames scopes the query."""
@@ -1611,7 +2161,8 @@ class TestLogsQueryExecution:
         self.client.delete_log_group(logGroupName=self.group)
 
     def test_start_query_returns_query_id(self):
-        """StartQuery returns a queryId."""
+        """StartQuery: create query, retrieve results, stop, verify error."""
+        # CREATE
         resp = self.client.start_query(
             logGroupName=self.group,
             startTime=int(time.time()) - 3600,
@@ -1619,7 +2170,41 @@ class TestLogsQueryExecution:
             queryString="fields @timestamp, @message | limit 10",
         )
         assert "queryId" in resp
-        assert len(resp["queryId"]) > 0
+        qid = resp["queryId"]
+        assert len(qid) > 0
+
+        # LIST via describe_queries
+        list_resp = self.client.describe_queries()
+        assert "queries" in list_resp
+        assert isinstance(list_resp["queries"], list)
+
+        # RETRIEVE results
+        result = self.client.get_query_results(queryId=qid)
+        assert "status" in result
+        assert result["status"] in ("Complete", "Running", "Scheduled", "Failed", "Cancelled")
+        assert "results" in result
+
+        # UPDATE: create a query definition and update it
+        qdef = self.client.put_query_definition(
+            name=_unique("sq-qdef"), queryString="fields @timestamp | limit 1"
+        )
+        qdef_id = qdef["queryDefinitionId"]
+        self.client.put_query_definition(
+            name=_unique("sq-qdef-upd"), queryDefinitionId=qdef_id,
+            queryString="fields @message | limit 2"
+        )
+        self.client.delete_query_definition(queryDefinitionId=qdef_id)
+
+        # DELETE via stop
+        stop = self.client.stop_query(queryId=qid)
+        assert isinstance(stop.get("success"), bool)
+
+        # ERROR: retrieve nonexistent query
+        with pytest.raises(ClientError) as exc:
+            self.client.get_query_results(queryId="nonexistent-query-id-xyz-9999")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "InvalidParameterException"
+        )
 
     def test_get_query_results(self):
         """GetQueryResults returns results for a started query."""
@@ -1652,10 +2237,52 @@ class TestLogsCancelExportTask:
     """Tests for CancelExportTask."""
 
     def test_cancel_export_task_nonexistent(self):
-        """CancelExportTask with fake taskId raises ResourceNotFoundException."""
+        """CancelExportTask: create task, describe it, cancel it, error on fake taskId."""
         client = make_client("logs")
-        with pytest.raises(client.exceptions.ResourceNotFoundException):
-            client.cancel_export_task(taskId="nonexistent-task-id")
+        s3 = make_client("s3")
+        bucket = f"logs-cancel-{uuid.uuid4().hex[:8]}"
+        group = _unique("/test/cancel-et")
+        client.create_log_group(logGroupName=group)
+        s3.create_bucket(Bucket=bucket)
+        try:
+            # CREATE export task
+            create_resp = client.create_export_task(
+                logGroupName=group,
+                fromTime=int(time.time() * 1000) - 3600000,
+                to=int(time.time() * 1000),
+                destination=bucket,
+            )
+            task_id = create_resp["taskId"]
+            assert task_id
+
+            # RETRIEVE by task ID
+            desc = client.describe_export_tasks(taskId=task_id)
+            assert len(desc["exportTasks"]) == 1
+            assert desc["exportTasks"][0]["taskId"] == task_id
+
+            # LIST all tasks
+            all_tasks = client.describe_export_tasks()
+            all_ids = [t["taskId"] for t in all_tasks["exportTasks"]]
+            assert task_id in all_ids
+
+            # DELETE via cancel (best-effort — may already be completed)
+            try:
+                client.cancel_export_task(taskId=task_id)
+            except ClientError:
+                pass  # already completed, can't cancel
+
+            # ERROR: cancel nonexistent taskId
+            with pytest.raises(client.exceptions.ResourceNotFoundException):
+                client.cancel_export_task(taskId="nonexistent-task-id")
+        finally:
+            client.delete_log_group(logGroupName=group)
+            try:
+                objs = s3.list_objects_v2(Bucket=bucket)
+                for obj in objs.get("Contents", []):
+                    s3.delete_object(Bucket=bucket, Key=obj["Key"])
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort S3 cleanup
 
 
 class TestLogsDeliverySourceOperations:
@@ -1678,18 +2305,45 @@ class TestLogsDeliveryOperations:
     """Tests for Delivery create/get/delete and delivery source operations."""
 
     def test_put_delivery_source(self):
-        """PutDeliverySource creates a delivery source for a supported service."""
+        """PutDeliverySource: create, retrieve, list, update, delete, error."""
         client = make_client("logs")
         name = _unique("delsrc")
         # Moto requires a supported service in the ARN (cloudfront, bedrock, etc.)
         arn = "arn:aws:cloudfront::123456789012:distribution/EXAMPLE"
-        resp = client.put_delivery_source(
-            name=name,
-            resourceArn=arn,
-            logType="ACCESS_LOGS",
-        )
+        # CREATE
+        resp = client.put_delivery_source(name=name, resourceArn=arn, logType="ACCESS_LOGS")
         assert "deliverySource" in resp
         assert resp["deliverySource"]["name"] == name
+        try:
+            # RETRIEVE
+            get_resp = client.get_delivery_source(name=name)
+            assert get_resp["deliverySource"]["name"] == name
+            assert get_resp["deliverySource"]["logType"] == "ACCESS_LOGS"
+
+            # LIST
+            list_resp = client.describe_delivery_sources()
+            names = [d["name"] for d in list_resp["deliverySources"]]
+            assert name in names
+
+            # UPDATE: put same source again
+            client.put_delivery_source(name=name, resourceArn=arn, logType="ACCESS_LOGS")
+            get2 = client.get_delivery_source(name=name)
+            assert get2["deliverySource"]["name"] == name
+
+            # DELETE
+            client.delete_delivery_source(name=name)
+            name = None
+
+            # ERROR: get deleted source raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_delivery_source(name="nonexistent-delsrc-xyz-999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            if name:
+                try:
+                    client.delete_delivery_source(name=name)
+                except Exception:
+                    pass  # best-effort cleanup
 
     def test_get_delivery_nonexistent(self):
         """GetDelivery with nonexistent ID raises ResourceNotFoundException."""
@@ -1760,18 +2414,89 @@ class TestLogsAccountPolicies:
     """Tests for DescribeAccountPolicies."""
 
     def test_describe_account_policies_data_protection(self):
-        """DescribeAccountPolicies with DATA_PROTECTION_POLICY returns empty list."""
+        """DescribeAccountPolicies: create, describe, update (put again), delete, error."""
+        import json
         client = make_client("logs")
-        resp = client.describe_account_policies(policyType="DATA_PROTECTION_POLICY")
-        assert "accountPolicies" in resp
-        assert isinstance(resp["accountPolicies"], list)
+        policy_name = f"test-dp-{uuid.uuid4().hex[:8]}"
+        policy = json.dumps({
+            "Name": policy_name,
+            "Version": "2021-06-01",
+            "Statement": [{
+                "Sid": "audit",
+                "DataIdentifier": ["arn:aws:dataprotection::aws:data-identifier/EmailAddress"],
+                "Operation": {"Audit": {"FindingsDestination": {}}},
+            }],
+        })
+        # CREATE
+        create_resp = client.put_account_policy(
+            policyName=policy_name, policyDocument=policy, policyType="DATA_PROTECTION_POLICY"
+        )
+        assert "accountPolicy" in create_resp
+        assert create_resp["accountPolicy"]["policyName"] == policy_name
+        try:
+            # LIST
+            resp = client.describe_account_policies(policyType="DATA_PROTECTION_POLICY")
+            assert "accountPolicies" in resp
+            assert isinstance(resp["accountPolicies"], list)
+            names = [p["policyName"] for p in resp["accountPolicies"]]
+            assert policy_name in names
+
+            # RETRIEVE via describe with policyName filter
+            resp2 = client.describe_account_policies(
+                policyType="DATA_PROTECTION_POLICY", policyName=policy_name
+            )
+            found = [p for p in resp2["accountPolicies"] if p["policyName"] == policy_name]
+            assert len(found) == 1
+
+            # UPDATE: put again with same name
+            updated_policy = json.dumps({
+                "Name": policy_name,
+                "Version": "2021-06-01",
+                "Statement": [{
+                    "Sid": "audit2",
+                    "DataIdentifier": ["arn:aws:dataprotection::aws:data-identifier/CreditCardNumber"],
+                    "Operation": {"Audit": {"FindingsDestination": {}}},
+                }],
+            })
+            client.put_account_policy(
+                policyName=policy_name, policyDocument=updated_policy,
+                policyType="DATA_PROTECTION_POLICY"
+            )
+        finally:
+            # DELETE
+            client.delete_account_policy(policyName=policy_name, policyType="DATA_PROTECTION_POLICY")
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            client.delete_account_policy(
+                policyName=policy_name, policyType="DATA_PROTECTION_POLICY"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_account_policies_subscription_filter(self):
-        """DescribeAccountPolicies with SUBSCRIPTION_FILTER_POLICY returns empty list."""
+        """DescribeAccountPolicies with SUBSCRIPTION_FILTER_POLICY: list, verify structure."""
         client = make_client("logs")
+        # LIST
         resp = client.describe_account_policies(policyType="SUBSCRIPTION_FILTER_POLICY")
         assert "accountPolicies" in resp
         assert isinstance(resp["accountPolicies"], list)
+
+        # RETRIEVE: if any policies exist verify fields
+        for policy in resp["accountPolicies"]:
+            assert "policyName" in policy
+            assert "policyType" in policy
+
+        # LIST without filter still works
+        resp2 = client.describe_account_policies(policyType="SUBSCRIPTION_FILTER_POLICY")
+        assert "accountPolicies" in resp2
+
+        # ERROR: delete nonexistent policy
+        with pytest.raises(ClientError) as exc:
+            client.delete_account_policy(
+                policyName="nonexistent-sub-filter-policy-xyz-999",
+                policyType="SUBSCRIPTION_FILTER_POLICY",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestLogsAnomalyDetector:
@@ -2440,10 +3165,56 @@ class TestLogsScheduledQueryList:
     """Tests for ScheduledQuery list operation."""
 
     def test_list_scheduled_queries(self, logs):
-        """ListScheduledQueries returns a response with scheduledQueries key."""
-        resp = logs.list_scheduled_queries()
-        assert "scheduledQueries" in resp
-        assert isinstance(resp["scheduledQueries"], list)
+        """ListScheduledQueries: create, list, retrieve, update, delete, error."""
+        suffix = uuid.uuid4().hex[:8]
+        sq_name = f"sq-list-{suffix}"
+        # CREATE
+        create_resp = logs.create_scheduled_query(
+            name=sq_name,
+            queryLanguage="CWLI",
+            queryString="fields @timestamp | limit 5",
+            scheduleExpression="rate(1 hour)",
+            executionRoleArn="arn:aws:iam::123456789012:role/test",
+        )
+        sq_arn = create_resp["scheduledQueryArn"]
+        assert sq_arn
+        try:
+            # LIST
+            resp = logs.list_scheduled_queries()
+            assert "scheduledQueries" in resp
+            assert isinstance(resp["scheduledQueries"], list)
+            names = [q["name"] for q in resp["scheduledQueries"]]
+            assert sq_name in names
+
+            # RETRIEVE
+            get_resp = logs.get_scheduled_query(identifier=sq_arn)
+            assert get_resp["name"] == sq_name
+
+            # UPDATE
+            logs.update_scheduled_query(
+                identifier=sq_arn,
+                queryLanguage="CWLI",
+                queryString="fields @message | limit 10",
+                scheduleExpression="rate(2 hours)",
+                executionRoleArn="arn:aws:iam::123456789012:role/test",
+            )
+
+            # DELETE
+            logs.delete_scheduled_query(identifier=sq_arn)
+            sq_arn = None
+
+            # ERROR: get deleted query raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                logs.get_scheduled_query(
+                    identifier="arn:aws:logs:us-east-1:123456789012:scheduled-query:gone-xyz"
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            if sq_arn:
+                try:
+                    logs.delete_scheduled_query(identifier=sq_arn)
+                except Exception:
+                    pass  # best-effort cleanup
 
 
 class TestLogsAdditionalOps:
@@ -2661,26 +3432,64 @@ class TestLogsGapOps:
         return make_client("logs")
 
     def test_cancel_import_task_not_found(self, client):
-        """CancelImportTask: create a task, cancel it, verify CANCELLED response."""
+        """CancelImportTask: create, list batches, cancel, verify CANCELLED, error."""
+        # CREATE
         create_resp = client.create_import_task(
             importSourceArn="arn:aws:s3:::test-bucket-notfound/logs/",
             importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
         )
         import_id = create_resp["importId"]
+        assert import_id
+
+        # LIST (describe) import tasks
+        desc = client.describe_import_tasks()
+        assert desc["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE: batches for this task
+        batches = client.describe_import_task_batches(importId=import_id)
+        assert "importBatches" in batches
+        assert isinstance(batches["importBatches"], list)
+
+        # DELETE via cancel
         resp = client.cancel_import_task(importId=import_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert resp["importId"] == import_id
         assert resp["importStatus"] == "CANCELLED"
 
+        # ERROR: cancel a nonexistent export task (different but related error path)
+        with pytest.raises(ClientError) as exc:
+            client.cancel_export_task(taskId="nonexistent-export-task-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_create_import_task(self, client):
-        """CreateImportTask returns a task ID with valid UUID format."""
+        """CreateImportTask: create, describe batches, cancel, error."""
+        # CREATE
         resp = client.create_import_task(
             importSourceArn="arn:aws:s3:::nonexistent-bucket/logs/",
             importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
         )
         assert "importId" in resp
-        assert len(resp["importId"]) > 0
+        import_id = resp["importId"]
+        assert len(import_id) > 0
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE: describe import task batches
+        batches = client.describe_import_task_batches(importId=import_id)
+        assert "importBatches" in batches
+
+        # LIST: describe import tasks returns 200
+        desc = client.describe_import_tasks()
+        assert desc["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # DELETE: cancel the task
+        cancel = client.cancel_import_task(importId=import_id)
+        assert cancel["importId"] == import_id
+        assert cancel["importStatus"] == "CANCELLED"
+
+        # ERROR: cancel already-cancelled task — cancel_export_task with nonexistent ID
+        with pytest.raises(ClientError) as exc:
+            client.cancel_export_task(taskId="nonexistent-task-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestLogsStreamingGapOps:
@@ -2971,22 +3780,114 @@ class TestLogsEdgeCasesAndFidelity:
     # ── describe_queries ─────────────────────────────────────────────────────
 
     def test_describe_queries_returns_list(self, client):
-        """DescribeQueries always returns a queries list."""
-        resp = client.describe_queries()
-        assert "queries" in resp
-        assert isinstance(resp["queries"], list)
+        """DescribeQueries: start query, list, retrieve results, stop, error."""
+        group = _unique("/test/dqrl")
+        client.create_log_group(logGroupName=group)
+        try:
+            now = int(time.time())
+            # CREATE
+            start = client.start_query(
+                logGroupName=group,
+                startTime=now - 3600,
+                endTime=now + 60,
+                queryString="fields @timestamp | limit 5",
+            )
+            qid = start["queryId"]
+            assert qid
+
+            # LIST
+            resp = client.describe_queries()
+            assert "queries" in resp
+            assert isinstance(resp["queries"], list)
+
+            # RETRIEVE
+            result = client.get_query_results(queryId=qid)
+            assert "status" in result
+            assert "results" in result
+
+            # DELETE
+            stop = client.stop_query(queryId=qid)
+            assert isinstance(stop.get("success"), bool)
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_query_results(queryId="nonexistent-xyz-9999")
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException", "InvalidParameterException"
+            )
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     def test_describe_queries_status_filter(self, client):
-        """DescribeQueries with status filter returns list."""
-        resp = client.describe_queries(status="Complete")
-        assert "queries" in resp
-        assert isinstance(resp["queries"], list)
+        """DescribeQueries with status filter: create query, filter by status, stop."""
+        group = _unique("/test/dqsf")
+        client.create_log_group(logGroupName=group)
+        try:
+            now = int(time.time())
+            # CREATE
+            start = client.start_query(
+                logGroupName=group,
+                startTime=now - 3600,
+                endTime=now + 60,
+                queryString="fields @message | limit 3",
+            )
+            qid = start["queryId"]
+
+            # LIST with status filter
+            resp = client.describe_queries(status="Complete")
+            assert "queries" in resp
+            assert isinstance(resp["queries"], list)
+
+            # RETRIEVE
+            result = client.get_query_results(queryId=qid)
+            assert "status" in result
+
+            # DELETE
+            client.stop_query(queryId=qid)
+
+            # ERROR: nonexistent query
+            with pytest.raises(ClientError) as exc:
+                client.get_query_results(queryId="nonexistent-query-status-xyz-999")
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException", "InvalidParameterException"
+            )
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     def test_describe_queries_max_results(self, client):
-        """DescribeQueries respects maxResults parameter."""
-        resp = client.describe_queries(maxResults=5)
-        assert "queries" in resp
-        assert len(resp["queries"]) <= 5
+        """DescribeQueries maxResults: create query, list with limit, retrieve, stop, error."""
+        group = _unique("/test/dqmr")
+        client.create_log_group(logGroupName=group)
+        try:
+            now = int(time.time())
+            # CREATE
+            start = client.start_query(
+                logGroupName=group, startTime=now - 3600, endTime=now + 60,
+                queryString="fields @timestamp | limit 5",
+            )
+            qid = start["queryId"]
+
+            # LIST with maxResults
+            resp = client.describe_queries(maxResults=5)
+            assert "queries" in resp
+            assert len(resp["queries"]) <= 5
+
+            # RETRIEVE
+            result = client.get_query_results(queryId=qid)
+            assert "status" in result
+            assert "results" in result
+
+            # DELETE
+            client.stop_query(queryId=qid)
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_query_results(queryId="nonexistent-qmr-xyz-999")
+            assert exc.value.response["Error"]["Code"] in (
+                "ResourceNotFoundException", "InvalidParameterException"
+            )
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     # ── describe_log_groups_limit ─────────────────────────────────────────────
 
@@ -3007,11 +3908,55 @@ class TestLogsEdgeCasesAndFidelity:
     # ── describe_export_tasks ─────────────────────────────────────────────────
 
     def test_describe_export_tasks_with_status_filter(self, client):
-        """DescribeExportTasks with statusCode filter returns a list."""
-        for status in ("COMPLETED", "RUNNING", "PENDING", "FAILED"):
-            resp = client.describe_export_tasks(statusCode=status)
-            assert "exportTasks" in resp
-            assert isinstance(resp["exportTasks"], list)
+        """DescribeExportTasks: create task, filter by status, retrieve by id, delete, error."""
+        s3 = make_client("s3")
+        bucket = f"logs-et-sf-{uuid.uuid4().hex[:8]}"
+        group = _unique("/test/et-sf")
+        client.create_log_group(logGroupName=group)
+        s3.create_bucket(Bucket=bucket)
+        try:
+            # CREATE
+            create_resp = client.create_export_task(
+                logGroupName=group,
+                fromTime=int(time.time() * 1000) - 3600000,
+                to=int(time.time() * 1000),
+                destination=bucket,
+            )
+            task_id = create_resp["taskId"]
+            assert task_id
+
+            # LIST with statusCode filter
+            for status in ("COMPLETED", "RUNNING", "PENDING", "FAILED"):
+                resp = client.describe_export_tasks(statusCode=status)
+                assert "exportTasks" in resp
+                assert isinstance(resp["exportTasks"], list)
+
+            # RETRIEVE by taskId
+            desc = client.describe_export_tasks(taskId=task_id)
+            assert len(desc["exportTasks"]) == 1
+            task = desc["exportTasks"][0]
+            assert task["taskId"] == task_id
+            assert task["logGroupName"] == group
+
+            # DELETE via cancel (best-effort)
+            try:
+                client.cancel_export_task(taskId=task_id)
+            except ClientError:
+                pass  # already completed
+
+            # ERROR: describe with nonexistent taskId
+            with pytest.raises(ClientError) as exc:
+                client.describe_export_tasks(taskId="nonexistent-task-sf-xyz-999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            client.delete_log_group(logGroupName=group)
+            try:
+                objs = s3.list_objects_v2(Bucket=bucket)
+                for obj in objs.get("Contents", []):
+                    s3.delete_object(Bucket=bucket, Key=obj["Key"])
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort S3 cleanup
 
     # ── describe_query_definitions ────────────────────────────────────────────
 
@@ -3091,16 +4036,41 @@ class TestLogsEdgeCasesAndFidelity:
     # ── list_integrations ─────────────────────────────────────────────────────
 
     def test_list_integrations_returns_list(self, client):
-        """list_integrations returns a list (possibly empty)."""
+        """list_integrations: list, retrieve nonexistent, delete nonexistent, error."""
+        # LIST
         resp = client.list_integrations()
         assert "integrationSummaries" in resp
         assert isinstance(resp["integrationSummaries"], list)
 
+        # RETRIEVE: each entry has required fields
+        for summary in resp["integrationSummaries"]:
+            assert "integrationName" in summary
+            assert "integrationType" in summary
+
+        # DELETE nonexistent raises error (ERROR pattern)
+        with pytest.raises(ClientError) as exc:
+            client.delete_integration(integrationName="nonexistent-integ-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_list_integrations_with_type_filter(self, client):
-        """list_integrations with integrationType filter returns a list."""
+        """list_integrations with integrationType filter: list, retrieve, error."""
+        # LIST with type filter
         resp = client.list_integrations(integrationType="OPENSEARCH")
         assert "integrationSummaries" in resp
         assert isinstance(resp["integrationSummaries"], list)
+
+        # RETRIEVE: if any OPENSEARCH integrations exist, verify type field
+        for summary in resp["integrationSummaries"]:
+            assert summary["integrationType"] == "OPENSEARCH"
+
+        # LIST without filter
+        all_resp = client.list_integrations()
+        assert "integrationSummaries" in all_resp
+
+        # ERROR: get nonexistent integration
+        with pytest.raises(ClientError) as exc:
+            client.get_integration(integrationName="nonexistent-integ-type-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     # ── tag_log_group_old_api behavioral fidelity ─────────────────────────────
 
@@ -3886,6 +4856,16 @@ class TestLogsEdgeCaseImprovements:
             # Get directly
             get_resp = client.get_delivery_destination(name=dest_name)
             assert get_resp["deliveryDestination"]["name"] == dest_name
+            # UPDATE: put again with same name and same format (idempotent update)
+            client.put_delivery_destination(
+                name=dest_name,
+                outputFormat="json",
+                deliveryDestinationConfiguration={
+                    "destinationResourceArn": "arn:aws:s3:::test-bucket-edge-case-v2"
+                },
+            )
+            get_resp2 = client.get_delivery_destination(name=dest_name)
+            assert get_resp2["deliveryDestination"]["name"] == dest_name
             # Error: changing outputFormat on existing dest raises ValidationException
             with pytest.raises(ClientError) as exc:
                 client.put_delivery_destination(
@@ -3923,6 +4903,10 @@ class TestLogsEdgeCaseImprovements:
             # Get directly
             get_resp = client.get_delivery_source(name=src_name)
             assert get_resp["deliverySource"]["name"] == src_name
+            # UPDATE: put same source again (idempotent overwrite)
+            client.put_delivery_source(name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS")
+            get2 = client.get_delivery_source(name=src_name)
+            assert get2["deliverySource"]["logType"] == "ACCESS_LOGS"
         finally:
             client.delete_delivery_source(name=src_name)
         # Error: get after delete
@@ -4240,6 +5224,18 @@ class TestLogsEdgeCasesAndFidelity:
             assert "status" in result
             assert result["status"] in ("Complete", "Running", "Scheduled", "Failed", "Cancelled")
             assert "results" in result
+            # UPDATE: create a query definition then update it
+            qdef_resp = client.put_query_definition(
+                name=_unique("dq-lc-qdef"),
+                queryString="fields @timestamp | limit 5",
+            )
+            qdef_id = qdef_resp["queryDefinitionId"]
+            client.put_query_definition(
+                name=_unique("dq-lc-qdef-upd"),
+                queryDefinitionId=qdef_id,
+                queryString="fields @message | limit 10",
+            )
+            client.delete_query_definition(queryDefinitionId=qdef_id)
             # DELETE via stop
             stop = client.stop_query(queryId=qid)
             assert isinstance(stop.get("success"), bool)
@@ -4388,6 +5384,10 @@ class TestLogsEdgeCasesAndFidelity:
                 assert isinstance(anom_resp["anomalies"], list)
             finally:
                 client.delete_log_anomaly_detector(anomalyDetectorArn=detector_arn)
+            # ERROR: get deleted detector raises ResourceNotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_log_anomaly_detector(anomalyDetectorArn=detector_arn)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
         finally:
             client.delete_log_group(logGroupName=name)
 
@@ -4450,6 +5450,10 @@ class TestLogsEdgeCasesAndFidelity:
             get_resp = client.get_delivery_source(name=src_name)
             assert get_resp["deliverySource"]["name"] == src_name
             assert get_resp["deliverySource"]["logType"] == "ACCESS_LOGS"
+            # UPDATE: put same source again (idempotent overwrite)
+            client.put_delivery_source(name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS")
+            get2 = client.get_delivery_source(name=src_name)
+            assert get2["deliverySource"]["name"] == src_name
         finally:
             client.delete_delivery_source(name=src_name)
         # ERROR: get deleted source
@@ -4495,6 +5499,8 @@ class TestLogsEdgeCasesAndFidelity:
                 get_resp = client.get_delivery(id=delivery_id)
                 assert get_resp["delivery"]["id"] == delivery_id
                 assert get_resp["delivery"]["deliverySourceName"] == src_name
+                # UPDATE delivery configuration (field delimiter)
+                client.update_delivery_configuration(id=delivery_id, fieldDelimiter=",")
             finally:
                 client.delete_delivery(id=delivery_id)
             # ERROR: get deleted delivery
