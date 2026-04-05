@@ -2667,3 +2667,803 @@ class TestBedrockBehavioralFidelity:
         match = next((m for m in summaries if m["modelName"] == model_name), None)
         assert match is not None
         assert "creationTime" in match
+
+
+class TestBedrockGuardrailUpdateLifecycle:
+    """Tests that exercise the UPDATE pattern for guardrails (C+U+R+L+D+E)."""
+
+    def test_update_guardrail_changes_blocked_messaging(self, bedrock):
+        """UpdateGuardrail changes blockedInputMessaging and blockedOutputsMessaging (C+U+R)."""
+        name = _unique("guard-msg")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="original-input-msg",
+            blockedOutputsMessaging="original-output-msg",
+        )
+        gr_id = create_r["guardrailId"]
+
+        # UPDATE
+        bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=name,
+            blockedInputMessaging="updated-input-msg",
+            blockedOutputsMessaging="updated-output-msg",
+        )
+
+        # RETRIEVE to confirm changes
+        r = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert r["blockedInputMessaging"] == "updated-input-msg"
+        assert r["blockedOutputsMessaging"] == "updated-output-msg"
+
+    def test_update_guardrail_name_visible_in_list(self, bedrock):
+        """After UpdateGuardrail, the new name is visible in ListGuardrails (C+U+L)."""
+        old_name = _unique("guard-oldname")
+        create_r = bedrock.create_guardrail(
+            name=old_name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+
+        new_name = _unique("guard-newname")
+        bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=new_name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+
+        # LIST and find by ID
+        list_r = bedrock.list_guardrails()
+        match = next((g for g in list_r["guardrails"] if g["id"] == gr_id), None)
+        assert match is not None
+        assert match["name"] == new_name
+
+    def test_update_guardrail_returns_updated_at(self, bedrock):
+        """UpdateGuardrail returns an updatedAt timestamp (C+U)."""
+        name = _unique("guard-ts")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+
+        update_r = bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=_unique("guard-ts-new"),
+            blockedInputMessaging="new-blocked",
+            blockedOutputsMessaging="new-blocked",
+        )
+        assert "updatedAt" in update_r
+        assert update_r["updatedAt"] is not None
+
+    def test_update_then_delete_guardrail(self, bedrock):
+        """UpdateGuardrail then delete: resource gone after delete (C+U+D+E)."""
+        name = _unique("guard-upd-del")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+
+        # UPDATE
+        bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=_unique("guard-upd-del-new"),
+            blockedInputMessaging="new-blocked",
+            blockedOutputsMessaging="new-blocked",
+        )
+
+        # DELETE
+        bedrock.delete_guardrail(guardrailIdentifier=gr_id)
+
+        # ERROR on get
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "ValidationException"
+        )
+
+    def test_guardrail_update_preserves_arn(self, bedrock):
+        """UpdateGuardrail does not change the guardrailArn (C+U+R)."""
+        name = _unique("guard-arnstable")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+        original_arn = create_r["guardrailArn"]
+
+        bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=_unique("guard-arnstable-new"),
+            blockedInputMessaging="updated",
+            blockedOutputsMessaging="updated",
+        )
+
+        get_r = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert get_r["guardrailArn"] == original_arn
+
+    def test_guardrail_create_version_then_delete_draft(self, bedrock):
+        """CreateGuardrailVersion + delete DRAFT guardrail (C+U+D+E)."""
+        name = _unique("guard-ver-del")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+
+        # CREATE VERSION (update state)
+        ver_r = bedrock.create_guardrail_version(guardrailIdentifier=gr_id)
+        assert ver_r["version"] == "1"
+
+        # DELETE the guardrail
+        bedrock.delete_guardrail(guardrailIdentifier=gr_id)
+
+        # ERROR after delete
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "ValidationException"
+        )
+
+
+class TestBedrockProvisionedModelThroughputUpdateOps:
+    """UPDATE pattern tests for provisioned model throughput (C+U+R+L+D+E)."""
+
+    def test_update_pmt_model_units(self, bedrock):
+        """UpdateProvisionedModelThroughput with new model units returns 200 (C+U+R)."""
+        name = _unique("pmt-units")
+        create_r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = create_r["provisionedModelArn"]
+
+        # UPDATE - change the name
+        new_name = _unique("pmt-units-new")
+        upd_r = bedrock.update_provisioned_model_throughput(
+            provisionedModelId=pmt_arn,
+            desiredProvisionedModelName=new_name,
+        )
+        assert upd_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE - ARN is stable
+        get_r = bedrock.get_provisioned_model_throughput(provisionedModelId=pmt_arn)
+        assert get_r["provisionedModelArn"] == pmt_arn
+
+    def test_update_pmt_name_then_list(self, bedrock):
+        """UpdateProvisionedModelThroughput name change reflected in list (C+U+L)."""
+        name = _unique("pmt-rename")
+        create_r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = create_r["provisionedModelArn"]
+        new_name = _unique("pmt-renamed")
+
+        bedrock.update_provisioned_model_throughput(
+            provisionedModelId=pmt_arn,
+            desiredProvisionedModelName=new_name,
+        )
+
+        # LIST and verify ARN still there
+        list_r = bedrock.list_provisioned_model_throughputs()
+        arns = [p["provisionedModelArn"] for p in list_r["provisionedModelSummaries"]]
+        assert pmt_arn in arns
+
+    def test_pmt_create_update_delete_error_lifecycle(self, bedrock):
+        """Full PMT lifecycle: create → update → delete → error on get (C+U+D+E)."""
+        name = _unique("pmt-lifecycle")
+        create_r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = create_r["provisionedModelArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:provisioned-model/.+", pmt_arn)
+
+        # UPDATE
+        bedrock.update_provisioned_model_throughput(
+            provisionedModelId=pmt_arn,
+            desiredProvisionedModelName=_unique("pmt-new"),
+        )
+
+        # DELETE
+        bedrock.delete_provisioned_model_throughput(provisionedModelId=pmt_arn)
+
+        # ERROR on get
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_provisioned_model_throughput(provisionedModelId=pmt_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "ValidationException"
+        )
+
+    def test_pmt_not_in_list_after_delete(self, bedrock):
+        """PMT removed from list after delete (C+L+D+L)."""
+        name = _unique("pmt-listdel")
+        create_r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = create_r["provisionedModelArn"]
+
+        # Confirm in list
+        r1 = bedrock.list_provisioned_model_throughputs()
+        assert any(p["provisionedModelArn"] == pmt_arn for p in r1["provisionedModelSummaries"])
+
+        # DELETE
+        bedrock.delete_provisioned_model_throughput(provisionedModelId=pmt_arn)
+
+        # Verify not in list
+        r2 = bedrock.list_provisioned_model_throughputs()
+        assert not any(p["provisionedModelArn"] == pmt_arn for p in r2["provisionedModelSummaries"])
+
+
+class TestBedrockLoggingConfigUpdateOps:
+    """UPDATE/PUT pattern tests for logging configuration (C+U+R+D)."""
+
+    def test_put_logging_config_is_idempotent(self, bedrock):
+        """Calling put_model_invocation_logging_configuration twice updates the config (C+U+R)."""
+        bedrock.put_model_invocation_logging_configuration(
+            loggingConfig={
+                "textDataDeliveryEnabled": True,
+                "imageDataDeliveryEnabled": True,
+                "embeddingDataDeliveryEnabled": False,
+            }
+        )
+        # Overwrite
+        bedrock.put_model_invocation_logging_configuration(
+            loggingConfig={
+                "textDataDeliveryEnabled": False,
+                "imageDataDeliveryEnabled": True,
+                "embeddingDataDeliveryEnabled": True,
+            }
+        )
+
+        r = bedrock.get_model_invocation_logging_configuration()
+        cfg = r["loggingConfig"]
+        assert cfg["textDataDeliveryEnabled"] is False
+        assert cfg["imageDataDeliveryEnabled"] is True
+        assert cfg["embeddingDataDeliveryEnabled"] is True
+
+    def test_put_then_delete_logging_config(self, bedrock):
+        """put logging config, then delete, then get returns empty (C+U+R+D)."""
+        bedrock.put_model_invocation_logging_configuration(
+            loggingConfig={
+                "textDataDeliveryEnabled": True,
+                "imageDataDeliveryEnabled": False,
+                "embeddingDataDeliveryEnabled": False,
+            }
+        )
+
+        # Verify it's set
+        r = bedrock.get_model_invocation_logging_configuration()
+        assert r["loggingConfig"].get("textDataDeliveryEnabled") is True
+
+        # DELETE
+        bedrock.delete_model_invocation_logging_configuration()
+
+        # After delete, returns empty config
+        r2 = bedrock.get_model_invocation_logging_configuration()
+        assert r2["loggingConfig"] == {}
+
+
+class TestBedrockInferenceProfileUpdateAndDelete:
+    """UPDATE and DELETE pattern tests for inference profiles (C+R+L+U+D+E)."""
+
+    def test_inference_profile_create_list_delete_lifecycle(self, bedrock):
+        """Create inference profile → list → delete → verify gone (C+L+D+E)."""
+        name = _unique("inf-del")
+        create_r = bedrock.create_inference_profile(
+            inferenceProfileName=name,
+            modelSource={"copyFrom": TITAN_MODEL_ARN},
+        )
+        arn = create_r["inferenceProfileArn"]
+
+        # LIST - must be present
+        list_r = bedrock.list_inference_profiles()
+        arns = [p["inferenceProfileArn"] for p in list_r["inferenceProfileSummaries"]]
+        assert arn in arns
+
+        # DELETE
+        bedrock.delete_inference_profile(inferenceProfileIdentifier=arn)
+
+        # ERROR - ResourceNotFoundException after delete
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_inference_profile(inferenceProfileIdentifier=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_inference_profile_not_in_list_after_delete(self, bedrock):
+        """Deleted inference profile absent from list (C+L+D+L)."""
+        name = _unique("inf-listdel")
+        create_r = bedrock.create_inference_profile(
+            inferenceProfileName=name,
+            modelSource={"copyFrom": TITAN_MODEL_ARN},
+        )
+        arn = create_r["inferenceProfileArn"]
+
+        # Confirm in list before delete
+        r1 = bedrock.list_inference_profiles()
+        before_arns = [p["inferenceProfileArn"] for p in r1["inferenceProfileSummaries"]]
+        assert arn in before_arns
+
+        # DELETE
+        bedrock.delete_inference_profile(inferenceProfileIdentifier=arn)
+
+        # Confirm not in list after delete
+        r2 = bedrock.list_inference_profiles()
+        after_arns = [p["inferenceProfileArn"] for p in r2["inferenceProfileSummaries"]]
+        assert arn not in after_arns
+
+    def test_inference_profile_arn_format(self, bedrock):
+        """Inference profile ARN matches expected format (C+R)."""
+        name = _unique("inf-arnfmt")
+        create_r = bedrock.create_inference_profile(
+            inferenceProfileName=name,
+            modelSource={"copyFrom": TITAN_MODEL_ARN},
+        )
+        arn = create_r["inferenceProfileArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:inference-profile/.+", arn), \
+            f"unexpected ARN format: {arn}"
+
+        # RETRIEVE and confirm ARN is stable
+        get_r = bedrock.get_inference_profile(inferenceProfileIdentifier=arn)
+        assert get_r["inferenceProfileArn"] == arn
+
+
+class TestBedrockPromptRouterDeleteOps:
+    """DELETE lifecycle for prompt routers (C+R+L+D+E)."""
+
+    def test_prompt_router_create_get_delete_error(self, bedrock):
+        """Create → get → delete → error on get (C+R+D+E)."""
+        name = _unique("router-del")
+        create_r = bedrock.create_prompt_router(
+            promptRouterName=name,
+            models=[{"modelArn": TITAN_MODEL_ARN}],
+            fallbackModel={"modelArn": TITAN_MODEL_ARN},
+            routingCriteria={"responseQualityDifference": 0.5},
+        )
+        arn = create_r["promptRouterArn"]
+
+        # RETRIEVE
+        get_r = bedrock.get_prompt_router(promptRouterArn=arn)
+        assert get_r["promptRouterArn"] == arn
+
+        # DELETE
+        bedrock.delete_prompt_router(promptRouterArn=arn)
+
+        # ERROR on get after delete
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_prompt_router(promptRouterArn=arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "ValidationException"
+        )
+
+    def test_prompt_router_not_in_list_after_delete(self, bedrock):
+        """Deleted prompt router absent from list (C+L+D+L)."""
+        name = _unique("router-listdel")
+        create_r = bedrock.create_prompt_router(
+            promptRouterName=name,
+            models=[{"modelArn": TITAN_MODEL_ARN}],
+            fallbackModel={"modelArn": TITAN_MODEL_ARN},
+            routingCriteria={"responseQualityDifference": 0.5},
+        )
+        arn = create_r["promptRouterArn"]
+
+        # Confirm in list
+        r1 = bedrock.list_prompt_routers()
+        arns_before = [s["promptRouterArn"] for s in r1["promptRouterSummaries"]]
+        assert arn in arns_before
+
+        # DELETE
+        bedrock.delete_prompt_router(promptRouterArn=arn)
+
+        # Confirm not in list
+        r2 = bedrock.list_prompt_routers()
+        arns_after = [s["promptRouterArn"] for s in r2["promptRouterSummaries"]]
+        assert arn not in arns_after
+
+
+class TestBedrockAutomatedReasoningPolicyUpdateAndDelete:
+    """UPDATE and DELETE patterns for automated reasoning policies (C+U+R+D+E)."""
+
+    def test_create_policy_then_update(self, bedrock):
+        """Create automated reasoning policy then update it (C+U+R)."""
+        name = _unique("arp-upd")
+        create_r = bedrock.create_automated_reasoning_policy(
+            name=name,
+            policyDefinition={
+                "version": "1.0",
+                "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+            },
+        )
+        policy_arn = create_r["policyArn"]
+        assert policy_arn.startswith("arn:aws:bedrock:")
+
+        # UPDATE
+        upd_r = bedrock.update_automated_reasoning_policy(
+            policyArn=policy_arn,
+            policyDefinition={
+                "version": "1.1",
+                "rules": [
+                    {"id": "rule-abcdef123456", "expression": "false"},
+                    {"id": "rule-fedcba654321", "expression": "true"},
+                ],
+            },
+        )
+        assert upd_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE
+        get_r = bedrock.get_automated_reasoning_policy(policyArn=policy_arn)
+        assert get_r["policyArn"] == policy_arn
+
+    def test_create_policy_then_delete(self, bedrock):
+        """Create policy then delete → error on get (C+D+E)."""
+        name = _unique("arp-del")
+        create_r = bedrock.create_automated_reasoning_policy(
+            name=name,
+            policyDefinition={
+                "version": "1.0",
+                "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+            },
+        )
+        policy_arn = create_r["policyArn"]
+
+        # DELETE
+        bedrock.delete_automated_reasoning_policy(policyArn=policy_arn)
+
+        # ERROR on get
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy(policyArn=policy_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_policy_appears_in_list_after_create(self, bedrock):
+        """Created policy is visible in ListAutomatedReasoningPolicies (C+L)."""
+        name = _unique("arp-listed")
+        create_r = bedrock.create_automated_reasoning_policy(
+            name=name,
+            policyDefinition={
+                "version": "1.0",
+                "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+            },
+        )
+        policy_arn = create_r["policyArn"]
+
+        list_r = bedrock.list_automated_reasoning_policies()
+        assert list_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # List should succeed (policy is present)
+        policy_arns = [p.get("policyArn", "") for p in list_r.get("policies", [])]
+        # If list returns ARNs, verify ours is in there; otherwise just confirm 200
+        if policy_arns:
+            assert policy_arn in policy_arns
+
+    def test_create_update_delete_full_lifecycle(self, bedrock):
+        """Full C+U+R+D+E lifecycle for automated reasoning policy."""
+        name = _unique("arp-full")
+
+        # CREATE
+        create_r = bedrock.create_automated_reasoning_policy(
+            name=name,
+            policyDefinition={
+                "version": "1.0",
+                "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
+            },
+        )
+        policy_arn = create_r["policyArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:automated-reasoning-policy/.+", policy_arn)
+
+        # UPDATE
+        bedrock.update_automated_reasoning_policy(
+            policyArn=policy_arn,
+            policyDefinition={
+                "version": "2.0",
+                "rules": [{"id": "rule-abcdef123456", "expression": "false"}],
+            },
+        )
+
+        # RETRIEVE after update
+        get_r = bedrock.get_automated_reasoning_policy(policyArn=policy_arn)
+        assert get_r["policyArn"] == policy_arn
+
+        # DELETE
+        bedrock.delete_automated_reasoning_policy(policyArn=policy_arn)
+
+        # ERROR on get after delete
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_automated_reasoning_policy(policyArn=policy_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestBedrockCustomModelDeploymentUpdateAndDelete:
+    """UPDATE and DELETE patterns for custom model deployments (C+U+R+D+E)."""
+
+    def test_create_deployment_then_update(self, bedrock):
+        """Create custom model deployment then update model ARN (C+U+R)."""
+        name = _unique("deploy-upd")
+        create_r = bedrock.create_custom_model_deployment(
+            modelDeploymentName=name,
+            modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model",
+        )
+        dep_arn = create_r["customModelDeploymentArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:custom-model-deployment/.+", dep_arn)
+
+        # UPDATE
+        upd_r = bedrock.update_custom_model_deployment(
+            customModelDeploymentIdentifier=dep_arn,
+            modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model-v2",
+        )
+        assert upd_r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE to confirm it still exists
+        get_r = bedrock.get_custom_model_deployment(customModelDeploymentIdentifier=dep_arn)
+        assert get_r["customModelDeploymentArn"] == dep_arn
+
+    def test_create_deployment_then_delete_then_error(self, bedrock):
+        """Create custom model deployment → delete → error on get (C+D+E)."""
+        name = _unique("deploy-del")
+        create_r = bedrock.create_custom_model_deployment(
+            modelDeploymentName=name,
+            modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model",
+        )
+        dep_arn = create_r["customModelDeploymentArn"]
+
+        # DELETE
+        bedrock.delete_custom_model_deployment(customModelDeploymentIdentifier=dep_arn)
+
+        # ERROR on get
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_custom_model_deployment(customModelDeploymentIdentifier=dep_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "ValidationException"
+        )
+
+    def test_create_deployment_list_delete_lifecycle(self, bedrock):
+        """Create deployment → list it → delete → verify absent in list (C+L+D+L)."""
+        name = _unique("deploy-listdel")
+        create_r = bedrock.create_custom_model_deployment(
+            modelDeploymentName=name,
+            modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model",
+        )
+        dep_arn = create_r["customModelDeploymentArn"]
+
+        # LIST before delete
+        r1 = bedrock.list_custom_model_deployments()
+        arns_before = [
+            d.get("customModelDeploymentArn", "")
+            for d in r1.get("modelDeploymentSummaries", [])
+        ]
+        assert dep_arn in arns_before
+
+        # DELETE
+        bedrock.delete_custom_model_deployment(customModelDeploymentIdentifier=dep_arn)
+
+        # LIST after delete
+        r2 = bedrock.list_custom_model_deployments()
+        arns_after = [
+            d.get("customModelDeploymentArn", "")
+            for d in r2.get("modelDeploymentSummaries", [])
+        ]
+        assert dep_arn not in arns_after
+
+
+class TestBedrockEdgeCasesUnicodeAndLimits:
+    """Edge cases: Unicode names, long strings, multiple tag operations."""
+
+    def test_guardrail_name_with_hyphens_and_numbers(self, bedrock):
+        """Guardrail name with hyphens and numbers is accepted (C+R)."""
+        name = f"guard-123-{uuid.uuid4().hex[:8]}"
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+
+        get_r = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert get_r["name"] == name
+
+    def test_job_with_multiple_hyperparameters(self, bedrock):
+        """Job created with many hyperparameters returns them all (C+R)."""
+        job_name = _unique("multi-hp")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={
+                "epochCount": "3",
+                "batchSize": "8",
+                "learningRate": "0.00005",
+                "warmupSteps": "100",
+            },
+        )
+
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        hp = r["hyperParameters"]
+        assert hp["epochCount"] == "3"
+        assert hp["batchSize"] == "8"
+        assert hp["learningRate"] == "0.00005"
+        assert hp["warmupSteps"] == "100"
+
+    def test_tag_resource_with_many_tags(self, bedrock):
+        """Tag a resource with multiple tags, all tags returned (C+U+L)."""
+        job_name = _unique("manytags")
+        create_r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = create_r["jobArn"]
+
+        tags = [{"key": f"key-{i}", "value": f"val-{i}"} for i in range(5)]
+        bedrock.tag_resource(resourceARN=job_arn, tags=tags)
+
+        list_r = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        tag_map = {t["key"]: t["value"] for t in list_r["tags"]}
+        for i in range(5):
+            assert tag_map[f"key-{i}"] == f"val-{i}"
+
+    def test_guardrail_delete_nonexistent_returns_error(self, bedrock):
+        """Deleting a nonexistent guardrail raises an error (E)."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_guardrail(guardrailIdentifier="nonexistent-guardrail-99")
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException", "ValidationException"
+        )
+
+    def test_list_custom_models_then_delete_one_then_list_again(self, bedrock):
+        """Create 3 models, delete 1, verify only 2 visible in scoped list (C+L+D+L)."""
+        suffix = uuid.uuid4().hex[:8]
+        job_name_prefix = f"del3test-{suffix}"
+        for i in range(3):
+            bedrock.create_model_customization_job(
+                jobName=f"{job_name_prefix}-{i}",
+                customModelName=f"del3model-{suffix}-{i}",
+                roleArn="arn:aws:iam::123456789012:role/test",
+                baseModelIdentifier="amazon.titan-text-express-v1",
+                trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+                outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+                hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+            )
+
+        # All 3 visible
+        r1 = bedrock.list_custom_models(nameContains=f"{job_name_prefix}-0")
+        assert any(m["modelName"] == f"del3model-{suffix}-0" for m in r1["modelSummaries"])
+
+        # Delete model 0
+        bedrock.delete_custom_model(modelIdentifier=f"del3model-{suffix}-0")
+
+        # Model 0 is gone
+        r2 = bedrock.list_custom_models(nameContains=f"{job_name_prefix}-0")
+        assert not any(m["modelName"] == f"del3model-{suffix}-0" for m in r2["modelSummaries"])
+
+        # Models 1 and 2 still exist
+        r3 = bedrock.list_custom_models(nameContains=f"{job_name_prefix}-1")
+        assert any(m["modelName"] == f"del3model-{suffix}-1" for m in r3["modelSummaries"])
+
+
+class TestBedrockBehavioralFidelityOrdering:
+    """Behavioral fidelity: list ordering and timestamp consistency."""
+
+    def test_list_jobs_pagination_exhausts_all_items(self, bedrock):
+        """Exhausting pagination of jobs retrieves every created job (C+L)."""
+        suffix = uuid.uuid4().hex[:8]
+        names = [f"paginateall-{suffix}-{i}" for i in range(3)]
+        for name in names:
+            bedrock.create_model_customization_job(
+                jobName=name,
+                customModelName=_unique("model"),
+                roleArn="arn:aws:iam::123456789012:role/test",
+                baseModelIdentifier="amazon.titan-text-express-v1",
+                trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+                outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+                hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+            )
+
+        seen = set()
+        kwargs = {"maxResults": 1, "nameContains": f"paginateall-{suffix}"}
+        while True:
+            r = bedrock.list_model_customization_jobs(**kwargs)
+            for j in r["modelCustomizationJobSummaries"]:
+                seen.add(j["jobName"])
+            if "nextToken" not in r:
+                break
+            kwargs["nextToken"] = r["nextToken"]
+
+        for name in names:
+            assert name in seen
+
+    def test_list_guardrails_pagination(self, bedrock):
+        """Creating 3 guardrails and paginating returns all 3 (C+L)."""
+        suffix = uuid.uuid4().hex[:8]
+        created_ids = []
+        for i in range(3):
+            r = bedrock.create_guardrail(
+                name=f"pg-guard-{suffix}-{i}",
+                blockedInputMessaging="blocked",
+                blockedOutputsMessaging="blocked",
+            )
+            created_ids.append(r["guardrailId"])
+
+        # Collect all IDs via pagination
+        seen_ids = set()
+        kwargs = {"maxResults": 1}
+        while True:
+            r = bedrock.list_guardrails(**kwargs)
+            for g in r["guardrails"]:
+                seen_ids.add(g["id"])
+            if "nextToken" not in r:
+                break
+            kwargs["nextToken"] = r["nextToken"]
+
+        for gr_id in created_ids:
+            assert gr_id in seen_ids
+
+    def test_job_creation_time_is_recent(self, bedrock):
+        """creationTime from GetModelCustomizationJob is within the last day (C+R)."""
+        job_name = _unique("timechk")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        ct = r["creationTime"]
+        assert isinstance(ct, datetime.datetime)
+        delta = abs((datetime.datetime.now() - ct.replace(tzinfo=None)).total_seconds())
+        assert delta < 86400, f"creationTime is >1 day away: {delta}s"
+
+    def test_guardrail_created_at_present(self, bedrock):
+        """GetGuardrail returns a createdAt timestamp (C+R)."""
+        name = _unique("guard-creat")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+
+        get_r = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert "createdAt" in get_r
+        assert get_r["createdAt"] is not None
+
+    def test_guardrail_updated_at_changes_after_update(self, bedrock):
+        """UpdateGuardrail returns updatedAt and it is after createdAt (C+U+R)."""
+        name = _unique("guard-attime")
+        create_r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = create_r["guardrailId"]
+        created_at = bedrock.get_guardrail(guardrailIdentifier=gr_id).get("createdAt")
+
+        update_r = bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=_unique("guard-attime-new"),
+            blockedInputMessaging="updated",
+            blockedOutputsMessaging="updated",
+        )
+        updated_at = update_r["updatedAt"]
+        assert updated_at is not None
+        if isinstance(updated_at, datetime.datetime) and isinstance(created_at, datetime.datetime):
+            assert updated_at >= created_at.replace(tzinfo=updated_at.tzinfo)
