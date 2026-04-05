@@ -4290,3 +4290,308 @@ class TestQuickSightUpdateUserFidelity:
             assert describe_resp["User"]["Role"] == "AUTHOR"
         finally:
             quicksight.delete_user(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name)
+
+
+class TestQuickSightPredictQAEdgeCases:
+    """Edge cases for predict_qa_results."""
+
+    def test_predict_qa_results_unicode_query(self, quicksight):
+        resp = quicksight.predict_qa_results(
+            AwsAccountId=ACCOUNT_ID,
+            QueryText="収益を表示",
+        )
+        assert resp["Status"] == 200
+
+    def test_predict_qa_results_long_query(self, quicksight):
+        long_query = "revenue " * 25  # ~200 chars
+        resp = quicksight.predict_qa_results(
+            AwsAccountId=ACCOUNT_ID,
+            QueryText=long_query,
+        )
+        assert resp["Status"] == 200
+        assert "RequestId" in resp
+
+    def test_predict_qa_results_returns_request_id(self, quicksight):
+        resp = quicksight.predict_qa_results(
+            AwsAccountId=ACCOUNT_ID,
+            QueryText="show me sales",
+        )
+        assert "RequestId" in resp
+        assert isinstance(resp["RequestId"], str)
+        assert len(resp["RequestId"]) > 0
+
+
+class TestQuickSightDataSourcesPagination:
+    """Pagination behavioral tests for list_data_sources."""
+
+    def _create_data_source(self, quicksight, ds_id, name):
+        quicksight.create_data_source(
+            AwsAccountId=ACCOUNT_ID,
+            DataSourceId=ds_id,
+            Name=name,
+            Type="S3",
+            DataSourceParameters={
+                "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+            },
+        )
+
+    def test_list_data_sources_all_visible_after_create(self, quicksight):
+        ids = [_unique("ds-all") for _ in range(3)]
+        try:
+            for i, ds_id in enumerate(ids):
+                self._create_data_source(quicksight, ds_id, f"DS All {i}")
+            resp = quicksight.list_data_sources(AwsAccountId=ACCOUNT_ID)
+            found_ids = [ds["DataSourceId"] for ds in resp["DataSources"]]
+            for ds_id in ids:
+                assert ds_id in found_ids
+        finally:
+            for ds_id in ids:
+                try:
+                    quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+                except Exception:
+                    pass
+
+
+class TestQuickSightAccountSettingsEdgeCases:
+    """Behavioral fidelity for account settings field types and persistence."""
+
+    def test_describe_account_settings_field_types(self, quicksight):
+        resp = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        settings = resp["AccountSettings"]
+        assert isinstance(settings["DefaultNamespace"], str)
+        assert isinstance(settings["Edition"], str)
+        assert isinstance(settings["PublicSharingEnabled"], bool)
+
+    def test_update_account_settings_persists_namespace(self, quicksight):
+        quicksight.update_account_settings(
+            AwsAccountId=ACCOUNT_ID,
+            DefaultNamespace="default",
+        )
+        resp = quicksight.describe_account_settings(AwsAccountId=ACCOUNT_ID)
+        assert resp["AccountSettings"]["DefaultNamespace"] == "default"
+
+
+class TestQuickSightDashboardListEdgeCases:
+    """Behavioral fidelity for dashboard list summaries."""
+
+    def _create_dashboard(self, quicksight, dash_id, name):
+        quicksight.create_dashboard(
+            AwsAccountId=ACCOUNT_ID,
+            DashboardId=dash_id,
+            Name=name,
+            SourceEntity={
+                "SourceTemplate": {
+                    "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                    "DataSetReferences": [
+                        {
+                            "DataSetPlaceholder": "ph",
+                            "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                        }
+                    ],
+                }
+            },
+        )
+
+    def test_list_dashboards_summary_contains_arn_and_name(self, quicksight):
+        dash_id = _unique("dash-arn")
+        try:
+            self._create_dashboard(quicksight, dash_id, "ARN Test Dashboard")
+            resp = quicksight.list_dashboards(AwsAccountId=ACCOUNT_ID)
+            summaries = {d["DashboardId"]: d for d in resp["DashboardSummaryList"]}
+            assert dash_id in summaries
+            summary = summaries[dash_id]
+            assert "Arn" in summary
+            assert summary["Arn"].startswith("arn:aws:quicksight:")
+            assert "Name" in summary
+        finally:
+            try:
+                quicksight.delete_dashboard(AwsAccountId=ACCOUNT_ID, DashboardId=dash_id)
+            except Exception:
+                pass
+
+    def test_list_dashboards_summary_arn_contains_account_id(self, quicksight):
+        dash_id = _unique("dash-acct")
+        try:
+            self._create_dashboard(quicksight, dash_id, "Account ID Test Dashboard")
+            resp = quicksight.list_dashboards(AwsAccountId=ACCOUNT_ID)
+            summaries = {d["DashboardId"]: d for d in resp["DashboardSummaryList"]}
+            assert dash_id in summaries
+            assert ACCOUNT_ID in summaries[dash_id]["Arn"]
+        finally:
+            try:
+                quicksight.delete_dashboard(AwsAccountId=ACCOUNT_ID, DashboardId=dash_id)
+            except Exception:
+                pass
+
+
+class TestQuickSightGroupsEdgeCases:
+    """Behavioral fidelity for group records."""
+
+    def test_list_groups_each_has_arn(self, quicksight):
+        group_name = _unique("grp-arn")
+        quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+        )
+        try:
+            resp = quicksight.list_groups(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE)
+            groups = {g["GroupName"]: g for g in resp["GroupList"]}
+            assert group_name in groups
+            assert "Arn" in groups[group_name]
+            assert len(groups[group_name]["Arn"]) > 0
+        finally:
+            quicksight.delete_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+
+    def test_create_group_with_description(self, quicksight):
+        group_name = _unique("grp-desc")
+        quicksight.create_group(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            GroupName=group_name,
+            Description="A test group",
+        )
+        try:
+            resp = quicksight.describe_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+            assert resp["Group"]["Description"] == "A test group"
+        finally:
+            quicksight.delete_group(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, GroupName=group_name
+            )
+
+
+class TestQuickSightUsersEdgeCases:
+    """Behavioral fidelity for user records."""
+
+    def test_list_users_each_has_email(self, quicksight):
+        user_name = _unique("usr-email")
+        email = f"{user_name}@example.com"
+        quicksight.register_user(
+            AwsAccountId=ACCOUNT_ID,
+            Namespace=NAMESPACE,
+            Email=email,
+            IdentityType="QUICKSIGHT",
+            UserRole="READER",
+            UserName=user_name,
+        )
+        try:
+            resp = quicksight.list_users(AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE)
+            # list_users returns Arn, Email, Role etc. (not UserName) — find by email
+            matching = [u for u in resp["UserList"] if u.get("Email") == email]
+            assert len(matching) == 1
+            assert "Email" in matching[0]
+        finally:
+            quicksight.delete_user(
+                AwsAccountId=ACCOUNT_ID, Namespace=NAMESPACE, UserName=user_name
+            )
+
+
+
+class TestQuickSightAnalysesPagination:
+    """Pagination behavioral tests for list_analyses."""
+
+    def test_list_analyses_with_multiple(self, quicksight):
+        aids = [_unique("an") for _ in range(3)]
+        try:
+            for aid in aids:
+                quicksight.create_analysis(
+                    AwsAccountId=ACCOUNT_ID,
+                    AnalysisId=aid,
+                    Name=f"Analysis {aid}",
+                    SourceEntity={
+                        "SourceTemplate": {
+                            "Arn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:template/fake-tmpl",
+                            "DataSetReferences": [
+                                {
+                                    "DataSetPlaceholder": "ph",
+                                    "DataSetArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:dataset/ds",
+                                }
+                            ],
+                        }
+                    },
+                )
+            resp = quicksight.list_analyses(AwsAccountId=ACCOUNT_ID)
+            found_ids = [a["AnalysisId"] for a in resp["AnalysisSummaryList"]]
+            for aid in aids:
+                assert aid in found_ids
+        finally:
+            for aid in aids:
+                try:
+                    quicksight.delete_analysis(AwsAccountId=ACCOUNT_ID, AnalysisId=aid)
+                except Exception:
+                    pass
+
+
+class TestQuickSightDataSetsPagination:
+    """Pagination behavioral tests for list_data_sets."""
+
+    def test_list_data_sets_with_multiple(self, quicksight):
+        ds_id = _unique("ds-base")
+        dataset_ids = [_unique("dst") for _ in range(2)]
+        try:
+            quicksight.create_data_source(
+                AwsAccountId=ACCOUNT_ID,
+                DataSourceId=ds_id,
+                Name="Base DataSource",
+                Type="S3",
+                DataSourceParameters={
+                    "S3Parameters": {"ManifestFileLocation": {"Bucket": "b", "Key": "k"}}
+                },
+            )
+            for did in dataset_ids:
+                quicksight.create_data_set(
+                    AwsAccountId=ACCOUNT_ID,
+                    DataSetId=did,
+                    Name=f"DataSet {did}",
+                    ImportMode="SPICE",
+                    PhysicalTableMap={
+                        "t1": {
+                            "S3Source": {
+                                "DataSourceArn": f"arn:aws:quicksight:us-east-1:{ACCOUNT_ID}:datasource/{ds_id}",
+                                "InputColumns": [{"Name": "col1", "Type": "STRING"}],
+                            }
+                        }
+                    },
+                )
+            resp = quicksight.list_data_sets(AwsAccountId=ACCOUNT_ID)
+            found_ids = [d["DataSetId"] for d in resp["DataSetSummaries"]]
+            for did in dataset_ids:
+                assert did in found_ids
+        finally:
+            for did in dataset_ids:
+                try:
+                    quicksight.delete_data_set(AwsAccountId=ACCOUNT_ID, DataSetId=did)
+                except Exception:
+                    pass
+            try:
+                quicksight.delete_data_source(AwsAccountId=ACCOUNT_ID, DataSourceId=ds_id)
+            except Exception:
+                pass
+
+
+class TestQuickSightFoldersPagination:
+    """Pagination behavioral tests for list_folders."""
+
+    def test_list_folders_with_multiple(self, quicksight):
+        folder_ids = [_unique("fld") for _ in range(3)]
+        try:
+            for fid in folder_ids:
+                quicksight.create_folder(
+                    AwsAccountId=ACCOUNT_ID,
+                    FolderId=fid,
+                    Name=f"Folder {fid}",
+                    FolderType="SHARED",
+                )
+            resp = quicksight.list_folders(AwsAccountId=ACCOUNT_ID)
+            found_ids = [f["FolderId"] for f in resp["FolderSummaryList"]]
+            for fid in folder_ids:
+                assert fid in found_ids
+        finally:
+            for fid in folder_ids:
+                try:
+                    quicksight.delete_folder(AwsAccountId=ACCOUNT_ID, FolderId=fid)
+                except Exception:
+                    pass
+
