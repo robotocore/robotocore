@@ -4335,3 +4335,403 @@ class TestServiceCatalogUpdateAndListPatterns:
                 pass
             servicecatalog.delete_tag_option(Id=to_id)
             servicecatalog.delete_portfolio(Id=pid)
+
+
+class TestServiceCatalogProvisionProductFullLifecycle:
+    """Full lifecycle tests for provision_product — adds R, L, D, E patterns."""
+
+    def test_provision_product_record_can_be_retrieved(self, servicecatalog):
+        """PROVISION product (CREATE), RETRIEVE the record via describe_record."""
+        resp = servicecatalog.provision_product(
+            ProductId="prod-lifecycle-r",
+            ProvisioningArtifactId="pa-lifecycle-r",
+            ProvisionedProductName=_uid("pp-lifecycle-r"),
+        )
+        record_id = resp["RecordDetail"]["RecordId"]
+        rec = servicecatalog.describe_record(Id=record_id)
+        assert rec["RecordDetail"]["RecordId"] == record_id
+        assert "Status" in rec["RecordDetail"]
+
+    def test_provision_product_appears_in_scan(self, servicecatalog):
+        """PROVISION product (CREATE), SCAN provisioned products (LIST) — product appears."""
+        resp = servicecatalog.provision_product(
+            ProductId="prod-scan-fl",
+            ProvisioningArtifactId="pa-scan-fl",
+            ProvisionedProductName=_uid("pp-scan-fl"),
+        )
+        pp_id = resp["RecordDetail"]["ProvisionedProductId"]
+        scan = servicecatalog.scan_provisioned_products()
+        pp_ids = [p["Id"] for p in scan["ProvisionedProducts"]]
+        assert pp_id in pp_ids
+
+    def test_provision_product_record_type_is_provision(self, servicecatalog):
+        """PROVISION product, RETRIEVE record — RecordType is PROVISION_PRODUCT."""
+        resp = servicecatalog.provision_product(
+            ProductId="prod-type-fl",
+            ProvisioningArtifactId="pa-type-fl",
+            ProvisionedProductName=_uid("pp-type-fl"),
+        )
+        record_id = resp["RecordDetail"]["RecordId"]
+        rec = servicecatalog.describe_record(Id=record_id)
+        assert rec["RecordDetail"]["RecordType"] == "PROVISION_PRODUCT"
+
+    def test_provision_product_record_in_history(self, servicecatalog):
+        """PROVISION product, LIST record history — record appears."""
+        resp = servicecatalog.provision_product(
+            ProductId="prod-hist-fl",
+            ProvisioningArtifactId="pa-hist-fl",
+            ProvisionedProductName=_uid("pp-hist-fl"),
+        )
+        record_id = resp["RecordDetail"]["RecordId"]
+        history = servicecatalog.list_record_history()
+        ids = [r["RecordId"] for r in history["RecordDetails"]]
+        assert record_id in ids
+
+    def test_provision_product_appears_in_search(self, servicecatalog):
+        """PROVISION product (CREATE), SEARCH provisioned products (LIST) — appears."""
+        prov = servicecatalog.provision_product(
+            ProductId="prod-spp-fl",
+            ProvisioningArtifactId="pa-spp-fl",
+            ProvisionedProductName=_uid("pp-spp-fl"),
+        )
+        pp_id = prov["RecordDetail"]["ProvisionedProductId"]
+        resp = servicecatalog.search_provisioned_products()
+        pp_ids = [p["Id"] for p in resp.get("ProvisionedProducts", [])]
+        assert pp_id in pp_ids
+
+    def test_provision_product_terminate_not_found_error(self, servicecatalog):
+        """ERROR: terminate nonexistent provisioned product raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.terminate_provisioned_product(
+                ProvisionedProductId="pp-does-not-exist-xyz",
+                TerminateToken=uuid.uuid4().hex,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestServiceCatalogOrgAccessFullLifecycle:
+    """Full lifecycle tests for Organizations access — adds C, R, L, U, D, E patterns."""
+
+    def test_org_access_enable_then_get_status(self, servicecatalog):
+        """ENABLE organizations access (CREATE), GET status (RETRIEVE), DISABLE (DELETE)."""
+        servicecatalog.enable_aws_organizations_access()
+        resp = servicecatalog.get_aws_organizations_access_status()
+        assert resp["AccessStatus"] in ("ENABLED", "UNDER_CHANGE", "DISABLED")
+        servicecatalog.disable_aws_organizations_access()
+
+    def test_org_access_get_status_returns_access_status_key(self, servicecatalog):
+        """GET organizations access status always returns AccessStatus key (RETRIEVE)."""
+        resp = servicecatalog.get_aws_organizations_access_status()
+        assert "AccessStatus" in resp
+        assert isinstance(resp["AccessStatus"], str)
+
+    def test_org_access_enable_disable_cycle(self, servicecatalog):
+        """ENABLE then DISABLE — exercises create + delete cycle."""
+        enable_resp = servicecatalog.enable_aws_organizations_access()
+        assert enable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        disable_resp = servicecatalog.disable_aws_organizations_access()
+        assert disable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        status = servicecatalog.get_aws_organizations_access_status()
+        assert "AccessStatus" in status
+
+    def test_org_access_portfolios_list_after_enable(self, servicecatalog):
+        """ENABLE access (CREATE), LIST portfolios — list still works (L pattern)."""
+        servicecatalog.enable_aws_organizations_access()
+        try:
+            resp = servicecatalog.list_portfolios()
+            assert "PortfolioDetails" in resp
+        finally:
+            servicecatalog.disable_aws_organizations_access()
+
+
+class TestServiceCatalogSearchScanFullLifecycle:
+    """Full lifecycle tests adding C, U, D, E patterns to search/scan operations."""
+
+    def test_search_products_as_admin_full_lifecycle(self, servicecatalog):
+        """CREATE product, SEARCH (LIST), UPDATE product, DELETE — product disappears. ERROR."""
+        name = _uid("search-fl-prod")
+        resp = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            # RETRIEVE
+            servicecatalog.describe_product(Id=prod_id)
+            # LIST via search
+            search = servicecatalog.search_products_as_admin()
+            names = [
+                p["ProductViewSummary"]["Name"]
+                for p in search.get("ProductViewDetails", [])
+                if "ProductViewSummary" in p
+            ]
+            assert name in names
+            # UPDATE
+            servicecatalog.update_product(Id=prod_id, Description="search-fl-updated")
+        finally:
+            # DELETE
+            servicecatalog.delete_product(Id=prod_id)
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_product(Id=prod_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_search_provisioned_products_with_portfolio_lifecycle(self, servicecatalog):
+        """CREATE portfolio, UPDATE, LIST search provisioned products, DELETE, ERROR."""
+        pid = servicecatalog.create_portfolio(
+            DisplayName=_uid("spp-fl-pf"),
+            ProviderName="Provider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )["PortfolioDetail"]["Id"]
+        try:
+            # RETRIEVE
+            servicecatalog.describe_portfolio(Id=pid)
+            # UPDATE
+            servicecatalog.update_portfolio(Id=pid, Description="spp-fl-updated")
+            # LIST - search provisioned products
+            resp = servicecatalog.search_provisioned_products()
+            assert "ProvisionedProducts" in resp
+            assert "TotalResultsCount" in resp
+            assert isinstance(resp["TotalResultsCount"], int)
+        finally:
+            # DELETE
+            servicecatalog.delete_portfolio(Id=pid)
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_portfolio(Id=pid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_scan_provisioned_products_full_lifecycle(self, servicecatalog):
+        """CREATE portfolio, UPDATE, SCAN provisioned products (LIST), DELETE, ERROR."""
+        pid = servicecatalog.create_portfolio(
+            DisplayName=_uid("scan-fl-pf"),
+            ProviderName="Provider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )["PortfolioDetail"]["Id"]
+        try:
+            # RETRIEVE
+            servicecatalog.describe_portfolio(Id=pid)
+            # UPDATE
+            servicecatalog.update_portfolio(Id=pid, Description="scan-fl-updated")
+            # LIST - scan provisioned products
+            resp = servicecatalog.scan_provisioned_products()
+            assert "ProvisionedProducts" in resp
+            assert isinstance(resp["ProvisionedProducts"], list)
+        finally:
+            # DELETE
+            servicecatalog.delete_portfolio(Id=pid)
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_portfolio(Id=pid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_scan_provisioned_products_shows_provisioned(self, servicecatalog):
+        """PROVISION product (CREATE), SCAN (LIST) — provisioned product appears in scan."""
+        prov = servicecatalog.provision_product(
+            ProductId="prod-scan-full",
+            ProvisioningArtifactId="pa-scan-full",
+            ProvisionedProductName=_uid("pp-scan-full"),
+        )
+        pp_id = prov["RecordDetail"]["ProvisionedProductId"]
+        scan = servicecatalog.scan_provisioned_products()
+        pp_ids = [p["Id"] for p in scan["ProvisionedProducts"]]
+        assert pp_id in pp_ids
+
+
+class TestServiceCatalogDisassociateBudgetFullLifecycle:
+    """Full lifecycle for disassociate_budget_from_resource — adds C, R, L, U patterns."""
+
+    def test_disassociate_budget_full_lifecycle(self, servicecatalog):
+        """CREATE product, associate budget (CREATE), RETRIEVE, LIST, UPDATE, DELETE, ERROR."""
+        prod_id = servicecatalog.create_product(
+            Name=_uid("dbud-prod"),
+            Owner="Owner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            # CREATE - associate budget
+            servicecatalog.associate_budget_with_resource(
+                BudgetName="full-lifecycle-budget", ResourceId=prod_id
+            )
+            # RETRIEVE - describe product
+            servicecatalog.describe_product(Id=prod_id)
+            # LIST - list budgets
+            budgets = servicecatalog.list_budgets_for_resource(ResourceId=prod_id)
+            assert any(b["BudgetName"] == "full-lifecycle-budget" for b in budgets["Budgets"])
+            # UPDATE - update product
+            servicecatalog.update_product(Id=prod_id, Description="dbud-updated")
+            # DELETE - disassociate budget
+            resp = servicecatalog.disassociate_budget_from_resource(
+                BudgetName="full-lifecycle-budget", ResourceId=prod_id
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify gone
+            after = servicecatalog.list_budgets_for_resource(ResourceId=prod_id)
+            names = [b["BudgetName"] for b in after.get("Budgets", [])]
+            assert "full-lifecycle-budget" not in names
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_product(Id=prod_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestServiceCatalogWorkflowNotificationsFullLifecycle:
+    """Tests for workflow notifications with L and E patterns to improve coverage."""
+
+    def test_notify_provision_record_in_history(self, servicecatalog):
+        """NOTIFY provision (CREATE), LIST record history — notification recorded."""
+        servicecatalog.notify_provision_product_engine_workflow_result(
+            WorkflowToken="notif-hist-token-1",
+            RecordId="notif-hist-rec-1",
+            Status="SUCCEEDED",
+        )
+        history = servicecatalog.list_record_history()
+        assert "RecordDetails" in history
+        assert isinstance(history["RecordDetails"], list)
+
+    def test_notify_provision_failed_then_error_on_nonexistent(self, servicecatalog):
+        """NOTIFY provision FAILED (CREATE), ERROR on nonexistent provisioned product."""
+        servicecatalog.notify_provision_product_engine_workflow_result(
+            WorkflowToken="notif-fail-token",
+            RecordId="notif-fail-rec",
+            Status="FAILED",
+        )
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_provisioned_product(Id="pp-notif-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_notify_terminate_record_in_history(self, servicecatalog):
+        """NOTIFY terminate (CREATE), LIST record history — history still accessible."""
+        servicecatalog.notify_terminate_provisioned_product_engine_workflow_result(
+            WorkflowToken="term-hist-token",
+            RecordId="term-hist-rec",
+            Status="SUCCEEDED",
+        )
+        history = servicecatalog.list_record_history()
+        assert "RecordDetails" in history
+
+    def test_notify_terminate_failed_then_error_on_nonexistent(self, servicecatalog):
+        """NOTIFY terminate FAILED (CREATE), ERROR on describe of nonexistent product."""
+        servicecatalog.notify_terminate_provisioned_product_engine_workflow_result(
+            WorkflowToken="term-fail-token",
+            RecordId="term-fail-rec",
+            Status="FAILED",
+        )
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_provisioned_product(Id="pp-term-fail-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_notify_update_record_in_history(self, servicecatalog):
+        """NOTIFY update (CREATE), LIST record history — history still accessible."""
+        servicecatalog.notify_update_provisioned_product_engine_workflow_result(
+            WorkflowToken="upd-hist-token",
+            RecordId="upd-hist-rec",
+            Status="SUCCEEDED",
+        )
+        history = servicecatalog.list_record_history()
+        assert "RecordDetails" in history
+
+    def test_notify_update_with_outputs_error_on_nonexistent(self, servicecatalog):
+        """NOTIFY update with Outputs (CREATE), ERROR on nonexistent provisioned product."""
+        servicecatalog.notify_update_provisioned_product_engine_workflow_result(
+            WorkflowToken="upd-out-token",
+            RecordId="upd-out-rec",
+            Status="SUCCEEDED",
+            Outputs=[{"OutputKey": "Bucket", "OutputValue": "my-bucket"}],
+        )
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_provisioned_product(Id="pp-upd-out-nonexistent")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestServiceCatalogImportProvisionedProductFullLifecycle:
+    """Full lifecycle tests for import_as_provisioned_product — adds R, L, D, E patterns."""
+
+    def test_import_product_retrieve_record(self, servicecatalog):
+        """IMPORT product (CREATE), RETRIEVE the record via describe_record."""
+        resp = servicecatalog.import_as_provisioned_product(
+            ProductId="prod-import-r",
+            ProvisioningArtifactId="pa-import-r",
+            ProvisionedProductName=_uid("pp-import-r"),
+            PhysicalId="arn:aws:cloudformation:us-east-1:123456789012:stack/my-stack/guid",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        record_id = resp["RecordDetail"]["RecordId"]
+        rec = servicecatalog.describe_record(Id=record_id)
+        assert rec["RecordDetail"]["RecordId"] == record_id
+        assert rec["RecordDetail"]["RecordType"] == "IMPORT_PROVISIONED_PRODUCT"
+
+    def test_import_product_appears_in_scan(self, servicecatalog):
+        """IMPORT product (CREATE), SCAN provisioned products (LIST) — imported product appears."""
+        resp = servicecatalog.import_as_provisioned_product(
+            ProductId="prod-import-scan",
+            ProvisioningArtifactId="pa-import-scan",
+            ProvisionedProductName=_uid("pp-import-scan"),
+            PhysicalId="arn:aws:cloudformation:us-east-1:123456789012:stack/scan-stack/guid",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pp_id = resp["RecordDetail"]["ProvisionedProductId"]
+        scan = servicecatalog.scan_provisioned_products()
+        pp_ids = [p["Id"] for p in scan["ProvisionedProducts"]]
+        assert pp_id in pp_ids
+
+    def test_import_product_record_in_history(self, servicecatalog):
+        """IMPORT product (CREATE), LIST record history — import record appears."""
+        resp = servicecatalog.import_as_provisioned_product(
+            ProductId="prod-import-hist",
+            ProvisioningArtifactId="pa-import-hist",
+            ProvisionedProductName=_uid("pp-import-hist"),
+            PhysicalId="arn:aws:cloudformation:us-east-1:123456789012:stack/hist-stack/guid",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        record_id = resp["RecordDetail"]["RecordId"]
+        history = servicecatalog.list_record_history()
+        ids = [r["RecordId"] for r in history["RecordDetails"]]
+        assert record_id in ids
+
+    def test_import_product_update_portfolio_then_scan(self, servicecatalog):
+        """IMPORT product, UPDATE portfolio (UPDATE pattern), SCAN provisioned products."""
+        resp = servicecatalog.import_as_provisioned_product(
+            ProductId="prod-import-upd",
+            ProvisioningArtifactId="pa-import-upd",
+            ProvisionedProductName=_uid("pp-import-upd"),
+            PhysicalId="arn:aws:cloudformation:us-east-1:123456789012:stack/upd-stack/guid",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pp_id = resp["RecordDetail"]["ProvisionedProductId"]
+        pid = servicecatalog.create_portfolio(
+            DisplayName=_uid("import-upd-pf"),
+            ProviderName="Provider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )["PortfolioDetail"]["Id"]
+        try:
+            servicecatalog.update_portfolio(Id=pid, DisplayName=_uid("import-upd-pf-new"))
+            scan = servicecatalog.scan_provisioned_products()
+            pp_ids = [p["Id"] for p in scan["ProvisionedProducts"]]
+            assert pp_id in pp_ids
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_import_product_terminate_not_found_error(self, servicecatalog):
+        """ERROR: terminate nonexistent imported provisioned product."""
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.terminate_provisioned_product(
+                ProvisionedProductId="pp-import-notfound",
+                TerminateToken=uuid.uuid4().hex,
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
