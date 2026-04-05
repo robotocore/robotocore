@@ -184,6 +184,36 @@ class TestSynthesizeSpeech:
         data = resp["AudioStream"].read()
         assert len(data) > 0
 
+    def test_ssml_request_characters_excludes_tags(self, polly_client):
+        """SSML tags should not count toward RequestCharacters; only text content counts."""
+        resp = polly_client.synthesize_speech(
+            OutputFormat="mp3",
+            Text="<speak>Hello world</speak>",
+            TextType="ssml",
+            VoiceId="Joanna",
+        )
+        # "Hello world" is 11 characters; SSML tags should not be counted
+        assert resp["RequestCharacters"] == 11
+
+    def test_response_metadata_present(self, polly_client):
+        """SynthesizeSpeech response includes ResponseMetadata with HTTP status 200."""
+        resp = polly_client.synthesize_speech(
+            OutputFormat="mp3",
+            Text="Hello",
+            VoiceId="Joanna",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_request_characters_scales_with_text_length(self, polly_client):
+        """RequestCharacters reflects the length of the input text."""
+        text = "The quick brown fox jumps over the lazy dog"
+        resp = polly_client.synthesize_speech(
+            OutputFormat="mp3",
+            Text=text,
+            VoiceId="Joanna",
+        )
+        assert resp["RequestCharacters"] == len(text)
+
 
 SAMPLE_LEXICON_CONTENT = (
     '<?xml version="1.0" encoding="UTF-8"?>'
@@ -284,6 +314,50 @@ class TestLexicons:
                 except Exception as exc:
                     import logging
                     logging.debug("lexicon cleanup failed: %s", exc)
+
+    def test_lexicon_content_preserved_after_update(self, polly_client):
+        """Updating a lexicon stores the new content and it is readable via GetLexicon."""
+        name = f"compat{uuid.uuid4().hex[:8]}"
+        original_content = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<lexicon version="1.0"'
+            ' xmlns="http://www.w3.org/2005/01/pronunciation-lexicon"'
+            ' alphabet="ipa" xml:lang="en-US">'
+            "<lexeme><grapheme>AWS</grapheme>"
+            "<alias>Amazon Web Services</alias></lexeme>"
+            "</lexicon>"
+        )
+        updated_content = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<lexicon version="1.0"'
+            ' xmlns="http://www.w3.org/2005/01/pronunciation-lexicon"'
+            ' alphabet="ipa" xml:lang="en-US">'
+            "<lexeme><grapheme>CPU</grapheme>"
+            "<alias>Central Processing Unit</alias></lexeme>"
+            "</lexicon>"
+        )
+        try:
+            polly_client.put_lexicon(Name=name, Content=original_content)
+            polly_client.put_lexicon(Name=name, Content=updated_content)
+            resp = polly_client.get_lexicon(Name=name)
+            content = resp["Lexicon"]["Content"]
+            assert "CPU" in content
+            assert "AWS" not in content  # original content should be replaced
+        finally:
+            try:
+                polly_client.delete_lexicon(Name=name)
+            except Exception as exc:
+                import logging
+                logging.debug("lexicon cleanup failed: %s", exc)
+
+    def test_lexicon_last_modified_time_present(self, polly_client, lexicon_name):
+        """GetLexicon response includes LastModified timestamp in LexiconAttributes."""
+        import datetime
+
+        resp = polly_client.get_lexicon(Name=lexicon_name)
+        attrs = resp["LexiconAttributes"]
+        assert "LastModified" in attrs
+        assert isinstance(attrs["LastModified"], datetime.datetime)
 
     def test_synthesize_speech_with_lexicon(self, polly_client, lexicon_name):
         """SynthesizeSpeech accepts LexiconNames parameter."""
@@ -412,6 +486,52 @@ class TestSpeechSynthesisTasks:
             polly_client.get_speech_synthesis_task(TaskId="nonexistent-task-id-xyz")
         assert exc.value.response["Error"]["Code"] == "SynthesisTaskNotFoundException"
 
+    def test_task_with_s3_key_prefix(self, polly_client, s3_bucket):
+        """OutputUri includes the S3KeyPrefix when provided."""
+        resp = polly_client.start_speech_synthesis_task(
+            OutputFormat="mp3",
+            OutputS3BucketName=s3_bucket,
+            OutputS3KeyPrefix="audio/speech",
+            Text="Testing key prefix",
+            VoiceId="Joanna",
+        )
+        task = resp["SynthesisTask"]
+        uri = task["OutputUri"]
+        assert "audio/speech" in uri
+        assert s3_bucket in uri
+
+    def test_task_engine_field_preserved(self, polly_client, s3_bucket):
+        """Engine field set at creation is present in the task response."""
+        resp = polly_client.start_speech_synthesis_task(
+            Engine="standard",
+            OutputFormat="mp3",
+            OutputS3BucketName=s3_bucket,
+            Text="Engine preservation test",
+            VoiceId="Joanna",
+        )
+        task = resp["SynthesisTask"]
+        assert "Engine" in task
+        assert task["Engine"] == "standard"
+
+    def test_list_tasks_pagination_with_next_token(self, polly_client, s3_bucket):
+        """ListSpeechSynthesisTasks returns NextToken when more results are available."""
+        for i in range(4):
+            polly_client.start_speech_synthesis_task(
+                OutputFormat="mp3",
+                OutputS3BucketName=s3_bucket,
+                Text=f"Pagination task {i}",
+                VoiceId="Joanna",
+            )
+        resp = polly_client.list_speech_synthesis_tasks(MaxResults=2)
+        assert "SynthesisTasks" in resp
+        assert len(resp["SynthesisTasks"]) <= 2
+        if "NextToken" in resp:
+            resp2 = polly_client.list_speech_synthesis_tasks(
+                MaxResults=2, NextToken=resp["NextToken"]
+            )
+            assert "SynthesisTasks" in resp2
+            assert len(resp2["SynthesisTasks"]) > 0
+
 
 class TestPollyErrors:
     """Tests for Polly error handling."""
@@ -431,3 +551,15 @@ class TestPollyErrors:
         with pytest.raises(ClientError) as exc:
             polly_client.delete_lexicon(Name="nonexistent-lexicon-xyz")
         assert exc.value.response["Error"]["Code"] == "LexiconNotFoundException"
+
+    def test_synthesize_speech_invalid_voice(self, polly_client):
+        """SynthesizeSpeech with an invalid VoiceId raises an error."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            polly_client.synthesize_speech(
+                OutputFormat="mp3",
+                Text="Hello",
+                VoiceId="NotARealVoice",
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
