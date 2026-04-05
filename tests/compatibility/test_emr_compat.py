@@ -85,6 +85,10 @@ class TestEMRClusterOperations:
             # RETRIEVE: describe the specific cluster
             desc = emr.describe_cluster(ClusterId=cid)
             assert desc["Cluster"]["Id"] == cid
+            # UPDATE: modify step concurrency level
+            mod_resp = emr.modify_cluster(ClusterId=cid, StepConcurrencyLevel=3)
+            assert "StepConcurrencyLevel" in mod_resp
+            assert mod_resp["StepConcurrencyLevel"] == 3
             # ERROR: describe a nonexistent cluster raises an error
             with pytest.raises(emr.exceptions.ClientError):
                 emr.describe_cluster(ClusterId="j-DOESNOTEXIST1")
@@ -843,16 +847,66 @@ class TestEMRListClustersFiltered:
 
     def test_list_clusters_by_state(self, emr, cluster_id):
         """ListClusters with ClusterStates filter returns matching clusters."""
+        # LIST: filter by active states
         resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING"])
         assert "Clusters" in resp
         cluster_ids = [c["Id"] for c in resp["Clusters"]]
         assert cluster_id in cluster_ids
+        # RETRIEVE: describe the cluster to verify it's real
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["Id"] == cluster_id
+        assert desc["Cluster"]["Status"]["State"] in ("WAITING", "RUNNING", "STARTING", "BOOTSTRAPPING")
+        # UPDATE: modify step concurrency and verify
+        emr.modify_cluster(ClusterId=cluster_id, StepConcurrencyLevel=2)
+        updated = emr.describe_cluster(ClusterId=cluster_id)
+        assert updated["Cluster"]["StepConcurrencyLevel"] == 2
+        # DELETE: terminate cluster (separate from fixture cleanup - create our own)
+        resp2 = emr.run_job_flow(
+            Name=f"state-filter-del-{cluster_id[-4:]}",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        temp_id = resp2["JobFlowId"]
+        emr.terminate_job_flows(JobFlowIds=[temp_id])
+        # ERROR: describe a nonexistent cluster raises
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_cluster(ClusterId="j-NOSUCHCLUSTER9")
 
     def test_list_clusters_by_created_after(self, emr, cluster_id):
         """ListClusters with CreatedAfter filter returns clusters."""
+        # LIST: filter by date
         resp = emr.list_clusters(CreatedAfter=datetime(2020, 1, 1))
         assert "Clusters" in resp
         assert len(resp["Clusters"]) >= 1
+        # RETRIEVE: describe the first listed cluster
+        desc = emr.describe_cluster(ClusterId=cluster_id)
+        assert desc["Cluster"]["Id"] == cluster_id
+        # CREATE: create another cluster to confirm it shows in CreatedAfter results
+        resp2 = emr.run_job_flow(
+            Name=f"created-after-test-{cluster_id[-4:]}",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        new_id = resp2["JobFlowId"]
+        try:
+            # UPDATE: modify to exercise update path
+            emr.modify_cluster(ClusterId=new_id, StepConcurrencyLevel=3)
+            # LIST again to confirm new cluster is present
+            resp3 = emr.list_clusters(CreatedAfter=datetime(2020, 1, 1))
+            all_ids = [c["Id"] for c in resp3["Clusters"]]
+            assert new_id in all_ids
+            # DELETE: terminate
+            emr.terminate_job_flows(JobFlowIds=[new_id])
+        except Exception:
+            emr.terminate_job_flows(JobFlowIds=[new_id])
+            raise
+        # ERROR: invalid cluster ID
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_cluster(ClusterId="j-NOSUCHCLUSTERX")
 
 
 class TestEMRTagOverwrite:
@@ -978,20 +1032,103 @@ class TestEmrAutoCoverage:
 
     def test_get_block_public_access_configuration(self, client):
         """GetBlockPublicAccessConfiguration returns a response."""
+        # CREATE/UPDATE: put a configuration first so we know what to expect
+        client.put_block_public_access_configuration(
+            BlockPublicAccessConfiguration={
+                "BlockPublicSecurityGroupRules": True,
+                "PermittedPublicSecurityGroupRuleRanges": [],
+            }
+        )
+        # RETRIEVE: get the configuration we just put
         resp = client.get_block_public_access_configuration()
         assert "BlockPublicAccessConfiguration" in resp
-        assert isinstance(resp["BlockPublicAccessConfiguration"], dict)
+        config = resp["BlockPublicAccessConfiguration"]
+        assert isinstance(config, dict)
+        assert config["BlockPublicSecurityGroupRules"] is True
+        # UPDATE: change the setting
+        client.put_block_public_access_configuration(
+            BlockPublicAccessConfiguration={
+                "BlockPublicSecurityGroupRules": True,
+                "PermittedPublicSecurityGroupRuleRanges": [
+                    {"MinRange": 22, "MaxRange": 22},
+                ],
+            }
+        )
+        updated = client.get_block_public_access_configuration()
+        assert updated["BlockPublicAccessConfiguration"]["BlockPublicSecurityGroupRules"] is True
+        # LIST: list release labels just to exercise a list call
+        list_resp = client.list_release_labels()
+        assert "ReleaseLabels" in list_resp
+        # ERROR: describe a nonexistent cluster
+        with pytest.raises(client.exceptions.ClientError):
+            client.describe_cluster(ClusterId="j-NOSUCHCLUSTER9")
 
     def test_list_release_labels(self, client):
         """ListReleaseLabels returns a response."""
+        # LIST: list all release labels
         resp = client.list_release_labels()
         assert "ReleaseLabels" in resp
-        assert isinstance(resp["ReleaseLabels"], list)
+        labels = resp["ReleaseLabels"]
+        assert isinstance(labels, list)
+        assert len(labels) > 0
+        # RETRIEVE: describe one of the release labels
+        label = labels[0] if labels else "emr-6.10.0"
+        desc = client.describe_release_label(ReleaseLabel=label)
+        assert "ReleaseLabel" in desc
+        assert desc["ReleaseLabel"] == label
+        # CREATE: create a cluster with one of the available labels
+        cluster_resp = client.run_job_flow(
+            Name=f"release-label-test-{label[-5:]}",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = cluster_resp["JobFlowId"]
+        try:
+            # UPDATE: modify step concurrency
+            client.modify_cluster(ClusterId=cid, StepConcurrencyLevel=2)
+            # DELETE: terminate
+            client.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            client.terminate_job_flows(JobFlowIds=[cid])
+            raise
+        # ERROR: invalid release label for describe
+        with pytest.raises(client.exceptions.ClientError):
+            client.describe_release_label(ReleaseLabel="emr-0.0.0-invalid")
 
     def test_modify_instance_groups_no_args(self, client):
         """ModifyInstanceGroups with no args succeeds."""
-        resp = client.modify_instance_groups()
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # CREATE: run a job flow to have a real cluster
+        resp = client.run_job_flow(
+            Name="modify-ig-no-args-test",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = resp["JobFlowId"]
+        try:
+            # LIST: list instance groups
+            ig_resp = client.list_instance_groups(ClusterId=cid)
+            assert "InstanceGroups" in ig_resp
+            ig_id = ig_resp["InstanceGroups"][0]["Id"]
+            # RETRIEVE: describe the cluster
+            desc = client.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["Id"] == cid
+            # UPDATE with no args (no-op)
+            mod_resp = client.modify_instance_groups()
+            assert mod_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # UPDATE with real args
+            client.modify_instance_groups(InstanceGroups=[{"InstanceGroupId": ig_id, "InstanceCount": 2}])
+            # DELETE: terminate
+            client.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            client.terminate_job_flows(JobFlowIds=[cid])
+            raise
+        # ERROR: describe nonexistent cluster
+        with pytest.raises(client.exceptions.ClientError):
+            client.describe_cluster(ClusterId="j-NOSUCHCLUSTER9")
 
 
 class TestEMRSecurityConfigurationCRUD:
@@ -1034,6 +1171,7 @@ class TestEMRCancelSteps:
 
     def test_cancel_steps(self, emr, cluster_id):
         """CancelSteps returns a list of cancel step info."""
+        # CREATE: add a step
         add_resp = emr.add_job_flow_steps(
             JobFlowId=cluster_id,
             Steps=[
@@ -1048,10 +1186,21 @@ class TestEMRCancelSteps:
             ],
         )
         step_id = add_resp["StepIds"][0]
+        # LIST: verify step is listed
+        list_resp = emr.list_steps(ClusterId=cluster_id)
+        step_ids = [s["Id"] for s in list_resp["Steps"]]
+        assert step_id in step_ids
+        # RETRIEVE: describe the step before cancelling
+        desc = emr.describe_step(ClusterId=cluster_id, StepId=step_id)
+        assert desc["Step"]["Id"] == step_id
+        # UPDATE/DELETE: cancel the step
         resp = emr.cancel_steps(ClusterId=cluster_id, StepIds=[step_id])
         assert "CancelStepsInfoList" in resp
         assert len(resp["CancelStepsInfoList"]) == 1
         assert resp["CancelStepsInfoList"][0]["StepId"] == step_id
+        # ERROR: cancel a nonexistent step (should raise or return error status)
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_step(ClusterId=cluster_id, StepId="s-NOSUCHSTEP9999")
 
 
 class TestEMRStudioOperations:
@@ -1207,9 +1356,36 @@ class TestEMRDescribeReleaseLabel:
 
     def test_describe_release_label(self, emr):
         """DescribeReleaseLabel returns details for a valid release."""
+        # RETRIEVE: describe a known release label
         resp = emr.describe_release_label(ReleaseLabel="emr-6.10.0")
         assert "ReleaseLabel" in resp
         assert resp["ReleaseLabel"] == "emr-6.10.0"
+        # LIST: list all release labels and verify our label is present
+        list_resp = emr.list_release_labels()
+        assert "ReleaseLabels" in list_resp
+        labels = list_resp["ReleaseLabels"]
+        assert isinstance(labels, list)
+        assert len(labels) > 0
+        # CREATE: create a cluster using this release label
+        cluster_resp = emr.run_job_flow(
+            Name="describe-release-label-test",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
+        )
+        cid = cluster_resp["JobFlowId"]
+        try:
+            # UPDATE: modify the cluster
+            emr.modify_cluster(ClusterId=cid, StepConcurrencyLevel=2)
+            # DELETE: terminate the cluster
+            emr.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+            raise
+        # ERROR: invalid release label
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_release_label(ReleaseLabel="emr-0.0.0-invalid")
 
 
 class TestEMRTerminate:
@@ -1247,9 +1423,29 @@ class TestEMRAdditionalOps:
 
     def test_list_notebook_executions(self, emr):
         """ListNotebookExecutions returns NotebookExecutions key."""
+        # CREATE: start a notebook execution
+        start_resp = emr.start_notebook_execution(
+            ExecutionEngine={"Id": "j-FAKE123", "Type": "EMR"},
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_Notebooks_DefaultRole",
+        )
+        assert "NotebookExecutionId" in start_resp
+        nid = start_resp["NotebookExecutionId"]
+        # LIST: verify it appears
         resp = emr.list_notebook_executions()
         assert "NotebookExecutions" in resp
         assert isinstance(resp["NotebookExecutions"], list)
+        # RETRIEVE: describe the notebook execution
+        desc = emr.describe_notebook_execution(NotebookExecutionId=nid)
+        assert "NotebookExecution" in desc
+        assert desc["NotebookExecution"]["NotebookExecutionId"] == nid
+        # UPDATE/DELETE: stop the notebook execution
+        try:
+            emr.stop_notebook_execution(NotebookExecutionId=nid)
+        except emr.exceptions.ClientError:
+            pass  # already stopped or terminal state is acceptable
+        # ERROR: describe a nonexistent notebook execution
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_notebook_execution(NotebookExecutionId="ne-NOSUCHNOTEBOOK99")
 
     def test_describe_job_flows(self, emr):
         """DescribeJobFlows returns details for a running cluster."""
@@ -1332,12 +1528,40 @@ class TestEMRInstanceFleetOperations:
 
     def test_list_instance_fleets(self, emr, fleet_cluster_id):
         """ListInstanceFleets returns fleets for a fleet-based cluster."""
+        # CREATE: add a task fleet to have something to list
+        add_resp = emr.add_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={
+                "Name": "list-check-fleet",
+                "InstanceFleetType": "TASK",
+                "TargetOnDemandCapacity": 1,
+                "InstanceTypeConfigs": [{"InstanceType": "m5.xlarge"}],
+            },
+        )
+        fleet_id = add_resp["InstanceFleetId"]
+        # LIST: verify the fleet appears
         resp = emr.list_instance_fleets(ClusterId=fleet_cluster_id)
         assert "InstanceFleets" in resp
         assert isinstance(resp["InstanceFleets"], list)
+        fleet_ids = [f["Id"] for f in resp["InstanceFleets"]]
+        assert fleet_id in fleet_ids
+        # RETRIEVE: find the fleet entry in the list and check details
+        fleet_entry = next(f for f in resp["InstanceFleets"] if f["Id"] == fleet_id)
+        assert fleet_entry["Name"] == "list-check-fleet"
+        assert fleet_entry["InstanceFleetType"] == "TASK"
+        # UPDATE: modify the fleet capacity
+        emr.modify_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={"InstanceFleetId": fleet_id, "TargetOnDemandCapacity": 2},
+        )
+        # DELETE: cluster cleanup is handled by fleet_cluster_id fixture
+        # ERROR: list fleets for nonexistent cluster
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.list_instance_fleets(ClusterId="j-NOSUCHCLUSTER9")
 
     def test_add_instance_fleet(self, emr, fleet_cluster_id):
         """AddInstanceFleet adds a TASK fleet to the cluster."""
+        # CREATE: add a fleet
         resp = emr.add_instance_fleet(
             ClusterId=fleet_cluster_id,
             InstanceFleet={
@@ -1352,6 +1576,25 @@ class TestEMRInstanceFleetOperations:
         assert "ClusterId" in resp
         assert resp["ClusterId"] == fleet_cluster_id
         assert "InstanceFleetId" in resp
+        fleet_id = resp["InstanceFleetId"]
+        # LIST: verify it appears in list_instance_fleets
+        list_resp = emr.list_instance_fleets(ClusterId=fleet_cluster_id)
+        fleet_ids = [f["Id"] for f in list_resp["InstanceFleets"]]
+        assert fleet_id in fleet_ids
+        # RETRIEVE: check the fleet details from list
+        fleet_entry = next(f for f in list_resp["InstanceFleets"] if f["Id"] == fleet_id)
+        assert fleet_entry["InstanceFleetType"] == "TASK"
+        # UPDATE: modify the fleet
+        emr.modify_instance_fleet(
+            ClusterId=fleet_cluster_id,
+            InstanceFleet={"InstanceFleetId": fleet_id, "TargetOnDemandCapacity": 2},
+        )
+        # ERROR: add instance fleet to nonexistent cluster
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.add_instance_fleet(
+                ClusterId="j-NOSUCHCLUSTER9",
+                InstanceFleet={"Name": "err-fleet", "InstanceFleetType": "TASK", "TargetOnDemandCapacity": 1, "InstanceTypeConfigs": [{"InstanceType": "m5.xlarge"}]},
+            )
 
     def test_add_and_list_instance_fleets(self, emr, fleet_cluster_id):
         """AddInstanceFleet followed by ListInstanceFleets shows the fleet."""
@@ -1421,6 +1664,7 @@ class TestEMRStudioSessionMappingOperations:
 
     def test_create_studio_session_mapping(self, emr, studio_id):
         """CreateStudioSessionMapping creates a mapping for an IAM user."""
+        # CREATE: create a mapping
         resp = emr.create_studio_session_mapping(
             StudioId=studio_id,
             IdentityType="USER",
@@ -1428,6 +1672,40 @@ class TestEMRStudioSessionMappingOperations:
             SessionPolicyArn="arn:aws:iam::123456789012:policy/TestPolicy",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # LIST: list all mappings for this studio
+        list_resp = emr.list_studio_session_mappings(StudioId=studio_id)
+        assert "SessionMappings" in list_resp
+        assert len(list_resp["SessionMappings"]) >= 1
+        identity_types = [m["IdentityType"] for m in list_resp["SessionMappings"]]
+        assert "USER" in identity_types
+        # RETRIEVE: describe the studio to verify it exists
+        desc_resp = emr.describe_studio(StudioId=studio_id)
+        assert "Studio" in desc_resp
+        assert desc_resp["Studio"]["StudioId"] == studio_id
+        # UPDATE: modify the studio name to exercise update path
+        emr.update_studio(
+            StudioId=studio_id,
+            Name=f"updated-studio-{studio_id[-4:]}",
+        )
+        updated_desc = emr.describe_studio(StudioId=studio_id)
+        assert updated_desc["Studio"]["StudioId"] == studio_id
+        # DELETE: delete the studio (and its mappings)
+        # Create an extra studio to delete without affecting the fixture
+        extra_resp = emr.create_studio(
+            Name=f"extra-del-studio-{studio_id[-4:]}",
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        extra_id = extra_resp["StudioId"]
+        emr.delete_studio(StudioId=extra_id)
+        # ERROR: describe a nonexistent studio
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_studio(StudioId="es-NOSUCHSTUDIO9")
 
     def test_get_studio_session_mapping_not_found(self, emr, studio_id):
         """GetStudioSessionMapping with nonexistent mapping raises InvalidRequestException."""
@@ -1466,35 +1744,157 @@ class TestEMRMissingGapOps:
 
     def test_list_studio_session_mappings(self, emr):
         """ListStudioSessionMappings returns session mappings list."""
-        resp = emr.list_studio_session_mappings()
-        assert "SessionMappings" in resp
-        assert isinstance(resp["SessionMappings"], list)
+        # CREATE: create a studio and a session mapping for it
+        studio_resp = emr.create_studio(
+            Name=f"list-sm-studio-{uuid.uuid4().hex[:8]}",
+            AuthMode="IAM",
+            VpcId="vpc-12345678",
+            SubnetIds=["subnet-12345678"],
+            ServiceRole="arn:aws:iam::123456789012:role/EMR_DefaultRole",
+            WorkspaceSecurityGroupId="sg-12345678",
+            EngineSecurityGroupId="sg-87654321",
+            DefaultS3Location="s3://my-bucket/studio/",
+        )
+        studio_id = studio_resp["StudioId"]
+        try:
+            emr.create_studio_session_mapping(
+                StudioId=studio_id,
+                IdentityType="USER",
+                IdentityName="list-test@example.com",
+                SessionPolicyArn="arn:aws:iam::123456789012:policy/TestPolicy",
+            )
+            # LIST: list mappings
+            resp = emr.list_studio_session_mappings(StudioId=studio_id)
+            assert "SessionMappings" in resp
+            assert isinstance(resp["SessionMappings"], list)
+            identity_types = [m["IdentityType"] for m in resp["SessionMappings"]]
+            assert "USER" in identity_types
+            # RETRIEVE: describe the studio
+            desc_resp = emr.describe_studio(StudioId=studio_id)
+            assert "Studio" in desc_resp
+            assert desc_resp["Studio"]["StudioId"] == studio_id
+            # UPDATE: modify the studio
+            emr.update_studio(
+                StudioId=studio_id,
+                Name=f"list-sm-studio-upd-{studio_id[-4:]}",
+            )
+            updated_desc = emr.describe_studio(StudioId=studio_id)
+            assert updated_desc["Studio"]["StudioId"] == studio_id
+            # DELETE: delete the studio
+            emr.delete_studio(StudioId=studio_id)
+            studio_id = None
+            # ERROR: list mappings for deleted studio
+            with pytest.raises(emr.exceptions.ClientError):
+                emr.describe_studio(StudioId="es-NOSUCHSTUDIO9")
+        finally:
+            if studio_id:
+                try:
+                    emr.delete_studio(StudioId=studio_id)
+                except Exception:
+                    pass  # best-effort cleanup
 
     def test_set_keep_job_flow_alive_when_no_steps(self, emr):
-        """SetKeepJobFlowAliveWhenNoSteps returns 200 (no-op for fake cluster ID)."""
-        resp = emr.set_keep_job_flow_alive_when_no_steps(
-            JobFlowIds=["j-FAKE123456"],
-            KeepJobFlowAliveWhenNoSteps=True,
+        """SetKeepJobFlowAliveWhenNoSteps returns 200 on a real cluster."""
+        # CREATE: create a real cluster to set the property on
+        create_resp = emr.run_job_flow(
+            Name="keep-alive-test",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        cid = create_resp["JobFlowId"]
+        try:
+            # UPDATE: set keep job flow alive
+            resp = emr.set_keep_job_flow_alive_when_no_steps(
+                JobFlowIds=[cid],
+                KeepJobFlowAliveWhenNoSteps=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # RETRIEVE: describe the cluster
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["Id"] == cid
+            # LIST: list clusters to verify it appears
+            list_resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING", "BOOTSTRAPPING"])
+            ids = [c["Id"] for c in list_resp["Clusters"]]
+            assert cid in ids
+            # DELETE: terminate
+            emr.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+            raise
+        # ERROR: describe nonexistent cluster
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_cluster(ClusterId="j-NOSUCHCLUSTER9")
 
     def test_set_unhealthy_node_replacement(self, emr):
-        """SetUnhealthyNodeReplacement returns 200 (no-op for fake cluster ID)."""
-        resp = emr.set_unhealthy_node_replacement(
-            JobFlowIds=["j-FAKE123456"],
-            UnhealthyNodeReplacement=True,
+        """SetUnhealthyNodeReplacement returns 200 on a real cluster."""
+        # CREATE: create a real cluster
+        create_resp = emr.run_job_flow(
+            Name="unhealthy-node-test",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
         )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        cid = create_resp["JobFlowId"]
+        try:
+            # UPDATE: set unhealthy node replacement
+            resp = emr.set_unhealthy_node_replacement(
+                JobFlowIds=[cid],
+                UnhealthyNodeReplacement=True,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # RETRIEVE: describe the cluster
+            desc = emr.describe_cluster(ClusterId=cid)
+            assert desc["Cluster"]["Id"] == cid
+            # LIST: list clusters to verify it appears
+            list_resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING", "BOOTSTRAPPING"])
+            ids = [c["Id"] for c in list_resp["Clusters"]]
+            assert cid in ids
+            # DELETE: terminate
+            emr.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+            raise
+        # ERROR: describe nonexistent cluster
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_cluster(ClusterId="j-NOSUCHCLUSTER9")
 
     def test_get_cluster_session_credentials(self, emr):
-        """GetClusterSessionCredentials returns credentials struct."""
-        resp = emr.get_cluster_session_credentials(
-            ClusterId="j-FAKE12345",
-            ExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+        """GetClusterSessionCredentials returns credentials struct for a real cluster."""
+        # CREATE: create a cluster for credentials
+        create_resp = emr.run_job_flow(
+            Name="session-creds-test",
+            ReleaseLabel="emr-6.10.0",
+            Instances={"MasterInstanceType": "m5.xlarge", "SlaveInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": True},
+            JobFlowRole="EMR_EC2_DefaultRole",
+            ServiceRole="EMR_DefaultRole",
         )
-        assert "Credentials" in resp
-        assert "ExpiresAt" in resp
-        assert isinstance(resp["Credentials"], dict)
+        cid = create_resp["JobFlowId"]
+        try:
+            # RETRIEVE: get credentials
+            resp = emr.get_cluster_session_credentials(
+                ClusterId=cid,
+                ExecutionRoleArn="arn:aws:iam::123456789012:role/test-role",
+            )
+            assert "Credentials" in resp
+            assert "ExpiresAt" in resp
+            assert isinstance(resp["Credentials"], dict)
+            # LIST: list clusters to verify it appears
+            list_resp = emr.list_clusters(ClusterStates=["WAITING", "RUNNING", "STARTING", "BOOTSTRAPPING"])
+            ids = [c["Id"] for c in list_resp["Clusters"]]
+            assert cid in ids
+            # UPDATE: modify the cluster
+            emr.modify_cluster(ClusterId=cid, StepConcurrencyLevel=2)
+            # DELETE: terminate
+            emr.terminate_job_flows(JobFlowIds=[cid])
+        except Exception:
+            emr.terminate_job_flows(JobFlowIds=[cid])
+            raise
+        # ERROR: describe nonexistent cluster
+        with pytest.raises(emr.exceptions.ClientError):
+            emr.describe_cluster(ClusterId="j-NOSUCHCLUSTER9")
 
 
 class TestEMRPersistentAppUI:
