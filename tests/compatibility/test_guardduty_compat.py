@@ -3984,3 +3984,295 @@ class TestGuardDutyUpdateIPSetErrorCases:
             )
         assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
 
+
+class TestGuardDutyIPSetFullLifecycle:
+    """Full lifecycle tests for IP sets covering all 6 patterns in each test."""
+
+    def test_ipset_create_list_update_error_delete_lifecycle(self, guardduty, detector):
+        """Full C+R+L+U+D+E lifecycle for IP sets."""
+        name = _unique("lifecycle-ipset")
+        # CREATE
+        create_resp = guardduty.create_ip_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ipset.txt",
+            Activate=False,
+        )
+        ipset_id = create_resp["IpSetId"]
+        try:
+            # RETRIEVE
+            detail = guardduty.get_ip_set(DetectorId=detector, IpSetId=ipset_id)
+            assert detail["Name"] == name
+
+            # LIST
+            listed = guardduty.list_ip_sets(DetectorId=detector)
+            assert ipset_id in listed["IpSetIds"]
+
+            # UPDATE
+            guardduty.update_ip_set(
+                DetectorId=detector, IpSetId=ipset_id, Name=f"{name}-updated"
+            )
+            detail2 = guardduty.get_ip_set(DetectorId=detector, IpSetId=ipset_id)
+            assert detail2["Name"] == f"{name}-updated"
+
+            # ERROR: updating nonexistent IP set
+            with pytest.raises(ClientError) as exc_info:
+                guardduty.update_ip_set(
+                    DetectorId=detector,
+                    IpSetId="deadbeef00000000000000000000dead",
+                    Name="no-such-ipset",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+        finally:
+            # DELETE
+            guardduty.delete_ip_set(DetectorId=detector, IpSetId=ipset_id)
+            listed_after = guardduty.list_ip_sets(DetectorId=detector)
+            assert ipset_id not in listed_after["IpSetIds"]
+
+
+class TestGuardDutyFilterFullLifecycle:
+    """Full lifecycle tests for filters covering all 6 patterns."""
+
+    def test_filter_create_list_update_error_delete_lifecycle(self, guardduty, detector):
+        """Full C+R+L+U+D+E lifecycle for filters."""
+        name = _unique("lifecycle-filter")
+        # CREATE
+        guardduty.create_filter(
+            DetectorId=detector,
+            Name=name,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 4}}},
+        )
+        try:
+            # RETRIEVE
+            detail = guardduty.get_filter(DetectorId=detector, FilterName=name)
+            assert detail["Name"] == name
+
+            # LIST
+            listed = guardduty.list_filters(DetectorId=detector)
+            assert name in listed["FilterNames"]
+
+            # UPDATE
+            guardduty.update_filter(
+                DetectorId=detector,
+                FilterName=name,
+                FindingCriteria={"Criterion": {"severity": {"Gte": 7}}},
+            )
+            detail2 = guardduty.get_filter(DetectorId=detector, FilterName=name)
+            assert detail2["FindingCriteria"]["Criterion"]["severity"]["Gte"] == 7
+
+            # ERROR: updating nonexistent filter
+            with pytest.raises(ClientError) as exc_info:
+                guardduty.update_filter(
+                    DetectorId=detector,
+                    FilterName="no-such-filter-xyz",
+                    FindingCriteria={"Criterion": {"severity": {"Gte": 5}}},
+                )
+            assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+        finally:
+            # DELETE
+            guardduty.delete_filter(DetectorId=detector, FilterName=name)
+            listed_after = guardduty.list_filters(DetectorId=detector)
+            assert name not in listed_after["FilterNames"]
+
+
+class TestGuardDutyDetectorFullLifecycle:
+    """Full lifecycle tests for detectors covering all 6 patterns."""
+
+    def test_detector_create_list_update_error_delete_lifecycle(self, guardduty):
+        """Full C+R+L+U+D+E lifecycle for detectors."""
+        # CREATE
+        resp = guardduty.create_detector(Enable=True)
+        det_id = resp["DetectorId"]
+        try:
+            # RETRIEVE
+            detail = guardduty.get_detector(DetectorId=det_id)
+            assert detail["Status"] == "ENABLED"
+            assert "CreatedAt" in detail
+            assert "UpdatedAt" in detail
+            assert detail["ServiceRole"].startswith("arn:")
+            assert "DataSources" in detail
+
+            # LIST
+            listed = guardduty.list_detectors()
+            assert det_id in listed["DetectorIds"]
+
+            # UPDATE
+            guardduty.update_detector(DetectorId=det_id, Enable=False)
+            detail2 = guardduty.get_detector(DetectorId=det_id)
+            assert detail2["Status"] == "DISABLED"
+
+            # ERROR: get nonexistent detector
+            with pytest.raises(ClientError) as exc_info:
+                guardduty.get_detector(DetectorId="deadbeef00000000000000000000dead")
+            assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+        finally:
+            # DELETE
+            guardduty.delete_detector(DetectorId=det_id)
+            listed_after = guardduty.list_detectors()
+            assert det_id not in listed_after["DetectorIds"]
+
+
+class TestGuardDutyOrganizationAdminLifecycle:
+    """Lifecycle tests for organization admin accounts."""
+
+    def test_enable_list_disable_organization_admin_lifecycle(self, guardduty):
+        """Enable admin account, verify in list, disable it — U+L+U pattern."""
+        # UPDATE (enable)
+        enable_resp = guardduty.enable_organization_admin_account(AdminAccountId="444455556666")
+        assert enable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # LIST
+        list_resp = guardduty.list_organization_admin_accounts()
+        assert "AdminAccounts" in list_resp
+        assert isinstance(list_resp["AdminAccounts"], list)
+
+        # UPDATE (disable)
+        disable_resp = guardduty.disable_organization_admin_account(AdminAccountId="444455556666")
+        assert disable_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_administrator_account_no_admin_then_error_on_invalid_detector(self, guardduty, detector):
+        """Get administrator account for valid detector — R; error for invalid — R+E."""
+        # RETRIEVE (valid)
+        resp = guardduty.get_administrator_account(DetectorId=detector)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: invalid detector ID
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.get_administrator_account(DetectorId="deadbeef00000000000000000000dead")
+        assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestGuardDutyFindingsLifecycle:
+    """Lifecycle tests for findings covering CREATE + LIST + criteria patterns."""
+
+    def test_findings_create_sample_then_list_with_criteria(self, guardduty, detector):
+        """Create sample findings, list with severity criteria — C+L pattern."""
+        # CREATE (sample findings)
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        # LIST
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        assert "FindingIds" in list_resp
+
+        # LIST with criteria
+        criteria_resp = guardduty.list_findings(
+            DetectorId=detector,
+            FindingCriteria={"Criterion": {"severity": {"Gte": 1}}},
+        )
+        assert "FindingIds" in criteria_resp
+        assert isinstance(criteria_resp["FindingIds"], list)
+
+    def test_findings_create_sample_then_archive_then_unarchive(self, guardduty, detector):
+        """Create sample findings, archive then unarchive — C+L+U+U pattern."""
+        # CREATE
+        guardduty.create_sample_findings(
+            DetectorId=detector,
+            FindingTypes=["Recon:EC2/PortProbeUnprotectedPort"],
+        )
+        list_resp = guardduty.list_findings(DetectorId=detector)
+        finding_ids = list_resp["FindingIds"]
+        assert len(finding_ids) > 0, "Expected sample findings to be created"
+
+        # UPDATE (archive)
+        archive_resp = guardduty.archive_findings(
+            DetectorId=detector, FindingIds=finding_ids[:1]
+        )
+        assert archive_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # UPDATE (unarchive)
+        unarchive_resp = guardduty.unarchive_findings(
+            DetectorId=detector, FindingIds=finding_ids[:1]
+        )
+        assert unarchive_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # LIST (still accessible after unarchive)
+        list_after = guardduty.list_findings(DetectorId=detector)
+        assert isinstance(list_after["FindingIds"], list)
+        assert len(list_after["FindingIds"]) >= 1
+
+
+class TestGuardDutyTagsFullLifecycle:
+    """Full lifecycle for tags covering C+R+L+U+D patterns."""
+
+    def test_tags_create_tag_list_untag_lifecycle(self, guardduty, detector):
+        """Tag a detector resource, list tags, untag — U+L+D pattern (tags)."""
+        arn = f"arn:aws:guardduty:us-east-1:123456789012:detector/{detector}"
+
+        # LIST (initial empty)
+        initial = guardduty.list_tags_for_resource(ResourceArn=arn)
+        initial_count = len(initial["Tags"])
+
+        # UPDATE (tag_resource)
+        guardduty.tag_resource(ResourceArn=arn, Tags={"env": "staging", "team": "security"})
+
+        # LIST (verify added)
+        after_tag = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert after_tag["Tags"]["env"] == "staging"
+        assert after_tag["Tags"]["team"] == "security"
+        assert len(after_tag["Tags"]) == initial_count + 2
+
+        # DELETE (untag_resource)
+        guardduty.untag_resource(ResourceArn=arn, TagKeys=["env"])
+
+        # LIST (verify removed)
+        after_untag = guardduty.list_tags_for_resource(ResourceArn=arn)
+        assert "env" not in after_untag["Tags"]
+        assert after_untag["Tags"]["team"] == "security"
+
+        # ERROR: list tags for nonexistent ARN
+        with pytest.raises(ClientError) as exc_info:
+            guardduty.list_tags_for_resource(
+                ResourceArn="arn:aws:guardduty:us-east-1:123456789012:detector/doesnotexist"
+            )
+        assert exc_info.value.response["Error"]["Code"] in (
+            "BadRequestException", "AccessDeniedException", "ResourceNotFoundException"
+        )
+
+
+class TestGuardDutyThreatIntelSetFullLifecycle:
+    """Full lifecycle tests for threat intel sets covering all patterns."""
+
+    def test_threat_intel_set_full_lifecycle(self, guardduty, detector):
+        """C+R+L+U+D+E lifecycle for threat intel sets."""
+        name = _unique("lifecycle-tiset")
+        # CREATE
+        create_resp = guardduty.create_threat_intel_set(
+            DetectorId=detector,
+            Name=name,
+            Format="TXT",
+            Location="s3://my-bucket/ti.txt",
+            Activate=False,
+        )
+        tiset_id = create_resp["ThreatIntelSetId"]
+        try:
+            # RETRIEVE
+            detail = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+            assert detail["Name"] == name
+
+            # LIST
+            listed = guardduty.list_threat_intel_sets(DetectorId=detector)
+            assert tiset_id in listed["ThreatIntelSetIds"]
+
+            # UPDATE
+            guardduty.update_threat_intel_set(
+                DetectorId=detector, ThreatIntelSetId=tiset_id, Name=f"{name}-updated"
+            )
+            detail2 = guardduty.get_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+            assert detail2["Name"] == f"{name}-updated"
+
+            # ERROR: update nonexistent
+            with pytest.raises(ClientError) as exc_info:
+                guardduty.update_threat_intel_set(
+                    DetectorId=detector,
+                    ThreatIntelSetId="deadbeef00000000000000000000dead",
+                    Name="no-such-ti",
+                )
+            assert exc_info.value.response["Error"]["Code"] == "BadRequestException"
+        finally:
+            # DELETE
+            guardduty.delete_threat_intel_set(DetectorId=detector, ThreatIntelSetId=tiset_id)
+            listed_after = guardduty.list_threat_intel_sets(DetectorId=detector)
+            assert tiset_id not in listed_after["ThreatIntelSetIds"]
