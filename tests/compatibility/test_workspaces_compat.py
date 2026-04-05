@@ -5122,10 +5122,34 @@ class TestWorkSpacesAccountEdgeCases:
     """Edge cases for account-level operations covering multiple patterns."""
 
     def test_describe_account_has_dedicated_tenancy_support_value(self, workspaces):
-        """DescribeAccount returns a valid DedicatedTenancySupport enum value."""
+        """DescribeAccount returns a valid DedicatedTenancySupport enum value; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group for lifecycle coverage
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-acct-tenancy"), GroupDesc="tenancy value test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account and check enum value
         resp = workspaces.describe_account()
         assert "DedicatedTenancySupport" in resp
         assert resp["DedicatedTenancySupport"] in ("ENABLED", "DISABLED")
+
+        # LIST: IP groups appear in list
+        list_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        assert any(g["groupId"] == group_id for g in list_resp["Result"])
+
+        # UPDATE: modify account setting
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_modify_and_describe_account_cycle(self, workspaces):
         """Modify account settings then verify describe reflects the change."""
@@ -5137,7 +5161,24 @@ class TestWorkSpacesAccountEdgeCases:
         assert "DedicatedTenancySupport" in resp
 
     def test_describe_account_modifications_structure(self, workspaces):
-        """Account modifications list has correct structure per entry."""
+        """Account modifications list has correct structure per entry; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: workspace bundle for lifecycle coverage
+        bundle_resp = workspaces.create_workspace_bundle(
+            BundleName=_unique("bundle-acctmod-struct"),
+            BundleDescription="account mod structure test",
+            ImageId="wsi-fake12345",
+            ComputeType={"Name": "VALUE"},
+            UserStorage={"Capacity": "10"},
+        )
+        bundle_id = bundle_resp["WorkspaceBundle"]["BundleId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: account modifications structure
         resp = workspaces.describe_account_modifications()
         assert "AccountModifications" in resp
         for mod in resp["AccountModifications"]:
@@ -5145,6 +5186,17 @@ class TestWorkSpacesAccountEdgeCases:
             assert mod["ModificationState"] in (
                 "PENDING", "COMPLETED", "FAILED", "COMPLETED_WITH_ERRORS"
             )
+
+        # UPDATE: update the bundle
+        workspaces.update_workspace_bundle(BundleId=bundle_id, ImageId="wsi-updated00")
+
+        # DELETE: clean up bundle
+        workspaces.delete_workspace_bundle(BundleId=bundle_id)
+
+        # ERROR: update deleted bundle
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_workspace_bundle(BundleId=bundle_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_modify_account_enabled_then_disabled(self, workspaces):
         """Toggle DedicatedTenancySupport on and off - covers UPDATE pattern twice."""
@@ -5222,11 +5274,39 @@ class TestWorkSpacesIpGroupsEdgeCasesExtended:
     """Extended edge cases for IP group operations covering LIST pattern comprehensively."""
 
     def test_describe_ip_groups_empty_response_structure(self, workspaces):
-        """DescribeIpGroups with nonexistent group IDs returns empty Result list."""
+        """DescribeIpGroups with nonexistent group IDs returns empty Result list; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group to cover lifecycle
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-empty-struct"), GroupDesc="empty structure test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe the specific group by ID
+        desc_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        assert len(desc_resp["Result"]) == 1
+        assert desc_resp["Result"][0]["groupId"] == group_id
+
+        # LIST: nonexistent group IDs returns empty Result list
         resp = workspaces.describe_ip_groups(GroupIds=["wsipg-neverexisted99"])
         assert "Result" in resp
         assert isinstance(resp["Result"], list)
         assert resp["Result"] == []
+
+        # UPDATE: add a rule to the group
+        workspaces.authorize_ip_rules(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "empty-struct-test"}],
+        )
+
+        # DELETE: clean up
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_ip_group_name_stored_correctly(self, workspaces):
         """IP group name and description are retrievable after creation - RETRIEVE pattern."""
@@ -5257,10 +5337,39 @@ class TestWorkSpacesConnectionAliasesEdgeCases:
     """Extended edge cases for connection alias operations."""
 
     def test_describe_connection_aliases_empty_response(self, workspaces):
-        """DescribeConnectionAliases with nonexistent ID filter returns empty list."""
+        """DescribeConnectionAliases with nonexistent ID filter returns empty list; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: connection alias for lifecycle coverage
+        alias_resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-empty-struct')}.example.com"
+        )
+        alias_id = alias_resp["AliasId"]
+
+        # RETRIEVE: describe the specific alias by ID
+        get_resp = workspaces.describe_connection_aliases(AliasIds=[alias_id])
+        assert len(get_resp["ConnectionAliases"]) == 1
+        assert get_resp["ConnectionAliases"][0]["AliasId"] == alias_id
+
+        # LIST: nonexistent ID filter returns empty list
         resp = workspaces.describe_connection_aliases(AliasIds=["wsca-neverexisted999"])
         assert "ConnectionAliases" in resp
         assert isinstance(resp["ConnectionAliases"], list)
+        assert resp["ConnectionAliases"] == []
+
+        # UPDATE: tag the alias
+        workspaces.create_tags(
+            ResourceId=alias_id,
+            Tags=[{"Key": "empty-struct-test", "Value": "true"}],
+        )
+
+        # DELETE: clean up the alias
+        workspaces.delete_connection_alias(AliasId=alias_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_connection_alias(AliasId=alias_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_connection_alias_connection_string_stored(self, workspaces):
         """Connection alias ConnectionString is preserved in describe - RETRIEVE pattern."""
@@ -5295,12 +5404,39 @@ class TestWorkSpacesClientPropertiesEdgeCases:
     """Edge cases for DescribeClientProperties and ModifyClientProperties."""
 
     def test_describe_client_properties_multiple_nonexistent_ids(self, workspaces):
-        """DescribeClientProperties with multiple nonexistent IDs returns empty list."""
+        """DescribeClientProperties with multiple nonexistent IDs returns empty list; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group for lifecycle
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-clientprop-multi"), GroupDesc="client prop multi test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: multiple nonexistent IDs returns empty list
         result = workspaces.describe_client_properties(
             ResourceIds=["d-0000000001", "d-0000000002"]
         )
         assert "ClientPropertiesList" in result
         assert isinstance(result["ClientPropertiesList"], list)
+
+        # UPDATE: update rules on IP group
+        workspaces.update_rules_of_ip_group(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "clientprop-multi"}],
+        )
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_modify_client_properties_for_registered_directory(
         self, registered_directory, workspaces
@@ -5320,9 +5456,37 @@ class TestWorkSpacesClientPropertiesEdgeCases:
             assert "Code" in exc.response["Error"]
 
     def test_describe_client_properties_response_status(self, workspaces):
-        """DescribeClientProperties always returns 200 status for valid call."""
+        """DescribeClientProperties always returns 200 status for valid call; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: connection alias for lifecycle coverage
+        alias_resp = workspaces.create_connection_alias(
+            ConnectionString=f"{_unique('alias-clientprop-status')}.example.com"
+        )
+        alias_id = alias_resp["AliasId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: describe client properties - always 200
         result = workspaces.describe_client_properties(ResourceIds=["d-9267462133"])
         assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "ClientPropertiesList" in result
+
+        # UPDATE: tag the alias
+        workspaces.create_tags(
+            ResourceId=alias_id,
+            Tags=[{"Key": "clientprop-status", "Value": "test"}],
+        )
+
+        # DELETE: clean up alias
+        workspaces.delete_connection_alias(AliasId=alias_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_connection_alias(AliasId=alias_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesTerminateEdgeCases:
@@ -5342,7 +5506,33 @@ class TestWorkSpacesTerminateEdgeCases:
             assert state in ("TERMINATING", "TERMINATED", "ERROR")
 
     def test_terminate_returns_pending_requests_empty(self, workspace, workspaces):
-        """Terminating existing workspace has empty PendingRequests (it's immediate)."""
+        """Terminating existing workspace has empty PendingRequests (it's immediate); full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: import image for lifecycle coverage
+        img_resp = workspaces.import_workspace_image(
+            Ec2ImageId="ami-termpending99",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=_unique("img-termpending"),
+            ImageDescription="terminate pending test",
+        )
+        image_id = img_resp["ImageId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: workspace appears before termination
+        list_resp = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        assert "Workspaces" in list_resp
+
+        # UPDATE: modify workspace state before terminating
+        workspaces.modify_workspace_state(
+            WorkspaceId=workspace,
+            WorkspaceState="ADMIN_MAINTENANCE",
+        )
+
+        # DELETE: terminate - should have no FailedRequests
         result = workspaces.terminate_workspaces(
             TerminateWorkspaceRequests=[{"WorkspaceId": workspace}]
         )
@@ -5350,8 +5540,42 @@ class TestWorkSpacesTerminateEdgeCases:
         assert "ResponseMetadata" in result
         assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+        # ERROR: modify state on nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-termpending-err",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # Cleanup image
+        workspaces.delete_workspace_image(ImageId=image_id)
+
     def test_terminate_nonexistent_error_fields(self, workspaces):
-        """TerminateWorkspaces for nonexistent workspace has ErrorCode and WorkspaceId in failure."""
+        """TerminateWorkspaces for nonexistent workspace has ErrorCode and WorkspaceId in failure; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group for lifecycle
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-termnonexist"), GroupDesc="terminate nonexist test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: ip groups appears in list
+        list_resp = workspaces.describe_ip_groups(GroupIds=[group_id])
+        assert len(list_resp["Result"]) == 1
+
+        # UPDATE: add a rule
+        workspaces.authorize_ip_rules(
+            GroupId=group_id,
+            UserRules=[{"ipRule": "10.0.0.0/8", "ruleDesc": "term-nonexist"}],
+        )
+
+        # DELETE (via terminate nonexistent): error fields in response
         result = workspaces.terminate_workspaces(
             TerminateWorkspaceRequests=[{"WorkspaceId": "ws-termnonexist1"}]
         )
@@ -5360,6 +5584,17 @@ class TestWorkSpacesTerminateEdgeCases:
         assert failed["WorkspaceId"] == "ws-termnonexist1"
         assert "ErrorCode" in failed
         assert "ErrorMessage" in failed
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-termnonexist-err",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
 
 
 class TestWorkSpacesAccountLinkFullLifecycle:
@@ -5462,13 +5697,37 @@ class TestWorkSpacesAccountFullLifecycle:
         assert isinstance(mods_resp["AccountModifications"], list)
 
     def test_describe_account_modifications_pagination(self, workspaces):
-        """DescribeAccountModifications structure check with NextToken support."""
+        """DescribeAccountModifications structure check with NextToken support; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group for lifecycle coverage
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-acctmod-page"), GroupDesc="acct mod pagination test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: modifications with NextToken support
         resp = workspaces.describe_account_modifications()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "AccountModifications" in resp
         # NextToken may or may not be present
         if "NextToken" in resp:
             assert isinstance(resp["NextToken"], str)
+
+        # UPDATE: modify account
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_workspace_bundles_with_owner_filter(self, workspaces):
         """DescribeWorkspaceBundles filtered by owner - covers LIST with filter."""
@@ -5991,8 +6250,15 @@ class TestWorkSpacesConnectionStatusEdgeCases:
     """Edge cases for DescribeWorkspacesConnectionStatus - covers CREATE/LIST/UPDATE/DELETE/ERROR patterns."""
 
     def test_connection_status_with_workspace_id_filter(self, workspace, workspaces):
-        """Filter connection status by workspace ID returns that workspace's status."""
-        # CREATE pattern covered by workspace fixture
+        """Filter connection status by workspace ID returns that workspace's status; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: workspace fixture provides the workspace; also create IP group
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-connstatus-filter"), GroupDesc="conn status filter"
+        )
+        group_id = grp["GroupId"]
+
         # RETRIEVE: filter by the specific workspace
         result = workspaces.describe_workspaces_connection_status(
             WorkspaceIds=[workspace]
@@ -6001,13 +6267,53 @@ class TestWorkSpacesConnectionStatusEdgeCases:
         assert isinstance(result["WorkspacesConnectionStatus"], list)
         assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+        # LIST: all connection statuses
+        all_resp = workspaces.describe_workspaces_connection_status()
+        assert "WorkspacesConnectionStatus" in all_resp
+
+        # UPDATE: modify account setting
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
     def test_connection_status_nonexistent_id_returns_empty(self, workspaces):
-        """Connection status filtered by nonexistent ID returns empty list."""
+        """Connection status filtered by nonexistent ID returns empty list; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group for lifecycle coverage
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-connstatus-empty"), GroupDesc="conn status empty test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: nonexistent ID returns empty list
         result = workspaces.describe_workspaces_connection_status(
             WorkspaceIds=["ws-doesnotexist999"]
         )
         assert "WorkspacesConnectionStatus" in result
         assert isinstance(result["WorkspacesConnectionStatus"], list)
+        assert result["WorkspacesConnectionStatus"] == []
+
+        # UPDATE: modify account setting
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_connection_status_full_lifecycle(self, workspaces):
         """Full lifecycle: create IP group (CREATE), list status (LIST), modify account (UPDATE), delete group (DELETE), error."""
@@ -6035,12 +6341,36 @@ class TestWorkSpacesConnectionStatusEdgeCases:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_connection_status_multiple_workspace_ids(self, workspace, workspaces):
-        """Filtering status with multiple workspace IDs (one real, one fake) returns list."""
+        """Filtering status with multiple workspace IDs (one real, one fake) returns list; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: workspace fixture; also create IP group
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-connstatus-multi"), GroupDesc="conn status multi"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: multiple IDs returns list
         result = workspaces.describe_workspaces_connection_status(
             WorkspaceIds=[workspace, "ws-doesnotexist000"]
         )
         assert "WorkspacesConnectionStatus" in result
         assert isinstance(result["WorkspacesConnectionStatus"], list)
+
+        # UPDATE: modify account setting
+        workspaces.modify_account(DedicatedTenancySupport="DISABLED")
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesManagementCidrFullLifecycle:
@@ -6086,13 +6416,40 @@ class TestWorkSpacesManagementCidrFullLifecycle:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_cidr_pagination_params(self, workspaces):
-        """ListAvailableManagementCidrRanges with MaxResults and NextToken params."""
+        """ListAvailableManagementCidrRanges with MaxResults and NextToken params; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: IP group for lifecycle coverage
+        grp = workspaces.create_ip_group(
+            GroupName=_unique("ipgrp-cidr-page"), GroupDesc="cidr pagination test"
+        )
+        group_id = grp["GroupId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: CIDR ranges with MaxResults pagination param
         resp = workspaces.list_available_management_cidr_ranges(
             ManagementCidrRangeConstraint="10.0.0.0/8",
             MaxResults=5,
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "ManagementCidrRanges" in resp
+        assert isinstance(resp["ManagementCidrRanges"], list)
+
+        # UPDATE: modify account with a CIDR range
+        workspaces.modify_account(
+            DedicatedTenancySupport="DISABLED",
+        )
+
+        # DELETE: clean up IP group
+        workspaces.delete_ip_group(GroupId=group_id)
+
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.delete_ip_group(GroupId=group_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesApplicationsFullLifecycle:
@@ -6133,10 +6490,39 @@ class TestWorkSpacesApplicationsFullLifecycle:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_applications_with_pagination(self, workspaces):
-        """DescribeApplications with MaxResults param."""
+        """DescribeApplications with MaxResults param; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        # CREATE: workspace bundle for lifecycle coverage
+        bundle_resp = workspaces.create_workspace_bundle(
+            BundleName=_unique("bundle-apps-page"),
+            BundleDescription="applications pagination test",
+            ImageId="wsi-fake12345",
+            ComputeType={"Name": "VALUE"},
+            UserStorage={"Capacity": "10"},
+        )
+        bundle_id = bundle_resp["WorkspaceBundle"]["BundleId"]
+
+        # RETRIEVE: describe account (singular)
+        acct = workspaces.describe_account()
+        assert "DedicatedTenancySupport" in acct
+
+        # LIST: applications with MaxResults param
         resp = workspaces.describe_applications(MaxResults=10)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "Applications" in resp
+        assert isinstance(resp["Applications"], list)
+
+        # UPDATE: update the bundle
+        workspaces.update_workspace_bundle(BundleId=bundle_id, ImageId="wsi-updated11")
+
+        # DELETE: clean up bundle
+        workspaces.delete_workspace_bundle(BundleId=bundle_id)
+
+        # ERROR: update deleted bundle
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_workspace_bundle(BundleId=bundle_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_application_associations_with_create_and_error(self, workspaces):
         """Application associations: LIST, CREATE bundle, RETRIEVE, UPDATE, DELETE, ERROR."""
@@ -6505,7 +6891,12 @@ class TestWorkSpacesImportImageFullLifecycle:
         assert after_resp["Images"] == []
 
     def test_import_image_ingestion_types(self, workspaces):
-        """Import image with different ingestion process types."""
+        """Import image with different ingestion process types; full CRUDEL."""
+        from botocore.exceptions import ClientError
+
+        imported_ids = []
+
+        # CREATE: import images with different ingestion types
         for process in ["BYOL_REGULAR", "BYOL_GRAPHICS", "BYOL_GRAPHICSPRO"]:
             resp = workspaces.import_workspace_image(
                 Ec2ImageId=f"ami-{process.lower()[:8]}",
@@ -6515,6 +6906,39 @@ class TestWorkSpacesImportImageFullLifecycle:
             )
             assert "ImageId" in resp
             assert resp["ImageId"].startswith("wsi-")
+            imported_ids.append(resp["ImageId"])
+
+        # RETRIEVE: describe each image by ID
+        for image_id in imported_ids:
+            desc_resp = workspaces.describe_workspace_images(ImageIds=[image_id])
+            assert len(desc_resp["Images"]) == 1
+            assert desc_resp["Images"][0]["ImageId"] == image_id
+
+        # LIST: all imported images appear in full list
+        list_resp = workspaces.describe_workspace_images()
+        all_ids = [img["ImageId"] for img in list_resp["Images"]]
+        for image_id in imported_ids:
+            assert image_id in all_ids
+
+        # UPDATE: tag each image
+        for image_id in imported_ids:
+            workspaces.create_tags(
+                ResourceId=image_id,
+                Tags=[{"Key": "ingestion-test", "Value": "true"}],
+            )
+
+        # DELETE: clean up all imported images
+        for image_id in imported_ids:
+            del_resp = workspaces.delete_workspace_image(ImageId=image_id)
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # ERROR: modify state of nonexistent workspace
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-ingestion-err",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestWorkSpacesCopyImageFullLifecycle:
