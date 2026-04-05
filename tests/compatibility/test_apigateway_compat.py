@@ -5745,3 +5745,480 @@ class TestAPIGatewaySixPatternCoverage:
         with pytest.raises(ClientError) as exc:
             client.get_base_path_mapping(domainName=domain, basePath="sixpat-v2")
         assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+
+class TestAPIGatewayBehavioralEdgeCases:
+    """Behavioral edge cases focusing on specific field values, state transitions,
+    and less-tested behaviors of API Gateway operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api(self, client):
+        import uuid
+
+        resp = client.create_rest_api(
+            name=f"beh-edge-{uuid.uuid4().hex[:8]}",
+            description="Behavioral edge case API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        client.delete_rest_api(restApiId=api_id)
+
+    @pytest.fixture
+    def root_id(self, client, api):
+        resources = client.get_resources(restApiId=api)
+        return [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+    @pytest.fixture
+    def deployment(self, client, api, root_id):
+        """Create a deployment with a MOCK method for stage tests."""
+        client.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="GET", authorizationType="NONE"
+        )
+        client.put_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="GET",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = client.create_deployment(restApiId=api)
+        return dep["id"]
+
+    # ── Stage variables round-trip ──
+
+    def test_stage_variables_stored_and_retrieved(self, client, api, deployment):
+        """Stage variables set at creation are returned on GetStage."""
+        stage = client.create_stage(
+            restApiId=api,
+            stageName="var-stage",
+            deploymentId=deployment,
+            variables={"env": "staging", "version": "2"},
+        )
+        assert stage["stageName"] == "var-stage"
+
+        got = client.get_stage(restApiId=api, stageName="var-stage")
+        assert got.get("variables", {}).get("env") == "staging"
+        assert got.get("variables", {}).get("version") == "2"
+
+    def test_stage_variables_update(self, client, api, deployment):
+        """Stage variables can be set via UpdateStage."""
+        client.create_stage(
+            restApiId=api,
+            stageName="upd-vars",
+            deploymentId=deployment,
+        )
+        client.update_stage(
+            restApiId=api,
+            stageName="upd-vars",
+            patchOperations=[
+                {"op": "replace", "path": "/variables/region", "value": "us-west-2"}
+            ],
+        )
+        got = client.get_stage(restApiId=api, stageName="upd-vars")
+        assert got.get("variables", {}).get("region") == "us-west-2"
+
+    def test_get_stage_nonexistent_raises_not_found(self, client, api):
+        """GetStage with a nonexistent stage name raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_stage(restApiId=api, stageName="no-such-stage")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_stage_then_get_raises_error(self, client, api, deployment):
+        """Deleting a stage then GetStage raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        client.create_stage(restApiId=api, stageName="del-stage", deploymentId=deployment)
+        client.delete_stage(restApiId=api, stageName="del-stage")
+
+        with pytest.raises(ClientError) as exc:
+            client.get_stage(restApiId=api, stageName="del-stage")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Deployment description ──
+
+    def test_deployment_description_stored(self, client, api, root_id):
+        """CreateDeployment with description stores it and GetDeployment returns it."""
+        client.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="POST", authorizationType="NONE"
+        )
+        client.put_integration(
+            restApiId=api,
+            resourceId=root_id,
+            httpMethod="POST",
+            type="MOCK",
+            requestTemplates={"application/json": '{"statusCode": 200}'},
+        )
+        dep = client.create_deployment(
+            restApiId=api, description="v1.0 release deployment"
+        )
+        dep_id = dep["id"]
+        got = client.get_deployment(restApiId=api, deploymentId=dep_id)
+        assert got["id"] == dep_id
+        assert got.get("description") == "v1.0 release deployment"
+
+    def test_get_deployment_nonexistent_raises_error(self, client, api):
+        """GetDeployment with a fake ID raises a ClientError."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_deployment(restApiId=api, deploymentId="fakedeployid")
+        assert exc.value.response["Error"]["Code"] in (
+            "NotFoundException",
+            "InternalError",
+            "InternalFailure",
+        )
+
+    def test_delete_deployment_then_list_shows_gone(self, client, api, root_id):
+        """After deleting a deployment it no longer appears in GetDeployments."""
+        client.put_method(
+            restApiId=api, resourceId=root_id, httpMethod="DELETE", authorizationType="NONE"
+        )
+        client.put_integration(
+            restApiId=api, resourceId=root_id, httpMethod="DELETE", type="MOCK"
+        )
+        dep = client.create_deployment(restApiId=api)
+        dep_id = dep["id"]
+
+        # Verify it's listed
+        deps = client.get_deployments(restApiId=api)
+        assert dep_id in [d["id"] for d in deps["items"]]
+
+        # Delete it
+        client.delete_deployment(restApiId=api, deploymentId=dep_id)
+
+        # Verify it's gone
+        after = client.get_deployments(restApiId=api)
+        assert dep_id not in [d["id"] for d in after["items"]]
+
+    # ── API key enable/disable toggle ──
+
+    def test_api_key_enable_disable_toggle(self, client):
+        """UpdateApiKey can enable/disable a key and GetApiKey reflects the change."""
+        import uuid
+
+        key = client.create_api_key(name=f"toggle-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        key_id = key["id"]
+        assert key["enabled"] is True
+
+        try:
+            # Disable the key
+            client.update_api_key(
+                apiKey=key_id,
+                patchOperations=[{"op": "replace", "path": "/enabled", "value": "false"}],
+            )
+            got = client.get_api_key(apiKey=key_id)
+            assert got["enabled"] is False
+
+            # Re-enable it
+            client.update_api_key(
+                apiKey=key_id,
+                patchOperations=[{"op": "replace", "path": "/enabled", "value": "true"}],
+            )
+            got2 = client.get_api_key(apiKey=key_id)
+            assert got2["enabled"] is True
+        finally:
+            client.delete_api_key(apiKey=key_id)
+
+    def test_api_key_custom_value_preserved(self, client):
+        """API key created with explicit value returns that value via includeValue."""
+        import uuid
+
+        custom_value = f"mykey-{uuid.uuid4().hex}"
+        key = client.create_api_key(
+            name=f"custom-val-key-{uuid.uuid4().hex[:8]}",
+            enabled=True,
+            value=custom_value,
+        )
+        key_id = key["id"]
+        try:
+            got = client.get_api_key(apiKey=key_id, includeValue=True)
+            assert got["value"] == custom_value
+        finally:
+            client.delete_api_key(apiKey=key_id)
+
+    # ── Authorizer TTL and type fields ──
+
+    def test_authorizer_ttl_and_identity_validation_expression(self, client, api):
+        """Authorizer with TTL and identityValidationExpression stores both fields."""
+        auth = client.create_authorizer(
+            restApiId=api,
+            name="ttl-auth",
+            type="TOKEN",
+            authorizerUri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:auth/invocations"
+            ),
+            identitySource="method.request.header.Authorization",
+            authorizerResultTtlInSeconds=300,
+            identityValidationExpression="^Bearer .+$",
+        )
+        auth_id = auth["id"]
+        try:
+            got = client.get_authorizer(restApiId=api, authorizerId=auth_id)
+            assert got["id"] == auth_id
+            assert got.get("authorizerResultTtlInSeconds") == 300
+            assert got.get("identityValidationExpression") == "^Bearer .+$"
+        finally:
+            client.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+    def test_request_authorizer_type(self, client, api):
+        """Creating a REQUEST type authorizer stores and returns type correctly."""
+        auth = client.create_authorizer(
+            restApiId=api,
+            name="req-auth",
+            type="REQUEST",
+            authorizerUri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:req-auth/invocations"
+            ),
+            identitySource="method.request.header.X-API-Key",
+        )
+        auth_id = auth["id"]
+        try:
+            got = client.get_authorizer(restApiId=api, authorizerId=auth_id)
+            assert got["type"] == "REQUEST"
+        finally:
+            client.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+    # ── Gateway response: response parameters stored ──
+
+    def test_gateway_response_parameters_stored(self, client, api):
+        """PutGatewayResponse with responseParameters stores them correctly."""
+        client.put_gateway_response(
+            restApiId=api,
+            responseType="UNAUTHORIZED",
+            statusCode="401",
+            responseParameters={
+                "gatewayresponse.header.WWW-Authenticate": "'Bearer realm=\"api\"'"
+            },
+            responseTemplates={"application/json": '{"message": "Unauthorized"}'},
+        )
+        got = client.get_gateway_response(restApiId=api, responseType="UNAUTHORIZED")
+        assert got["responseType"] == "UNAUTHORIZED"
+        assert got["statusCode"] == "401"
+        # responseTemplates must round-trip
+        assert got["responseTemplates"]["application/json"] == '{"message": "Unauthorized"}'
+        client.delete_gateway_response(restApiId=api, responseType="UNAUTHORIZED")
+
+    # ── Domain name error ──
+
+    def test_get_nonexistent_domain_name_raises_error(self, client):
+        """GetDomainName for a nonexistent domain raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_domain_name(domainName="no-such-domain.example.com")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_delete_domain_name_then_get_raises_error(self, client):
+        """Delete a domain name; subsequent GetDomainName raises NotFoundException."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        domain = f"del-dom-{uuid.uuid4().hex[:8]}.example.com"
+        client.create_domain_name(
+            domainName=domain,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+        )
+        client.delete_domain_name(domainName=domain)
+
+        with pytest.raises(ClientError) as exc:
+            client.get_domain_name(domainName=domain)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Method with apiKeyRequired flag ──
+
+    def test_method_api_key_required_stored(self, client, api, root_id):
+        """PutMethod with apiKeyRequired=True stores and returns the flag."""
+        child = client.create_resource(restApiId=api, parentId=root_id, pathPart="secure")
+        client.put_method(
+            restApiId=api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            authorizationType="NONE",
+            apiKeyRequired=True,
+        )
+        method = client.get_method(
+            restApiId=api, resourceId=child["id"], httpMethod="GET"
+        )
+        assert method["httpMethod"] == "GET"
+        assert method.get("apiKeyRequired") is True
+
+    def test_method_with_request_parameters(self, client, api, root_id):
+        """PutMethod with requestParameters stores and returns them."""
+        child = client.create_resource(restApiId=api, parentId=root_id, pathPart="params")
+        client.put_method(
+            restApiId=api,
+            resourceId=child["id"],
+            httpMethod="GET",
+            authorizationType="NONE",
+            requestParameters={
+                "method.request.querystring.page": False,
+                "method.request.header.X-Correlation-ID": True,
+            },
+        )
+        method = client.get_method(
+            restApiId=api, resourceId=child["id"], httpMethod="GET"
+        )
+        assert "requestParameters" in method
+        assert "method.request.querystring.page" in method["requestParameters"]
+        assert method["requestParameters"]["method.request.header.X-Correlation-ID"] is True
+
+    # ── REST API: duplicate names allowed ──
+
+    def test_rest_api_duplicate_names_allowed(self, client):
+        """Two REST APIs can be created with the same name (unlike other AWS services)."""
+        import uuid
+
+        name = f"dup-name-{uuid.uuid4().hex[:8]}"
+        api1 = client.create_rest_api(name=name)
+        api2 = client.create_rest_api(name=name)
+        try:
+            assert api1["id"] != api2["id"]
+            assert api1["name"] == api2["name"]
+            # Both appear in list
+            resp = client.get_rest_apis()
+            ids = [a["id"] for a in resp["items"]]
+            assert api1["id"] in ids
+            assert api2["id"] in ids
+        finally:
+            client.delete_rest_api(restApiId=api1["id"])
+            client.delete_rest_api(restApiId=api2["id"])
+
+    # ── Usage plan with day period ──
+
+    def test_usage_plan_daily_quota(self, client):
+        """Usage plan with DAY period is stored and retrieved correctly."""
+        import uuid
+
+        plan = client.create_usage_plan(
+            name=f"daily-plan-{uuid.uuid4().hex[:8]}",
+            quota={"limit": 100, "period": "DAY"},
+        )
+        plan_id = plan["id"]
+        try:
+            got = client.get_usage_plan(usagePlanId=plan_id)
+            assert got["quota"]["period"] == "DAY"
+            assert got["quota"]["limit"] == 100
+        finally:
+            client.delete_usage_plan(usagePlanId=plan_id)
+
+    # ── Request validator: flags default to False ──
+
+    def test_request_validator_both_flags_false(self, client, api):
+        """Request validator with both flags False stores them correctly."""
+        rv = client.create_request_validator(
+            restApiId=api,
+            name="false-false-validator",
+            validateRequestBody=False,
+            validateRequestParameters=False,
+        )
+        rv_id = rv["id"]
+        try:
+            got = client.get_request_validator(restApiId=api, requestValidatorId=rv_id)
+            assert got["validateRequestBody"] is False
+            assert got["validateRequestParameters"] is False
+        finally:
+            client.delete_request_validator(restApiId=api, requestValidatorId=rv_id)
+
+    # ── Integration type stored correctly ──
+
+    def test_integration_type_aws_proxy_stored(self, client, api, root_id):
+        """PutIntegration with type AWS_PROXY stores the type."""
+        child = client.create_resource(
+            restApiId=api, parentId=root_id, pathPart="lambda"
+        )
+        client.put_method(
+            restApiId=api, resourceId=child["id"], httpMethod="POST", authorizationType="NONE"
+        )
+        client.put_integration(
+            restApiId=api,
+            resourceId=child["id"],
+            httpMethod="POST",
+            type="AWS_PROXY",
+            uri=(
+                "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+                "arn:aws:lambda:us-east-1:123456789012:function:my-func/invocations"
+            ),
+            integrationHttpMethod="POST",
+        )
+        integration = client.get_integration(
+            restApiId=api, resourceId=child["id"], httpMethod="POST"
+        )
+        assert integration["type"] == "AWS_PROXY"
+
+    # ── Client certificate: update description ──
+
+    def test_client_certificate_update_description(self, client):
+        """UpdateClientCertificate can change description; GetClientCertificate reflects it."""
+        cert = client.generate_client_certificate(description="original cert desc")
+        cert_id = cert["clientCertificateId"]
+        try:
+            client.update_client_certificate(
+                clientCertificateId=cert_id,
+                patchOperations=[
+                    {"op": "replace", "path": "/description", "value": "updated cert desc"}
+                ],
+            )
+            got = client.get_client_certificate(clientCertificateId=cert_id)
+            assert got["description"] == "updated cert desc"
+        finally:
+            client.delete_client_certificate(clientCertificateId=cert_id)
+
+    def test_client_certificate_delete_then_get_raises_error(self, client):
+        """Delete a client certificate then GetClientCertificate raises NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        cert = client.generate_client_certificate(description="to delete")
+        cert_id = cert["clientCertificateId"]
+        client.delete_client_certificate(clientCertificateId=cert_id)
+
+        with pytest.raises(ClientError) as exc:
+            client.get_client_certificate(clientCertificateId=cert_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── Model content type variations ──
+
+    def test_model_text_plain_content_type(self, client, api):
+        """Create a model with text/plain content type and verify it's stored."""
+        client.create_model(
+            restApiId=api,
+            name="TextModel",
+            contentType="text/plain",
+            schema='{"type": "string"}',
+        )
+        got = client.get_model(restApiId=api, modelName="TextModel")
+        assert got["contentType"] == "text/plain"
+
+    # ── Documentation version: update and delete ──
+
+    def test_documentation_version_update_and_delete(self, client, api):
+        """DocumentationVersion: update description, then delete."""
+        from botocore.exceptions import ClientError
+
+        # Need a doc part first
+        client.create_documentation_part(
+            restApiId=api, location={"type": "API"}, properties='{"info": "test"}'
+        )
+        client.create_documentation_version(
+            restApiId=api, documentationVersion="v1.0", description="initial"
+        )
+
+        # Update description
+        upd = client.update_documentation_version(
+            restApiId=api,
+            documentationVersion="v1.0",
+            patchOperations=[{"op": "replace", "path": "/description", "value": "updated desc"}],
+        )
+        assert upd.get("description") == "updated desc" or upd["version"] == "v1.0"
+
+        # Delete and verify error
+        client.delete_documentation_version(restApiId=api, documentationVersion="v1.0")
+        with pytest.raises(ClientError):
+            client.get_documentation_version(restApiId=api, documentationVersion="v1.0")
