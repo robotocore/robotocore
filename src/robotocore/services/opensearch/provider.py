@@ -91,8 +91,31 @@ async def handle_opensearch_request(request: Request, region: str, account_id: s
     path = request.url.path
 
     if _OS_VERSIONS_RE.match(path) and request.method == "GET":
+        params = dict(request.query_params)
+        versions = _OPENSEARCH_VERSIONS
+        next_token_in = params.get("nextToken")
+        max_results = int(params.get("maxResults", 0))
+
+        # Apply NextToken offset
+        start = 0
+        if next_token_in:
+            try:
+                start = int(next_token_in)
+            except (ValueError, TypeError):
+                start = 0
+
+        page = versions[start:]
+        next_token_out = None
+        if max_results and max_results > 0:
+            page = versions[start : start + max_results]
+            if start + max_results < len(versions):
+                next_token_out = str(start + max_results)
+
+        body: dict = {"Versions": page}
+        if next_token_out:
+            body["NextToken"] = next_token_out
         return Response(
-            content=json.dumps({"Versions": _OPENSEARCH_VERSIONS}),
+            content=json.dumps(body),
             status_code=200,
             media_type="application/json",
         )

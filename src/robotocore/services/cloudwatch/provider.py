@@ -38,6 +38,17 @@ _composite_lock = threading.Lock()
 _dashboards: dict[str, dict[str, dict]] = {}
 _dashboard_lock = threading.Lock()
 
+# Alarm mute rules: {region: {rule_name: MuteRuleData}}
+_alarm_mute_rules: dict[str, dict[str, dict]] = {}
+_alarm_mute_rule_lock = threading.Lock()
+
+
+def _get_alarm_mute_rules_store(region: str) -> dict[str, dict]:
+    with _alarm_mute_rule_lock:
+        if region not in _alarm_mute_rules:
+            _alarm_mute_rules[region] = {}
+        return _alarm_mute_rules[region]
+
 
 class CloudWatchError(Exception):
     def __init__(self, code: str, message: str, status: int = 400):
@@ -947,8 +958,44 @@ def _handle_disable_alarm_actions(params: dict, region: str, account_id: str) ->
 
 
 def _handle_describe_alarm_history(params: dict, region: str, account_id: str) -> dict:
-    """Return alarm history (stub — returns empty list)."""
-    return {"AlarmHistoryItems": []}
+    """Return alarm history by reading from Moto's in-memory alarm history."""
+    alarm_name = params.get("AlarmName")
+    history_type_filter = params.get("HistoryItemType")
+
+    from moto.backends import get_backend  # noqa: I001
+
+    backend = get_backend("cloudwatch")[account_id][region]
+
+    alarms_to_check = []
+    if alarm_name:
+        alarm = backend.alarms.get(alarm_name)
+        if alarm:
+            alarms_to_check.append((alarm_name, alarm))
+    else:
+        alarms_to_check = list(backend.alarms.items())
+
+    items = []
+    for name, alarm in alarms_to_check:
+        for entry in alarm.history:
+            # Each entry is (history_type, state_reason, state_reason_data, state_value, timestamp)
+            h_type, reason, reason_data, state_value, ts = entry
+            if history_type_filter and h_type != history_type_filter:
+                continue
+            summary = f"Alarm updated from {state_value} to {alarm.state_value}"
+            items.append(
+                {
+                    "AlarmName": name,
+                    "AlarmType": "MetricAlarm",
+                    "Timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                    "HistoryItemType": h_type,
+                    "HistorySummary": summary,
+                    "HistoryData": reason_data or "{}",
+                }
+            )
+
+    # Sort by timestamp descending (most recent first)
+    items.sort(key=lambda x: x["Timestamp"], reverse=True)
+    return {"AlarmHistoryItems": items}
 
 
 # ---------------------------------------------------------------------------
@@ -1097,22 +1144,70 @@ def _handle_describe_alarm_contributors(params: dict, region: str, account_id: s
 
 
 def _handle_put_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
-    """Stub for PutAlarmMuteRule - accept and return empty."""
+    """Store alarm mute rule in memory."""
+    name = params.get("Name", "")
+    rule = params.get("Rule", {})
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        store[name] = {"Name": name, "Rule": rule}
     return {}
 
 
 def _handle_get_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
-    """Stub for GetAlarmMuteRule."""
-    name = params.get("MuteRuleName", params.get("Name", ""))
-    raise CloudWatchError(
-        "ResourceNotFoundException",
-        f"Mute rule {name} does not exist",
-        status=404,
-    )
+    """Retrieve alarm mute rule by name."""
+    name = params.get("AlarmMuteRuleName", params.get("Name", ""))
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        rule = store.get(name)
+    if rule is None:
+        raise CloudWatchError(
+            "ResourceNotFoundException",
+            f"Mute rule {name} does not exist",
+            status=404,
+        )
+    return {"MuteRule": rule}
 
 
 def _handle_delete_alarm_mute_rule(params: dict, region: str, account_id: str) -> dict:
-    """Stub for DeleteAlarmMuteRule - no-op."""
+    """Delete alarm mute rule - idempotent."""
+    name = params.get("AlarmMuteRuleName", params.get("Name", ""))
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        store.pop(name, None)
+    return {}
+
+
+def _handle_list_alarm_mute_rules(params: dict, region: str, account_id: str) -> dict:
+    """ListAlarmMuteRules — return all stored rules as summaries."""
+    store = _get_alarm_mute_rules_store(region)
+    with _alarm_mute_rule_lock:
+        summaries = [{"Name": r["Name"]} for r in store.values()]
+    return {"AlarmMuteRuleSummaries": summaries}
+
+
+# OTel enrichment state: per-region
+_otel_enrichment_state: dict[str, str] = {}
+_otel_enrichment_lock = threading.Lock()
+
+
+def _handle_get_o_tel_enrichment(params: dict, region: str, account_id: str) -> dict:
+    """GetOTelEnrichment — return current enrichment status."""
+    with _otel_enrichment_lock:
+        state = _otel_enrichment_state.get(region, "STOPPED")
+    return {"Status": state}
+
+
+def _handle_start_o_tel_enrichment(params: dict, region: str, account_id: str) -> dict:
+    """StartOTelEnrichment — transition state to RUNNING."""
+    with _otel_enrichment_lock:
+        _otel_enrichment_state[region] = "RUNNING"
+    return {}
+
+
+def _handle_stop_o_tel_enrichment(params: dict, region: str, account_id: str) -> dict:
+    """StopOTelEnrichment — transition state to STOPPED."""
+    with _otel_enrichment_lock:
+        _otel_enrichment_state[region] = "STOPPED"
     return {}
 
 
@@ -1266,4 +1361,9 @@ _ACTION_MAP: dict[str, Callable] = {
     "PutAlarmMuteRule": _handle_put_alarm_mute_rule,
     "GetAlarmMuteRule": _handle_get_alarm_mute_rule,
     "DeleteAlarmMuteRule": _handle_delete_alarm_mute_rule,
+    "ListAlarmMuteRules": _handle_list_alarm_mute_rules,
+    # OTel enrichment
+    "GetOTelEnrichment": _handle_get_o_tel_enrichment,
+    "StartOTelEnrichment": _handle_start_o_tel_enrichment,
+    "StopOTelEnrichment": _handle_stop_o_tel_enrichment,
 }
