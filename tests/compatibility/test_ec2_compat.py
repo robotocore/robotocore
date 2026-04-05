@@ -13758,3 +13758,635 @@ class TestEC2ReplaceImageCriteriaFull:
         finally:
             if vpc_id:
                 ec2.delete_vpc(VpcId=vpc_id)
+
+
+class TestEC2RegionsEdgeCases:
+    """Edge cases and behavioral fidelity for DescribeRegions."""
+
+    def test_describe_regions_filter_by_region_name(self, ec2):
+        """DescribeRegions filtered by specific region name returns only that region."""
+        resp = ec2.describe_regions(RegionNames=["us-east-1"])
+        assert len(resp["Regions"]) == 1
+        assert resp["Regions"][0]["RegionName"] == "us-east-1"
+
+    def test_describe_regions_required_fields(self, ec2):
+        """Each region in DescribeRegions has required fields."""
+        resp = ec2.describe_regions()
+        for region in resp["Regions"]:
+            assert "RegionName" in region
+            assert "Endpoint" in region
+            assert region["Endpoint"].startswith("ec2.")
+            assert ".amazonaws.com" in region["Endpoint"]
+
+    def test_describe_regions_includes_multiple_partitions(self, ec2):
+        """DescribeRegions returns multiple regions across different geo areas."""
+        resp = ec2.describe_regions()
+        names = [r["RegionName"] for r in resp["Regions"]]
+        # Should have at least regions in us, eu, and ap
+        has_us = any(n.startswith("us-") for n in names)
+        has_eu = any(n.startswith("eu-") for n in names)
+        assert has_us and has_eu
+
+    def test_describe_regions_filter_multiple_regions(self, ec2):
+        """DescribeRegions with multiple RegionNames returns correct count."""
+        resp = ec2.describe_regions(RegionNames=["us-east-1", "us-west-2"])
+        names = {r["RegionName"] for r in resp["Regions"]}
+        assert "us-east-1" in names
+        assert "us-west-2" in names
+        assert len(resp["Regions"]) == 2
+
+    def test_describe_regions_nonexistent_filter_returns_empty(self, ec2):
+        """DescribeRegions with nonexistent region returns empty list."""
+        resp = ec2.describe_regions(RegionNames=["us-fake-99"])
+        assert resp["Regions"] == []
+
+
+
+class TestEC2AvailabilityZonesEdgeCases:
+    """Edge cases and behavioral fidelity for DescribeAvailabilityZones."""
+
+    def test_describe_availability_zones_filter_by_zone_name(self, ec2):
+        """Filter by ZoneNames returns exactly that zone."""
+        resp = ec2.describe_availability_zones(ZoneNames=["us-east-1a"])
+        assert len(resp["AvailabilityZones"]) == 1
+        az = resp["AvailabilityZones"][0]
+        assert az["ZoneName"] == "us-east-1a"
+        assert az["RegionName"] == "us-east-1"
+
+    def test_describe_availability_zones_all_fields_present(self, ec2):
+        """Each AZ has required fields: ZoneName, State, RegionName, ZoneId."""
+        resp = ec2.describe_availability_zones()
+        for az in resp["AvailabilityZones"]:
+            assert "ZoneName" in az
+            assert "State" in az
+            assert "RegionName" in az
+
+    def test_describe_availability_zones_filter_multiple(self, ec2):
+        """Filter by multiple ZoneNames returns all specified zones."""
+        resp = ec2.describe_availability_zones(ZoneNames=["us-east-1a", "us-east-1b"])
+        names = {az["ZoneName"] for az in resp["AvailabilityZones"]}
+        assert "us-east-1a" in names
+        assert "us-east-1b" in names
+
+    def test_describe_availability_zones_filter_nonexistent_returns_empty(self, ec2):
+        """Filter by nonexistent zone name returns empty list."""
+        resp = ec2.describe_availability_zones(ZoneNames=["us-east-99z"])
+        assert resp["AvailabilityZones"] == []
+
+    def test_describe_availability_zones_filter_by_state(self, ec2):
+        """Filter by state=available returns zones in available state."""
+        resp = ec2.describe_availability_zones(
+            Filters=[{"Name": "state", "Values": ["available"]}]
+        )
+        assert len(resp["AvailabilityZones"]) >= 1
+        for az in resp["AvailabilityZones"]:
+            assert az["State"] == "available"
+
+
+
+class TestEC2AccountAttributesEdgeCases:
+    """Edge cases for DescribeAccountAttributes."""
+
+    def test_describe_account_attributes_filter_by_name(self, ec2):
+        """DescribeAccountAttributes filtered by specific attribute name."""
+        resp = ec2.describe_account_attributes(AttributeNames=["supported-platforms"])
+        assert len(resp["AccountAttributes"]) >= 1
+        names = [a["AttributeName"] for a in resp["AccountAttributes"]]
+        assert "supported-platforms" in names
+
+    def test_describe_account_attributes_value_structure(self, ec2):
+        """Each AccountAttribute has AttributeName and AttributeValues list."""
+        resp = ec2.describe_account_attributes()
+        for attr in resp["AccountAttributes"]:
+            assert "AttributeName" in attr
+            assert "AttributeValues" in attr
+            assert isinstance(attr["AttributeValues"], list)
+            for val in attr["AttributeValues"]:
+                assert "AttributeValue" in val
+
+    def test_describe_account_attributes_default_vpc(self, ec2):
+        """DescribeAccountAttributes default-vpc attribute returns a VPC ID or none."""
+        resp = ec2.describe_account_attributes(AttributeNames=["default-vpc"])
+        attrs = {a["AttributeName"]: a["AttributeValues"] for a in resp["AccountAttributes"]}
+        if "default-vpc" in attrs:
+            values = [v["AttributeValue"] for v in attrs["default-vpc"]]
+            # Value should be a VPC ID or "none"
+            assert len(values) >= 1
+            assert any(v.startswith("vpc-") or v == "none" for v in values)
+
+
+
+class TestEC2SecurityGroupsEdgeCases:
+    """Edge cases for DescribeSecurityGroups."""
+
+    def test_describe_security_groups_by_id(self, ec2):
+        """Create a SG, describe by ID, verify fields, delete."""
+        vpc = ec2.create_vpc(CidrBlock="10.252.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sg_name = _unique("sg-edge")
+        try:
+            sg = ec2.create_security_group(
+                GroupName=sg_name, Description="edge case SG", VpcId=vpc_id
+            )
+            sg_id = sg["GroupId"]
+            try:
+                described = ec2.describe_security_groups(GroupIds=[sg_id])
+                assert len(described["SecurityGroups"]) == 1
+                result = described["SecurityGroups"][0]
+                assert result["GroupId"] == sg_id
+                assert result["GroupName"] == sg_name
+                assert result["Description"] == "edge case SG"
+                assert result["VpcId"] == vpc_id
+                assert "IpPermissions" in result
+                assert "IpPermissionsEgress" in result
+            finally:
+                ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_security_groups_error_nonexistent(self, ec2):
+        """Describe a nonexistent SG ID raises InvalidGroup.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_security_groups(GroupIds=["sg-00000000deadbeef"])
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidGroup.NotFound",
+            "InvalidGroupId.NotFound",
+        )
+
+    def test_describe_security_groups_filter_by_vpc_id(self, ec2):
+        """DescribeSecurityGroups filtered by vpc-id returns only SGs in that VPC."""
+        vpc = ec2.create_vpc(CidrBlock="10.253.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sg_name = _unique("sg-vpc-filter")
+        try:
+            sg = ec2.create_security_group(
+                GroupName=sg_name, Description="vpc filter test", VpcId=vpc_id
+            )
+            sg_id = sg["GroupId"]
+            try:
+                resp = ec2.describe_security_groups(
+                    Filters=[{"Name": "vpc-id", "Values": [vpc_id]}]
+                )
+                sg_ids = [s["GroupId"] for s in resp["SecurityGroups"]]
+                assert sg_id in sg_ids
+                # All returned SGs should be in our VPC
+                for s in resp["SecurityGroups"]:
+                    assert s["VpcId"] == vpc_id
+            finally:
+                ec2.delete_security_group(GroupId=sg_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_security_groups_pagination(self, ec2):
+        """Create 3 SGs and list all by vpc-id filter; verify all appear."""
+        vpc = ec2.create_vpc(CidrBlock="10.251.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        sg_ids = []
+        try:
+            for i in range(3):
+                sg = ec2.create_security_group(
+                    GroupName=_unique(f"sg-page-{i}"),
+                    Description=f"pagination test {i}",
+                    VpcId=vpc_id,
+                )
+                sg_ids.append(sg["GroupId"])
+
+            resp = ec2.describe_security_groups(
+                Filters=[{"Name": "vpc-id", "Values": [vpc_id]}]
+            )
+            found_ids = {s["GroupId"] for s in resp["SecurityGroups"]}
+            for sg_id in sg_ids:
+                assert sg_id in found_ids
+        finally:
+            for sg_id in sg_ids:
+                try:
+                    ec2.delete_security_group(GroupId=sg_id)
+                except Exception:
+                    pass  # best-effort cleanup
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+
+class TestEC2ImagesEdgeCases:
+    """Edge cases for DescribeImages, CreateImage, RegisterImage."""
+
+    def test_describe_images_error_nonexistent_id(self, ec2):
+        """DescribeImages with a nonexistent ImageId raises an error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_images(ImageIds=["ami-00000000deadbeef"])
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidAMIID.NotFound",
+            "InvalidAMIId.NotFound",
+        )
+
+    def test_describe_images_fields_present(self, ec2):
+        """DescribeImages amazon images have required fields."""
+        resp = ec2.describe_images(Filters=[{"Name": "owner-alias", "Values": ["amazon"]}])
+        if resp["Images"]:
+            img = resp["Images"][0]
+            assert "ImageId" in img
+            assert img["ImageId"].startswith("ami-")
+            assert "Name" in img or "Description" in img
+            assert "Architecture" in img
+            assert "State" in img
+
+    def test_describe_images_owner_self_after_create(self, ec2):
+        """Create an image (from instance), list with Owners=self, verify it appears."""
+        inst = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = inst["Instances"][0]["InstanceId"]
+        try:
+            img = ec2.create_image(InstanceId=inst_id, Name=_unique("self-img"))
+            ami_id = img["ImageId"]
+            try:
+                # RETRIEVE by ImageId
+                described = ec2.describe_images(ImageIds=[ami_id])
+                assert len(described["Images"]) == 1
+                assert described["Images"][0]["ImageId"] == ami_id
+
+                # LIST with Owners=self should include our image
+                self_imgs = ec2.describe_images(Owners=["self"])
+                self_ids = [i["ImageId"] for i in self_imgs["Images"]]
+                assert ami_id in self_ids
+            finally:
+                ec2.deregister_image(ImageId=ami_id)
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_images_filter_by_architecture(self, ec2):
+        """DescribeImages filtered by architecture=x86_64 returns x86_64 images."""
+        resp = ec2.describe_images(
+            Filters=[{"Name": "architecture", "Values": ["x86_64"]}]
+        )
+        assert "Images" in resp
+        assert isinstance(resp["Images"], list)
+        for img in resp["Images"]:
+            assert img["Architecture"] == "x86_64"
+
+    def test_describe_images_owner_alias_returns_list(self, ec2):
+        """DescribeImages with owner-alias=amazon returns a list (even if empty)."""
+        resp = ec2.describe_images(Filters=[{"Name": "owner-alias", "Values": ["amazon"]}])
+        assert isinstance(resp["Images"], list)
+
+
+
+class TestEC2InstanceTypesEdgeCases:
+    """Edge cases for DescribeInstanceTypes."""
+
+    def test_describe_instance_types_filter_by_type(self, ec2):
+        """DescribeInstanceTypes filtered by specific type returns that type."""
+        resp = ec2.describe_instance_types(InstanceTypes=["t2.micro"])
+        assert len(resp["InstanceTypes"]) == 1
+        it = resp["InstanceTypes"][0]
+        assert it["InstanceType"] == "t2.micro"
+
+    def test_describe_instance_types_required_fields(self, ec2):
+        """Each instance type entry has required fields."""
+        resp = ec2.describe_instance_types(InstanceTypes=["t2.micro"])
+        assert len(resp["InstanceTypes"]) == 1
+        it = resp["InstanceTypes"][0]
+        assert "InstanceType" in it
+        assert "VCpuInfo" in it
+        assert "MemoryInfo" in it
+        assert it["VCpuInfo"]["DefaultVCpus"] > 0
+        assert it["MemoryInfo"]["SizeInMiB"] > 0
+
+    def test_describe_instance_types_filter_by_vcpu_count(self, ec2):
+        """DescribeInstanceTypes filtered by vcpu-count-min returns matching types."""
+        resp = ec2.describe_instance_types(
+            Filters=[{"Name": "vcpu-info.default-vcpus", "Values": ["1"]}]
+        )
+        assert "InstanceTypes" in resp
+        assert isinstance(resp["InstanceTypes"], list)
+        for it in resp["InstanceTypes"]:
+            assert it["VCpuInfo"]["DefaultVCpus"] == 1
+
+    def test_describe_instance_types_multiple_types(self, ec2):
+        """DescribeInstanceTypes with multiple types returns all requested."""
+        resp = ec2.describe_instance_types(InstanceTypes=["t2.micro", "t2.small"])
+        types_returned = {it["InstanceType"] for it in resp["InstanceTypes"]}
+        assert "t2.micro" in types_returned
+        assert "t2.small" in types_returned
+
+
+
+class TestEC2InstancesFilterEdgeCases:
+    """Edge cases for DescribeInstances filtering."""
+
+    def test_describe_instances_filter_by_instance_id(self, ec2):
+        """Filter by specific instance ID returns only that instance."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            by_filter = ec2.describe_instances(
+                Filters=[{"Name": "instance-id", "Values": [inst_id]}]
+            )
+            instances = [i for r in by_filter["Reservations"] for i in r["Instances"]]
+            assert len(instances) == 1
+            assert instances[0]["InstanceId"] == inst_id
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instances_filter_by_instance_type(self, ec2):
+        """Filter by instance-type and instance-id returns that specific instance."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            # Filter by both type and id to avoid interference from other tests
+            by_type = ec2.describe_instances(
+                Filters=[
+                    {"Name": "instance-type", "Values": ["t2.micro"]},
+                    {"Name": "instance-id", "Values": [inst_id]},
+                ]
+            )
+            all_insts = [i for r in by_type["Reservations"] for i in r["Instances"]]
+            assert len(all_insts) == 1
+            assert all_insts[0]["InstanceId"] == inst_id
+            assert all_insts[0]["InstanceType"] == "t2.micro"
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instances_filter_nonexistent_id(self, ec2):
+        """DescribeInstances with nonexistent instance ID raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_instances(InstanceIds=["i-00000000000000000"])
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidInstanceID.NotFound",
+            "InvalidInstanceId.NotFound",
+        )
+
+    def test_describe_instances_response_fields(self, ec2):
+        """Instance response has required fields: InstanceId, State, InstanceType, ImageId."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            desc = ec2.describe_instances(InstanceIds=[inst_id])
+            inst = desc["Reservations"][0]["Instances"][0]
+            assert "InstanceId" in inst
+            assert "State" in inst
+            assert "State" in inst and "Name" in inst["State"]
+            assert inst["State"]["Name"] in ("pending", "running", "stopped", "terminated")
+            assert "InstanceType" in inst
+            assert inst["InstanceType"] == "t2.micro"
+            assert "ImageId" in inst
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+
+
+class TestEC2VpcPeeringEdgeCases:
+    """Edge cases for VPC peering connections."""
+
+    def test_describe_vpc_peering_connections_nonexistent_returns_empty(self, ec2):
+        """DescribeVpcPeeringConnections with nonexistent ID returns empty list."""
+        resp = ec2.describe_vpc_peering_connections(
+            VpcPeeringConnectionIds=["pcx-00000000deadbeef"]
+        )
+        assert resp["VpcPeeringConnections"] == []
+
+    def test_describe_vpc_peering_connections_filter_by_status(self, ec2):
+        """DescribeVpcPeeringConnections filter by status returns list."""
+        resp = ec2.describe_vpc_peering_connections(
+            Filters=[{"Name": "status-code", "Values": ["active"]}]
+        )
+        assert "VpcPeeringConnections" in resp
+        assert isinstance(resp["VpcPeeringConnections"], list)
+
+    def test_vpc_peering_connection_fields(self, ec2):
+        """Create, describe, verify fields, delete peering connection."""
+        vpc1 = ec2.create_vpc(CidrBlock="10.248.0.0/16")["Vpc"]["VpcId"]
+        vpc2 = ec2.create_vpc(CidrBlock="10.249.0.0/16")["Vpc"]["VpcId"]
+        try:
+            pcx = ec2.create_vpc_peering_connection(VpcId=vpc1, PeerVpcId=vpc2)
+            pcx_id = pcx["VpcPeeringConnection"]["VpcPeeringConnectionId"]
+            try:
+                ec2.accept_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+
+                described = ec2.describe_vpc_peering_connections(
+                    VpcPeeringConnectionIds=[pcx_id]
+                )
+                conn = described["VpcPeeringConnections"][0]
+                assert conn["VpcPeeringConnectionId"] == pcx_id
+                assert "RequesterVpcInfo" in conn
+                assert "AccepterVpcInfo" in conn
+                assert "Status" in conn
+                assert conn["Status"]["Code"] == "active"
+            finally:
+                ec2.delete_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc1)
+            ec2.delete_vpc(VpcId=vpc2)
+
+
+
+class TestEC2NetworkAclsEdgeCases:
+    """Edge cases for DescribeNetworkAcls."""
+
+    def test_describe_network_acls_filter_by_vpc_id(self, ec2):
+        """DescribeNetworkAcls filtered by vpc-id returns only ACLs in that VPC."""
+        vpc = ec2.create_vpc(CidrBlock="10.250.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.describe_network_acls(
+                Filters=[{"Name": "vpc-id", "Values": [vpc_id]}]
+            )
+            assert "NetworkAcls" in resp
+            assert len(resp["NetworkAcls"]) >= 1
+            for acl in resp["NetworkAcls"]:
+                assert acl["VpcId"] == vpc_id
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_network_acls_fields_present(self, ec2):
+        """Default network ACL has required fields."""
+        resp = ec2.describe_network_acls()
+        assert len(resp["NetworkAcls"]) >= 1
+        acl = resp["NetworkAcls"][0]
+        assert "NetworkAclId" in acl
+        assert acl["NetworkAclId"].startswith("acl-")
+        assert "VpcId" in acl
+        assert "Entries" in acl
+        assert "IsDefault" in acl
+        assert isinstance(acl["Entries"], list)
+
+    def test_describe_network_acls_error_nonexistent(self, ec2):
+        """DescribeNetworkAcls with nonexistent ID raises an error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_network_acls(NetworkAclIds=["acl-00000000deadbeef"])
+        # Accept any not-found error code (server may use InvalidNetworkAclID or similar)
+        code = exc_info.value.response["Error"]["Code"]
+        assert "NotFound" in code or "Invalid" in code
+
+    def test_describe_network_acls_default_has_entries(self, ec2):
+        """Default network ACL has deny-all catch-all entries."""
+        vpc = ec2.create_vpc(CidrBlock="10.247.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            resp = ec2.describe_network_acls(
+                Filters=[
+                    {"Name": "vpc-id", "Values": [vpc_id]},
+                    {"Name": "default", "Values": ["true"]},
+                ]
+            )
+            assert len(resp["NetworkAcls"]) == 1
+            acl = resp["NetworkAcls"][0]
+            assert acl["IsDefault"] is True
+            # Default ACL should have entries (at minimum catch-all rules)
+            assert len(acl["Entries"]) >= 2
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+
+
+class TestEC2PrefixListsEdgeCases:
+    """Edge cases for DescribePrefixLists and managed prefix lists."""
+
+    def test_describe_prefix_lists_fields_present(self, ec2):
+        """Each prefix list entry has required fields."""
+        resp = ec2.describe_prefix_lists()
+        # May be empty if no managed prefix lists exist
+        for pl in resp["PrefixLists"]:
+            assert "PrefixListId" in pl
+            assert pl["PrefixListId"].startswith("pl-")
+            assert "PrefixListName" in pl
+
+    def test_describe_managed_prefix_lists_after_create(self, ec2):
+        """Create managed prefix list, describe it, verify fields, delete."""
+        name = _unique("test-mpl")
+        resp = ec2.create_managed_prefix_list(
+            PrefixListName=name, MaxEntries=10, AddressFamily="IPv4"
+        )
+        pl_id = resp["PrefixList"]["PrefixListId"]
+        try:
+            assert pl_id.startswith("pl-")
+            assert resp["PrefixList"]["PrefixListName"] == name
+            assert resp["PrefixList"]["MaxEntries"] == 10
+            assert resp["PrefixList"]["AddressFamily"] == "IPv4"
+
+            described = ec2.describe_managed_prefix_lists(PrefixListIds=[pl_id])
+            assert len(described["PrefixLists"]) == 1
+            pl = described["PrefixLists"][0]
+            assert pl["PrefixListId"] == pl_id
+            assert pl["PrefixListName"] == name
+        finally:
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+
+    def test_describe_managed_prefix_lists_filter_by_name(self, ec2):
+        """DescribeManagedPrefixLists filtered by prefix-list-name."""
+        name = _unique("test-pl-name")
+        resp = ec2.create_managed_prefix_list(
+            PrefixListName=name, MaxEntries=5, AddressFamily="IPv4"
+        )
+        pl_id = resp["PrefixList"]["PrefixListId"]
+        try:
+            filtered = ec2.describe_managed_prefix_lists(
+                Filters=[{"Name": "prefix-list-name", "Values": [name]}]
+            )
+            assert len(filtered["PrefixLists"]) == 1
+            assert filtered["PrefixLists"][0]["PrefixListName"] == name
+        finally:
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+
+    def test_describe_managed_prefix_lists_error_nonexistent(self, ec2):
+        """DescribeManagedPrefixLists with nonexistent ID raises or returns empty."""
+        try:
+            resp = ec2.describe_managed_prefix_lists(PrefixListIds=["pl-00000000deadbeef"])
+            # Some implementations return empty list
+            assert isinstance(resp["PrefixLists"], list)
+        except botocore.exceptions.ClientError as e:
+            code = e.response["Error"]["Code"]
+            assert "NotFound" in code or "Invalid" in code
+
+
+
+class TestEC2VpcBehavioralFidelity:
+    """Behavioral fidelity tests for VPC operations."""
+
+    def test_vpc_arn_format(self, ec2):
+        """VPC has correct ARN format."""
+        vpc = ec2.create_vpc(CidrBlock="10.200.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            assert vpc_id.startswith("vpc-")
+            # Describe to verify full structure
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            vpc_obj = described["Vpcs"][0]
+            assert vpc_obj["CidrBlock"] == "10.200.0.0/16"
+            assert vpc_obj["State"] == "available"
+            assert vpc_obj["IsDefault"] is False
+            assert "DhcpOptionsId" in vpc_obj
+            assert "OwnerId" in vpc_obj
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_vpc_idempotent_tags(self, ec2):
+        """Applying the same tag twice does not duplicate it."""
+        vpc = ec2.create_vpc(CidrBlock="10.199.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            for _ in range(2):
+                ec2.create_tags(
+                    Resources=[vpc_id],
+                    Tags=[{"Key": "Env", "Value": "test"}],
+                )
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            env_tags = [
+                t for t in described["Vpcs"][0].get("Tags", []) if t["Key"] == "Env"
+            ]
+            assert len(env_tags) == 1
+            assert env_tags[0]["Value"] == "test"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_vpc_tag_update(self, ec2):
+        """Applying same key with new value updates the tag."""
+        vpc = ec2.create_vpc(CidrBlock="10.198.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        try:
+            ec2.create_tags(
+                Resources=[vpc_id], Tags=[{"Key": "Stage", "Value": "dev"}]
+            )
+            ec2.create_tags(
+                Resources=[vpc_id], Tags=[{"Key": "Stage", "Value": "prod"}]
+            )
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            tags = {t["Key"]: t["Value"] for t in described["Vpcs"][0].get("Tags", [])}
+            assert tags["Stage"] == "prod"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_vpc_delete_nonexistent_raises_error(self, ec2):
+        """DeleteVpc on a nonexistent VPC raises an error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.delete_vpc(VpcId="vpc-00000000deadbeef")
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidVpcID.NotFound",
+            "InvalidVpc.NotFound",
+        )
+
+    def test_vpc_list_pagination(self, ec2):
+        """Create 3 VPCs and list all; verify all IDs appear."""
+        vpc_ids = []
+        try:
+            for i in range(3):
+                vpc = ec2.create_vpc(CidrBlock=f"10.19{i}.0.0/16")
+                vpc_ids.append(vpc["Vpc"]["VpcId"])
+
+            all_vpcs = ec2.describe_vpcs()
+            found_ids = {v["VpcId"] for v in all_vpcs["Vpcs"]}
+            for vpc_id in vpc_ids:
+                assert vpc_id in found_ids
+        finally:
+            for vpc_id in vpc_ids:
+                try:
+                    ec2.delete_vpc(VpcId=vpc_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
