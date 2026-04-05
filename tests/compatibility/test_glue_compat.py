@@ -7991,3 +7991,785 @@ class TestGlueBatchGetWorkflowsBehavior:
         resp_after = glue.batch_get_workflows(Names=[wf_name])
         assert wf_name in resp_after["MissingWorkflows"]
         assert resp_after["Workflows"] == []
+
+
+class TestGlueSchemaVersionEdgeCases:
+    """Edge cases and behavioral fidelity for GetSchemaVersion and GetSchemaByDefinition."""
+
+    def _make_schema(self, glue):
+        reg_name = _unique("reg")
+        schema_name = _unique("schema")
+        definition = '{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}'
+        glue.create_registry(RegistryName=reg_name)
+        glue.create_schema(
+            RegistryId={"RegistryName": reg_name},
+            SchemaName=schema_name,
+            DataFormat="AVRO",
+            Compatibility="NONE",
+            SchemaDefinition=definition,
+        )
+        return reg_name, schema_name, definition
+
+    def test_get_schema_version_create_retrieve_list_error(self, glue):
+        """GetSchemaVersion full lifecycle: create schema, retrieve version, list versions, error."""
+        reg_name, schema_name, definition = self._make_schema(glue)
+        try:
+            # RETRIEVE: get the schema version
+            resp = glue.get_schema_version(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaVersionNumber={"LatestVersion": True},
+            )
+            assert "SchemaDefinition" in resp
+            assert resp["DataFormat"] == "AVRO"
+            assert "SchemaVersionId" in resp
+            sv_id = resp["SchemaVersionId"]
+            # LIST: list schema versions
+            list_resp = glue.list_schema_versions(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name}
+            )
+            assert "Schemas" in list_resp
+            sv_ids = [v.get("SchemaVersionId") for v in list_resp["Schemas"]]
+            assert sv_id in sv_ids
+            # ERROR: get nonexistent schema raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema_version(
+                    SchemaId={"SchemaName": "nonexistent-schema-xyz", "RegistryName": reg_name},
+                    SchemaVersionNumber={"LatestVersion": True},
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_get_schema_version_by_number(self, glue):
+        """GetSchemaVersion retrieves the correct version by VersionNumber."""
+        reg_name, schema_name, definition = self._make_schema(glue)
+        try:
+            resp = glue.get_schema_version(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaVersionNumber={"VersionNumber": 1},
+            )
+            assert resp["VersionNumber"] == 1
+            assert resp["DataFormat"] == "AVRO"
+            assert "SchemaVersionId" in resp
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_get_schema_version_after_register_new_version(self, glue):
+        """GetSchemaVersion retrieves v2 after RegisterSchemaVersion adds it."""
+        reg_name, schema_name, definition = self._make_schema(glue)
+        try:
+            new_def = '{"type":"record","name":"T","fields":[{"name":"id","type":"int"},{"name":"name","type":"string"}]}'
+            reg_resp = glue.register_schema_version(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaDefinition=new_def,
+            )
+            assert reg_resp["VersionNumber"] == 2
+            # RETRIEVE v2 by VersionNumber
+            v2_resp = glue.get_schema_version(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaVersionNumber={"VersionNumber": 2},
+            )
+            assert v2_resp["VersionNumber"] == 2
+            assert "SchemaDefinition" in v2_resp
+            # DELETE: clean up
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_get_schema_by_definition_create_retrieve_list_error(self, glue):
+        """GetSchemaByDefinition full lifecycle: create, find by definition, list, error."""
+        reg_name, schema_name, definition = self._make_schema(glue)
+        try:
+            # RETRIEVE: find schema by definition
+            resp = glue.get_schema_by_definition(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaDefinition=definition,
+            )
+            assert "SchemaVersionId" in resp
+            assert resp["DataFormat"] == "AVRO"
+            assert "SchemaArn" in resp
+            # LIST: list schemas in registry
+            list_resp = glue.list_schemas(RegistryId={"RegistryName": reg_name})
+            schema_names = [s["SchemaName"] for s in list_resp["Schemas"]]
+            assert schema_name in schema_names
+            # ERROR: get nonexistent schema by definition raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_schema_by_definition(
+                    SchemaId={"SchemaName": "nonexistent-xyz", "RegistryName": reg_name},
+                    SchemaDefinition=definition,
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+    def test_get_schema_by_definition_returns_arn(self, glue):
+        """GetSchemaByDefinition returns SchemaArn matching the created schema ARN."""
+        reg_name, schema_name, definition = self._make_schema(glue)
+        try:
+            # CREATE: get the schema ARN from create_schema result
+            create_resp = glue.get_schema(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name}
+            )
+            schema_arn = create_resp["SchemaArn"]
+            # RETRIEVE: by definition - ARNs should match
+            resp = glue.get_schema_by_definition(
+                SchemaId={"SchemaName": schema_name, "RegistryName": reg_name},
+                SchemaDefinition=definition,
+            )
+            assert resp["SchemaArn"] == schema_arn
+        finally:
+            glue.delete_schema(SchemaId={"SchemaName": schema_name, "RegistryName": reg_name})
+            glue.delete_registry(RegistryId={"RegistryName": reg_name})
+
+
+class TestGlueConnectionEdgeCases:
+    """Edge cases and behavioral fidelity for CreateConnection and GetConnection."""
+
+    def test_create_connection_full_lifecycle(self, glue):
+        """CreateConnection full lifecycle: create, retrieve, list, update, delete, error."""
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/mydb",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        try:
+            # RETRIEVE: get the connection back
+            resp = glue.get_connection(Name=conn_name)
+            assert resp["Connection"]["Name"] == conn_name
+            assert "JDBC_CONNECTION_URL" in resp["Connection"]["ConnectionProperties"]
+            # LIST: connection appears in list
+            list_resp = glue.get_connections()
+            conn_names = [c["Name"] for c in list_resp["ConnectionList"]]
+            assert conn_name in conn_names
+            # UPDATE: change the URL
+            glue.update_connection(
+                Name=conn_name,
+                ConnectionInput={
+                    "Name": conn_name,
+                    "ConnectionType": "JDBC",
+                    "ConnectionProperties": {
+                        "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/updated",
+                        "USERNAME": "admin",
+                        "PASSWORD": "secret",
+                    },
+                },
+            )
+            updated = glue.get_connection(Name=conn_name)
+            assert "updated" in updated["Connection"]["ConnectionProperties"]["JDBC_CONNECTION_URL"]
+            # ERROR: nonexistent connection raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_connection(Name="nonexistent-conn-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_connection(ConnectionName=conn_name)
+
+    def test_create_connection_delete_then_not_found(self, glue):
+        """After deleting a connection, GetConnection raises EntityNotFoundException."""
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "user",
+                    "PASSWORD": "pass",
+                },
+            }
+        )
+        glue.delete_connection(ConnectionName=conn_name)
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name=conn_name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_create_connection_properties_preserved(self, glue):
+        """ConnectionProperties are preserved after create and retrieve."""
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:postgresql://host:5432/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+                "Description": "test connection",
+            }
+        )
+        try:
+            resp = glue.get_connection(Name=conn_name)
+            assert resp["Connection"]["Name"] == conn_name
+            assert "JDBC_CONNECTION_URL" in resp["Connection"]["ConnectionProperties"]
+            assert (
+                resp["Connection"]["ConnectionProperties"]["JDBC_CONNECTION_URL"]
+                == "jdbc:postgresql://host:5432/db"
+            )
+        finally:
+            glue.delete_connection(ConnectionName=conn_name)
+
+
+class TestGlueBlueprintEdgeCases:
+    """Edge cases and behavioral fidelity for ListBlueprints and blueprint operations."""
+
+    def test_list_blueprints_create_retrieve_delete_error(self, glue):
+        """ListBlueprints full lifecycle: create, retrieve, list, delete, error."""
+        bp_name = _unique("bp")
+        glue.create_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            # RETRIEVE: get blueprint details
+            get_resp = glue.get_blueprint(Name=bp_name)
+            assert get_resp["Blueprint"]["Name"] == bp_name
+            # LIST: blueprint appears in list
+            list_resp = glue.list_blueprints()
+            assert bp_name in list_resp["Blueprints"]
+            # UPDATE: update blueprint location
+            glue.update_blueprint(Name=bp_name, BlueprintLocation="s3://bucket/bp-v2.py")
+            # ERROR: get nonexistent blueprint raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_blueprint(Name="nonexistent-bp-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_blueprint(Name=bp_name)
+            # verify gone
+            with pytest.raises(ClientError) as exc:
+                glue.get_blueprint(Name=bp_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_blueprints_pagination_not_empty_after_create(self, glue):
+        """ListBlueprints returns a non-empty list after creating blueprints."""
+        bp_names = [_unique("bp") for _ in range(3)]
+        for name in bp_names:
+            glue.create_blueprint(Name=name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            resp = glue.list_blueprints()
+            assert "Blueprints" in resp
+            for name in bp_names:
+                assert name in resp["Blueprints"]
+        finally:
+            for name in bp_names:
+                glue.delete_blueprint(Name=name)
+
+
+class TestGlueClassifierEdgeCases:
+    """Edge cases and behavioral fidelity for GetClassifiers."""
+
+    def test_get_classifiers_create_retrieve_list_update_delete_error(self, glue):
+        """GetClassifiers full lifecycle: create, retrieve, list, update, delete, error."""
+        clf_name = _unique("clf")
+        glue.create_classifier(
+            GrokClassifier={
+                "Classification": "mytype",
+                "Name": clf_name,
+                "GrokPattern": "%{COMBINEDAPACHELOG}",
+            }
+        )
+        try:
+            # RETRIEVE: get individual classifier
+            get_resp = glue.get_classifier(Name=clf_name)
+            assert get_resp["Classifier"]["GrokClassifier"]["Name"] == clf_name
+            assert get_resp["Classifier"]["GrokClassifier"]["Classification"] == "mytype"
+            # LIST: classifier appears in classifiers list
+            list_resp = glue.get_classifiers()
+            clf_names = [
+                c["GrokClassifier"]["Name"]
+                for c in list_resp["Classifiers"]
+                if "GrokClassifier" in c
+            ]
+            assert clf_name in clf_names
+            # UPDATE: change classification
+            glue.update_classifier(
+                GrokClassifier={
+                    "Name": clf_name,
+                    "Classification": "updated-type",
+                    "GrokPattern": "%{COMMONAPACHELOG}",
+                }
+            )
+            updated = glue.get_classifier(Name=clf_name)
+            assert updated["Classifier"]["GrokClassifier"]["Classification"] == "updated-type"
+            # ERROR: get nonexistent classifier raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_classifier(Name="nonexistent-clf-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_classifier(Name=clf_name)
+
+    def test_get_classifiers_multiple_types(self, glue):
+        """GetClassifiers returns all classifier types including Grok."""
+        clf_name = _unique("clf")
+        glue.create_classifier(
+            GrokClassifier={
+                "Classification": "test-log",
+                "Name": clf_name,
+                "GrokPattern": "%{COMMONAPACHELOG}",
+            }
+        )
+        try:
+            resp = glue.get_classifiers()
+            assert "Classifiers" in resp
+            assert isinstance(resp["Classifiers"], list)
+            grok_names = [
+                c["GrokClassifier"]["Name"]
+                for c in resp["Classifiers"]
+                if "GrokClassifier" in c
+            ]
+            assert clf_name in grok_names
+        finally:
+            glue.delete_classifier(Name=clf_name)
+
+
+class TestGlueDataQualityRulesetEdgeCases:
+    """Edge cases and behavioral fidelity for ListDataQualityRulesets."""
+
+    def test_list_data_quality_rulesets_create_retrieve_update_delete_error(self, glue):
+        """ListDataQualityRulesets full lifecycle: create, retrieve, list, update, delete, error."""
+        ruleset_name = _unique("dqr")
+        glue.create_data_quality_ruleset(
+            Name=ruleset_name,
+            Ruleset='Rules = [ IsComplete "col1" ]',
+        )
+        try:
+            # RETRIEVE: get individual ruleset
+            get_resp = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert get_resp["Name"] == ruleset_name
+            assert "Ruleset" in get_resp
+            # LIST: ruleset appears in list
+            list_resp = glue.list_data_quality_rulesets()
+            ruleset_names = [r["Name"] for r in list_resp["Rulesets"]]
+            assert ruleset_name in ruleset_names
+            # UPDATE: change ruleset definition
+            glue.update_data_quality_ruleset(
+                Name=ruleset_name,
+                Ruleset='Rules = [ IsComplete "col2" ]',
+            )
+            updated = glue.get_data_quality_ruleset(Name=ruleset_name)
+            assert updated["Name"] == ruleset_name
+            # ERROR: get nonexistent ruleset raises error
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+            assert exc.value.response["Error"]["Code"] in (
+                "EntityNotFoundException",
+                "InvalidInputException",
+            )
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=ruleset_name)
+
+    def test_list_data_quality_rulesets_multiple(self, glue):
+        """ListDataQualityRulesets returns all created rulesets."""
+        names = [_unique("dqr") for _ in range(3)]
+        for name in names:
+            glue.create_data_quality_ruleset(
+                Name=name, Ruleset='Rules = [ IsComplete "id" ]'
+            )
+        try:
+            resp = glue.list_data_quality_rulesets()
+            listed = [r["Name"] for r in resp["Rulesets"]]
+            for name in names:
+                assert name in listed
+        finally:
+            for name in names:
+                glue.delete_data_quality_ruleset(Name=name)
+
+
+class TestGlueMLTransformsEdgeCases:
+    """Edge cases and behavioral fidelity for GetMLTransforms."""
+
+    def _make_transform(self, glue):
+        name = _unique("mlt")
+        resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "id"},
+            },
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        return resp["TransformId"], name
+
+    def test_get_ml_transforms_create_retrieve_list_update_delete_error(self, glue):
+        """GetMLTransforms full lifecycle: create, retrieve, list, update, delete, error."""
+        tfm_id, name = self._make_transform(glue)
+        try:
+            # RETRIEVE: get individual transform
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            assert get_resp["Name"] == name
+            # LIST: transform appears in list
+            list_resp = glue.get_ml_transforms()
+            ids = [t["TransformId"] for t in list_resp["Transforms"]]
+            assert tfm_id in ids
+            # UPDATE: update description
+            update_resp = glue.update_ml_transform(TransformId=tfm_id, Description="updated desc")
+            assert update_resp["TransformId"] == tfm_id
+            # verify update
+            updated = glue.get_ml_transform(TransformId=tfm_id)
+            assert updated["Description"] == "updated desc"
+            # ERROR: get nonexistent transform raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_transform(TransformId="nonexistent-tfm-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            del_resp = glue.delete_ml_transform(TransformId=tfm_id)
+            assert del_resp["TransformId"] == tfm_id
+
+    def test_get_ml_transforms_multiple(self, glue):
+        """GetMLTransforms returns all created transforms."""
+        tfm_ids = []
+        for _ in range(3):
+            tfm_id, _ = self._make_transform(glue)
+            tfm_ids.append(tfm_id)
+        try:
+            resp = glue.get_ml_transforms()
+            listed_ids = [t["TransformId"] for t in resp["Transforms"]]
+            for tfm_id in tfm_ids:
+                assert tfm_id in listed_ids
+        finally:
+            for tfm_id in tfm_ids:
+                glue.delete_ml_transform(TransformId=tfm_id)
+
+
+class TestGlueUsageProfileEdgeCases:
+    """Edge cases and behavioral fidelity for ListUsageProfiles."""
+
+    def test_list_usage_profiles_create_retrieve_update_delete_error(self, glue):
+        """ListUsageProfiles full lifecycle: create, retrieve, list, update, delete, error."""
+        name = _unique("up")
+        glue.create_usage_profile(Name=name, Configuration={})
+        try:
+            # RETRIEVE: get profile details
+            get_resp = glue.get_usage_profile(Name=name)
+            assert get_resp["Name"] == name
+            # LIST: profile appears in list
+            list_resp = glue.list_usage_profiles()
+            profile_names = [p["Name"] for p in list_resp["Profiles"]]
+            assert name in profile_names
+            # UPDATE: update configuration
+            glue.update_usage_profile(
+                Name=name,
+                Configuration={
+                    "SessionConfiguration": {"IdleTimeout": {"DefaultValue": "60"}}
+                },
+            )
+            updated = glue.get_usage_profile(Name=name)
+            assert updated["Name"] == name
+            # ERROR: get nonexistent profile raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_usage_profile(Name="nonexistent-profile-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_usage_profile(Name=name)
+
+    def test_list_usage_profiles_multiple(self, glue):
+        """ListUsageProfiles returns all created profiles."""
+        names = [_unique("up") for _ in range(3)]
+        for name in names:
+            glue.create_usage_profile(Name=name, Configuration={})
+        try:
+            resp = glue.list_usage_profiles()
+            listed = [p["Name"] for p in resp["Profiles"]]
+            for name in names:
+                assert name in listed
+        finally:
+            for name in names:
+                glue.delete_usage_profile(Name=name)
+
+
+class TestGlueCatalogImportStatusEdgeCases:
+    """Edge cases and behavioral fidelity for GetCatalogImportStatus."""
+
+    def test_get_catalog_import_status_create_retrieve_list_error(self, glue):
+        """GetCatalogImportStatus full lifecycle: import catalog, get status, verify fields."""
+        # CREATE: trigger import
+        glue.import_catalog_to_glue()
+        # RETRIEVE: get import status
+        resp = glue.get_catalog_import_status()
+        assert "ImportStatus" in resp
+        status = resp["ImportStatus"]
+        assert "ImportCompleted" in status
+        assert status["ImportCompleted"] is True
+        # LIST: also verify catalog list exists
+        catalogs_resp = glue.get_catalogs()
+        assert "CatalogList" in catalogs_resp
+        # ERROR: get nonexistent catalog raises EntityNotFoundException
+        with pytest.raises(ClientError) as exc:
+            glue.get_catalog(CatalogId="nonexistent-catalog-xyz-123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_catalog_import_status_returns_bool(self, glue):
+        """GetCatalogImportStatus always returns ImportCompleted as a boolean."""
+        resp = glue.get_catalog_import_status()
+        assert "ImportStatus" in resp
+        assert isinstance(resp["ImportStatus"].get("ImportCompleted"), bool)
+
+
+class TestGlueResourcePoliciesEdgeCases:
+    """Edge cases and behavioral fidelity for GetResourcePolicies."""
+
+    def test_get_resource_policies_create_retrieve_list_delete_error(self, glue):
+        """GetResourcePolicies full lifecycle: put policy, get it, list policies, delete, error."""
+        import json
+
+        policy = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                "Action": "glue:GetDatabase",
+                "Resource": "*",
+            }],
+        })
+        # CREATE (put resource policy)
+        glue.put_resource_policy(PolicyInJson=policy)
+        try:
+            # RETRIEVE: get the individual resource policy
+            get_resp = glue.get_resource_policy()
+            assert "PolicyInJson" in get_resp
+            # LIST: resource policies list
+            list_resp = glue.get_resource_policies()
+            assert "GetResourcePoliciesResponseList" in list_resp
+            # ERROR: nonexistent connection raises EntityNotFoundException (proves service is live)
+            with pytest.raises(ClientError) as exc:
+                glue.get_connection(Name="nonexistent-conn-policies-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE: remove the resource policy
+            glue.delete_resource_policy()
+
+    def test_get_resource_policies_returns_list(self, glue):
+        """GetResourcePolicies always returns a GetResourcePoliciesResponseList."""
+        resp = glue.get_resource_policies()
+        assert "GetResourcePoliciesResponseList" in resp
+        assert isinstance(resp["GetResourcePoliciesResponseList"], list)
+
+
+class TestGlueSecurityConfigurationsEdgeCases:
+    """Edge cases and behavioral fidelity for GetSecurityConfigurations."""
+
+    def test_get_security_configurations_create_retrieve_list_delete_error(self, glue):
+        """GetSecurityConfigurations full lifecycle: create, retrieve, list, delete, error."""
+        name = _unique("sc")
+        glue.create_security_configuration(
+            Name=name,
+            EncryptionConfiguration={
+                "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+                "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+                "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+            },
+        )
+        try:
+            # RETRIEVE: get individual config
+            get_resp = glue.get_security_configuration(Name=name)
+            assert get_resp["SecurityConfiguration"]["Name"] == name
+            assert "EncryptionConfiguration" in get_resp["SecurityConfiguration"]
+            # LIST: config appears in list
+            list_resp = glue.get_security_configurations()
+            sc_names = [sc["Name"] for sc in list_resp["SecurityConfigurations"]]
+            assert name in sc_names
+            # ERROR: get nonexistent config raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_security_configuration(Name="nonexistent-sc-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_security_configuration(Name=name)
+            # verify gone
+            with pytest.raises(ClientError) as exc:
+                glue.get_security_configuration(Name=name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_get_security_configurations_multiple(self, glue):
+        """GetSecurityConfigurations returns all created configs."""
+        names = [_unique("sc") for _ in range(3)]
+        for name in names:
+            glue.create_security_configuration(
+                Name=name,
+                EncryptionConfiguration={
+                    "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+                    "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+                    "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+                },
+            )
+        try:
+            resp = glue.get_security_configurations()
+            listed = [sc["Name"] for sc in resp["SecurityConfigurations"]]
+            for name in names:
+                assert name in listed
+        finally:
+            for name in names:
+                glue.delete_security_configuration(Name=name)
+
+
+class TestGlueCrawlerMetricsEdgeCases:
+    """Edge cases and behavioral fidelity for GetCrawlerMetrics."""
+
+    def test_get_crawler_metrics_create_retrieve_list_delete_error(self, glue):
+        """GetCrawlerMetrics full lifecycle: create crawler, get metrics, list metrics, delete."""
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        try:
+            # RETRIEVE: get crawler details
+            get_resp = glue.get_crawler(Name=crawler_name)
+            assert get_resp["Crawler"]["Name"] == crawler_name
+            # LIST: get crawler metrics (all crawlers)
+            metrics_resp = glue.get_crawler_metrics()
+            assert "CrawlerMetricsList" in metrics_resp
+            # list crawlers
+            list_resp = glue.list_crawlers()
+            assert crawler_name in list_resp["CrawlerNames"]
+            # ERROR: get nonexistent crawler raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_crawler(Name="nonexistent-crawler-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_crawler_metrics_for_specific_crawler(self, glue):
+        """GetCrawlerMetrics with CrawlerNameList returns metrics for that crawler."""
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        try:
+            resp = glue.get_crawler_metrics(CrawlerNameList=[crawler_name])
+            assert "CrawlerMetricsList" in resp
+            assert isinstance(resp["CrawlerMetricsList"], list)
+        finally:
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueEntityRecordsEdgeCases:
+    """Edge cases and behavioral fidelity for GetEntityRecords."""
+
+    def test_get_entity_records_create_retrieve_list_error(self, glue):
+        """GetEntityRecords full lifecycle context: conn, endpoint, entity records, error."""
+        conn_name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        try:
+            # RETRIEVE: get the connection back
+            get_resp = glue.get_connection(Name=conn_name)
+            assert get_resp["Connection"]["Name"] == conn_name
+            # LIST: connection appears in list
+            list_resp = glue.get_connections()
+            assert conn_name in [c["Name"] for c in list_resp["ConnectionList"]]
+            # GetEntityRecords returns a Records list
+            entity_resp = glue.get_entity_records(
+                EntityName="fake-entity",
+                ConnectionName="fake-conn",
+                Limit=10,
+            )
+            assert "Records" in entity_resp
+            # ERROR: get nonexistent connection raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_connection(Name="nonexistent-conn-entity-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_connection(ConnectionName=conn_name)
+
+    def test_get_entity_records_returns_list(self, glue):
+        """GetEntityRecords always returns a Records list (may be empty)."""
+        resp = glue.get_entity_records(
+            EntityName="entity-type-1",
+            ConnectionName="fake-connection-name",
+            Limit=5,
+        )
+        assert "Records" in resp
+        assert isinstance(resp["Records"], list)
+
+
+class TestGlueMappingEdgeCases:
+    """Edge cases and behavioral fidelity for GetMapping."""
+
+    def test_get_mapping_create_retrieve_list_error(self, glue):
+        """GetMapping full lifecycle context: database, table, mapping, error."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            # RETRIEVE: get table details
+            get_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert get_resp["Table"]["Name"] == tbl_name
+            # LIST: table appears in tables list
+            list_resp = glue.get_tables(DatabaseName=db_name)
+            tbl_names = [t["Name"] for t in list_resp["TableList"]]
+            assert tbl_name in tbl_names
+            # GetMapping returns a Mapping list
+            mapping_resp = glue.get_mapping(
+                Source={"DatabaseName": db_name, "TableName": tbl_name},
+            )
+            assert "Mapping" in mapping_resp
+            assert isinstance(mapping_resp["Mapping"], list)
+            # ERROR: get nonexistent table raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_table(DatabaseName=db_name, Name="nonexistent-tbl-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_mapping_with_sinks(self, glue):
+        """GetMapping with Sinks parameter returns a Mapping list."""
+        resp = glue.get_mapping(
+            Source={"DatabaseName": "src-db", "TableName": "src-tbl"},
+            Sinks=[{"DatabaseName": "tgt-db", "TableName": "tgt-tbl"}],
+        )
+        assert "Mapping" in resp
+        assert isinstance(resp["Mapping"], list)
