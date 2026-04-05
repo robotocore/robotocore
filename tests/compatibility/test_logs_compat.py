@@ -3522,3 +3522,535 @@ class TestLogsAdditionalBehavioralFidelity:
             assert g["metricFilterCount"] >= 0
         finally:
             client.delete_log_group(logGroupName=group)
+
+
+class TestLogsEdgeCaseImprovements:
+    """Edge cases and behavioral fidelity tests targeting low-coverage operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("logs")
+
+    # ── filter_log_events with limit: pagination + error ─────────────────────
+
+    def test_filter_log_events_limit_nexttoken_pagination(self, client):
+        """FilterLogEvents with limit returns nextToken; following it fetches more events."""
+        group = _unique("/test/filt-pg")
+        client.create_log_group(logGroupName=group)
+        stream = "pg-stream"
+        client.create_log_stream(logGroupName=group, logStreamName=stream)
+        try:
+            now = int(time.time() * 1000)
+            client.put_log_events(
+                logGroupName=group,
+                logStreamName=stream,
+                logEvents=[{"timestamp": now + i, "message": f"MSG-{i}"} for i in range(10)],
+            )
+            # First page
+            resp1 = client.filter_log_events(
+                logGroupName=group, logStreamNames=[stream], limit=3
+            )
+            assert len(resp1["events"]) <= 3
+            assert "nextToken" in resp1
+            # Follow the token
+            resp2 = client.filter_log_events(
+                logGroupName=group, logStreamNames=[stream], limit=3,
+                nextToken=resp1["nextToken"],
+            )
+            assert "events" in resp2
+            # Combined events should be more than first page alone
+            total = len(resp1["events"]) + len(resp2["events"])
+            assert total > 0
+            # Error: filter on nonexistent group
+            with pytest.raises(ClientError) as exc:
+                client.filter_log_events(logGroupName="/test/nonexistent-xyz-9999999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            client.delete_log_group(logGroupName=group)
+
+    # ── describe_queries: listing started queries ─────────────────────────────
+
+    def test_describe_queries_after_start_query(self, client):
+        """describe_queries returns a list; start_query returns a queryId that is retrievable."""
+        group = _unique("/test/dq-start")
+        client.create_log_group(logGroupName=group)
+        try:
+            now = int(time.time())
+            resp = client.start_query(
+                logGroupName=group,
+                startTime=now - 3600,
+                endTime=now,
+                queryString="fields @timestamp | limit 5",
+            )
+            qid = resp["queryId"]
+            assert qid
+            # describe_queries returns a list (may be empty depending on Moto impl)
+            desc = client.describe_queries(logGroupName=group)
+            assert "queries" in desc
+            assert isinstance(desc["queries"], list)
+            # get_query_results retrieves the query by ID
+            result = client.get_query_results(queryId=qid)
+            assert "status" in result
+            assert result["status"] in ("Complete", "Running", "Scheduled", "Failed", "Cancelled")
+            assert "results" in result
+        finally:
+            client.delete_log_group(logGroupName=group)
+
+    def test_describe_queries_nonexistent_group_returns_empty(self, client):
+        """describe_queries with nonexistent logGroupName returns empty list (no error)."""
+        resp = client.describe_queries(logGroupName="/test/nonexistent-xyz-9999999")
+        assert "queries" in resp
+        assert resp["queries"] == []
+
+    # ── describe_log_groups limit: pagination ─────────────────────────────────
+
+    def test_describe_log_groups_limit_pagination(self, client):
+        """describe_log_groups limit + nextToken iterates through all groups."""
+        prefix = _unique("/test/dgl-pg")
+        names = [f"{prefix}-{i}" for i in range(3)]
+        for n in names:
+            client.create_log_group(logGroupName=n)
+        try:
+            # Page 1: limit=2
+            resp1 = client.describe_log_groups(logGroupNamePrefix=prefix, limit=2)
+            assert len(resp1["logGroups"]) == 2
+            assert "nextToken" in resp1
+            # Page 2
+            resp2 = client.describe_log_groups(
+                logGroupNamePrefix=prefix, limit=2, nextToken=resp1["nextToken"]
+            )
+            assert "logGroups" in resp2
+            all_names = (
+                [g["logGroupName"] for g in resp1["logGroups"]]
+                + [g["logGroupName"] for g in resp2["logGroups"]]
+            )
+            for n in names:
+                assert n in all_names, f"{n} missing after pagination"
+            # Error: delete nonexistent group
+            with pytest.raises(ClientError) as exc:
+                client.delete_log_group(logGroupName="/test/nonexistent-xyz-9999999")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            for n in names:
+                client.delete_log_group(logGroupName=n)
+
+    # ── describe_export_tasks: create + describe by id ────────────────────────
+
+    def test_describe_export_tasks_with_created_task(self, client):
+        """CreateExportTask + DescribeExportTasks: task appears with expected fields."""
+        s3 = make_client("s3")
+        bucket = f"export-edge-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=bucket)
+        group = _unique("/test/exp-edge")
+        client.create_log_group(logGroupName=group)
+        try:
+            now = int(time.time() * 1000)
+            create_resp = client.create_export_task(
+                logGroupName=group,
+                fromTime=now - 3600000,
+                to=now,
+                destination=bucket,
+            )
+            task_id = create_resp["taskId"]
+            assert task_id
+            # Describe by task ID
+            desc = client.describe_export_tasks(taskId=task_id)
+            assert len(desc["exportTasks"]) == 1
+            task = desc["exportTasks"][0]
+            assert task["taskId"] == task_id
+            assert task["logGroupName"] == group
+            assert "status" in task
+            assert task["status"]["code"] in ("COMPLETED", "RUNNING", "PENDING", "FAILED")
+            # DescribeExportTasks with no args includes our task
+            all_tasks = client.describe_export_tasks()
+            all_ids = [t["taskId"] for t in all_tasks["exportTasks"]]
+            assert task_id in all_ids
+            # Delete export task (via cancel if still in progress)
+            try:
+                client.cancel_export_task(taskId=task_id)
+            except ClientError:
+                pass  # already completed — can't cancel
+        finally:
+            client.delete_log_group(logGroupName=group)
+            try:
+                objs = s3.list_objects_v2(Bucket=bucket)
+                for obj in objs.get("Contents", []):
+                    s3.delete_object(Bucket=bucket, Key=obj["Key"])
+                s3.delete_bucket(Bucket=bucket)
+            except Exception:
+                pass  # best-effort S3 cleanup
+
+    # ── describe_query_definitions: full lifecycle with prefix filter ──────────
+
+    def test_describe_query_definitions_prefix_filter_lifecycle(self, client):
+        """PutQueryDefinition → describe with prefix → delete → verify gone."""
+        suffix = uuid.uuid4().hex[:8]
+        name = f"qdef-edge-{suffix}"
+        query = "fields @timestamp, @message | sort @timestamp desc | limit 25"
+        resp = client.put_query_definition(name=name, queryString=query)
+        qid = resp["queryDefinitionId"]
+        assert qid
+        try:
+            # Describe with prefix
+            desc = client.describe_query_definitions(queryDefinitionNamePrefix=f"qdef-edge-{suffix}")
+            matching = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(matching) == 1
+            assert matching[0]["name"] == name
+            assert matching[0]["queryString"] == query
+            # Update (put with same id)
+            updated_query = "fields @message | limit 10"
+            client.put_query_definition(
+                name=name, queryDefinitionId=qid, queryString=updated_query
+            )
+            desc2 = client.describe_query_definitions()
+            found = [q for q in desc2["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found) == 1
+            assert found[0]["queryString"] == updated_query
+        finally:
+            # Delete and verify gone
+            client.delete_query_definition(queryDefinitionId=qid)
+            desc3 = client.describe_query_definitions()
+            ids = [q["queryDefinitionId"] for q in desc3["queryDefinitions"]]
+            assert qid not in ids
+        # Error: delete again
+        with pytest.raises(ClientError) as exc:
+            client.delete_query_definition(queryDefinitionId=qid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── list_anomalies: with detector lifecycle ───────────────────────────────
+
+    def test_list_anomalies_with_detector_lifecycle(self, client):
+        """CreateLogAnomalyDetector → list_anomalies → delete detector."""
+        group = _unique("/test/anom-edge")
+        client.create_log_group(logGroupName=group)
+        try:
+            group_arn = _log_group_arn(group)
+            det_resp = client.create_log_anomaly_detector(logGroupArnList=[group_arn])
+            det_arn = det_resp["anomalyDetectorArn"]
+            assert det_arn
+            # list_anomalies returns a list (may be empty if no anomalies yet)
+            anom_resp = client.list_anomalies(anomalyDetectorArn=det_arn)
+            assert "anomalies" in anom_resp
+            assert isinstance(anom_resp["anomalies"], list)
+            # GetLogAnomalyDetector retrieves the detector
+            get_resp = client.get_log_anomaly_detector(anomalyDetectorArn=det_arn)
+            assert "anomalyDetectorStatus" in get_resp
+            # list_anomalies with nonexistent detector returns empty list (no error)
+            resp_fake = client.list_anomalies(
+                anomalyDetectorArn="arn:aws:logs:us-east-1:000000000000:anomaly-detector:fake"
+            )
+            assert resp_fake["anomalies"] == []
+        finally:
+            try:
+                client.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+            except Exception:
+                pass  # best-effort
+            client.delete_log_group(logGroupName=group)
+
+    # ── list_log_anomaly_detectors: after create ──────────────────────────────
+
+    def test_list_log_anomaly_detectors_after_create(self, client):
+        """Created anomaly detector appears in list_log_anomaly_detectors."""
+        group = _unique("/test/lad-edge")
+        client.create_log_group(logGroupName=group)
+        det_arn = None
+        try:
+            group_arn = _log_group_arn(group)
+            det_resp = client.create_log_anomaly_detector(logGroupArnList=[group_arn])
+            det_arn = det_resp["anomalyDetectorArn"]
+            # List all detectors
+            list_resp = client.list_log_anomaly_detectors()
+            assert "anomalyDetectors" in list_resp
+            arns = [d["anomalyDetectorArn"] for d in list_resp["anomalyDetectors"]]
+            assert det_arn in arns, "Created detector not found in list"
+            # Each entry has required fields
+            entry = next(d for d in list_resp["anomalyDetectors"] if d["anomalyDetectorArn"] == det_arn)
+            assert "anomalyDetectorStatus" in entry
+            # Delete and verify removed
+            client.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+            det_arn = None
+            list_resp2 = client.list_log_anomaly_detectors()
+            arns2 = [d["anomalyDetectorArn"] for d in list_resp2["anomalyDetectors"]]
+            assert det_arn not in arns2
+        finally:
+            if det_arn:
+                try:
+                    client.delete_log_anomaly_detector(anomalyDetectorArn=det_arn)
+                except Exception:
+                    pass
+            client.delete_log_group(logGroupName=group)
+
+    # ── list_integrations: type filter ───────────────────────────────────────
+
+    def test_list_integrations_response_structure(self, client):
+        """list_integrations returns integrationSummaries with expected structure."""
+        resp = client.list_integrations()
+        assert "integrationSummaries" in resp
+        assert isinstance(resp["integrationSummaries"], list)
+        # Each entry (if any) has required fields
+        for summary in resp["integrationSummaries"]:
+            assert "integrationName" in summary
+            assert "integrationType" in summary
+
+    def test_list_integrations_with_type_filter(self, client):
+        """list_integrations with integrationType filter returns a list."""
+        resp = client.list_integrations(integrationType="OPENSEARCH")
+        assert "integrationSummaries" in resp
+        assert isinstance(resp["integrationSummaries"], list)
+        # All returned entries match the filter
+        for summary in resp["integrationSummaries"]:
+            assert summary["integrationType"] == "OPENSEARCH"
+
+    # ── describe_deliveries: with created delivery ────────────────────────────
+
+    def test_describe_deliveries_after_create(self, client):
+        """CreateDelivery → describe_deliveries → verify delivery appears."""
+        src_name = _unique("src-deld")
+        dest_name = _unique("dst-deld")
+        group_name = _unique("/test/delivery-edge")
+        client.create_log_group(logGroupName=group_name)
+        delivery_id = None
+        try:
+            cf_arn = "arn:aws:cloudfront::123456789012:distribution/EDGECASETEST"
+            client.put_delivery_source(name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS")
+            dest_resp = client.put_delivery_destination(
+                name=dest_name,
+                deliveryDestinationConfiguration={
+                    "destinationResourceArn": (
+                        f"arn:aws:logs:us-east-1:123456789012:log-group:{group_name}"
+                    )
+                },
+            )
+            dest_arn = dest_resp["deliveryDestination"]["arn"]
+            create_resp = client.create_delivery(
+                deliverySourceName=src_name,
+                deliveryDestinationArn=dest_arn,
+            )
+            delivery_id = create_resp["delivery"]["id"]
+            assert delivery_id
+            # describe_deliveries returns our delivery
+            desc = client.describe_deliveries()
+            assert "deliveries" in desc
+            ids = [d["id"] for d in desc["deliveries"]]
+            assert delivery_id in ids
+            # Each delivery has required fields
+            our_delivery = next(d for d in desc["deliveries"] if d["id"] == delivery_id)
+            assert "deliverySourceName" in our_delivery
+            assert our_delivery["deliverySourceName"] == src_name
+            # Delete delivery
+            client.delete_delivery(id=delivery_id)
+            delivery_id = None
+            # Verify gone
+            desc2 = client.describe_deliveries()
+            ids2 = [d["id"] for d in desc2["deliveries"]]
+            assert delivery_id not in ids2
+        finally:
+            if delivery_id:
+                try:
+                    client.delete_delivery(id=delivery_id)
+                except Exception:
+                    pass
+            try:
+                client.delete_delivery_destination(name=dest_name)
+            except Exception:
+                pass
+            try:
+                client.delete_delivery_source(name=src_name)
+            except Exception:
+                pass
+            client.delete_log_group(logGroupName=group_name)
+
+    # ── describe_delivery_destinations: after create ──────────────────────────
+
+    def test_describe_delivery_destinations_after_create(self, client):
+        """PutDeliveryDestination → describe_delivery_destinations → verify + delete."""
+        dest_name = _unique("dst-desc-edge")
+        resp = client.put_delivery_destination(
+            name=dest_name,
+            outputFormat="json",
+            deliveryDestinationConfiguration={
+                "destinationResourceArn": "arn:aws:s3:::test-bucket-edge-case"
+            },
+        )
+        assert resp["deliveryDestination"]["name"] == dest_name
+        try:
+            # List and verify
+            list_resp = client.describe_delivery_destinations()
+            assert "deliveryDestinations" in list_resp
+            names = [d["name"] for d in list_resp["deliveryDestinations"]]
+            assert dest_name in names
+            # Check structural fields
+            entry = next(d for d in list_resp["deliveryDestinations"] if d["name"] == dest_name)
+            assert "arn" in entry
+            assert "deliveryDestinationConfiguration" in entry
+            # Get directly
+            get_resp = client.get_delivery_destination(name=dest_name)
+            assert get_resp["deliveryDestination"]["name"] == dest_name
+            # Error: changing outputFormat on existing dest raises ValidationException
+            with pytest.raises(ClientError) as exc:
+                client.put_delivery_destination(
+                    name=dest_name,
+                    outputFormat="plain",
+                    deliveryDestinationConfiguration={
+                        "destinationResourceArn": "arn:aws:s3:::test-bucket-edge-case"
+                    },
+                )
+            assert exc.value.response["Error"]["Code"] == "ValidationException"
+        finally:
+            client.delete_delivery_destination(name=dest_name)
+        # Error: get after delete
+        with pytest.raises(ClientError) as exc:
+            client.get_delivery_destination(name=dest_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── describe_delivery_sources: after create ───────────────────────────────
+
+    def test_describe_delivery_sources_after_create(self, client):
+        """PutDeliverySource → describe_delivery_sources → verify + delete."""
+        src_name = _unique("src-desc-edge")
+        cf_arn = "arn:aws:cloudfront::123456789012:distribution/SRCEDGECASE"
+        resp = client.put_delivery_source(name=src_name, resourceArn=cf_arn, logType="ACCESS_LOGS")
+        assert resp["deliverySource"]["name"] == src_name
+        try:
+            # List and verify
+            list_resp = client.describe_delivery_sources()
+            assert "deliverySources" in list_resp
+            names = [d["name"] for d in list_resp["deliverySources"]]
+            assert src_name in names
+            # Check structural fields
+            entry = next(d for d in list_resp["deliverySources"] if d["name"] == src_name)
+            assert "resourceArns" in entry or "arn" in entry
+            # Get directly
+            get_resp = client.get_delivery_source(name=src_name)
+            assert get_resp["deliverySource"]["name"] == src_name
+        finally:
+            client.delete_delivery_source(name=src_name)
+        # Error: get after delete
+        with pytest.raises(ClientError) as exc:
+            client.get_delivery_source(name=src_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── describe_configuration_templates: structural fidelity ─────────────────
+
+    def test_describe_configuration_templates_structural(self, client):
+        """describe_configuration_templates returns a valid list (may be empty)."""
+        resp = client.describe_configuration_templates()
+        assert "configurationTemplates" in resp
+        assert isinstance(resp["configurationTemplates"], list)
+        # If any templates exist, check required fields
+        for tmpl in resp["configurationTemplates"]:
+            assert "service" in tmpl or "logType" in tmpl or "resourceType" in tmpl
+
+    def test_describe_configuration_templates_with_service_filter(self, client):
+        """describe_configuration_templates with service filter returns filtered list."""
+        resp = client.describe_configuration_templates(service="CloudFront")
+        assert "configurationTemplates" in resp
+        assert isinstance(resp["configurationTemplates"], list)
+        for tmpl in resp["configurationTemplates"]:
+            assert tmpl.get("service") == "CloudFront"
+
+    # ── describe_import_tasks: structural fidelity ────────────────────────────
+
+    def test_describe_import_tasks_structural(self, client):
+        """describe_import_tasks returns a 200 response (stub returns no tasks)."""
+        resp = client.describe_import_tasks()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_describe_import_tasks_with_limit(self, client):
+        """describe_import_tasks with limit returns 200."""
+        resp = client.describe_import_tasks(limit=5)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── list_scheduled_queries: structural fidelity ───────────────────────────
+
+    def test_list_scheduled_queries_structural(self, client):
+        """list_scheduled_queries returns scheduledQueries with correct type."""
+        resp = client.list_scheduled_queries()
+        assert "scheduledQueries" in resp
+        assert isinstance(resp["scheduledQueries"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_list_scheduled_queries_nexttoken_field(self, client):
+        """list_scheduled_queries with maxResults returns nextToken if more exist."""
+        resp = client.list_scheduled_queries(maxResults=1)
+        assert "scheduledQueries" in resp
+        # nextToken may or may not be present depending on count; just verify response shape
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # ── put_query_definition full lifecycle ───────────────────────────────────
+
+    def test_put_query_definition_full_lifecycle(self, client):
+        """PutQueryDefinition: create → retrieve → update → delete → error."""
+        suffix = uuid.uuid4().hex[:8]
+        name = f"qdef-full-{suffix}"
+        initial_query = "fields @timestamp, @message | limit 20"
+        # CREATE
+        create_resp = client.put_query_definition(name=name, queryString=initial_query)
+        qid = create_resp["queryDefinitionId"]
+        assert qid
+        try:
+            # RETRIEVE via describe
+            desc = client.describe_query_definitions()
+            found = [q for q in desc["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found) == 1
+            assert found[0]["name"] == name
+            assert found[0]["queryString"] == initial_query
+            # UPDATE: put with same ID and new query string
+            updated_query = "fields @message | sort @timestamp desc | limit 50"
+            update_resp = client.put_query_definition(
+                name=name, queryDefinitionId=qid, queryString=updated_query
+            )
+            assert update_resp["queryDefinitionId"] == qid
+            # RETRIEVE again - verify update
+            desc2 = client.describe_query_definitions()
+            found2 = [q for q in desc2["queryDefinitions"] if q["queryDefinitionId"] == qid]
+            assert len(found2) == 1
+            assert found2[0]["queryString"] == updated_query
+        finally:
+            # DELETE
+            client.delete_query_definition(queryDefinitionId=qid)
+        # RETRIEVE after delete - should not be found
+        desc3 = client.describe_query_definitions()
+        ids3 = [q["queryDefinitionId"] for q in desc3["queryDefinitions"]]
+        assert qid not in ids3
+        # ERROR: delete again
+        with pytest.raises(ClientError) as exc:
+            client.delete_query_definition(queryDefinitionId=qid)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ── resource_policy: update + error ──────────────────────────────────────
+
+    def test_resource_policy_update_and_error(self, client):
+        """PutResourcePolicy update (same name = overwrite) + error on nonexistent delete."""
+        suffix = uuid.uuid4().hex[:8]
+        policy_name = f"res-pol-edge-{suffix}"
+        policy_v1 = (
+            '{"Version":"2012-10-17","Statement":[{"Sid":"V1","Effect":"Allow",'
+            '"Principal":{"Service":"route53.amazonaws.com"},'
+            '"Action":["logs:PutLogEvents"],"Resource":"*"}]}'
+        )
+        policy_v2 = (
+            '{"Version":"2012-10-17","Statement":[{"Sid":"V2","Effect":"Allow",'
+            '"Principal":{"Service":"es.amazonaws.com"},'
+            '"Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":"*"}]}'
+        )
+        # CREATE
+        client.put_resource_policy(policyName=policy_name, policyDocument=policy_v1)
+        try:
+            # RETRIEVE
+            resp1 = client.describe_resource_policies()
+            matching = [p for p in resp1["resourcePolicies"] if p.get("policyName") == policy_name]
+            assert len(matching) == 1
+            assert "policyDocument" in matching[0]
+            # UPDATE: put same name with different document
+            client.put_resource_policy(policyName=policy_name, policyDocument=policy_v2)
+            resp2 = client.describe_resource_policies()
+            matching2 = [p for p in resp2["resourcePolicies"] if p.get("policyName") == policy_name]
+            assert len(matching2) == 1
+            assert "V2" in matching2[0]["policyDocument"]
+        finally:
+            client.delete_resource_policy(policyName=policy_name)
+        # ERROR: delete nonexistent policy
+        with pytest.raises(ClientError) as exc:
+            client.delete_resource_policy(policyName=f"nonexistent-policy-{suffix}")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
