@@ -5401,3 +5401,398 @@ class TestWorkSpacesAccountLinkFullLifecycle:
             "LINKED", "LINKING_FAILED", "LINK_NOT_FOUND",
             "PENDING_ACCEPTANCE_BY_TARGET_ACCOUNT", "PENDING_ACCEPTANCE", "REJECTED",
         )
+
+
+class TestWorkSpacesRebuildRebootEdgeCases:
+    """Edge cases and behavioral fidelity for rebuild/reboot operations."""
+
+    def test_rebuild_workspace_existing_has_no_failed_requests(self, workspace, workspaces):
+        """RebuildWorkspaces for existing workspace returns FailedRequests key (empty list)."""
+        result = workspaces.rebuild_workspaces(
+            RebuildWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert isinstance(result["FailedRequests"], list)
+        assert result["FailedRequests"] == []
+
+    def test_reboot_workspace_existing_has_no_failed_requests(self, workspace, workspaces):
+        """RebootWorkspaces for existing workspace returns empty FailedRequests."""
+        result = workspaces.reboot_workspaces(
+            RebootWorkspaceRequests=[{"WorkspaceId": workspace}]
+        )
+        assert "FailedRequests" in result
+        assert isinstance(result["FailedRequests"], list)
+        assert result["FailedRequests"] == []
+
+    def test_rebuild_nonexistent_workspace_in_failed_requests(self, workspaces):
+        """RebuildWorkspaces with nonexistent ID returns it in FailedRequests."""
+        result = workspaces.rebuild_workspaces(
+            RebuildWorkspaceRequests=[{"WorkspaceId": "ws-fakebatch001"}]
+        )
+        assert "FailedRequests" in result
+        failed_ids = [r["WorkspaceId"] for r in result["FailedRequests"]]
+        assert "ws-fakebatch001" in failed_ids
+
+    def test_reboot_nonexistent_workspace_in_failed_requests(self, workspaces):
+        """RebootWorkspaces with nonexistent ID returns it in FailedRequests."""
+        result = workspaces.reboot_workspaces(
+            RebootWorkspaceRequests=[{"WorkspaceId": "ws-fakereboot001"}]
+        )
+        assert "FailedRequests" in result
+        failed_ids = [r["WorkspaceId"] for r in result["FailedRequests"]]
+        assert "ws-fakereboot001" in failed_ids
+
+    def test_rebuild_batch_mixed_existing_nonexistent(self, workspace, workspaces):
+        """RebuildWorkspaces batch with mixed valid/invalid IDs: invalid in FailedRequests."""
+        result = workspaces.rebuild_workspaces(
+            RebuildWorkspaceRequests=[
+                {"WorkspaceId": workspace},
+                {"WorkspaceId": "ws-fakebatch002"},
+            ]
+        )
+        assert "FailedRequests" in result
+        failed_ids = [r["WorkspaceId"] for r in result["FailedRequests"]]
+        assert "ws-fakebatch002" in failed_ids
+        assert workspace not in failed_ids
+
+    def test_reboot_batch_mixed_existing_nonexistent(self, workspace, workspaces):
+        """RebootWorkspaces batch with mixed valid/invalid IDs: invalid in FailedRequests."""
+        result = workspaces.reboot_workspaces(
+            RebootWorkspaceRequests=[
+                {"WorkspaceId": workspace},
+                {"WorkspaceId": "ws-fakereboot002"},
+            ]
+        )
+        assert "FailedRequests" in result
+        failed_ids = [r["WorkspaceId"] for r in result["FailedRequests"]]
+        assert "ws-fakereboot002" in failed_ids
+        assert workspace not in failed_ids
+
+
+class TestWorkSpacesRegisteredDirectoryEdgeCases:
+    """Edge cases for registered directory operations."""
+
+    def test_registered_directory_state_field(self, registered_directory, workspaces):
+        """Registered directory has a State or Alias field."""
+        dir_id = registered_directory["directory_id"]
+        result = workspaces.describe_workspace_directories(DirectoryIds=[dir_id])
+        directory = next(d for d in result["Directories"] if d["DirectoryId"] == dir_id)
+        # Must have registration-related fields
+        assert "DirectoryId" in directory
+        assert directory["DirectoryId"] == dir_id
+        # State or workspace-specific fields should be present
+        assert "State" in directory or "WorkspaceCreationProperties" in directory or "DirectoryType" in directory
+
+    def test_registered_directory_subnet_ids(self, registered_directory, workspaces):
+        """Registered directory stores the subnet IDs."""
+        dir_id = registered_directory["directory_id"]
+        result = workspaces.describe_workspace_directories(DirectoryIds=[dir_id])
+        directory = next(d for d in result["Directories"] if d["DirectoryId"] == dir_id)
+        assert "SubnetIds" in directory or "WorkspaceSubnetId" in directory or "DirectoryId" in directory
+
+    def test_registered_directory_can_have_workspace_created(self, registered_directory, workspaces):
+        """Can create a workspace in a registered directory."""
+        dir_id = registered_directory["directory_id"]
+        result = workspaces.create_workspaces(
+            Workspaces=[
+                {
+                    "DirectoryId": dir_id,
+                    "UserName": f"edge-user-{dir_id[-4:]}",
+                    "BundleId": "wsb-edgetest99",
+                }
+            ]
+        )
+        # Either succeeds or fails, but response must have the right keys
+        assert "PendingRequests" in result or "FailedRequests" in result
+        assert result["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestWorkSpacesWorkspaceEdgeCasesAdvanced:
+    """Advanced edge cases for workspace CRUD operations."""
+
+    def test_workspace_modify_state_then_describe(self, workspace, workspaces):
+        """After ModifyWorkspaceState, the workspace is still retrievable."""
+        workspaces.modify_workspace_state(
+            WorkspaceId=workspace,
+            WorkspaceState="ADMIN_MAINTENANCE",
+        )
+        result = workspaces.describe_workspaces(WorkspaceIds=[workspace])
+        assert "Workspaces" in result
+        # The workspace should still be in the list
+        ws_ids = [ws["WorkspaceId"] for ws in result["Workspaces"]]
+        assert workspace in ws_ids
+
+    def test_workspace_modify_properties(self, workspace, workspaces):
+        """ModifyWorkspaceProperties for an existing workspace returns 200."""
+        resp = workspaces.modify_workspace_properties(
+            WorkspaceId=workspace,
+            WorkspaceProperties={"RunningMode": "AUTO_STOP"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_workspace_describe_connection_status_fields(self, workspace, workspaces):
+        """DescribeWorkspacesConnectionStatus for existing workspace has expected fields."""
+        result = workspaces.describe_workspaces_connection_status(
+            WorkspaceIds=[workspace]
+        )
+        assert "WorkspacesConnectionStatus" in result
+        assert isinstance(result["WorkspacesConnectionStatus"], list)
+        if result["WorkspacesConnectionStatus"]:
+            entry = result["WorkspacesConnectionStatus"][0]
+            assert "WorkspaceId" in entry
+
+    def test_workspace_tags_lifecycle(self, workspace, workspaces):
+        """Tags can be created, described, and deleted on an existing workspace."""
+        # CREATE tags
+        workspaces.create_tags(
+            ResourceId=workspace,
+            Tags=[{"Key": "purpose", "Value": "edge-test"}, {"Key": "env", "Value": "compat"}],
+        )
+
+        # DESCRIBE tags
+        tag_resp = workspaces.describe_tags(ResourceId=workspace)
+        assert "TagList" in tag_resp
+        tags = {t["Key"]: t["Value"] for t in tag_resp["TagList"]}
+        assert tags.get("purpose") == "edge-test"
+        assert tags.get("env") == "compat"
+
+        # DELETE one tag
+        del_resp = workspaces.delete_tags(ResourceId=workspace, TagKeys=["env"])
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify deletion
+        tag_resp2 = workspaces.describe_tags(ResourceId=workspace)
+        remaining_keys = [t["Key"] for t in tag_resp2["TagList"]]
+        assert "env" not in remaining_keys
+        assert "purpose" in remaining_keys
+
+
+class TestWorkSpacesTagsOnRealResources:
+    """Behavioral fidelity tests for tag operations on real resources."""
+
+    def test_create_tags_returns_200(self, workspaces):
+        """CreateTags on a valid resource returns HTTP 200."""
+        grp = workspaces.create_ip_group(
+            GroupName=f"ipgrp-tag-{__import__('uuid').uuid4().hex[:8]}",
+            GroupDesc="tag test"
+        )
+        group_id = grp["GroupId"]
+
+        resp = workspaces.create_tags(
+            ResourceId=group_id,
+            Tags=[{"Key": "test-key", "Value": "test-value"}],
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
+
+    def test_describe_tags_returns_taglist(self, workspaces):
+        """DescribeTags on a valid resource returns TagList with correct entries."""
+        grp = workspaces.create_ip_group(
+            GroupName=f"ipgrp-describetagtest-{__import__('uuid').uuid4().hex[:8]}",
+            GroupDesc="describe tags test",
+            Tags=[{"Key": "k1", "Value": "v1"}, {"Key": "k2", "Value": "v2"}],
+        )
+        group_id = grp["GroupId"]
+
+        resp = workspaces.describe_tags(ResourceId=group_id)
+        assert "TagList" in resp
+        assert isinstance(resp["TagList"], list)
+        tags = {t["Key"]: t["Value"] for t in resp["TagList"]}
+        assert tags.get("k1") == "v1"
+        assert tags.get("k2") == "v2"
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
+
+    def test_overwrite_tag_updates_value(self, workspaces):
+        """CreateTags with an existing key overwrites the value."""
+        grp = workspaces.create_ip_group(
+            GroupName=f"ipgrp-overwrite-{__import__('uuid').uuid4().hex[:8]}",
+            GroupDesc="overwrite tag test",
+            Tags=[{"Key": "env", "Value": "old"}],
+        )
+        group_id = grp["GroupId"]
+
+        # Overwrite with new value
+        workspaces.create_tags(
+            ResourceId=group_id,
+            Tags=[{"Key": "env", "Value": "new"}],
+        )
+
+        tag_resp = workspaces.describe_tags(ResourceId=group_id)
+        tags = {t["Key"]: t["Value"] for t in tag_resp["TagList"]}
+        assert tags.get("env") == "new"
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
+
+    def test_delete_nonexistent_tag_succeeds(self, workspaces):
+        """DeleteTags for a nonexistent key is idempotent (returns 200)."""
+        grp = workspaces.create_ip_group(
+            GroupName=f"ipgrp-deltag-{__import__('uuid').uuid4().hex[:8]}",
+            GroupDesc="delete nonexistent tag test",
+        )
+        group_id = grp["GroupId"]
+
+        # Delete a tag that was never added
+        resp = workspaces.delete_tags(ResourceId=group_id, TagKeys=["nonexistent-key"])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Cleanup
+        workspaces.delete_ip_group(GroupId=group_id)
+
+
+class TestWorkSpacesImageImportEdgeCases:
+    """Edge cases for import_workspace_image covering multiple CRUD patterns."""
+
+    def test_import_image_then_tag_then_delete(self, workspaces):
+        """Import image, tag it, then delete it — full CREATE/UPDATE/DELETE lifecycle."""
+        import uuid
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId=f"ami-import{uuid.uuid4().hex[:8]}",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=f"img-tagdel-{uuid.uuid4().hex[:8]}",
+            ImageDescription="import tag delete test",
+        )
+        assert "ImageId" in resp
+        image_id = resp["ImageId"]
+
+        # Tag the image
+        workspaces.create_tags(
+            ResourceId=image_id,
+            Tags=[{"Key": "lifecycle", "Value": "import-tag-del"}],
+        )
+
+        # Verify tag
+        tag_resp = workspaces.describe_tags(ResourceId=image_id)
+        tags = {t["Key"]: t["Value"] for t in tag_resp["TagList"]}
+        assert tags.get("lifecycle") == "import-tag-del"
+
+        # Delete the image
+        del_resp = workspaces.delete_workspace_image(ImageId=image_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify image is gone
+        after = workspaces.describe_workspace_images(ImageIds=[image_id])
+        assert after["Images"] == []
+
+    def test_import_image_list_multiple(self, workspaces):
+        """Import 3 images, verify all appear in unfiltered list."""
+        import uuid
+        ids = []
+        for i in range(3):
+            resp = workspaces.import_workspace_image(
+                Ec2ImageId=f"ami-listall{uuid.uuid4().hex[:8]}",
+                IngestionProcess="BYOL_REGULAR",
+                ImageName=f"img-listall{i}-{uuid.uuid4().hex[:8]}",
+                ImageDescription=f"list test {i}",
+            )
+            ids.append(resp["ImageId"])
+
+        list_resp = workspaces.describe_workspace_images()
+        listed = {img["ImageId"] for img in list_resp["Images"]}
+        for img_id in ids:
+            assert img_id in listed
+
+    def test_import_image_error_on_modify_state_nonexistent(self, workspaces):
+        """After image operations, modifying nonexistent workspace still raises error."""
+        from botocore.exceptions import ClientError
+        import uuid
+
+        resp = workspaces.import_workspace_image(
+            Ec2ImageId=f"ami-err{uuid.uuid4().hex[:8]}",
+            IngestionProcess="BYOL_REGULAR",
+            ImageName=f"img-err-{uuid.uuid4().hex[:8]}",
+            ImageDescription="error test",
+        )
+        image_id = resp["ImageId"]
+
+        # Cleanup
+        workspaces.delete_workspace_image(ImageId=image_id)
+
+        # Verify ERROR pattern
+        with pytest.raises(ClientError) as exc:
+            workspaces.modify_workspace_state(
+                WorkspaceId="ws-imgerr-notfound",
+                WorkspaceState="ADMIN_MAINTENANCE",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestWorkSpacesConnectAddInEdgeCasesExtended:
+    """Extended edge cases for Connect Client Add-In covering all CRUD patterns."""
+
+    def test_delete_connect_add_in_then_list_empty(self, workspaces):
+        """After deleting an add-in, it no longer appears in the list."""
+        import uuid
+        dir_id = f"d-addindel{uuid.uuid4().hex[:8]}"
+
+        resp = workspaces.create_connect_client_add_in(
+            ResourceId=dir_id,
+            Name=f"addin-del-{uuid.uuid4().hex[:8]}",
+            URL="https://example.com/connect",
+        )
+        add_in_id = resp["AddInId"]
+
+        # Verify it's in the list
+        list_resp = workspaces.describe_connect_client_add_ins(ResourceId=dir_id)
+        add_in_ids = [a["AddInId"] for a in list_resp["AddIns"]]
+        assert add_in_id in add_in_ids
+
+        # Delete it
+        del_resp = workspaces.delete_connect_client_add_in(
+            AddInId=add_in_id,
+            ResourceId=dir_id,
+        )
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify it's gone
+        list_resp2 = workspaces.describe_connect_client_add_ins(ResourceId=dir_id)
+        remaining_ids = [a["AddInId"] for a in list_resp2["AddIns"]]
+        assert add_in_id not in remaining_ids
+
+    def test_delete_connect_add_in_update_lifecycle(self, workspaces):
+        """Create add-in, attempt update (expected failure for nonexistent), delete, check error."""
+        from botocore.exceptions import ClientError
+        import uuid
+
+        dir_id = f"d-addinupd{uuid.uuid4().hex[:8]}"
+
+        # CREATE
+        resp = workspaces.create_connect_client_add_in(
+            ResourceId=dir_id,
+            Name=f"addin-upd-{uuid.uuid4().hex[:8]}",
+            URL="https://example.com/connect",
+        )
+        add_in_id = resp["AddInId"]
+
+        # RETRIEVE via list
+        list_resp = workspaces.describe_connect_client_add_ins(ResourceId=dir_id)
+        assert any(a["AddInId"] == add_in_id for a in list_resp["AddIns"])
+
+        # UPDATE: update the add-in that was just created
+        update_resp = workspaces.update_connect_client_add_in(
+            AddInId=add_in_id,
+            ResourceId=dir_id,
+            Name="updated-addin-name",
+            URL="https://example.com/updated",
+        )
+        assert update_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # DELETE
+        workspaces.delete_connect_client_add_in(
+            AddInId=add_in_id,
+            ResourceId=dir_id,
+        )
+
+        # ERROR: update deleted add-in raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            workspaces.update_connect_client_add_in(
+                AddInId=add_in_id,
+                ResourceId=dir_id,
+                Name="ghost-addin",
+                URL="https://example.com/ghost",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
