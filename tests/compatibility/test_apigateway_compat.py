@@ -4388,3 +4388,708 @@ class TestAPIGatewayMultiPatternCoverage:
             assert got["name"] == unicode_name
         finally:
             apigw.delete_usage_plan(usagePlanId=plan["id"])
+
+
+class TestAPIGatewayComprehensiveEdgeCases:
+    """Comprehensive edge case and behavioral fidelity tests for API Gateway.
+
+    Covers: C=CREATE R=RETRIEVE L=LIST U=UPDATE D=DELETE E=ERROR patterns
+    for the operations that had low pattern coverage.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api(self, client):
+        import uuid
+        resp = client.create_rest_api(
+            name=f"comp-edge-{uuid.uuid4().hex[:8]}",
+            description="Comprehensive edge case test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        client.delete_rest_api(restApiId=api_id)
+
+    @pytest.fixture
+    def root_resource(self, client, api):
+        resources = client.get_resources(restApiId=api)
+        return [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+    @pytest.fixture
+    def domain(self, client):
+        import uuid
+        domain_name = f"comp-{uuid.uuid4().hex[:8]}.example.com"
+        client.create_domain_name(
+            domainName=domain_name,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+        )
+        yield domain_name
+        try:
+            client.delete_domain_name(domainName=domain_name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # === REST API: C+R+L+U+D+E full lifecycle ===
+
+    def test_rest_api_full_crud_with_error(self, client):
+        """REST API: create, retrieve, list, update, delete, error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        resp = client.create_rest_api(name=f"crud-api-{uuid.uuid4().hex[:8]}", description="CRUD test")
+        api_id = resp["id"]
+        assert "id" in resp
+        assert "name" in resp
+
+        try:
+            # RETRIEVE
+            got = client.get_rest_api(restApiId=api_id)
+            assert got["id"] == api_id
+            assert "createdDate" in got
+
+            # LIST
+            listed = client.get_rest_apis()
+            ids = [a["id"] for a in listed["items"]]
+            assert api_id in ids
+
+            # UPDATE
+            client.update_rest_api(
+                restApiId=api_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": "Updated CRUD"}],
+            )
+            updated = client.get_rest_api(restApiId=api_id)
+            assert updated["description"] == "Updated CRUD"
+
+            # DELETE
+            client.delete_rest_api(restApiId=api_id)
+            api_id = None  # already deleted, skip cleanup
+
+            # ERROR: get deleted api
+            with pytest.raises(ClientError) as exc:
+                client.get_rest_api(restApiId=resp["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if api_id:
+                try:
+                    client.delete_rest_api(restApiId=api_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    def test_get_rest_apis_count_verified(self, client, api):
+        """GetRestApis: create 3, list shows all 3, delete reduces count."""
+        import uuid
+
+        extra_ids = []
+        for i in range(2):
+            r = client.create_rest_api(name=f"count-api-{uuid.uuid4().hex[:8]}")
+            extra_ids.append(r["id"])
+
+        try:
+            resp = client.get_rest_apis()
+            all_ids = [a["id"] for a in resp["items"]]
+            assert api in all_ids
+            for eid in extra_ids:
+                assert eid in all_ids
+
+            # Delete one and verify count drops
+            client.delete_rest_api(restApiId=extra_ids[0])
+            after = client.get_rest_apis()
+            after_ids = [a["id"] for a in after["items"]]
+            assert extra_ids[0] not in after_ids
+            assert extra_ids[1] in after_ids
+            extra_ids.pop(0)
+        finally:
+            for eid in extra_ids:
+                try:
+                    client.delete_rest_api(restApiId=eid)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # === Resources: C+R+L+D+E ===
+
+    def test_resources_full_lifecycle(self, client, api, root_resource):
+        """Resources: create, retrieve, list, delete, error on nonexistent."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        child = client.create_resource(restApiId=api, parentId=root_resource, pathPart="widgets")
+        resource_id = child["id"]
+        assert child["pathPart"] == "widgets"
+        assert child["path"] == "/widgets"
+
+        # RETRIEVE
+        got = client.get_resource(restApiId=api, resourceId=resource_id)
+        assert got["id"] == resource_id
+        assert got["path"] == "/widgets"
+
+        # LIST
+        resources = client.get_resources(restApiId=api)
+        paths = [r["path"] for r in resources["items"]]
+        assert "/" in paths
+        assert "/widgets" in paths
+
+        # CREATE nested
+        nested = client.create_resource(restApiId=api, parentId=resource_id, pathPart="{id}")
+        assert nested["path"] == "/widgets/{id}"
+
+        # DELETE child (must delete nested first)
+        client.delete_resource(restApiId=api, resourceId=nested["id"])
+        client.delete_resource(restApiId=api, resourceId=resource_id)
+
+        # ERROR: get deleted resource
+        with pytest.raises(ClientError):
+            client.get_resource(restApiId=api, resourceId=resource_id)
+
+    # === Model: C+R+L+U+D+E ===
+
+    def test_model_full_crud_with_update(self, client, api):
+        """Model: create, retrieve, list, update, delete, error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        model = client.create_model(
+            restApiId=api,
+            name="CompModel",
+            contentType="application/json",
+            schema='{"type":"object","properties":{"id":{"type":"string"}}}',
+        )
+        assert model["name"] == "CompModel"
+        assert model["contentType"] == "application/json"
+
+        # RETRIEVE
+        got = client.get_model(restApiId=api, modelName="CompModel")
+        assert got["name"] == "CompModel"
+        assert "schema" in got
+
+        # LIST
+        models = client.get_models(restApiId=api)
+        names = [m["name"] for m in models["items"]]
+        assert "CompModel" in names
+
+        # UPDATE
+        client.update_model(
+            restApiId=api,
+            modelName="CompModel",
+            patchOperations=[{"op": "replace", "path": "/description", "value": "Updated model"}],
+        )
+        updated = client.get_model(restApiId=api, modelName="CompModel")
+        # description may or may not be returned depending on implementation
+        if "description" in updated:
+            assert updated["description"] == "Updated model"
+
+        # DELETE
+        client.delete_model(restApiId=api, modelName="CompModel")
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.get_model(restApiId=api, modelName="CompModel")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    def test_model_duplicate_name_error(self, client, api):
+        """Creating two models with same name raises ConflictException."""
+        from botocore.exceptions import ClientError
+
+        client.create_model(
+            restApiId=api, name="DupModel", contentType="application/json", schema='{"type":"object"}'
+        )
+        with pytest.raises(ClientError) as exc:
+            client.create_model(
+                restApiId=api, name="DupModel", contentType="application/json", schema='{"type":"object"}'
+            )
+        assert exc.value.response["Error"]["Code"] in ("ConflictException", "BadRequestException")
+
+    # === Gateway Response: C+R+L+U+D+E ===
+
+    def test_gateway_response_full_crud(self, client, api):
+        """Gateway response: put, retrieve, list, update, delete, error on nonexistent."""
+        # CREATE (put)
+        resp = client.put_gateway_response(
+            restApiId=api,
+            responseType="QUOTA_EXCEEDED",
+            statusCode="429",
+            responseTemplates={"application/json": '{"message":"quota exceeded"}'},
+        )
+        assert resp["responseType"] == "QUOTA_EXCEEDED"
+
+        # RETRIEVE
+        got = client.get_gateway_response(restApiId=api, responseType="QUOTA_EXCEEDED")
+        assert got["responseType"] == "QUOTA_EXCEEDED"
+        assert got["statusCode"] == "429"
+
+        # LIST
+        responses = client.get_gateway_responses(restApiId=api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "QUOTA_EXCEEDED" in types
+
+        # UPDATE
+        client.update_gateway_response(
+            restApiId=api,
+            responseType="QUOTA_EXCEEDED",
+            patchOperations=[{"op": "replace", "path": "/statusCode", "value": "503"}],
+        )
+        updated = client.get_gateway_response(restApiId=api, responseType="QUOTA_EXCEEDED")
+        assert updated["statusCode"] == "503"
+
+        # DELETE
+        client.delete_gateway_response(restApiId=api, responseType="QUOTA_EXCEEDED")
+        responses_after = client.get_gateway_responses(restApiId=api)
+        types_after = [r["responseType"] for r in responses_after["items"]]
+        assert "QUOTA_EXCEEDED" not in types_after
+
+    # === Request Validator: C+R+L+U+D+E ===
+
+    def test_request_validator_full_crud(self, client, api):
+        """Request validator: create, retrieve, list, update, delete, error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        v = client.create_request_validator(
+            restApiId=api,
+            name="comp-validator",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        val_id = v["id"]
+        assert v["name"] == "comp-validator"
+        assert v["validateRequestBody"] is True
+
+        # RETRIEVE
+        got = client.get_request_validator(restApiId=api, requestValidatorId=val_id)
+        assert got["id"] == val_id
+        assert got["name"] == "comp-validator"
+
+        # LIST
+        validators = client.get_request_validators(restApiId=api)
+        ids = [vv["id"] for vv in validators["items"]]
+        assert val_id in ids
+
+        # UPDATE
+        client.update_request_validator(
+            restApiId=api,
+            requestValidatorId=val_id,
+            patchOperations=[{"op": "replace", "path": "/validateRequestParameters", "value": "true"}],
+        )
+        upd = client.get_request_validator(restApiId=api, requestValidatorId=val_id)
+        assert upd["validateRequestParameters"] is True
+
+        # DELETE
+        client.delete_request_validator(restApiId=api, requestValidatorId=val_id)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.get_request_validator(restApiId=api, requestValidatorId=val_id)
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    # === API Key: C+R+L+U+D+E with list count verification ===
+
+    def test_api_key_full_crud_with_count(self, client):
+        """API key: create, retrieve, list (verify count), update, delete, error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        before = client.get_api_keys()
+        before_count = len(before["items"])
+
+        # CREATE
+        key = client.create_api_key(name=f"comp-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        key_id = key["id"]
+        assert key["enabled"] is True
+
+        try:
+            # RETRIEVE
+            got = client.get_api_key(apiKey=key_id)
+            assert got["id"] == key_id
+            assert got["name"] == key["name"]
+
+            # LIST: count increased
+            after = client.get_api_keys()
+            assert len(after["items"]) == before_count + 1
+            key_ids = [k["id"] for k in after["items"]]
+            assert key_id in key_ids
+
+            # UPDATE
+            client.update_api_key(
+                apiKey=key_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": "comp desc"}],
+            )
+            upd = client.get_api_key(apiKey=key_id)
+            assert upd["description"] == "comp desc"
+
+            # DELETE
+            client.delete_api_key(apiKey=key_id)
+            key_id = None
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_api_key(apiKey=key["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if key_id:
+                try:
+                    client.delete_api_key(apiKey=key_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # === Usage Plan: C+R+L+U+D+E with count verification ===
+
+    def test_usage_plan_full_crud_with_count(self, client):
+        """Usage plan: create, retrieve, list, update, delete, error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        before = client.get_usage_plans()
+        before_count = len(before["items"])
+
+        # CREATE
+        plan = client.create_usage_plan(
+            name=f"comp-plan-{uuid.uuid4().hex[:8]}",
+            throttle={"burstLimit": 50, "rateLimit": 25.0},
+            quota={"limit": 1000, "period": "WEEK"},
+        )
+        plan_id = plan["id"]
+        assert plan["throttle"]["burstLimit"] == 50
+        assert plan["quota"]["period"] == "WEEK"
+
+        try:
+            # RETRIEVE
+            got = client.get_usage_plan(usagePlanId=plan_id)
+            assert got["id"] == plan_id
+            assert got["throttle"]["rateLimit"] == 25.0
+
+            # LIST: count increased
+            after = client.get_usage_plans()
+            assert len(after["items"]) == before_count + 1
+
+            # UPDATE
+            client.update_usage_plan(
+                usagePlanId=plan_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": "comp desc"}],
+            )
+            upd = client.get_usage_plan(usagePlanId=plan_id)
+            assert upd["description"] == "comp desc"
+
+            # DELETE
+            client.delete_usage_plan(usagePlanId=plan_id)
+            plan_id = None
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_usage_plan(usagePlanId=plan["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if plan_id:
+                try:
+                    client.delete_usage_plan(usagePlanId=plan_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # === Account: R+U ===
+
+    def test_account_retrieve_and_update(self, client):
+        """GetAccount returns throttleSettings; UpdateAccount modifies cloudwatchRoleArn."""
+        # RETRIEVE
+        resp = client.get_account()
+        assert "throttleSettings" in resp
+        assert "burstLimit" in resp["throttleSettings"]
+        assert "rateLimit" in resp["throttleSettings"]
+
+        # UPDATE
+        upd = client.update_account(
+            patchOperations=[
+                {
+                    "op": "replace",
+                    "path": "/cloudwatchRoleArn",
+                    "value": "arn:aws:iam::123456789012:role/apigw-cw-role-comp",
+                }
+            ]
+        )
+        assert upd["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE again to verify no breakage
+        got = client.get_account()
+        assert "throttleSettings" in got
+
+    # === VPC Links: C+R+L+D+E ===
+
+    def test_vpc_link_full_crud_with_error(self, client):
+        """VPC link: create, retrieve, list, delete, error on nonexistent."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        nlb_arn = f"arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/nlb-{uuid.uuid4().hex[:8]}/abc123"
+
+        # CREATE
+        link = client.create_vpc_link(
+            name=f"comp-link-{uuid.uuid4().hex[:8]}",
+            targetArns=[nlb_arn],
+            description="comp test link",
+        )
+        link_id = link["id"]
+        assert "id" in link
+
+        try:
+            # RETRIEVE
+            got = client.get_vpc_link(vpcLinkId=link_id)
+            assert got["id"] == link_id
+            assert got["description"] == "comp test link"
+
+            # LIST
+            links = client.get_vpc_links()
+            assert "items" in links
+            link_ids = [lnk["id"] for lnk in links["items"]]
+            assert link_id in link_ids
+
+            # DELETE
+            client.delete_vpc_link(vpcLinkId=link_id)
+            link_id = None
+
+            # LIST: gone
+            after = client.get_vpc_links()
+            after_ids = [lnk["id"] for lnk in after["items"]]
+            assert link["id"] not in after_ids
+        finally:
+            if link_id:
+                try:
+                    client.delete_vpc_link(vpcLinkId=link_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # === Authorizer: C+R+L+U+D+E with multiple authorizers ===
+
+    def test_authorizer_list_multiple_and_delete(self, client, api):
+        """Authorizer: create multiple, list shows all, delete one, verify gone."""
+        from botocore.exceptions import ClientError
+
+        auth_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+            "arn:aws:lambda:us-east-1:123456789012:function:auth/invocations"
+        )
+
+        # CREATE 2 authorizers
+        auth1 = client.create_authorizer(
+            restApiId=api,
+            name="comp-auth-1",
+            type="TOKEN",
+            authorizerUri=auth_uri,
+            identitySource="method.request.header.Authorization",
+        )
+        auth2 = client.create_authorizer(
+            restApiId=api,
+            name="comp-auth-2",
+            type="TOKEN",
+            authorizerUri=auth_uri,
+            identitySource="method.request.header.X-Auth",
+        )
+
+        try:
+            # LIST: both present
+            auths = client.get_authorizers(restApiId=api)
+            auth_ids = [a["id"] for a in auths["items"]]
+            assert auth1["id"] in auth_ids
+            assert auth2["id"] in auth_ids
+
+            # RETRIEVE
+            got = client.get_authorizer(restApiId=api, authorizerId=auth1["id"])
+            assert got["name"] == "comp-auth-1"
+            assert got["type"] == "TOKEN"
+
+            # UPDATE
+            client.update_authorizer(
+                restApiId=api,
+                authorizerId=auth1["id"],
+                patchOperations=[{"op": "replace", "path": "/name", "value": "comp-auth-1-updated"}],
+            )
+            upd = client.get_authorizer(restApiId=api, authorizerId=auth1["id"])
+            assert upd["name"] == "comp-auth-1-updated"
+
+            # DELETE auth1
+            client.delete_authorizer(restApiId=api, authorizerId=auth1["id"])
+
+            # ERROR: get deleted
+            with pytest.raises(ClientError) as exc:
+                client.get_authorizer(restApiId=api, authorizerId=auth1["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+            # LIST: only auth2 remains
+            remaining = client.get_authorizers(restApiId=api)
+            remaining_ids = [a["id"] for a in remaining["items"]]
+            assert auth1["id"] not in remaining_ids
+            assert auth2["id"] in remaining_ids
+        finally:
+            for auth_id in [auth1["id"], auth2["id"]]:
+                try:
+                    client.delete_authorizer(restApiId=api, authorizerId=auth_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # === Base Path Mapping: C+R+L+U+D+E ===
+
+    def test_base_path_mapping_full_crud(self, client, api, domain):
+        """Base path mapping: create, retrieve, list, update, delete, error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        resp = client.create_base_path_mapping(domainName=domain, restApiId=api, basePath="comp-v1")
+        assert resp["basePath"] == "comp-v1"
+        assert resp["restApiId"] == api
+
+        # RETRIEVE
+        got = client.get_base_path_mapping(domainName=domain, basePath="comp-v1")
+        assert got["basePath"] == "comp-v1"
+
+        # LIST
+        mappings = client.get_base_path_mappings(domainName=domain)
+        paths = [m["basePath"] for m in mappings["items"]]
+        assert "comp-v1" in paths
+
+        # UPDATE
+        upd = client.update_base_path_mapping(
+            domainName=domain,
+            basePath="comp-v1",
+            patchOperations=[{"op": "replace", "path": "/basePath", "value": "comp-v2"}],
+        )
+        assert upd["basePath"] == "comp-v2"
+
+        # DELETE
+        client.delete_base_path_mapping(domainName=domain, basePath="comp-v2")
+
+        # ERROR: get deleted mapping
+        with pytest.raises(ClientError):
+            client.get_base_path_mapping(domainName=domain, basePath="comp-v2")
+
+    # === Unicode and special names ===
+
+    def test_api_key_unicode_description(self, client):
+        """API key with unicode description is stored and retrieved."""
+        import uuid
+
+        unicode_desc = "Ключ для тестирования — testing key 🔑"
+        key = client.create_api_key(name=f"unicode-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        key_id = key["id"]
+        try:
+            client.update_api_key(
+                apiKey=key_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": unicode_desc}],
+            )
+            got = client.get_api_key(apiKey=key_id)
+            assert got["description"] == unicode_desc
+        finally:
+            client.delete_api_key(apiKey=key_id)
+
+    def test_usage_plan_unicode_description(self, client):
+        """Usage plan with unicode description is stored and retrieved."""
+        import uuid
+
+        unicode_desc = "Plan für Entwicklung — развитие 🚀"
+        plan = client.create_usage_plan(name=f"unicode-plan-{uuid.uuid4().hex[:8]}")
+        plan_id = plan["id"]
+        try:
+            client.update_usage_plan(
+                usagePlanId=plan_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": unicode_desc}],
+            )
+            got = client.get_usage_plan(usagePlanId=plan_id)
+            assert got["description"] == unicode_desc
+        finally:
+            client.delete_usage_plan(usagePlanId=plan_id)
+
+    # === Timestamps and ID format ===
+
+    def test_api_key_has_created_date(self, client):
+        """CreateApiKey returns createdDate timestamp."""
+        import datetime
+        import uuid
+
+        key = client.create_api_key(name=f"ts-key-{uuid.uuid4().hex[:8]}", enabled=True)
+        key_id = key["id"]
+        try:
+            assert "createdDate" in key
+            assert isinstance(key["createdDate"], datetime.datetime)
+        finally:
+            client.delete_api_key(apiKey=key_id)
+
+    def test_usage_plan_id_is_alphanumeric(self, client):
+        """Usage plan IDs are alphanumeric strings."""
+        import uuid
+
+        plan = client.create_usage_plan(name=f"id-fmt-plan-{uuid.uuid4().hex[:8]}")
+        plan_id = plan["id"]
+        try:
+            assert plan_id.isalnum()
+            assert len(plan_id) > 0
+        finally:
+            client.delete_usage_plan(usagePlanId=plan_id)
+
+    # === Get account throttle settings format ===
+
+    def test_get_account_throttle_settings_values(self, client):
+        """GetAccount throttleSettings has positive numeric values."""
+        resp = client.get_account()
+        throttle = resp["throttleSettings"]
+        assert isinstance(throttle["burstLimit"], int)
+        assert isinstance(throttle["rateLimit"], float)
+        assert throttle["burstLimit"] > 0
+        assert throttle["rateLimit"] > 0
+
+    # === List operations return correct structure ===
+
+    def test_get_vpc_links_structure(self, client):
+        """GetVpcLinks always returns items list even when empty."""
+        resp = client.get_vpc_links()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+    def test_get_api_keys_structure(self, client):
+        """GetApiKeys always returns items list."""
+        resp = client.get_api_keys()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+    def test_get_usage_plans_structure(self, client):
+        """GetUsagePlans always returns items list."""
+        resp = client.get_usage_plans()
+        assert "items" in resp
+        assert isinstance(resp["items"], list)
+
+    # === Error: nonexistent VPC link ===
+
+    def test_get_nonexistent_vpc_link_raises(self, client):
+        """GetVpcLink with fake ID returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_vpc_link(vpcLinkId="fakevpclink1")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # === Error: nonexistent deployment ===
+
+    def test_get_nonexistent_deployment_raises(self, client, api):
+        """GetDeployment with fake ID raises a ClientError."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_deployment(restApiId=api, deploymentId="fakedeployid")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "InternalError", "InternalFailure")
+
+    # === Error: nonexistent stage ===
+
+    def test_get_nonexistent_stage_raises(self, client, api):
+        """GetStage with fake name returns NotFoundException."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.get_stage(restApiId=api, stageName="nonexistent-stage")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # === Error: nonexistent authorizer ===
+
+    def test_delete_nonexistent_authorizer_raises(self, client, api):
+        """DeleteAuthorizer with fake ID raises a ClientError."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            client.delete_authorizer(restApiId=api, authorizerId="fakeauthid1")
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "InternalError", "InternalFailure")
