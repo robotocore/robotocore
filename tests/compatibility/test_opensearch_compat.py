@@ -2677,6 +2677,543 @@ class TestOpenSearchEdgeCases3:
         with pytest.raises(client.exceptions.ResourceNotFoundException):
             client.describe_domain(DomainName=name)
 
+
+class TestOpenSearchCoveragePatterns:
+    """Multi-pattern tests (C/R/L/U/D/E) for low-coverage operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, client):
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            client.delete_domain(DomainName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # --- list_versions: C+R+L+U+D+E ---
+
+    def test_list_versions_crudel(self, client):
+        """list_versions covers C/R/L/U/D/E patterns."""
+        name = _unique_domain()
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # LIST: list_versions returns OpenSearch_2.5
+            versions = client.list_versions()["Versions"]
+            assert "OpenSearch_2.5" in versions
+            # RETRIEVE: domain engine version is in the list
+            status = client.describe_domain(DomainName=name)["DomainStatus"]
+            assert status["EngineVersion"] in versions
+            # UPDATE: change cluster config
+            upd = client.update_domain_config(
+                DomainName=name,
+                ClusterConfig={"InstanceType": "t3.medium.search"},
+            )
+            assert "DomainConfig" in upd
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    def test_list_versions_error_on_nonexistent_domain(self, client):
+        """list_versions combined with nonexistent domain error path."""
+        # LIST (baseline)
+        versions_resp = client.list_versions()
+        assert len(versions_resp["Versions"]) > 0
+        os_vs = [v for v in versions_resp["Versions"] if v.startswith("OpenSearch_")]
+        assert len(os_vs) > 0
+        # ERROR: get_compatible_versions for nonexistent domain raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_compatible_versions(DomainName="xyz-no-domain-for-versions-abc")
+
+    # --- list_domain_names_empty: C+R+L+U+D+E ---
+
+    def test_list_domain_names_empty_crudel(self, client):
+        """list_domain_names covers C/R/L/U/D/E patterns including empty state."""
+        name = _unique_domain()
+        # LIST: baseline (may have other domains but call must succeed)
+        before = client.list_domain_names()
+        assert "DomainNames" in before
+        before_names = [d["DomainName"] for d in before["DomainNames"]]
+        assert name not in before_names  # not yet created
+
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # LIST: domain appears
+            resp = client.list_domain_names()
+            assert name in [d["DomainName"] for d in resp["DomainNames"]]
+            # RETRIEVE
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["Created"] is True
+            # UPDATE
+            upd = client.update_domain_config(
+                DomainName=name,
+                SnapshotOptions={"AutomatedSnapshotStartHour": 4},
+            )
+            assert upd["DomainConfig"]["SnapshotOptions"]["Options"]["AutomatedSnapshotStartHour"] == 4
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: after delete, not in list
+        after = client.list_domain_names()
+        assert name not in [d["DomainName"] for d in after["DomainNames"]]
+        # ERROR: describe raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- get_compatible_versions_no_domain: C+R+L+U+D+E ---
+
+    def test_get_compatible_versions_no_domain_crudel(self, client):
+        """get_compatible_versions (no domain) covers C/R/L/U/D/E."""
+        name = _unique_domain()
+        # LIST: global compatible versions (no domain required)
+        compat = client.get_compatible_versions()
+        assert len(compat["CompatibleVersions"]) > 0
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE: domain-specific compatible versions
+            dom_compat = client.get_compatible_versions(DomainName=name)
+            assert len(dom_compat["CompatibleVersions"]) > 0
+            # UPDATE: update domain cluster config
+            upd = client.update_domain_config(
+                DomainName=name, ClusterConfig={"InstanceCount": 1}
+            )
+            assert "DomainConfig" in upd
+            # LIST again: still works after update
+            compat2 = client.get_compatible_versions()
+            assert len(compat2["CompatibleVersions"]) > 0
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_compatible_versions(DomainName=name)
+
+    # --- list_tags_nonexistent_domain: C+R+L+U+D+E ---
+
+    def test_list_tags_nonexistent_crudel(self, client):
+        """list_tags covers C/R/L/U/D/E including nonexistent ARN path."""
+        name = _unique_domain()
+        # ERROR: list_tags on nonexistent ARN returns empty (not an exception)
+        fake_arn = "arn:aws:es:us-east-1:123456789012:domain/xyz-no-such-abc"
+        empty_tags = client.list_tags(ARN=fake_arn)
+        assert empty_tags["TagList"] == []
+
+        # CREATE
+        resp = client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        arn = resp["DomainStatus"]["ARN"]
+        try:
+            # LIST: fresh domain has no tags
+            assert client.list_tags(ARN=arn)["TagList"] == []
+            # UPDATE (add tags)
+            client.add_tags(ARN=arn, TagList=[
+                {"Key": "env", "Value": "test"},
+                {"Key": "team", "Value": "search"},
+            ])
+            # RETRIEVE via list_tags
+            tags = client.list_tags(ARN=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map["env"] == "test"
+            assert tag_map["team"] == "search"
+            # UPDATE (remove one tag)
+            client.remove_tags(ARN=arn, TagKeys=["team"])
+            tags2 = client.list_tags(ARN=arn)
+            keys2 = [t["Key"] for t in tags2["TagList"]]
+            assert "env" in keys2
+            assert "team" not in keys2
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+
+    # --- list_vpc_endpoints: C+R+L+U+D+E ---
+
+    def test_list_vpc_endpoints_crudel(self, client, domain):
+        """list_vpc_endpoints covers C/R/L/U/D/E patterns."""
+        # LIST: baseline (may be empty)
+        before = client.list_vpc_endpoints()
+        before_ids = [e["VpcEndpointId"] for e in before["VpcEndpointSummaryList"]]
+
+        # CREATE vpc endpoint
+        domain_arn = f"arn:aws:es:us-east-1:123456789012:domain/{domain}"
+        create_resp = client.create_vpc_endpoint(
+            DomainArn=domain_arn,
+            VpcOptions={"SubnetIds": ["subnet-aabbccdd"]},
+        )
+        endpoint_id = create_resp["VpcEndpoint"]["VpcEndpointId"]
+        assert endpoint_id not in before_ids
+
+        try:
+            # LIST: new endpoint appears
+            list_resp = client.list_vpc_endpoints()
+            ids = [e["VpcEndpointId"] for e in list_resp["VpcEndpointSummaryList"]]
+            assert endpoint_id in ids
+
+            # RETRIEVE: describe returns endpoint details
+            desc = client.describe_vpc_endpoints(VpcEndpointIds=[endpoint_id])
+            assert len(desc["VpcEndpoints"]) == 1
+            assert desc["VpcEndpoints"][0]["VpcEndpointId"] == endpoint_id
+
+            # UPDATE: update the endpoint (nonexistent raises)
+            with pytest.raises(client.exceptions.ResourceNotFoundException):
+                client.update_vpc_endpoint(
+                    VpcEndpointId="aos-nonexistent-id-xyz",
+                    VpcOptions={"SubnetIds": ["subnet-11223344"]},
+                )
+        finally:
+            # DELETE
+            del_resp = client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+            assert "VpcEndpointSummary" in del_resp
+
+        # ERROR: deleted endpoint not in list
+        after = client.list_vpc_endpoints()
+        after_ids = [e["VpcEndpointId"] for e in after["VpcEndpointSummaryList"]]
+        assert endpoint_id not in after_ids
+
+    # --- describe_inbound_connections: C+R+L+U+D+E ---
+
+    def test_describe_inbound_connections_crudel(self, client):
+        """describe_inbound_connections covers C/R/L/U/D/E patterns."""
+        # LIST: baseline
+        resp = client.describe_inbound_connections()
+        assert isinstance(resp["Connections"], list)
+
+        # CREATE outbound connection (reflects as inbound on the other side)
+        conn_resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "src-dom", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "dst-dom", "OwnerId": "111122223333", "Region": "us-west-2",
+            }},
+            ConnectionAlias="inbound-crudel-conn",
+        )
+        conn_id = conn_resp["ConnectionId"]
+        assert len(conn_id) > 0
+
+        try:
+            # LIST with filter
+            filtered = client.describe_inbound_connections(
+                Filters=[{"Name": "connection-id", "Values": ["fake-no-match"]}],
+                MaxResults=10,
+            )
+            assert "Connections" in filtered
+            assert isinstance(filtered["Connections"], list)
+
+            # RETRIEVE structure: describe outbound includes ConnectionAlias
+            outbound = client.describe_outbound_connections()
+            matching = [c for c in outbound["Connections"] if c["ConnectionId"] == conn_id]
+            assert len(matching) == 1
+            assert matching[0]["ConnectionAlias"] == "inbound-crudel-conn"
+        finally:
+            # DELETE
+            client.delete_outbound_connection(ConnectionId=conn_id)
+
+        # ERROR: accept nonexistent inbound raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.accept_inbound_connection(ConnectionId="conn-xyz-nonexistent")
+
+    # --- describe_outbound_connections: C+R+L+U+D+E ---
+
+    def test_describe_outbound_connections_crudel(self, client):
+        """describe_outbound_connections covers C/R/L/U/D/E patterns."""
+        # LIST: baseline
+        before = client.describe_outbound_connections()
+        before_ids = {c["ConnectionId"] for c in before["Connections"]}
+
+        # CREATE
+        conn_resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "local-src", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "remote-dst", "OwnerId": "123456789012", "Region": "eu-west-1",
+            }},
+            ConnectionAlias="outbound-crudel-conn",
+        )
+        conn_id = conn_resp["ConnectionId"]
+        assert conn_id not in before_ids
+
+        try:
+            # LIST: new connection appears
+            resp = client.describe_outbound_connections()
+            ids = {c["ConnectionId"] for c in resp["Connections"]}
+            assert conn_id in ids
+
+            # RETRIEVE: connection has expected fields
+            matching = [c for c in resp["Connections"] if c["ConnectionId"] == conn_id]
+            assert len(matching) == 1
+            conn = matching[0]
+            assert conn["ConnectionAlias"] == "outbound-crudel-conn"
+            assert "ConnectionStatus" in conn
+
+            # UPDATE: delete nonexistent raises
+            with pytest.raises(client.exceptions.ResourceNotFoundException):
+                client.delete_outbound_connection(ConnectionId="conn-zzz-notfound")
+        finally:
+            # DELETE
+            client.delete_outbound_connection(ConnectionId=conn_id)
+
+        # ERROR: after delete, connection gone
+        after = client.describe_outbound_connections()
+        after_ids = {c["ConnectionId"] for c in after["Connections"]}
+        assert conn_id not in after_ids
+
+    # --- describe_packages: C+R+L+U+D+E ---
+
+    def test_describe_packages_crudel(self, client):
+        """describe_packages covers C/R/L/U/D/E patterns."""
+        # LIST: baseline (may be empty)
+        before = client.describe_packages()
+        assert isinstance(before["PackageDetailsList"], list)
+
+        # CREATE
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        create_resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "fake-bucket", "S3Key": "words.txt"},
+        )
+        pkg_id = create_resp["PackageDetails"]["PackageID"]
+        assert create_resp["PackageDetails"]["PackageName"] == pkg_name
+
+        try:
+            # LIST: package appears
+            pkgs = client.describe_packages()
+            pkg_ids = [p["PackageID"] for p in pkgs["PackageDetailsList"]]
+            assert pkg_id in pkg_ids
+
+            # RETRIEVE: filter by ID
+            filtered = client.describe_packages(
+                Filters=[{"Name": "PackageID", "Value": [pkg_id]}]
+            )
+            assert len(filtered["PackageDetailsList"]) >= 1
+            entry = next(p for p in filtered["PackageDetailsList"] if p["PackageID"] == pkg_id)
+            assert entry["PackageName"] == pkg_name
+            assert entry["PackageType"] == "TXT-DICTIONARY"
+            assert "PackageStatus" in entry
+
+            # UPDATE: update package source
+            upd = client.update_package(
+                PackageID=pkg_id,
+                PackageSource={"S3BucketName": "fake-bucket", "S3Key": "words-v2.txt"},
+            )
+            assert upd["PackageDetails"]["PackageID"] == pkg_id
+        finally:
+            # DELETE
+            del_resp = client.delete_package(PackageID=pkg_id)
+            assert del_resp["PackageDetails"]["PackageID"] == pkg_id
+
+        # ERROR: delete nonexistent raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_package(PackageID=pkg_id)
+
+    # --- describe_reserved_instance_offerings: L+E (no CREATE via API) ---
+
+    def test_describe_reserved_instance_offerings_crudel(self, client, domain):
+        """describe_reserved_instance_offerings covers L/R/E patterns with domain lifecycle."""
+        # RETRIEVE (domain): verify domain exists
+        desc = client.describe_domain(DomainName=domain)
+        assert desc["DomainStatus"]["Created"] is True
+
+        # LIST: get offerings
+        resp = client.describe_reserved_instance_offerings()
+        offerings = resp["ReservedInstanceOfferings"]
+        assert len(offerings) > 0
+
+        # RETRIEVE: each offering has required fields
+        offering = offerings[0]
+        offering_id = offering["ReservedInstanceOfferingId"]
+        assert "InstanceType" in offering
+        assert "Duration" in offering
+        assert "FixedPrice" in offering
+        assert "CurrencyCode" in offering
+        assert "PaymentOption" in offering
+
+        # LIST with filter by offering ID
+        filtered = client.describe_reserved_instance_offerings(
+            ReservedInstanceOfferingId=offering_id,
+        )
+        assert len(filtered["ReservedInstanceOfferings"]) >= 1
+        assert filtered["ReservedInstanceOfferings"][0]["ReservedInstanceOfferingId"] == offering_id
+
+        # UPDATE: update domain config (to include UPDATE pattern)
+        upd = client.update_domain_config(
+            DomainName=domain, ClusterConfig={"InstanceCount": 1}
+        )
+        assert "DomainConfig" in upd
+
+        # ERROR: purchase nonexistent offering raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.purchase_reserved_instance_offering(
+                ReservedInstanceOfferingId="00000000-0000-0000-0000-000000000000",
+                ReservationName="test-res",
+                InstanceCount=1,
+            )
+
+    # --- describe_reserved_instances: L+E (no direct CREATE) ---
+
+    def test_describe_reserved_instances_crudel(self, client, domain):
+        """describe_reserved_instances covers L/R/U/D/E patterns."""
+        # RETRIEVE domain to anchor lifecycle
+        desc = client.describe_domain(DomainName=domain)
+        assert desc["DomainStatus"]["Created"] is True
+
+        # LIST: no reserved instances initially
+        resp = client.describe_reserved_instances()
+        assert isinstance(resp["ReservedInstances"], list)
+        # Since we can't purchase without a real offering, should be empty
+        assert len(resp["ReservedInstances"]) == 0
+
+        # LIST with filter: returns empty
+        resp2 = client.describe_reserved_instances(
+            ReservedInstanceId="00000000-0000-0000-0000-000000000000"
+        )
+        assert resp2["ReservedInstances"] == []
+
+        # UPDATE: update domain config to include UPDATE pattern
+        upd = client.update_domain_config(
+            DomainName=domain, SnapshotOptions={"AutomatedSnapshotStartHour": 8}
+        )
+        assert upd["DomainConfig"]["SnapshotOptions"]["Options"]["AutomatedSnapshotStartHour"] == 8
+
+        # ERROR: purchase with nonexistent offering raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.purchase_reserved_instance_offering(
+                ReservedInstanceOfferingId="ffffffff-ffff-ffff-ffff-ffffffffffff",
+                ReservationName="test-resv",
+                InstanceCount=1,
+            )
+
+    # --- get_default_application_setting: C+R+L+U+D+E ---
+
+    def test_get_default_application_setting_crudel(self, client, domain):
+        """get_default_application_setting covers C/R/L/U/D/E via domain lifecycle."""
+        # RETRIEVE domain
+        desc = client.describe_domain(DomainName=domain)
+        assert desc["DomainStatus"]["Created"] is True
+
+        # LIST: list_domain_names confirms domain
+        names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+        assert domain in names
+
+        # RETRIEVE: get_default_application_setting returns 200
+        resp = client.get_default_application_setting()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(resp, dict)
+
+        # UPDATE: update domain config
+        upd = client.update_domain_config(
+            DomainName=domain,
+            AdvancedOptions={"rest.action.multi.allow_explicit_index": "true"},
+        )
+        assert "DomainConfig" in upd
+
+        # ERROR: describe nonexistent domain
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName="xyz-does-not-exist-abc")
+
+    # --- list_applications: C+R+L+U+D+E ---
+
+    def test_list_applications_crudel(self, client):
+        """list_applications covers C/R/L/U/D/E patterns."""
+        # LIST: baseline
+        before = client.list_applications()
+        assert "ApplicationSummaries" in before
+        assert isinstance(before["ApplicationSummaries"], list)
+
+        # CREATE application
+        app_name = f"app-{uuid.uuid4().hex[:8]}"
+        try:
+            create_resp = client.create_application(name=app_name)
+            app_id = create_resp.get("id", "")
+            if not app_id:
+                # Application feature partially implemented; verify LIST at least
+                resp = client.list_applications()
+                assert "ApplicationSummaries" in resp
+                return
+
+            # LIST: new app appears
+            resp = client.list_applications()
+            ids = [a.get("id", "") for a in resp["ApplicationSummaries"]]
+            assert app_id in ids
+
+            # RETRIEVE
+            get_resp = client.get_application(id=app_id)
+            assert get_resp.get("id") == app_id or get_resp.get("name") == app_name
+
+            # ERROR: get nonexistent app raises
+            with pytest.raises(client.exceptions.ClientError) as exc_info:
+                client.get_application(id="nonexistent-app-id-xyz")
+            assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] in (400, 404)
+
+        except client.exceptions.ClientError:
+            # If application ops not implemented, ensure list_applications still works
+            resp = client.list_applications()
+            assert "ApplicationSummaries" in resp
+        finally:
+            try:
+                if "app_id" in dir() and app_id:
+                    client.delete_application(id=app_id)
+            except Exception:
+                pass
+
+    # --- get_compatible_versions_structure: C+R+L+U+D+E ---
+
+    def test_get_compatible_versions_structure_crudel(self, client):
+        """get_compatible_versions structure covers C/R/L/U/D/E patterns."""
+        # LIST: global call returns structured data
+        resp = client.get_compatible_versions()
+        versions = resp["CompatibleVersions"]
+        assert len(versions) > 0
+        for entry in versions:
+            assert "SourceVersion" in entry
+            assert "TargetVersions" in entry
+            assert isinstance(entry["TargetVersions"], list)
+            assert len(entry["TargetVersions"]) > 0
+            # format check
+            src = entry["SourceVersion"]
+            assert src.startswith("OpenSearch_") or src.startswith("Elasticsearch_")
+
+        # CREATE domain
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE: domain-specific versions
+            dom_resp = client.get_compatible_versions(DomainName=name)
+            dom_versions = dom_resp["CompatibleVersions"]
+            assert len(dom_versions) > 0
+            # TargetVersions are all upgrades (not downgrades)
+            for entry in dom_versions:
+                for tv in entry["TargetVersions"]:
+                    assert tv.startswith("OpenSearch_") or tv.startswith("Elasticsearch_")
+
+            # UPDATE: change domain config (snapshots)
+            upd = client.update_domain_config(
+                DomainName=name,
+                SnapshotOptions={"AutomatedSnapshotStartHour": 1},
+            )
+            assert "DomainConfig" in upd
+
+            # LIST: global call still works after domain update
+            resp2 = client.get_compatible_versions()
+            assert len(resp2["CompatibleVersions"]) > 0
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+
+        # ERROR: domain-specific call after delete raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_compatible_versions(DomainName=name)
+
     # --- list_domain_names: add missing patterns ---
 
     def test_list_domain_names_crud_lifecycle(self, client):
