@@ -3049,3 +3049,62 @@ class TestCloudWatchStrongPatterns:
             assert composite in all_names
         finally:
             cw.delete_alarms(AlarmNames=[composite, child])
+
+
+class TestCloudWatchOTelEnrichment:
+    """Tests for CloudWatch OTel Enrichment operations (GetOTelEnrichment, StartOTelEnrichment, StopOTelEnrichment)."""
+
+    @pytest.fixture
+    def cw(self):
+        return make_client("cloudwatch")
+
+    def test_get_o_tel_enrichment_initial_state(self, cw):
+        """GetOTelEnrichment returns a Status field (RETRIEVE)."""
+        resp = cw.get_o_tel_enrichment()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "Status" in resp
+        assert resp["Status"] in ("RUNNING", "STOPPED")
+
+    def test_start_o_tel_enrichment(self, cw):
+        """StartOTelEnrichment returns 200 and transitions status to RUNNING (CREATE + RETRIEVE)."""
+        resp = cw.start_o_tel_enrichment()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        status_resp = cw.get_o_tel_enrichment()
+        assert status_resp["Status"] == "RUNNING"
+
+    def test_stop_o_tel_enrichment(self, cw):
+        """StopOTelEnrichment returns 200 and transitions status to STOPPED (UPDATE + RETRIEVE)."""
+        # Start first to ensure it's running
+        cw.start_o_tel_enrichment()
+        status_before = cw.get_o_tel_enrichment()
+        assert status_before["Status"] == "RUNNING"
+
+        # Stop
+        resp = cw.stop_o_tel_enrichment()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        status_after = cw.get_o_tel_enrichment()
+        assert status_after["Status"] == "STOPPED"
+
+    def test_o_tel_enrichment_start_stop_cycle(self, cw):
+        """OTel enrichment state toggles correctly across start/stop cycles (C+R+U+D+E)."""
+        # Ensure known initial state
+        cw.stop_o_tel_enrichment()
+        assert cw.get_o_tel_enrichment()["Status"] == "STOPPED"
+
+        # Start
+        cw.start_o_tel_enrichment()
+        assert cw.get_o_tel_enrichment()["Status"] == "RUNNING"
+
+        # Stop
+        cw.stop_o_tel_enrichment()
+        assert cw.get_o_tel_enrichment()["Status"] == "STOPPED"
+
+        # Start again — idempotent
+        cw.start_o_tel_enrichment()
+        cw.start_o_tel_enrichment()
+        assert cw.get_o_tel_enrichment()["Status"] == "RUNNING"
+
+        # Cleanup
+        cw.stop_o_tel_enrichment()

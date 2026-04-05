@@ -1185,6 +1185,32 @@ def _handle_list_alarm_mute_rules(params: dict, region: str, account_id: str) ->
     return {"AlarmMuteRuleSummaries": summaries}
 
 
+# OTel enrichment state: per-region
+_otel_enrichment_state: dict[str, str] = {}
+_otel_enrichment_lock = threading.Lock()
+
+
+def _handle_get_o_tel_enrichment(params: dict, region: str, account_id: str) -> dict:
+    """GetOTelEnrichment — return current enrichment status."""
+    with _otel_enrichment_lock:
+        state = _otel_enrichment_state.get(region, "STOPPED")
+    return {"Status": state}
+
+
+def _handle_start_o_tel_enrichment(params: dict, region: str, account_id: str) -> dict:
+    """StartOTelEnrichment — transition state to RUNNING."""
+    with _otel_enrichment_lock:
+        _otel_enrichment_state[region] = "RUNNING"
+    return {}
+
+
+def _handle_stop_o_tel_enrichment(params: dict, region: str, account_id: str) -> dict:
+    """StopOTelEnrichment — transition state to STOPPED."""
+    with _otel_enrichment_lock:
+        _otel_enrichment_state[region] = "STOPPED"
+    return {}
+
+
 # ---------------------------------------------------------------------------
 # Response helpers
 # ---------------------------------------------------------------------------
@@ -1336,4 +1362,8 @@ _ACTION_MAP: dict[str, Callable] = {
     "GetAlarmMuteRule": _handle_get_alarm_mute_rule,
     "DeleteAlarmMuteRule": _handle_delete_alarm_mute_rule,
     "ListAlarmMuteRules": _handle_list_alarm_mute_rules,
+    # OTel enrichment
+    "GetOTelEnrichment": _handle_get_o_tel_enrichment,
+    "StartOTelEnrichment": _handle_start_o_tel_enrichment,
+    "StopOTelEnrichment": _handle_stop_o_tel_enrichment,
 }
