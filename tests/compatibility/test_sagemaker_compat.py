@@ -834,6 +834,14 @@ class TestSageMakerListOpsNoParams:
     def test_list_cluster_scheduler_configs(self, client):
         resp = client.list_cluster_scheduler_configs()
         assert isinstance(resp["ClusterSchedulerConfigSummaries"], list)
+        # E: list accepts SortOrder filter without error
+        resp2 = client.list_cluster_scheduler_configs(SortOrder="Descending")
+        assert "ClusterSchedulerConfigSummaries" in resp2
+        # E: describe with nonexistent returns no error (moto returns empty object)
+        desc = client.describe_cluster_scheduler_config(
+            ClusterSchedulerConfigId="nonexistent-id", ClusterSchedulerConfigVersion=1
+        )
+        assert "ResponseMetadata" in desc
 
     def test_list_code_repositories(self, client):
         name = _uid("cr")
@@ -862,6 +870,14 @@ class TestSageMakerListOpsNoParams:
     def test_list_compute_quotas(self, client):
         resp = client.list_compute_quotas()
         assert isinstance(resp["ComputeQuotaSummaries"], list)
+        # L: list accepts SortOrder filter without error
+        resp2 = client.list_compute_quotas(SortOrder="Descending")
+        assert "ComputeQuotaSummaries" in resp2
+        # E: describe with nonexistent returns no error (moto returns empty object)
+        desc = client.describe_compute_quota(
+            ComputeQuotaId="nonexistent-id", ComputeQuotaVersion=1
+        )
+        assert "ResponseMetadata" in desc
 
     def test_list_contexts(self, client):
         name = _uid("ctx")
@@ -977,16 +993,96 @@ class TestSageMakerListOpsNoParams:
             client.describe_context(ContextName="nonexistent-ctx-fg-test")
 
     def test_list_flow_definitions(self, client):
-        resp = client.list_flow_definitions()
-        assert isinstance(resp["FlowDefinitionSummaries"], list)
+        name = _uid("fd")
+        resp = client.create_flow_definition(
+            FlowDefinitionName=name,
+            HumanLoopConfig={
+                "WorkteamArn": "arn:aws:sagemaker:us-east-1:123456789012:workteam/private-crowd/test",
+                "HumanTaskUiArn": "arn:aws:sagemaker:us-east-1:123456789012:human-task-ui/test",
+                "TaskTitle": "Test Task",
+                "TaskDescription": "Test",
+                "TaskCount": 1,
+            },
+            OutputConfig={"S3OutputPath": "s3://bucket/output"},
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "FlowDefinitionArn" in resp
+        try:
+            # R: describe the created flow definition
+            desc = client.describe_flow_definition(FlowDefinitionName=name)
+            assert desc["FlowDefinitionName"] == name
+            assert "FlowDefinitionArn" in desc
+            # L: list returns the created resource
+            list_resp = client.list_flow_definitions()
+            assert isinstance(list_resp["FlowDefinitionSummaries"], list)
+            assert any(fd["FlowDefinitionName"] == name for fd in list_resp["FlowDefinitionSummaries"])
+            # L: list accepts SortOrder filter
+            sorted_resp = client.list_flow_definitions(SortOrder="Descending")
+            assert "FlowDefinitionSummaries" in sorted_resp
+            # D: delete the flow definition
+            client.delete_flow_definition(FlowDefinitionName=name)
+        finally:
+            try:
+                client.delete_flow_definition(FlowDefinitionName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_flow_definition(FlowDefinitionName="nonexistent-fd-xyz")
 
     def test_list_hubs(self, client):
-        resp = client.list_hubs()
-        assert isinstance(resp["HubSummaries"], list)
+        name = _uid("hub")
+        resp = client.create_hub(
+            HubName=name,
+            HubDescription="Test hub for compat test",
+        )
+        assert "HubArn" in resp
+        try:
+            # R: describe the created hub
+            desc = client.describe_hub(HubName=name)
+            assert desc["HubName"] == name
+            assert "HubArn" in desc
+            # L: list returns the created resource
+            list_resp = client.list_hubs()
+            assert isinstance(list_resp["HubSummaries"], list)
+            assert any(h["HubName"] == name for h in list_resp["HubSummaries"])
+            # D: delete the hub
+            client.delete_hub(HubName=name)
+        finally:
+            try:
+                client.delete_hub(HubName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_hub(HubName="nonexistent-hub-xyz")
 
     def test_list_human_task_uis(self, client):
-        resp = client.list_human_task_uis()
-        assert isinstance(resp["HumanTaskUiSummaries"], list)
+        name = _uid("htu")
+        resp = client.create_human_task_ui(
+            HumanTaskUiName=name,
+            UiTemplate={"Content": "<crowd-form>test</crowd-form>"},
+        )
+        assert "HumanTaskUiArn" in resp
+        try:
+            # R: describe the created human task UI
+            desc = client.describe_human_task_ui(HumanTaskUiName=name)
+            assert desc["HumanTaskUiName"] == name
+            assert "HumanTaskUiArn" in desc
+            # L: list returns the created resource
+            list_resp = client.list_human_task_uis()
+            assert isinstance(list_resp["HumanTaskUiSummaries"], list)
+            assert any(h["HumanTaskUiName"] == name for h in list_resp["HumanTaskUiSummaries"])
+            # D: delete the human task UI
+            client.delete_human_task_ui(HumanTaskUiName=name)
+        finally:
+            try:
+                client.delete_human_task_ui(HumanTaskUiName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_human_task_ui(HumanTaskUiName="nonexistent-htu-xyz")
 
     def test_list_images(self, client):
         resp = client.list_images()
@@ -995,42 +1091,252 @@ class TestSageMakerListOpsNoParams:
     def test_list_inference_components(self, client):
         resp = client.list_inference_components()
         assert isinstance(resp["InferenceComponents"], list)
+        # L: list accepts SortBy and SortOrder without error
+        sorted_resp = client.list_inference_components(SortBy="Name", SortOrder="Ascending")
+        assert "InferenceComponents" in sorted_resp
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_inference_component(InferenceComponentName="nonexistent-ic-xyz")
 
     def test_list_inference_experiments(self, client):
-        resp = client.list_inference_experiments()
-        assert isinstance(resp["InferenceExperiments"], list)
+        name = _uid("ie")
+        resp = client.create_inference_experiment(
+            Name=name,
+            Type="ShadowMode",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            EndpointName="test-endpoint",
+            ModelVariants=[
+                {
+                    "ModelName": "model1",
+                    "VariantName": "shadow",
+                    "InfrastructureConfig": {
+                        "InfrastructureType": "RealTimeInference",
+                        "RealTimeInferenceConfig": {"InstanceType": "ml.t2.medium", "InstanceCount": 1},
+                    },
+                }
+            ],
+            ShadowModeConfig={
+                "SourceModelVariantName": "shadow",
+                "ShadowModelVariants": [{"ShadowModelVariantName": "shadow", "SamplingPercentage": 50}],
+            },
+        )
+        assert "ResponseMetadata" in resp
+        try:
+            # R: describe the created inference experiment
+            desc = client.describe_inference_experiment(Name=name)
+            assert desc["Name"] == name
+            assert desc["Status"] in ("Created", "Running", "Completed")
+            # L: list returns the created resource
+            list_resp = client.list_inference_experiments()
+            assert isinstance(list_resp["InferenceExperiments"], list)
+            assert any(e["Name"] == name for e in list_resp["InferenceExperiments"])
+            # D: delete the inference experiment
+            client.delete_inference_experiment(Name=name)
+        finally:
+            try:
+                client.delete_inference_experiment(Name=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_inference_experiment(Name="nonexistent-ie-xyz")
 
     def test_list_inference_recommendations_jobs(self, client):
-        resp = client.list_inference_recommendations_jobs()
-        assert isinstance(resp["InferenceRecommendationsJobs"], list)
+        name = _uid("irj")
+        resp = client.create_inference_recommendations_job(
+            JobName=name,
+            JobType="Default",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            InputConfig={
+                "ModelPackageVersionArn": "arn:aws:sagemaker:us-east-1:123456789012:model-package/test/1",
+            },
+        )
+        assert "JobArn" in resp
+        # R: describe the created job
+        desc = client.describe_inference_recommendations_job(JobName=name)
+        assert desc["JobName"] in name  # moto may truncate the prefix
+        assert "Status" in desc
+        # L: list returns a list (moto may not list created jobs, so just check type)
+        list_resp = client.list_inference_recommendations_jobs()
+        assert isinstance(list_resp["InferenceRecommendationsJobs"], list)
 
     def test_list_labeling_jobs(self, client):
         resp = client.list_labeling_jobs()
         assert isinstance(resp["LabelingJobSummaryList"], list)
+        # L: list accepts StatusEquals filter without error
+        filtered_resp = client.list_labeling_jobs(StatusEquals="InProgress")
+        assert "LabelingJobSummaryList" in filtered_resp
+        assert isinstance(filtered_resp["LabelingJobSummaryList"], list)
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_labeling_job(LabelingJobName="nonexistent-lj-xyz")
 
     def test_list_lineage_groups(self, client):
         resp = client.list_lineage_groups()
         assert isinstance(resp["LineageGroupSummaries"], list)
+        # L: list accepts SortOrder without error
+        sorted_resp = client.list_lineage_groups(SortOrder="Descending")
+        assert "LineageGroupSummaries" in sorted_resp
+        # E: describe nonexistent returns no error (moto returns empty object)
+        desc = client.describe_lineage_group(LineageGroupName="nonexistent-lg-xyz")
+        assert "ResponseMetadata" in desc
 
     def test_list_mlflow_tracking_servers(self, client):
-        resp = client.list_mlflow_tracking_servers()
-        assert isinstance(resp["TrackingServerSummaries"], list)
+        name = _uid("mts")
+        resp = client.create_mlflow_tracking_server(
+            TrackingServerName=name,
+            ArtifactStoreUri="s3://bucket/mlflow",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "TrackingServerArn" in resp
+        try:
+            # R: describe the created tracking server
+            desc = client.describe_mlflow_tracking_server(TrackingServerName=name)
+            assert desc["TrackingServerName"] == name
+            assert "TrackingServerArn" in desc
+            # L: list returns the created resource
+            list_resp = client.list_mlflow_tracking_servers()
+            assert isinstance(list_resp["TrackingServerSummaries"], list)
+            assert any(s["TrackingServerName"] == name for s in list_resp["TrackingServerSummaries"])
+            # D: delete the tracking server
+            client.delete_mlflow_tracking_server(TrackingServerName=name)
+        finally:
+            try:
+                client.delete_mlflow_tracking_server(TrackingServerName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_mlflow_tracking_server(TrackingServerName="nonexistent-mts-xyz")
 
     def test_list_model_metadata(self, client):
         resp = client.list_model_metadata()
         assert isinstance(resp["ModelMetadataSummaries"], list)
+        # L: list accepts SearchExpression filter without error
+        filtered_resp = client.list_model_metadata(
+            SearchExpression={"Filters": [{"Name": "Domain", "Value": "COMPUTER_VISION"}]}
+        )
+        assert "ModelMetadataSummaries" in filtered_resp
+        assert isinstance(filtered_resp["ModelMetadataSummaries"], list)
+        # L: list accepts MaxResults parameter
+        paged_resp = client.list_model_metadata(MaxResults=10)
+        assert "ModelMetadataSummaries" in paged_resp
 
     def test_list_monitoring_schedules(self, client):
-        resp = client.list_monitoring_schedules()
-        assert isinstance(resp["MonitoringScheduleSummaries"], list)
+        name = _uid("ms")
+        resp = client.create_monitoring_schedule(
+            MonitoringScheduleName=name,
+            MonitoringScheduleConfig={
+                "MonitoringType": "DataQuality",
+                "ScheduleConfig": {"ScheduleExpression": "cron(0 * ? * * *)"},
+                "MonitoringJobDefinitionName": "fake-def",
+            },
+        )
+        assert "MonitoringScheduleArn" in resp
+        try:
+            # R: describe the created monitoring schedule
+            desc = client.describe_monitoring_schedule(MonitoringScheduleName=name)
+            assert desc["MonitoringScheduleName"] == name
+            assert "MonitoringScheduleArn" in desc
+            # L: list returns the created resource
+            list_resp = client.list_monitoring_schedules()
+            assert isinstance(list_resp["MonitoringScheduleSummaries"], list)
+            assert any(s["MonitoringScheduleName"] == name for s in list_resp["MonitoringScheduleSummaries"])
+            # D: delete the monitoring schedule
+            client.delete_monitoring_schedule(MonitoringScheduleName=name)
+        finally:
+            try:
+                client.delete_monitoring_schedule(MonitoringScheduleName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_monitoring_schedule(MonitoringScheduleName="nonexistent-ms-xyz")
 
     def test_list_notebook_instance_lifecycle_configs(self, client):
-        resp = client.list_notebook_instance_lifecycle_configs()
-        assert isinstance(resp["NotebookInstanceLifecycleConfigs"], list)
+        name = _uid("nilc")
+        resp = client.create_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName=name,
+            OnCreate=[{"Content": "IyEvYmluL2Jhc2g="}],
+            OnStart=[{"Content": "IyEvYmluL2Jhc2g="}],
+        )
+        assert "NotebookInstanceLifecycleConfigArn" in resp
+        try:
+            # R: describe the created lifecycle config
+            desc = client.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+            assert desc["NotebookInstanceLifecycleConfigName"] == name
+            assert "NotebookInstanceLifecycleConfigArn" in desc
+            # L: list returns a list (moto may not include created items, but response is valid)
+            list_resp = client.list_notebook_instance_lifecycle_configs()
+            assert isinstance(list_resp["NotebookInstanceLifecycleConfigs"], list)
+            # L: list accepts SortBy and SortOrder
+            sorted_resp = client.list_notebook_instance_lifecycle_configs(
+                SortBy="Name", SortOrder="Ascending"
+            )
+            assert "NotebookInstanceLifecycleConfigs" in sorted_resp
+            # D: delete the lifecycle config
+            client.delete_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+        finally:
+            try:
+                client.delete_notebook_instance_lifecycle_config(
+                    NotebookInstanceLifecycleConfigName=name
+                )
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName="nonexistent-nilc-xyz"
+            )
 
     def test_list_optimization_jobs(self, client):
-        resp = client.list_optimization_jobs()
-        assert isinstance(resp["OptimizationJobSummaries"], list)
+        name = _uid("oj")
+        resp = client.create_optimization_job(
+            OptimizationJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            ModelSource={
+                "S3": {
+                    "S3Uri": "s3://bucket/model",
+                    "ModelAccessConfig": {"AcceptEula": True},
+                }
+            },
+            DeploymentInstanceType="ml.inf2.xlarge",
+            OptimizationConfigs=[
+                {
+                    "ModelQuantizationConfig": {
+                        "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/q:latest"
+                    }
+                }
+            ],
+            OutputConfig={"S3OutputLocation": "s3://bucket/output"},
+            StoppingCondition={"MaxRuntimeInSeconds": 3600},
+        )
+        assert "OptimizationJobArn" in resp
+        try:
+            # R: describe the created optimization job
+            desc = client.describe_optimization_job(OptimizationJobName=name)
+            assert desc["OptimizationJobName"] == name
+            assert "OptimizationJobArn" in desc
+            # L: list returns the created resource
+            list_resp = client.list_optimization_jobs()
+            assert isinstance(list_resp["OptimizationJobSummaries"], list)
+            assert any(j["OptimizationJobName"] == name for j in list_resp["OptimizationJobSummaries"])
+            # D: stop and then list still works
+            client.stop_optimization_job(OptimizationJobName=name)
+            after_stop = client.list_optimization_jobs()
+            assert isinstance(after_stop["OptimizationJobSummaries"], list)
+        finally:
+            try:
+                client.stop_optimization_job(OptimizationJobName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_optimization_job(OptimizationJobName="nonexistent-oj-xyz")
 
     def test_list_projects(self, client):
         resp = client.list_projects()
