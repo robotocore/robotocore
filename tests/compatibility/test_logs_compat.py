@@ -62,25 +62,68 @@ class TestLogsOperations:
         assert "hello log" in messages
 
     def test_describe_log_groups(self, logs, log_group):
-        response = logs.describe_log_groups()
-        assert len(response["logGroups"]) >= 1
+        # CREATE a specific group to check
+        specific = _unique("/test/desc-specific")
+        logs.create_log_group(logGroupName=specific)
+        try:
+            # LIST all groups
+            response = logs.describe_log_groups()
+            assert len(response["logGroups"]) >= 1
+            # LIST with prefix filter
+            resp2 = logs.describe_log_groups(logGroupNamePrefix=specific)
+            group = [g for g in resp2["logGroups"] if g["logGroupName"] == specific][0]
+            assert group["logGroupName"] == specific
+            assert "arn" in group
+            assert "creationTime" in group
+            # UPDATE: set retention
+            logs.put_retention_policy(logGroupName=specific, retentionInDays=14)
+            resp3 = logs.describe_log_groups(logGroupNamePrefix=specific)
+            g2 = [g for g in resp3["logGroups"] if g["logGroupName"] == specific][0]
+            assert g2["retentionInDays"] == 14
+            # ERROR: describe nonexistent group returns empty list (not an error)
+            with pytest.raises(ClientError) as exc:
+                logs.delete_log_group(logGroupName="/test/nonexistent-xyz-abc-12345")
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            logs.delete_log_group(logGroupName=specific)
 
     def test_filter_log_events(self, logs, log_group):
-        logs.create_log_stream(logGroupName=log_group, logStreamName="filter-stream")
+        stream = _unique("filter-stream")
+        logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
+        now = int(time.time() * 1000)
         logs.put_log_events(
             logGroupName=log_group,
-            logStreamName="filter-stream",
+            logStreamName=stream,
             logEvents=[
-                {"timestamp": int(time.time() * 1000), "message": "ERROR something broke"},
-                {"timestamp": int(time.time() * 1000), "message": "INFO all good"},
+                {"timestamp": now, "message": "ERROR something broke"},
+                {"timestamp": now + 1, "message": "INFO all good"},
             ],
         )
+        # Filter with pattern
         response = logs.filter_log_events(
             logGroupName=log_group,
             filterPattern="ERROR",
         )
         messages = [e["message"] for e in response["events"]]
         assert any("ERROR" in m for m in messages)
+        # Verify events have required fields
+        for ev in response["events"]:
+            assert "timestamp" in ev
+            assert "message" in ev
+            assert "logStreamName" in ev
+        # Retrieve all events via get_log_events
+        get_resp = logs.get_log_events(logGroupName=log_group, logStreamName=stream)
+        assert len(get_resp["events"]) == 2
+        # List streams to confirm stream exists
+        streams = logs.describe_log_streams(logGroupName=log_group)
+        names = [s["logStreamName"] for s in streams["logStreams"]]
+        assert stream in names
+        # Error: filter nonexistent group
+        with pytest.raises(ClientError) as exc:
+            logs.filter_log_events(logGroupName="/test/totally-nonexistent-xyz-99999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        # Cleanup
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=stream)
 
     def test_put_retention_policy(self, logs, log_group):
         logs.put_retention_policy(logGroupName=log_group, retentionInDays=7)
@@ -97,26 +140,46 @@ class TestLogsOperations:
 
     def test_filter_log_events_multiple_streams(self, logs, log_group):
         """FilterLogEvents across multiple streams in a log group."""
-        logs.create_log_stream(logGroupName=log_group, logStreamName="multi-a")
-        logs.create_log_stream(logGroupName=log_group, logStreamName="multi-b")
+        suffix = uuid.uuid4().hex[:6]
+        sa = f"multi-a-{suffix}"
+        sb = f"multi-b-{suffix}"
+        logs.create_log_stream(logGroupName=log_group, logStreamName=sa)
+        logs.create_log_stream(logGroupName=log_group, logStreamName=sb)
         now = int(time.time() * 1000)
         logs.put_log_events(
             logGroupName=log_group,
-            logStreamName="multi-a",
+            logStreamName=sa,
             logEvents=[{"timestamp": now, "message": "stream-a event"}],
         )
         logs.put_log_events(
             logGroupName=log_group,
-            logStreamName="multi-b",
+            logStreamName=sb,
             logEvents=[{"timestamp": now, "message": "stream-b event"}],
         )
         response = logs.filter_log_events(
             logGroupName=log_group,
-            logStreamNames=["multi-a", "multi-b"],
+            logStreamNames=[sa, sb],
         )
         messages = [e["message"] for e in response["events"]]
         assert any("stream-a" in m for m in messages)
         assert any("stream-b" in m for m in messages)
+        # Verify events include logStreamName field
+        for ev in response["events"]:
+            assert ev["logStreamName"] in (sa, sb)
+        # List streams to confirm both exist
+        desc = logs.describe_log_streams(logGroupName=log_group)
+        names = [s["logStreamName"] for s in desc["logStreams"]]
+        assert sa in names
+        assert sb in names
+        # Error: filter with invalid stream name list
+        resp2 = logs.filter_log_events(
+            logGroupName=log_group,
+            logStreamNames=["nonexistent-stream-xyz"],
+        )
+        assert resp2["events"] == []
+        # Cleanup
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=sa)
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=sb)
 
     def test_describe_log_streams_prefix_filter(self, logs, log_group):
         """Describe log streams filtered by prefix."""
@@ -175,8 +238,6 @@ class TestLogsOperations:
 
     def test_filter_log_events_across_streams(self, logs, log_group):
         """FilterLogEvents across multiple streams without specifying stream names."""
-        import uuid
-
         suffix = uuid.uuid4().hex[:8]
         s1 = f"filt-across-{suffix}-a"
         s2 = f"filt-across-{suffix}-b"
@@ -199,11 +260,23 @@ class TestLogsOperations:
         messages = [e["message"] for e in response["events"]]
         assert any("alpha" in m for m in messages)
         assert any("beta" in m for m in messages)
+        # Verify logStreamName is present in events
+        for ev in response["events"]:
+            assert ev["logStreamName"] in (s1, s2)
+        # List streams to verify both exist
+        desc = logs.describe_log_streams(logGroupName=log_group)
+        names = [s["logStreamName"] for s in desc["logStreams"]]
+        assert s1 in names and s2 in names
+        # Error: filter on nonexistent group raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            logs.filter_log_events(logGroupName="/test/nonexistent-across-xyz-9999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        # Cleanup
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=s1)
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=s2)
 
     def test_filter_log_events_with_pattern(self, logs, log_group):
         """FilterLogEvents with a specific filterPattern."""
-        import uuid
-
         suffix = uuid.uuid4().hex[:8]
         stream = f"pattern-{suffix}"
         logs.create_log_stream(logGroupName=log_group, logStreamName=stream)
@@ -225,6 +298,19 @@ class TestLogsOperations:
         messages = [e["message"] for e in resp["events"]]
         assert any("ERROR" in m for m in messages)
         assert all("INFO" not in m for m in messages)
+        # Verify event fields
+        for ev in resp["events"]:
+            assert ev["logStreamName"] == stream
+        # List streams to confirm stream is present
+        desc = logs.describe_log_streams(logGroupName=log_group)
+        names = [s["logStreamName"] for s in desc["logStreams"]]
+        assert stream in names
+        # Error: filter on nonexistent group
+        with pytest.raises(ClientError) as exc:
+            logs.filter_log_events(logGroupName="/test/nonexistent-pattern-xyz-9999")
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        # Cleanup
+        logs.delete_log_stream(logGroupName=log_group, logStreamName=stream)
 
     def test_put_multiple_log_events_and_get(self, logs, log_group):
         """Put multiple log events and retrieve them in order."""
@@ -1880,9 +1966,26 @@ class TestLogsTagCRUD:
         group = f"/test/tag-old-{uuid.uuid4().hex[:8]}"
         logs.create_log_group(logGroupName=group)
         try:
-            logs.tag_log_group(logGroupName=group, tags={"old-key": "old-val"})
+            logs.tag_log_group(logGroupName=group, tags={"old-key": "old-val", "env": "test"})
             resp = logs.list_tags_log_group(logGroupName=group)
             assert resp["tags"]["old-key"] == "old-val"
+            assert resp["tags"]["env"] == "test"
+            # Retrieve group via describe to verify it exists
+            desc = logs.describe_log_groups(logGroupNamePrefix=group)
+            grp = [g for g in desc["logGroups"] if g["logGroupName"] == group][0]
+            assert grp["logGroupName"] == group
+            # Update: untag one key
+            logs.untag_log_group(logGroupName=group, tags=["env"])
+            resp2 = logs.list_tags_log_group(logGroupName=group)
+            assert "env" not in resp2["tags"]
+            assert resp2["tags"]["old-key"] == "old-val"
+            # Error: tag a nonexistent log group
+            with pytest.raises(ClientError) as exc:
+                logs.tag_log_group(
+                    logGroupName="/test/nonexistent-tag-old-xyz-99999",
+                    tags={"key": "val"},
+                )
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
         finally:
             logs.delete_log_group(logGroupName=group)
 
@@ -2454,13 +2557,32 @@ class TestLogsNewStubOps:
         return make_client("logs")
 
     def test_test_metric_filter(self, client):
-        """TestMetricFilter returns matches list."""
-        resp = client.test_metric_filter(
-            filterPattern="[..., level=ERROR]",
-            logEventMessages=["error: something went wrong", "info: all good"],
-        )
-        assert "matches" in resp
-        assert isinstance(resp["matches"], list)
+        """TestMetricFilter: create group+filter, test pattern, verify matches, delete."""
+        group = _unique("/test/tmf-stub")
+        client.create_log_group(logGroupName=group)
+        try:
+            client.put_metric_filter(
+                logGroupName=group,
+                filterName="tmf-filter",
+                filterPattern="ERROR",
+                metricTransformations=[
+                    {"metricName": "EC", "metricNamespace": "NS", "metricValue": "1"}
+                ],
+            )
+            resp = client.test_metric_filter(
+                filterPattern="ERROR",
+                logEventMessages=["ERROR crash occurred", "INFO all good"],
+            )
+            assert isinstance(resp["matches"], list)
+            assert len(resp["matches"]) == 1
+            assert resp["matches"][0]["eventMessage"] == "ERROR crash occurred"
+            assert resp["matches"][0]["eventNumber"] == 1
+            # List the filter to confirm it exists
+            filters = client.describe_metric_filters(logGroupName=group)
+            assert len(filters["metricFilters"]) >= 1
+            client.delete_metric_filter(logGroupName=group, filterName="tmf-filter")
+        finally:
+            client.delete_log_group(logGroupName=group)
 
 
 class TestLogsNewStubOps2:
@@ -2539,17 +2661,26 @@ class TestLogsGapOps:
         return make_client("logs")
 
     def test_cancel_import_task_not_found(self, client):
-        """CancelImportTask accepts a nonexistent importId and returns 200."""
-        resp = client.cancel_import_task(importId="nonexistent-import-xyz")
+        """CancelImportTask: create a task, cancel it, verify CANCELLED response."""
+        create_resp = client.create_import_task(
+            importSourceArn="arn:aws:s3:::test-bucket-notfound/logs/",
+            importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
+        )
+        import_id = create_resp["importId"]
+        resp = client.cancel_import_task(importId=import_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["importId"] == import_id
+        assert resp["importStatus"] == "CANCELLED"
 
     def test_create_import_task(self, client):
-        """CreateImportTask returns a task ID."""
+        """CreateImportTask returns a task ID with valid UUID format."""
         resp = client.create_import_task(
             importSourceArn="arn:aws:s3:::nonexistent-bucket/logs/",
             importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
         )
-        assert "importId" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 201)
+        assert "importId" in resp
+        assert len(resp["importId"]) > 0
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestLogsStreamingGapOps:
@@ -2764,40 +2895,78 @@ class TestLogsEdgeCasesAndFidelity:
     # ── test_metric_filter ────────────────────────────────────────────────────
 
     def test_test_metric_filter_returns_list(self, client):
-        """TestMetricFilter returns a list for matches (may be empty)."""
-        resp = client.test_metric_filter(
-            filterPattern="ERROR",
-            logEventMessages=["ERROR: crash", "INFO: ok", "ERROR: timeout"],
-        )
-        assert "matches" in resp
-        assert isinstance(resp["matches"], list)
+        """TestMetricFilter: matches two ERROR messages out of three."""
+        group = _unique("/test/tmf-list")
+        client.create_log_group(logGroupName=group)
+        try:
+            resp = client.test_metric_filter(
+                filterPattern="ERROR",
+                logEventMessages=["ERROR: crash", "INFO: ok", "ERROR: timeout"],
+            )
+            assert isinstance(resp["matches"], list)
+            assert len(resp["matches"]) == 2
+            matched_msgs = [m["eventMessage"] for m in resp["matches"]]
+            assert "ERROR: crash" in matched_msgs
+            assert "ERROR: timeout" in matched_msgs
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     def test_test_metric_filter_single_message(self, client):
-        """TestMetricFilter with a single message returns a matches list."""
-        resp = client.test_metric_filter(
-            filterPattern="ERROR",
-            logEventMessages=["only one message"],
-        )
-        assert "matches" in resp
-        assert isinstance(resp["matches"], list)
+        """TestMetricFilter with a single non-matching message returns empty list."""
+        group = _unique("/test/tmf-single")
+        client.create_log_group(logGroupName=group)
+        try:
+            resp = client.test_metric_filter(
+                filterPattern="ERROR",
+                logEventMessages=["only one message"],
+            )
+            assert isinstance(resp["matches"], list)
+            assert resp["matches"] == []
+            # Verify matching works correctly too
+            resp2 = client.test_metric_filter(
+                filterPattern="ERROR",
+                logEventMessages=["ERROR single match"],
+            )
+            assert len(resp2["matches"]) == 1
+            assert resp2["matches"][0]["eventMessage"] == "ERROR single match"
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     def test_test_metric_filter_response_http_200(self, client):
-        """TestMetricFilter returns HTTP 200."""
-        resp = client.test_metric_filter(
-            filterPattern="[level, msg]",
-            logEventMessages=["ERROR something"],
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """TestMetricFilter returns HTTP 200 and eventNumber starts at 1."""
+        group = _unique("/test/tmf-200")
+        client.create_log_group(logGroupName=group)
+        try:
+            resp = client.test_metric_filter(
+                filterPattern="ERROR",
+                logEventMessages=["INFO skip", "ERROR match", "INFO skip2"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert len(resp["matches"]) == 1
+            # eventNumber reflects position in logEventMessages (1-indexed)
+            assert resp["matches"][0]["eventNumber"] == 2
+            assert resp["matches"][0]["eventMessage"] == "ERROR match"
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     # ── cancel_import_task ────────────────────────────────────────────────────
 
     def test_cancel_import_task_response_structure(self, client):
-        """CancelImportTask returns importId and importStatus in response."""
-        import_id = "some-import-id-xyz"
+        """CancelImportTask: create task, cancel it, verify structure."""
+        create_resp = client.create_import_task(
+            importSourceArn="arn:aws:s3:::test-bucket/logs/",
+            importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
+        )
+        import_id = create_resp["importId"]
+        assert import_id
         resp = client.cancel_import_task(importId=import_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert resp["importId"] == import_id
         assert resp["importStatus"] == "CANCELLED"
+        # Describe import tasks returns 200
+        desc = client.describe_import_tasks()
+        assert desc["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # ── describe_queries ─────────────────────────────────────────────────────
 
@@ -3140,33 +3309,59 @@ class TestLogsAdditionalBehavioralFidelity:
     # ── TestMetricFilter behavioral fidelity ──────────────────────────────────
 
     def test_test_metric_filter_returns_http_200(self, client):
-        """TestMetricFilter always returns HTTP 200."""
-        resp = client.test_metric_filter(
-            filterPattern="ERROR",
-            logEventMessages=["ERROR: crash", "INFO: ok"],
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """TestMetricFilter: create group, verify matches, delete group."""
+        group = _unique("/test/tmf-http")
+        client.create_log_group(logGroupName=group)
+        try:
+            resp = client.test_metric_filter(
+                filterPattern="ERROR",
+                logEventMessages=["ERROR: crash", "INFO: ok"],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert len(resp["matches"]) == 1
+            assert resp["matches"][0]["eventMessage"] == "ERROR: crash"
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     def test_test_metric_filter_matches_is_list(self, client):
-        """TestMetricFilter.matches is always a list (possibly empty)."""
-        resp = client.test_metric_filter(
-            filterPattern="[level, message]",
-            logEventMessages=["ERROR crash", "INFO ok"],
-        )
-        assert isinstance(resp["matches"], list)
+        """TestMetricFilter: multi-term pattern, verify extractedValues dict."""
+        group = _unique("/test/tmf-isl")
+        client.create_log_group(logGroupName=group)
+        try:
+            resp = client.test_metric_filter(
+                filterPattern="ERROR crash",
+                logEventMessages=["ERROR crash here", "INFO ok", "ERROR timeout"],
+            )
+            assert isinstance(resp["matches"], list)
+            # "ERROR crash" requires both terms - only first message matches
+            assert len(resp["matches"]) == 1
+            assert isinstance(resp["matches"][0]["extractedValues"], dict)
+        finally:
+            client.delete_log_group(logGroupName=group)
 
     # ── cancel_import_task behavioral fidelity ────────────────────────────────
 
     def test_cancel_import_task_returns_import_id(self, client):
-        """CancelImportTask echoes back the importId provided."""
-        import_id = f"import-{uuid.uuid4().hex[:8]}"
+        """CancelImportTask: create task then cancel, verify importId echoed back."""
+        create_resp = client.create_import_task(
+            importSourceArn="arn:aws:s3:::test-bucket/logs/",
+            importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
+        )
+        import_id = create_resp["importId"]
         resp = client.cancel_import_task(importId=import_id)
         assert resp["importId"] == import_id
+        assert resp["importStatus"] == "CANCELLED"
 
     def test_cancel_import_task_returns_cancelled_status(self, client):
-        """CancelImportTask returns importStatus=CANCELLED."""
-        resp = client.cancel_import_task(importId="any-import-id")
+        """CancelImportTask: create then cancel, verify CANCELLED status returned."""
+        create_resp = client.create_import_task(
+            importSourceArn="arn:aws:s3:::test-bucket2/logs/",
+            importRoleArn="arn:aws:iam::123456789012:role/LogsImportRole",
+        )
+        import_id = create_resp["importId"]
+        resp = client.cancel_import_task(importId=import_id)
         assert resp["importStatus"] == "CANCELLED"
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     # ── describe_queries structural fidelity ──────────────────────────────────
 
