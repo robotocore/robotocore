@@ -1093,3 +1093,449 @@ class TestTranscribeRemainingGapOps:
                 VocabularyFileUri="s3://test-bucket/vocab.txt",
             )
         assert exc.value.response["Error"]["Code"] == "BadRequestException"
+
+
+class TestTranscribeEdgeCasesAndFidelity:
+    """Edge cases and behavioral fidelity tests."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("transcribe")
+
+    # ── Duplicate resource creation ─────────────────────────────────────────
+
+    def test_duplicate_transcription_job_raises_conflict(self, client):
+        """Starting a job with a name that already exists raises ConflictException."""
+        from botocore.exceptions import ClientError
+
+        name = f"dup-job-{_uid()}"
+        client.start_transcription_job(
+            TranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.start_transcription_job(
+                    TranscriptionJobName=name,
+                    LanguageCode="en-US",
+                    Media={"MediaFileUri": "s3://my-bucket/audio2.wav"},
+                )
+            assert exc.value.response["Error"]["Code"] == "ConflictException"
+        finally:
+            client.delete_transcription_job(TranscriptionJobName=name)
+
+    def test_duplicate_vocabulary_raises_conflict(self, client):
+        """Creating a vocabulary with an already-used name raises ConflictException."""
+        from botocore.exceptions import ClientError
+
+        name = f"dup-vocab-{_uid()}"
+        client.create_vocabulary(
+            VocabularyName=name, LanguageCode="en-US", Phrases=["hello"]
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_vocabulary(
+                    VocabularyName=name, LanguageCode="en-US", Phrases=["world"]
+                )
+            assert exc.value.response["Error"]["Code"] == "ConflictException"
+        finally:
+            client.delete_vocabulary(VocabularyName=name)
+
+    # ── List operations show created resources ──────────────────────────────
+
+    def test_list_call_analytics_categories_shows_created(self, client):
+        """ListCallAnalyticsCategories includes a newly created category."""
+        name = f"ca-cat-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 10,
+                        "AbsoluteTimeRange": {"First": 0, "Last": 100},
+                        "Negate": False,
+                    }
+                }
+            ],
+        )
+        try:
+            resp = client.list_call_analytics_categories()
+            assert "Categories" in resp
+            names = [c["CategoryName"] for c in resp["Categories"]]
+            assert name in names
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
+
+    def test_list_call_analytics_jobs_shows_created(self, client):
+        """ListCallAnalyticsJobs includes a newly started job."""
+        name = f"ca-job-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://test-bucket/test.mp3"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = client.list_call_analytics_jobs()
+            assert "CallAnalyticsJobSummaries" in resp
+            names = [j["CallAnalyticsJobName"] for j in resp["CallAnalyticsJobSummaries"]]
+            assert name in names
+        finally:
+            client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    def test_list_language_models_shows_created(self, client):
+        """ListLanguageModels includes a newly created model."""
+        name = f"lm-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        try:
+            resp = client.list_language_models()
+            assert "Models" in resp
+            names = [m["ModelName"] for m in resp["Models"]]
+            assert name in names
+        finally:
+            client.delete_language_model(ModelName=name)
+
+    def test_list_medical_transcription_jobs_shows_created(self, client):
+        """ListMedicalTranscriptionJobs includes newly started job."""
+        name = f"med-tj-{_uid()}"
+        client.start_medical_transcription_job(
+            MedicalTranscriptionJobName=name,
+            LanguageCode="en-US",
+            Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+            OutputBucketName="my-output-bucket",
+            Specialty="PRIMARYCARE",
+            Type="CONVERSATION",
+        )
+        try:
+            resp = client.list_medical_transcription_jobs()
+            assert "MedicalTranscriptionJobSummaries" in resp
+            names = [
+                j["MedicalTranscriptionJobName"]
+                for j in resp["MedicalTranscriptionJobSummaries"]
+            ]
+            assert name in names
+        finally:
+            client.delete_medical_transcription_job(MedicalTranscriptionJobName=name)
+
+    def test_list_medical_vocabularies_shows_created(self, client):
+        """ListMedicalVocabularies includes newly created vocabulary."""
+        name = f"med-voc-{_uid()}"
+        client.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        try:
+            resp = client.list_medical_vocabularies()
+            assert "Vocabularies" in resp
+            names = [v["VocabularyName"] for v in resp["Vocabularies"]]
+            assert name in names
+        finally:
+            client.delete_medical_vocabulary(VocabularyName=name)
+
+    def test_list_medical_scribe_jobs_shows_created(self, client):
+        """ListMedicalScribeJobs includes newly started job."""
+        name = f"mscribe-{_uid()}"
+        client.start_medical_scribe_job(
+            MedicalScribeJobName=name,
+            Media={"MediaFileUri": "s3://test-bucket/test.mp3"},
+            OutputBucketName="test-bucket",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/TestRole",
+            Settings={"ShowSpeakerLabels": True, "MaxSpeakerLabels": 2},
+        )
+        try:
+            resp = client.list_medical_scribe_jobs()
+            assert "MedicalScribeJobSummaries" in resp
+            names = [j["MedicalScribeJobName"] for j in resp["MedicalScribeJobSummaries"]]
+            assert name in names
+        finally:
+            client.delete_medical_scribe_job(MedicalScribeJobName=name)
+
+    def test_list_vocabulary_filters_with_name_contains(self, client):
+        """ListVocabularyFilters NameContains filter returns matching filters."""
+        name = f"vf-edge-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["test"],
+        )
+        try:
+            resp = client.list_vocabulary_filters(NameContains="vf-edge")
+            assert "VocabularyFilters" in resp
+            names = [f["VocabularyFilterName"] for f in resp["VocabularyFilters"]]
+            assert name in names
+        finally:
+            client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    # ── Pagination ──────────────────────────────────────────────────────────
+
+    def test_list_transcription_jobs_pagination(self, client):
+        """ListTranscriptionJobs MaxResults/NextToken pagination works."""
+        prefix = f"pag-{_uid()}"
+        names = [f"{prefix}-{i}" for i in range(3)]
+        try:
+            for n in names:
+                client.start_transcription_job(
+                    TranscriptionJobName=n,
+                    LanguageCode="en-US",
+                    Media={"MediaFileUri": "s3://my-bucket/audio.wav"},
+                )
+            page1 = client.list_transcription_jobs(
+                JobNameContains=prefix, MaxResults=2
+            )
+            assert len(page1["TranscriptionJobSummaries"]) <= 2
+            all_names = [j["TranscriptionJobName"] for j in page1["TranscriptionJobSummaries"]]
+            if "NextToken" in page1:
+                page2 = client.list_transcription_jobs(
+                    JobNameContains=prefix, MaxResults=2, NextToken=page1["NextToken"]
+                )
+                all_names += [
+                    j["TranscriptionJobName"] for j in page2["TranscriptionJobSummaries"]
+                ]
+            for n in names:
+                assert n in all_names
+        finally:
+            for n in names:
+                try:
+                    client.delete_transcription_job(TranscriptionJobName=n)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def test_list_vocabularies_pagination(self, client):
+        """ListVocabularies MaxResults/NextToken pagination works."""
+        prefix = f"pvoc-{_uid()}"
+        names = [f"{prefix}-{i}" for i in range(3)]
+        try:
+            for n in names:
+                client.create_vocabulary(
+                    VocabularyName=n, LanguageCode="en-US", Phrases=["test"]
+                )
+            page1 = client.list_vocabularies(NameContains=prefix, MaxResults=2)
+            assert len(page1.get("Vocabularies", [])) <= 2
+            all_names = [v["VocabularyName"] for v in page1.get("Vocabularies", [])]
+            if "NextToken" in page1:
+                page2 = client.list_vocabularies(
+                    NameContains=prefix, MaxResults=2, NextToken=page1["NextToken"]
+                )
+                all_names += [v["VocabularyName"] for v in page2.get("Vocabularies", [])]
+            for n in names:
+                assert n in all_names
+        finally:
+            for n in names:
+                try:
+                    client.delete_vocabulary(VocabularyName=n)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    # ── Timestamps and field presence ───────────────────────────────────────
+
+    def test_call_analytics_job_has_creation_time(self, client):
+        """GetCallAnalyticsJob returns CreationTime."""
+        name = f"ca-ts-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://test-bucket/test.mp3"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = client.get_call_analytics_job(CallAnalyticsJobName=name)
+            job = resp["CallAnalyticsJob"]
+            assert "CreationTime" in job
+        finally:
+            client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    def test_vocabulary_filter_has_last_modified_time(self, client):
+        """GetVocabularyFilter returns LastModifiedTime."""
+        name = f"vf-ts-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["test"],
+        )
+        try:
+            resp = client.get_vocabulary_filter(VocabularyFilterName=name)
+            assert "LastModifiedTime" in resp
+        finally:
+            client.delete_vocabulary_filter(VocabularyFilterName=name)
+
+    def test_language_model_has_create_time(self, client):
+        """DescribeLanguageModel returns CreateTime."""
+        name = f"lm-ts-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        try:
+            resp = client.describe_language_model(ModelName=name)
+            model = resp["LanguageModel"]
+            assert "CreateTime" in model
+        finally:
+            client.delete_language_model(ModelName=name)
+
+    # ── Update operations ───────────────────────────────────────────────────
+
+    def test_update_vocabulary_changes_phrases(self, client):
+        """UpdateVocabulary succeeds and returns the vocabulary name."""
+        name = f"upd-vocab-{_uid()}"
+        client.create_vocabulary(
+            VocabularyName=name, LanguageCode="en-US", Phrases=["original"]
+        )
+        try:
+            resp = client.update_vocabulary(
+                VocabularyName=name,
+                LanguageCode="en-US",
+                Phrases=["updated", "phrase"],
+            )
+            assert resp["VocabularyName"] == name
+            assert resp["LanguageCode"] == "en-US"
+        finally:
+            client.delete_vocabulary(VocabularyName=name)
+
+    def test_update_call_analytics_category(self, client):
+        """UpdateCallAnalyticsCategory changes the rules and returns the category."""
+        name = f"ca-upd-{_uid()}"
+        client.create_call_analytics_category(
+            CategoryName=name,
+            Rules=[
+                {
+                    "NonTalkTimeFilter": {
+                        "Threshold": 10,
+                        "AbsoluteTimeRange": {"First": 0, "Last": 100},
+                        "Negate": False,
+                    }
+                }
+            ],
+        )
+        try:
+            resp = client.update_call_analytics_category(
+                CategoryName=name,
+                Rules=[
+                    {
+                        "SentimentFilter": {
+                            "Sentiments": ["POSITIVE"],
+                            "ParticipantRole": "AGENT",
+                        }
+                    }
+                ],
+            )
+            assert resp["CategoryProperties"]["CategoryName"] == name
+        finally:
+            client.delete_call_analytics_category(CategoryName=name)
+
+    def test_update_medical_vocabulary(self, client):
+        """UpdateMedicalVocabulary succeeds and returns the vocabulary name."""
+        name = f"upd-medvoc-{_uid()}"
+        client.create_medical_vocabulary(
+            VocabularyName=name,
+            LanguageCode="en-US",
+            VocabularyFileUri="s3://my-bucket/vocab.txt",
+        )
+        try:
+            resp = client.update_medical_vocabulary(
+                VocabularyName=name,
+                LanguageCode="en-US",
+                VocabularyFileUri="s3://my-bucket/vocab-v2.txt",
+            )
+            assert resp["VocabularyName"] == name
+        finally:
+            client.delete_medical_vocabulary(VocabularyName=name)
+
+    # ── Language model status filter ────────────────────────────────────────
+
+    def test_list_language_models_with_status_filter(self, client):
+        """ListLanguageModels StatusEquals filter returns only matching models."""
+        name = f"lm-sf-{_uid()}"
+        client.create_language_model(
+            LanguageCode="en-US",
+            BaseModelName="NarrowBand",
+            ModelName=name,
+            InputDataConfig={
+                "S3Uri": "s3://bucket/data/",
+                "DataAccessRoleArn": "arn:aws:iam::123456789012:role/test",
+            },
+        )
+        try:
+            resp = client.describe_language_model(ModelName=name)
+            status = resp["LanguageModel"]["ModelStatus"]
+            list_resp = client.list_language_models(StatusEquals=status)
+            names = [m["ModelName"] for m in list_resp.get("Models", [])]
+            assert name in names
+        finally:
+            client.delete_language_model(ModelName=name)
+
+    # ── Vocabulary filter post-delete error ─────────────────────────────────
+
+    def test_vocabulary_filter_get_after_delete_raises(self, client):
+        """GetVocabularyFilter after deletion raises an error."""
+        from botocore.exceptions import ClientError
+
+        name = f"vf-del-{_uid()}"
+        client.create_vocabulary_filter(
+            VocabularyFilterName=name,
+            LanguageCode="en-US",
+            Words=["test"],
+        )
+        client.delete_vocabulary_filter(VocabularyFilterName=name)
+        with pytest.raises(ClientError) as exc:
+            client.get_vocabulary_filter(VocabularyFilterName=name)
+        assert exc.value.response["Error"]["Code"] in ("BadRequestException", "NotFoundException")
+
+    # ── Call analytics job status ────────────────────────────────────────────
+
+    def test_call_analytics_job_has_status(self, client):
+        """GetCallAnalyticsJob returns CallAnalyticsJobStatus."""
+        name = f"ca-st-{_uid()}"
+        client.start_call_analytics_job(
+            CallAnalyticsJobName=name,
+            Media={"MediaFileUri": "s3://test-bucket/test.mp3"},
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/test-role",
+        )
+        try:
+            resp = client.get_call_analytics_job(CallAnalyticsJobName=name)
+            job = resp["CallAnalyticsJob"]
+            assert job["CallAnalyticsJobStatus"] in (
+                "QUEUED",
+                "IN_PROGRESS",
+                "FAILED",
+                "COMPLETED",
+            )
+        finally:
+            client.delete_call_analytics_job(CallAnalyticsJobName=name)
+
+    # ── Medical scribe job fields ────────────────────────────────────────────
+
+    def test_medical_scribe_job_get_returns_fields(self, client):
+        """GetMedicalScribeJob returns job name and status."""
+        name = f"mscribe-get-{_uid()}"
+        client.start_medical_scribe_job(
+            MedicalScribeJobName=name,
+            Media={"MediaFileUri": "s3://test-bucket/test.mp3"},
+            OutputBucketName="test-bucket",
+            DataAccessRoleArn="arn:aws:iam::123456789012:role/TestRole",
+            Settings={"ShowSpeakerLabels": True, "MaxSpeakerLabels": 2},
+        )
+        try:
+            resp = client.get_medical_scribe_job(MedicalScribeJobName=name)
+            job = resp["MedicalScribeJob"]
+            assert job["MedicalScribeJobName"] == name
+            assert job["MedicalScribeJobStatus"] in (
+                "QUEUED",
+                "IN_PROGRESS",
+                "FAILED",
+                "COMPLETED",
+            )
+        finally:
+            client.delete_medical_scribe_job(MedicalScribeJobName=name)
