@@ -50,17 +50,42 @@ def acm():
 class TestACMOperations:
     def test_request_certificate(self, acm):
         response = acm.request_certificate(DomainName="example.com")
-        assert "CertificateArn" in response
+        arn = response["CertificateArn"]
+        assert arn.startswith("arn:aws:acm:")
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["DomainName"] == "example.com"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_certificates(self, acm):
-        acm.request_certificate(DomainName="list-test.example.com")
+        arn = acm.request_certificate(DomainName="list-test.example.com")["CertificateArn"]
         response = acm.list_certificates()
         assert len(response["CertificateSummaryList"]) >= 1
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_certificate(self, acm):
         arn = acm.request_certificate(DomainName="describe.example.com")["CertificateArn"]
         response = acm.describe_certificate(CertificateArn=arn)
         assert response["Certificate"]["DomainName"] == "describe.example.com"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_certificate_fields(self, acm):
         arn = acm.request_certificate(DomainName="fields.example.com")["CertificateArn"]
@@ -70,6 +95,14 @@ class TestACMOperations:
         assert "Status" in cert
         assert "Type" in cert
         assert cert["DomainName"] == "fields.example.com"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_tags_for_certificate(self, acm):
         arn = acm.request_certificate(DomainName="tags.example.com")["CertificateArn"]
@@ -115,6 +148,14 @@ class TestACMOperations:
         assert "san.example.com" in sans
         assert "www.san.example.com" in sans
         assert "api.san.example.com" in sans
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_certificate_all_fields(self, acm):
         """Verify DescribeCertificate returns expected fields."""
@@ -126,6 +167,14 @@ class TestACMOperations:
         assert "Type" in cert
         assert "SubjectAlternativeNames" in cert
         assert "CreatedAt" in cert
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_certificate(self, acm):
         """Request a certificate, then delete it."""
@@ -199,9 +248,29 @@ class TestACMOperations:
         matching = [c for c in response["CertificateSummaryList"] if c["CertificateArn"] == arn]
         assert len(matching) == 1
         assert matching[0]["DomainName"] == "listsummary.example.com"
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["CertificateArn"] == arn
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_export_certificate_invalid_arn(self, acm):
         """ExportCertificate with bad ARN should raise an error."""
+        # IMPORT a real cert first (CREATE + RETRIEVE + LIST)
+        cert_pem, key_pem = _generate_self_signed_cert()
+        import_resp = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)
+        real_arn = import_resp["CertificateArn"]
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=real_arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert real_arn in arns
+        acm.delete_certificate(CertificateArn=real_arn)
+        # ERROR — fake ARN raises
         fake_arn = (
             "arn:aws:acm:us-east-1:123456789012:certificate/22222222-2222-2222-2222-222222222222"
         )
@@ -218,13 +287,34 @@ class TestACMOperations:
             DomainName="idempotent.example.com",
             IdempotencyToken="unique-token-123",
         )
-        assert "CertificateArn" in response
+        arn = response["CertificateArn"]
+        assert arn.startswith("arn:aws:acm:")
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["DomainName"] == "idempotent.example.com"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_certificate_status_is_pending(self, acm):
         """Newly requested certificate should have PENDING_VALIDATION status."""
         arn = acm.request_certificate(DomainName="status.example.com")["CertificateArn"]
         cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
         assert cert["Status"] == "PENDING_VALIDATION"
+        # LIST — appears with pending status
+        pending = acm.list_certificates(CertificateStatuses=["PENDING_VALIDATION"])
+        pending_arns = [c["CertificateArn"] for c in pending["CertificateSummaryList"]]
+        assert arn in pending_arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_import_certificate(self, acm):
         """ImportCertificate imports a self-signed cert and returns an ARN."""
@@ -250,8 +340,11 @@ class TestACMOperations:
             PrivateKey=key_pem,
             CertificateChain=cert_pem,  # self-signed acts as its own chain
         )
-        assert "CertificateArn" in response
-        acm.delete_certificate(CertificateArn=response["CertificateArn"])
+        arn = response["CertificateArn"]
+        assert arn.startswith("arn:aws:acm:")
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+        acm.delete_certificate(CertificateArn=arn)
 
     def test_get_account_configuration(self, acm):
         """GetAccountConfiguration returns without error."""
@@ -326,12 +419,26 @@ class TestACMImportCertificate:
             DomainName="idempotent.example.com",
             IdempotencyToken=token,
         )
-        assert resp1["CertificateArn"] == resp2["CertificateArn"]
+        arn = resp1["CertificateArn"]
+        assert arn == resp2["CertificateArn"]
+        # LIST — only one cert with this domain
+        certs = [
+            c
+            for c in acm.list_certificates()["CertificateSummaryList"]
+            if c["DomainName"] == "idempotent.example.com"
+        ]
+        assert len(certs) == 1
+        assert certs[0]["CertificateArn"] == arn
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_certificates_with_filtering(self, acm):
         """ListCertificates with certificate status filtering."""
         # Request a certificate so there's at least one
-        acm.request_certificate(DomainName="filter-test.example.com")
+        arn = acm.request_certificate(DomainName="filter-test.example.com")["CertificateArn"]
 
         # List with PENDING_VALIDATION status (default for requested certs)
         response = acm.list_certificates(
@@ -342,6 +449,14 @@ class TestACMImportCertificate:
         for cert in response["CertificateSummaryList"]:
             assert "CertificateArn" in cert
             assert "DomainName" in cert
+        # RETRIEVE — cert is describable
+        desc = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert desc["Status"] == "PENDING_VALIDATION"
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestACMExtended:
@@ -358,13 +473,33 @@ class TestACMExtended:
         arn = resp["CertificateArn"]
         desc = acm.describe_certificate(CertificateArn=arn)
         assert desc["Certificate"]["DomainName"] == "dns-test.example.com"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_request_certificate_email_validation(self, acm):
         resp = acm.request_certificate(
             DomainName="email-test.example.com",
             ValidationMethod="EMAIL",
         )
-        assert "CertificateArn" in resp
+        arn = resp["CertificateArn"]
+        assert arn.startswith("arn:aws:acm:")
+        # RETRIEVE — status is PENDING_VALIDATION
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Status"] == "PENDING_VALIDATION"
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_request_certificate_with_tags(self, acm):
         resp = acm.request_certificate(
@@ -424,11 +559,12 @@ class TestACMExtended:
         resp = acm.request_certificate(DomainName="created-at.example.com")
         arn = resp["CertificateArn"]
         desc = acm.describe_certificate(CertificateArn=arn)
-        assert "CreatedAt" in desc["Certificate"]
+        cert = desc["Certificate"]
+        assert isinstance(cert["CreatedAt"], datetime.datetime)
 
     def test_list_certificates_empty_filter(self, acm):
         resp = acm.list_certificates(CertificateStatuses=["ISSUED"])
-        assert "CertificateSummaryList" in resp
+        assert isinstance(resp["CertificateSummaryList"], list)
 
     def test_import_and_describe_certificate(self, acm):
         cert_pem, key_pem = _generate_self_signed_cert()
@@ -465,8 +601,9 @@ class TestACMExtended:
         arn = resp["CertificateArn"]
         desc = acm.describe_certificate(CertificateArn=arn)
         sans = desc["Certificate"].get("SubjectAlternativeNames", [])
-        assert "alt1.example.com" in sans
-        assert "alt2.example.com" in sans
+        assert len(sans) >= 4
+        assert sans.count("alt1.example.com") == 1
+        assert sans.count("alt2.example.com") == 1
 
     def test_request_wildcard_certificate(self, acm):
         resp = acm.request_certificate(DomainName="*.wildcard.example.com")
@@ -541,8 +678,7 @@ class TestACMExtended:
         arn = resp["CertificateArn"]
         try:
             got = acm.get_certificate(CertificateArn=arn)
-            assert "Certificate" in got
-            assert "BEGIN CERTIFICATE" in got["Certificate"]
+            assert got["Certificate"].startswith("-----BEGIN CERTIFICATE-----")
         finally:
             acm.delete_certificate(CertificateArn=arn)
 
@@ -589,6 +725,17 @@ class TestACMBehavioralFidelity:
         arn = acm.request_certificate(DomainName="arn-format.example.com")["CertificateArn"]
         pattern = r"^arn:aws:acm:[a-z0-9-]+:\d{12}:certificate/[0-9a-f-]{36}$"
         assert re.match(pattern, arn), f"ARN {arn!r} did not match expected pattern"
+        # RETRIEVE — cert is fetchable by the exact ARN
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["CertificateArn"] == arn
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+        # DELETE + ERROR
+        acm.delete_certificate(CertificateArn=arn)
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_certificate_type_amazon_issued(self, acm):
         """Requested (non-imported) certs must have Type=AMAZON_ISSUED."""
@@ -917,9 +1064,10 @@ class TestACMEdgeCases:
         """DescribeCertificate always includes SubjectAlternativeNames (at least the domain)."""
         arn = acm.request_certificate(DomainName="sans-always.example.com")["CertificateArn"]
         cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
-        assert "SubjectAlternativeNames" in cert
+        sans = cert["SubjectAlternativeNames"]
         # Primary domain must appear in SANs
-        assert "sans-always.example.com" in cert["SubjectAlternativeNames"]
+        assert len(sans) >= 1
+        assert sans[0] == "sans-always.example.com"
 
     def test_delete_removes_from_list(self, acm):
         """After delete, certificate no longer appears in ListCertificates."""
