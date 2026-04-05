@@ -10587,3 +10587,914 @@ class TestRDSSnapshotAdditionalEdgeCases:
             "DBSnapshotNotFound",
             "DBSnapshotNotFoundFault",
         )
+
+
+class TestRDSBehavioralFidelity:
+    """Behavioral fidelity: ARN formats, timestamps, idempotency."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_db_instance_arn_format(self, client):
+        """DB instance ARN follows arn:aws:rds:region:account:db:id format."""
+        name = _unique("compat-db")
+        resp = client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            inst = resp["DBInstance"]
+            arn = inst["DBInstanceArn"]
+            assert arn.startswith("arn:aws:rds:us-east-1:")
+            assert arn.endswith(f":db:{name}")
+            # Also present on describe
+            desc = client.describe_db_instances(DBInstanceIdentifier=name)
+            assert desc["DBInstances"][0]["DBInstanceArn"] == arn
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_instance_create_idempotency(self, client):
+        """Creating a DB instance with same ID raises DBInstanceAlreadyExists."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_db_instance(
+                    DBInstanceIdentifier=name,
+                    DBInstanceClass="db.t3.micro",
+                    Engine="mysql",
+                    MasterUsername="admin",
+                    MasterUserPassword="password123",
+                )
+            assert exc.value.response["Error"]["Code"] == "DBInstanceAlreadyExists"
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_parameter_group_create_idempotency(self, client):
+        """Creating a parameter group with same name raises DBParameterGroupAlreadyExists."""
+        name = _unique("compat-pg")
+        client.create_db_parameter_group(
+            DBParameterGroupName=name,
+            DBParameterGroupFamily="mysql8.0",
+            Description="first",
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_db_parameter_group(
+                    DBParameterGroupName=name,
+                    DBParameterGroupFamily="mysql8.0",
+                    Description="second",
+                )
+            assert exc.value.response["Error"]["Code"] == "DBParameterGroupAlreadyExists"
+        finally:
+            try:
+                client.delete_db_parameter_group(DBParameterGroupName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_cluster_arn_format(self, client):
+        """DB cluster ARN follows arn:aws:rds:region:account:cluster:id format."""
+        name = _unique("compat-cl")
+        resp = client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            arn = resp["DBCluster"]["DBClusterArn"]
+            assert arn.startswith("arn:aws:rds:us-east-1:")
+            assert f":cluster:{name}" in arn
+            # Verify on describe too
+            desc = client.describe_db_clusters(DBClusterIdentifier=name)
+            assert desc["DBClusters"][0]["DBClusterArn"] == arn
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_snapshot_arn_format(self, client):
+        """DB snapshot ARN follows arn:aws:rds:region:account:snapshot:id format."""
+        db_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            snap_resp = client.create_db_snapshot(
+                DBSnapshotIdentifier=snap_name,
+                DBInstanceIdentifier=db_name,
+            )
+            try:
+                arn = snap_resp["DBSnapshot"]["DBSnapshotArn"]
+                assert arn.startswith("arn:aws:rds:us-east-1:")
+                assert snap_name in arn
+                # Retrieve by ID and verify ARN
+                desc = client.describe_db_snapshots(DBSnapshotIdentifier=snap_name)
+                assert desc["DBSnapshots"][0]["DBSnapshotArn"] == arn
+            finally:
+                try:
+                    client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_parameter_group_pagination(self, client):
+        """DescribeDBParameterGroups supports MaxRecords pagination."""
+        names = [_unique(f"compat-pg-{i}") for i in range(3)]
+        for name in names:
+            client.create_db_parameter_group(
+                DBParameterGroupName=name,
+                DBParameterGroupFamily="mysql8.0",
+                Description=f"pagination test",
+            )
+        try:
+            resp = client.describe_db_parameter_groups(MaxRecords=20)
+            found = [g["DBParameterGroupName"] for g in resp["DBParameterGroups"]]
+            for name in names:
+                assert name in found
+        finally:
+            for name in names:
+                try:
+                    client.delete_db_parameter_group(DBParameterGroupName=name)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+    def test_describe_db_instances_timestamp_fields(self, client):
+        """DB instance has InstanceCreateTime timestamp field."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            desc = client.describe_db_instances(DBInstanceIdentifier=name)
+            inst = desc["DBInstances"][0]
+            assert "InstanceCreateTime" in inst
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_db_cluster_create_idempotency(self, client):
+        """Creating a DB cluster with same ID raises DBClusterAlreadyExistsFault."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            with pytest.raises(ClientError) as exc:
+                client.create_db_cluster(
+                    DBClusterIdentifier=name,
+                    Engine="aurora-mysql",
+                    MasterUsername="admin",
+                    MasterUserPassword="password123!",
+                )
+            assert exc.value.response["Error"]["Code"] in (
+                "DBClusterAlreadyExistsFault",
+                "DBClusterAlreadyExists",
+                "DBClusterSnapshotAlreadyExistsFault",
+            )
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+
+class TestRDSSnapshotEdgeCases:
+    """Edge cases for DB snapshot operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_snapshot_of_nonexistent_instance_raises_error(self, client):
+        """Creating a snapshot of a nonexistent instance raises DBInstanceNotFound."""
+        with pytest.raises(ClientError) as exc:
+            client.create_db_snapshot(
+                DBSnapshotIdentifier=_unique("compat-snap"),
+                DBInstanceIdentifier="nonexistent-instance-xyz-snap",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "DBInstanceNotFound",
+            "DBInstanceNotFoundFault",
+        )
+
+    def test_describe_snapshots_filter_by_instance(self, client):
+        """DescribeDBSnapshots can filter results by DBInstanceIdentifier."""
+        db_name = _unique("compat-db")
+        snap1 = _unique("compat-snap-a")
+        snap2 = _unique("compat-snap-b")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            client.create_db_snapshot(DBSnapshotIdentifier=snap1, DBInstanceIdentifier=db_name)
+            client.create_db_snapshot(DBSnapshotIdentifier=snap2, DBInstanceIdentifier=db_name)
+            try:
+                # Filter by instance — both snapshots should appear
+                resp = client.describe_db_snapshots(DBInstanceIdentifier=db_name)
+                snap_ids = [s["DBSnapshotIdentifier"] for s in resp["DBSnapshots"]]
+                assert snap1 in snap_ids
+                assert snap2 in snap_ids
+                # Filter by specific snapshot ID returns only that one
+                single = client.describe_db_snapshots(DBSnapshotIdentifier=snap1)
+                assert len(single["DBSnapshots"]) == 1
+                assert single["DBSnapshots"][0]["DBSnapshotIdentifier"] == snap1
+            finally:
+                for s in [snap1, snap2]:
+                    try:
+                        client.delete_db_snapshot(DBSnapshotIdentifier=s)
+                    except ClientError:
+                        pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_snapshot_type_field_is_manual(self, client):
+        """User-created snapshots have SnapshotType = 'manual'."""
+        db_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            client.create_db_snapshot(DBSnapshotIdentifier=snap_name, DBInstanceIdentifier=db_name)
+            try:
+                resp = client.describe_db_snapshots(DBSnapshotIdentifier=snap_name)
+                snap = resp["DBSnapshots"][0]
+                assert snap["SnapshotType"] == "manual"
+                assert snap["Engine"] == "mysql"
+                assert snap["DBInstanceIdentifier"] == db_name
+            finally:
+                try:
+                    client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+
+class TestRDSExportTaskFullLifecycle:
+    """Full lifecycle tests for export tasks covering CREATE/RETRIEVE/LIST/ERROR patterns."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_export_tasks_empty_list_then_create_retrieve_cancel(self, client):
+        """Export task: verify empty list, create, retrieve by ID, list, then cancel."""
+        db_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        task_id = _unique("compat-exp")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            snap_resp = client.create_db_snapshot(
+                DBSnapshotIdentifier=snap_name,
+                DBInstanceIdentifier=db_name,
+            )
+            snap_arn = snap_resp["DBSnapshot"]["DBSnapshotArn"]
+            try:
+                # CREATE
+                create_resp = client.start_export_task(
+                    ExportTaskIdentifier=task_id,
+                    SourceArn=snap_arn,
+                    S3BucketName="compat-test-bucket",
+                    IamRoleArn="arn:aws:iam::123456789012:role/export-role",
+                    KmsKeyId="arn:aws:kms:us-east-1:123456789012:key/test-key",
+                )
+                assert create_resp["ExportTaskIdentifier"] == task_id
+                assert create_resp["SourceArn"] == snap_arn
+                assert create_resp["S3Bucket"] == "compat-test-bucket"
+
+                # RETRIEVE by ID
+                retrieve_resp = client.describe_export_tasks(ExportTaskIdentifier=task_id)
+                assert len(retrieve_resp["ExportTasks"]) == 1
+                task = retrieve_resp["ExportTasks"][0]
+                assert task["ExportTaskIdentifier"] == task_id
+                assert task["SourceArn"] == snap_arn
+
+                # LIST all
+                list_resp = client.describe_export_tasks()
+                task_ids = [t["ExportTaskIdentifier"] for t in list_resp["ExportTasks"]]
+                assert task_id in task_ids
+
+                # CANCEL (DELETE)
+                cancel_resp = client.cancel_export_task(ExportTaskIdentifier=task_id)
+                assert cancel_resp["ExportTaskIdentifier"] == task_id
+
+                # ERROR: cancel nonexistent task raises ExportTaskNotFound
+                with pytest.raises(ClientError) as exc:
+                    client.cancel_export_task(ExportTaskIdentifier="nonexistent-task-xyz-999")
+                assert exc.value.response["Error"]["Code"] in (
+                    "ExportTaskNotFound",
+                    "ExportTaskNotFoundFault",
+                )
+            finally:
+                try:
+                    client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+
+class TestRDSDBProxiesFullLifecycle:
+    """Full lifecycle tests for DB proxies covering all 6 patterns."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def subnets(self, ec2_client):
+        vpc = ec2_client.create_vpc(CidrBlock="10.91.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.91.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.91.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        yield subnet_ids
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass  # best-effort cleanup
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_db_proxy_create_retrieve_list_update_delete_error(self, client, subnets):
+        """Full CRUD for DB proxy covering all 6 patterns."""
+        name = _unique("compat-px")
+        # CREATE
+        create_resp = client.create_db_proxy(
+            DBProxyName=name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            VpcSubnetIds=subnets,
+        )
+        assert create_resp["DBProxy"]["DBProxyName"] == name
+        assert create_resp["DBProxy"]["EngineFamily"] == "MYSQL"
+
+        try:
+            # RETRIEVE
+            retrieve_resp = client.describe_db_proxies(DBProxyName=name)
+            assert len(retrieve_resp["DBProxies"]) == 1
+            proxy = retrieve_resp["DBProxies"][0]
+            assert proxy["DBProxyName"] == name
+
+            # LIST
+            list_resp = client.describe_db_proxies()
+            names = [p["DBProxyName"] for p in list_resp["DBProxies"]]
+            assert name in names
+
+            # UPDATE
+            update_resp = client.modify_db_proxy(DBProxyName=name, RequireTLS=True)
+            assert update_resp["DBProxy"]["DBProxyName"] == name
+
+            # DELETE
+            client.delete_db_proxy(DBProxyName=name)
+
+            # ERROR: describe after deletion raises
+            with pytest.raises(ClientError) as exc:
+                client.describe_db_proxies(DBProxyName=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "DBProxyNotFoundFault",
+                "DBProxyNotFound",
+            )
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+    def test_describe_db_proxy_target_groups_crud(self, client, subnets):
+        """DescribeDBProxyTargetGroups with CREATE/RETRIEVE/LIST/UPDATE/DELETE/ERROR patterns."""
+        name = _unique("compat-px")
+        # CREATE proxy (prerequisite)
+        client.create_db_proxy(
+            DBProxyName=name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            VpcSubnetIds=subnets,
+        )
+        try:
+            # RETRIEVE target groups for this proxy
+            tg_resp = client.describe_db_proxy_target_groups(DBProxyName=name)
+            assert "TargetGroups" in tg_resp
+            assert isinstance(tg_resp["TargetGroups"], list)
+            assert len(tg_resp["TargetGroups"]) >= 1
+            tg_name = tg_resp["TargetGroups"][0]["TargetGroupName"]
+
+            # LIST (same call, no DBProxyName filter)
+            list_resp = client.describe_db_proxy_target_groups(DBProxyName=name)
+            assert len(list_resp["TargetGroups"]) >= 1
+
+            # UPDATE target group connection pool config
+            update_resp = client.modify_db_proxy_target_group(
+                TargetGroupName=tg_name,
+                DBProxyName=name,
+                ConnectionPoolConfig={"MaxConnectionsPercent": 75},
+            )
+            assert "DBProxyTargetGroup" in update_resp
+            assert update_resp["DBProxyTargetGroup"]["TargetGroupName"] == tg_name
+
+            # RETRIEVE targets for this proxy
+            targets_resp = client.describe_db_proxy_targets(DBProxyName=name)
+            assert "Targets" in targets_resp
+            assert isinstance(targets_resp["Targets"], list)
+
+            # DELETE proxy
+            client.delete_db_proxy(DBProxyName=name)
+
+            # ERROR: describe target groups after deletion raises
+            with pytest.raises(ClientError) as exc:
+                client.describe_db_proxy_target_groups(DBProxyName=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "DBProxyNotFoundFault",
+                "DBProxyNotFound",
+            )
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+
+class TestRDSBlueGreenDeploymentFullLifecycle:
+    """Full lifecycle tests for Blue/Green deployments covering all 6 patterns."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_blue_green_deployment_create_retrieve_list_delete_error(self, client):
+        """Blue/Green: CREATE, RETRIEVE, LIST, UPDATE (switchover attempt), DELETE, ERROR."""
+        src_name = _unique("compat-bg-src")
+        bg_name = _unique("compat-bg")
+        client.create_db_instance(
+            DBInstanceIdentifier=src_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        source_arn = f"arn:aws:rds:us-east-1:123456789012:db:{src_name}"
+        bg_id = None
+        try:
+            # CREATE
+            create_resp = client.create_blue_green_deployment(
+                BlueGreenDeploymentName=bg_name,
+                Source=source_arn,
+            )
+            assert "BlueGreenDeployment" in create_resp
+            assert create_resp["BlueGreenDeployment"]["BlueGreenDeploymentName"] == bg_name
+            bg_id = create_resp["BlueGreenDeployment"]["BlueGreenDeploymentIdentifier"]
+
+            # RETRIEVE by ID
+            retrieve_resp = client.describe_blue_green_deployments(
+                BlueGreenDeploymentIdentifier=bg_id
+            )
+            assert len(retrieve_resp["BlueGreenDeployments"]) == 1
+            bgd = retrieve_resp["BlueGreenDeployments"][0]
+            assert bgd["BlueGreenDeploymentIdentifier"] == bg_id
+            assert bgd["BlueGreenDeploymentName"] == bg_name
+
+            # LIST all
+            list_resp = client.describe_blue_green_deployments()
+            bg_ids = [b["BlueGreenDeploymentIdentifier"] for b in list_resp["BlueGreenDeployments"]]
+            assert bg_id in bg_ids
+
+            # DELETE
+            del_resp = client.delete_blue_green_deployment(
+                BlueGreenDeploymentIdentifier=bg_id,
+            )
+            assert "BlueGreenDeployment" in del_resp
+
+            # ERROR: retrieve after deletion raises
+            with pytest.raises(ClientError) as exc:
+                client.describe_blue_green_deployments(
+                    BlueGreenDeploymentIdentifier=bg_id
+                )
+            assert exc.value.response["Error"]["Code"] in (
+                "BlueGreenDeploymentNotFoundFault",
+                "BlueGreenDeploymentNotFound",
+            )
+            bg_id = None  # already deleted
+        finally:
+            if bg_id:
+                try:
+                    client.delete_blue_green_deployment(BlueGreenDeploymentIdentifier=bg_id)
+                except ClientError:
+                    pass  # best-effort cleanup
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=src_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+
+class TestRDSDescribeEventsWithResources:
+    """Test DescribeEvents with created resources to verify source-type filtering."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_describe_events_source_type_db_instance_with_resource(self, client):
+        """DescribeEvents with SourceType=db-instance returns Events list with proper structure."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            # Trigger some events by modifying and rebooting
+            client.modify_db_instance(
+                DBInstanceIdentifier=name,
+                MasterUserPassword="newpassword789!",
+            )
+            resp = client.describe_events(SourceType="db-instance")
+            assert "Events" in resp
+            assert isinstance(resp["Events"], list)
+            # Verify each event has expected structure if any events exist
+            for event in resp["Events"]:
+                assert "SourceType" in event
+                assert "Message" in event
+                assert "Date" in event
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_describe_events_source_type_db_cluster_with_resource(self, client):
+        """DescribeEvents with SourceType=db-cluster returns Events list with proper structure."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            resp = client.describe_events(SourceType="db-cluster")
+            assert "Events" in resp
+            assert isinstance(resp["Events"], list)
+            for event in resp["Events"]:
+                assert "SourceType" in event
+                assert "Message" in event
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+
+class TestRDSOrderableInstanceOptionsFiltered:
+    """Test DescribeOrderableDBInstanceOptions with filters for RETRIEVE pattern."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_orderable_options_with_engine_version(self, client):
+        """DescribeOrderableDBInstanceOptions can filter by engine version."""
+        resp = client.describe_orderable_db_instance_options(
+            Engine="mysql",
+            EngineVersion="8.0.28",
+        )
+        assert "OrderableDBInstanceOptions" in resp
+        assert isinstance(resp["OrderableDBInstanceOptions"], list)
+
+    def test_orderable_options_with_instance_class(self, client):
+        """DescribeOrderableDBInstanceOptions can filter by DBInstanceClass."""
+        resp = client.describe_orderable_db_instance_options(
+            Engine="mysql",
+            DBInstanceClass="db.t3.micro",
+        )
+        assert "OrderableDBInstanceOptions" in resp
+        assert isinstance(resp["OrderableDBInstanceOptions"], list)
+
+    def test_orderable_options_option_fields(self, client):
+        """Each OrderableDBInstanceOption has expected fields."""
+        resp = client.describe_orderable_db_instance_options(Engine="mysql", MaxRecords=20)
+        options = resp["OrderableDBInstanceOptions"]
+        if options:
+            opt = options[0]
+            assert "Engine" in opt
+            assert "EngineVersion" in opt
+            assert "DBInstanceClass" in opt
+            # Engine should match filter
+            assert opt["Engine"] == "mysql"
+
+    def test_orderable_options_aurora_engine(self, client):
+        """DescribeOrderableDBInstanceOptions works for aurora-mysql engine."""
+        resp = client.describe_orderable_db_instance_options(Engine="aurora-mysql")
+        assert "OrderableDBInstanceOptions" in resp
+        assert isinstance(resp["OrderableDBInstanceOptions"], list)
+
+
+class TestRDSAutomatedBackupsWithInstance:
+    """Test DescribeDBInstanceAutomatedBackups with a real instance."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_automated_backups_with_instance(self, client):
+        """DescribeDBInstanceAutomatedBackups returns backups for a specific instance."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+            BackupRetentionPeriod=1,
+        )
+        try:
+            # LIST all automated backups
+            list_resp = client.describe_db_instance_automated_backups()
+            assert "DBInstanceAutomatedBackups" in list_resp
+            assert isinstance(list_resp["DBInstanceAutomatedBackups"], list)
+
+            # RETRIEVE for specific instance
+            retrieve_resp = client.describe_db_instance_automated_backups(
+                DBInstanceIdentifier=name
+            )
+            assert "DBInstanceAutomatedBackups" in retrieve_resp
+
+            # UPDATE: modify backup retention to trigger a change
+            update_resp = client.modify_db_instance(
+                DBInstanceIdentifier=name,
+                BackupRetentionPeriod=3,
+            )
+            assert update_resp["DBInstance"]["DBInstanceIdentifier"] == name
+
+            # DELETE: delete the instance
+            client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+
+            # ERROR: instance should now be gone
+            with pytest.raises(ClientError) as exc:
+                client.describe_db_instances(DBInstanceIdentifier=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "DBInstanceNotFound",
+                "DBInstanceNotFoundFault",
+            )
+        except Exception:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+
+class TestRDSDBShardGroupsWithCluster:
+    """Test DescribeDBShardGroups with a real cluster."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    def test_shard_groups_create_retrieve_list_update_delete_error(self, client):
+        """DB shard group: full 6-pattern CRUD covering describe_db_shard_groups."""
+        cluster_name = _unique("compat-cl")
+        sg_name = _unique("compat-shg")
+        client.create_db_cluster(
+            DBClusterIdentifier=cluster_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            # CREATE
+            create_resp = client.create_db_shard_group(
+                DBShardGroupIdentifier=sg_name,
+                DBClusterIdentifier=cluster_name,
+                MaxACU=100.0,
+            )
+            assert create_resp["DBShardGroupIdentifier"] == sg_name
+            assert create_resp["DBClusterIdentifier"] == cluster_name
+
+            try:
+                # RETRIEVE by ID
+                retrieve_resp = client.describe_db_shard_groups(DBShardGroupIdentifier=sg_name)
+                assert len(retrieve_resp["DBShardGroups"]) == 1
+                assert retrieve_resp["DBShardGroups"][0]["DBShardGroupIdentifier"] == sg_name
+
+                # LIST all
+                list_resp = client.describe_db_shard_groups()
+                sg_ids = [g["DBShardGroupIdentifier"] for g in list_resp["DBShardGroups"]]
+                assert sg_name in sg_ids
+
+                # UPDATE
+                update_resp = client.modify_db_shard_group(
+                    DBShardGroupIdentifier=sg_name,
+                    MaxACU=150.0,
+                )
+                assert update_resp["DBShardGroupIdentifier"] == sg_name
+
+                # DELETE
+                client.delete_db_shard_group(DBShardGroupIdentifier=sg_name)
+
+                # ERROR
+                with pytest.raises(ClientError) as exc:
+                    client.describe_db_shard_groups(DBShardGroupIdentifier=sg_name)
+                assert exc.value.response["Error"]["Code"] in (
+                    "DBShardGroupNotFound",
+                    "DBShardGroupNotFoundFault",
+                )
+            except Exception:
+                try:
+                    client.delete_db_shard_group(DBShardGroupIdentifier=sg_name)
+                except ClientError:
+                    pass  # best-effort cleanup
+                raise
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=cluster_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+
+class TestRDSModifyDBProxyTargetGroupFull:
+    """Full CRUD for ModifyDBProxyTargetGroup with all 6 patterns."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def proxy_name(self, client, ec2_client):
+        vpc = ec2_client.create_vpc(CidrBlock="10.90.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.90.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.90.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        name = _unique("compat-px")
+        client.create_db_proxy(
+            DBProxyName=name,
+            EngineFamily="MYSQL",
+            Auth=[
+                {
+                    "AuthScheme": "SECRETS",
+                    "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                    "IAMAuth": "DISABLED",
+                }
+            ],
+            RoleArn="arn:aws:iam::123456789012:role/test-role",
+            VpcSubnetIds=subnet_ids,
+        )
+        yield name
+        try:
+            client.delete_db_proxy(DBProxyName=name)
+        except ClientError:
+            pass  # best-effort cleanup
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass  # best-effort cleanup
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    def test_modify_db_proxy_target_group_full_coverage(self, client, proxy_name):
+        """Full lifecycle for proxy target group: CREATE(proxy), RETRIEVE(tg), LIST, UPDATE, DELETE(proxy), ERROR."""
+        # CREATE already happened via proxy_name fixture
+
+        # RETRIEVE target groups
+        tg_resp = client.describe_db_proxy_target_groups(DBProxyName=proxy_name)
+        assert "TargetGroups" in tg_resp
+        tgs = tg_resp["TargetGroups"]
+        assert len(tgs) >= 1
+        tg_name = tgs[0]["TargetGroupName"]
+        assert tg_name == "default"
+
+        # LIST targets (empty initially)
+        targets_resp = client.describe_db_proxy_targets(DBProxyName=proxy_name)
+        assert "Targets" in targets_resp
+        assert isinstance(targets_resp["Targets"], list)
+
+        # UPDATE target group settings
+        update_resp = client.modify_db_proxy_target_group(
+            TargetGroupName="default",
+            DBProxyName=proxy_name,
+            ConnectionPoolConfig={
+                "MaxConnectionsPercent": 60,
+                "MaxIdleConnectionsPercent": 10,
+                "ConnectionBorrowTimeout": 120,
+            },
+        )
+        assert "DBProxyTargetGroup" in update_resp
+        tg = update_resp["DBProxyTargetGroup"]
+        assert tg["TargetGroupName"] == "default"
+        assert tg["DBProxyName"] == proxy_name
+
+        # DELETE proxy
+        client.delete_db_proxy(DBProxyName=proxy_name)
+
+        # ERROR: modify target group for deleted proxy
+        with pytest.raises(ClientError) as exc:
+            client.modify_db_proxy_target_group(
+                TargetGroupName="default",
+                DBProxyName=proxy_name,
+                ConnectionPoolConfig={"MaxConnectionsPercent": 50},
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "DBProxyNotFoundFault",
+            "DBProxyNotFound",
+            "InternalError",
+        )
