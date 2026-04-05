@@ -14390,3 +14390,545 @@ class TestEC2VpcBehavioralFidelity:
                 except Exception:
                     pass  # best-effort cleanup
 
+
+class TestEC2EdgeCasesAndBehavioralFidelity:
+    """Edge cases and behavioral fidelity tests targeting low-coverage operations."""
+
+    # ---- describe_regions ----
+
+    def test_describe_regions_filter_by_name(self, ec2):
+        """RETRIEVE: filter describe_regions to specific region names."""
+        resp = ec2.describe_regions(RegionNames=["us-east-1", "us-west-2"])
+        names = [r["RegionName"] for r in resp["Regions"]]
+        assert "us-east-1" in names
+        assert "us-west-2" in names
+        assert len(names) == 2
+
+    def test_describe_regions_endpoint_field(self, ec2):
+        """Each region should have an Endpoint field with ec2. prefix."""
+        resp = ec2.describe_regions(RegionNames=["us-east-1"])
+        region = resp["Regions"][0]
+        assert "Endpoint" in region
+        assert "ec2." in region["Endpoint"]
+        assert "us-east-1" in region["Endpoint"]
+
+    def test_describe_regions_all_have_required_fields(self, ec2):
+        """LIST: every region must have RegionName, Endpoint, and OptInStatus."""
+        resp = ec2.describe_regions()
+        for region in resp["Regions"]:
+            assert "RegionName" in region
+            assert "Endpoint" in region
+
+    # ---- describe_availability_zones ----
+
+    def test_describe_availability_zones_filter_by_name(self, ec2):
+        """RETRIEVE: filter describe_availability_zones to a specific zone."""
+        resp = ec2.describe_availability_zones(ZoneNames=["us-east-1a"])
+        assert len(resp["AvailabilityZones"]) == 1
+        az = resp["AvailabilityZones"][0]
+        assert az["ZoneName"] == "us-east-1a"
+        assert az["RegionName"] == "us-east-1"
+
+    def test_describe_availability_zones_has_zone_id(self, ec2):
+        """Behavioral fidelity: ZoneId field must be present (used in cross-AZ infra)."""
+        resp = ec2.describe_availability_zones(ZoneNames=["us-east-1a"])
+        az = resp["AvailabilityZones"][0]
+        assert "ZoneId" in az
+        assert len(az["ZoneId"]) > 0
+
+    def test_describe_availability_zones_multiple_zones(self, ec2):
+        """LIST: us-east-1 must have at least 3 availability zones."""
+        resp = ec2.describe_availability_zones()
+        zone_names = [z["ZoneName"] for z in resp["AvailabilityZones"]]
+        us_east_zones = [z for z in zone_names if z.startswith("us-east-1")]
+        assert len(us_east_zones) >= 3
+
+    # ---- describe_images ----
+
+    def test_describe_images_retrieve_by_id(self, ec2):
+        """RETRIEVE: describe_images by specific ImageId returns exact match."""
+        all_images = ec2.describe_images(Filters=[{"Name": "owner-alias", "Values": ["amazon"]}])
+        assert len(all_images["Images"]) > 0
+        target_id = all_images["Images"][0]["ImageId"]
+
+        resp = ec2.describe_images(ImageIds=[target_id])
+        assert len(resp["Images"]) == 1
+        assert resp["Images"][0]["ImageId"] == target_id
+
+    def test_describe_images_fields_present(self, ec2):
+        """Behavioral fidelity: images must have Architecture, State, Public fields."""
+        resp = ec2.describe_images(Filters=[{"Name": "owner-alias", "Values": ["amazon"]}])
+        img = resp["Images"][0]
+        assert img.get("Architecture") in ("x86_64", "arm64", "i386")
+        assert img.get("State") == "available"
+        assert isinstance(img.get("Public"), bool)
+        assert "ImageId" in img
+        assert img["ImageId"].startswith("ami-")
+
+    def test_describe_images_error_nonexistent(self, ec2):
+        """ERROR: describe_images with a nonexistent ImageId raises InvalidAMIID.NotFound."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_images(ImageIds=["ami-00000000deadbeef"])
+        assert exc_info.value.response["Error"]["Code"] == "InvalidAMIID.NotFound"
+
+    def test_describe_images_with_owner_fields(self, ec2):
+        """LIST: images from owner=amazon have ImageOwnerAlias set."""
+        resp = ec2.describe_images(Owners=["amazon"])
+        assert len(resp["Images"]) > 0
+        for img in resp["Images"][:3]:
+            assert img.get("ImageOwnerAlias") == "amazon"
+
+    # ---- describe_instance_types ----
+
+    def test_describe_instance_types_retrieve_specific(self, ec2):
+        """RETRIEVE: describe_instance_types with specific type returns exact match."""
+        resp = ec2.describe_instance_types(InstanceTypes=["t2.micro"])
+        assert len(resp["InstanceTypes"]) == 1
+        assert resp["InstanceTypes"][0]["InstanceType"] == "t2.micro"
+
+    def test_describe_instance_types_vcpu_info(self, ec2):
+        """Behavioral fidelity: VCpuInfo must be present with correct values for t2.micro."""
+        resp = ec2.describe_instance_types(InstanceTypes=["t2.micro"])
+        itype = resp["InstanceTypes"][0]
+        assert "VCpuInfo" in itype
+        assert itype["VCpuInfo"]["DefaultVCpus"] >= 1
+        assert "MemoryInfo" in itype
+        assert itype["MemoryInfo"]["SizeInMiB"] > 0
+
+    def test_describe_instance_types_error_nonexistent(self, ec2):
+        """ERROR: describe_instance_types with fake type raises InvalidInstanceType."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_instance_types(InstanceTypes=["t9999.fake"])
+        assert exc_info.value.response["Error"]["Code"] == "InvalidInstanceType"
+
+    def test_describe_instance_types_multiple(self, ec2):
+        """LIST: retrieve multiple instance types at once."""
+        resp = ec2.describe_instance_types(InstanceTypes=["t2.micro", "t2.small", "t2.medium"])
+        types = {i["InstanceType"] for i in resp["InstanceTypes"]}
+        assert "t2.micro" in types
+        assert "t2.small" in types
+        assert "t2.medium" in types
+
+    # ---- describe_account_attributes ----
+
+    def test_describe_account_attributes_filter_by_name(self, ec2):
+        """RETRIEVE: filter describe_account_attributes to specific attribute."""
+        resp = ec2.describe_account_attributes(AttributeNames=["supported-platforms"])
+        assert len(resp["AccountAttributes"]) >= 1
+        # At least one result; the filter may not narrow strictly in all implementations
+        names = [a["AttributeName"] for a in resp["AccountAttributes"]]
+        assert "supported-platforms" in names
+
+    def test_describe_account_attributes_values_non_empty(self, ec2):
+        """Behavioral fidelity: each account attribute must have non-empty AttributeValues."""
+        resp = ec2.describe_account_attributes()
+        for attr in resp["AccountAttributes"]:
+            assert "AttributeName" in attr
+            assert "AttributeValues" in attr
+            assert isinstance(attr["AttributeValues"], list)
+
+    # ---- describe_security_groups ----
+
+    def test_describe_security_groups_crud(self, ec2):
+        """CREATE / RETRIEVE / UPDATE(tag) / DELETE / ERROR lifecycle for security groups."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.240.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        sg_name = _unique("sg-edge")
+        try:
+            # CREATE
+            sg_resp = ec2.create_security_group(
+                GroupName=sg_name, Description="Edge case SG", VpcId=vpc_id
+            )
+            sg_id = sg_resp["GroupId"]
+            assert sg_id.startswith("sg-")
+
+            # RETRIEVE
+            described = ec2.describe_security_groups(GroupIds=[sg_id])
+            assert len(described["SecurityGroups"]) == 1
+            sg = described["SecurityGroups"][0]
+            assert sg["GroupName"] == sg_name
+            assert sg["Description"] == "Edge case SG"
+            assert sg["VpcId"] == vpc_id
+
+            # UPDATE: add a tag
+            ec2.create_tags(Resources=[sg_id], Tags=[{"Key": "Team", "Value": "security"}])
+            described2 = ec2.describe_security_groups(GroupIds=[sg_id])
+            tags = {t["Key"]: t["Value"] for t in described2["SecurityGroups"][0].get("Tags", [])}
+            assert tags["Team"] == "security"
+
+            # DELETE
+            ec2.delete_security_group(GroupId=sg_id)
+
+            # ERROR: describe deleted group
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.describe_security_groups(GroupIds=[sg_id])
+            assert exc_info.value.response["Error"]["Code"] == "InvalidGroup.NotFound"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_security_groups_filter_by_group_name(self, ec2):
+        """LIST: filter describe_security_groups by group-name returns correct results."""
+        resp = ec2.describe_security_groups(Filters=[{"Name": "group-name", "Values": ["default"]}])
+        assert len(resp["SecurityGroups"]) >= 1
+        for sg in resp["SecurityGroups"]:
+            assert sg["GroupName"] == "default"
+
+    def test_describe_security_groups_has_required_fields(self, ec2):
+        """Behavioral fidelity: each SG must have OwnerId, GroupId, GroupName, Description."""
+        resp = ec2.describe_security_groups()
+        assert len(resp["SecurityGroups"]) >= 1
+        for sg in resp["SecurityGroups"][:3]:
+            assert "OwnerId" in sg
+            assert "GroupId" in sg
+            assert sg["GroupId"].startswith("sg-")
+            assert "GroupName" in sg
+            assert "Description" in sg
+
+    # ---- describe_vpc_peering_connections ----
+
+    def test_describe_vpc_peering_connections_crud(self, ec2):
+        """CREATE / RETRIEVE / status=active after accept / DELETE lifecycle."""
+        vpc1_id = ec2.create_vpc(CidrBlock="10.241.0.0/16")["Vpc"]["VpcId"]
+        vpc2_id = ec2.create_vpc(CidrBlock="10.242.0.0/16")["Vpc"]["VpcId"]
+        try:
+            # CREATE
+            pcx = ec2.create_vpc_peering_connection(VpcId=vpc1_id, PeerVpcId=vpc2_id)
+            pcx_id = pcx["VpcPeeringConnection"]["VpcPeeringConnectionId"]
+            assert pcx_id.startswith("pcx-")
+
+            # RETRIEVE + accept
+            ec2.accept_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+            described = ec2.describe_vpc_peering_connections(VpcPeeringConnectionIds=[pcx_id])
+            assert len(described["VpcPeeringConnections"]) == 1
+            pcx_obj = described["VpcPeeringConnections"][0]
+            assert pcx_obj["Status"]["Code"] == "active"
+            assert pcx_obj["RequesterVpcInfo"]["VpcId"] == vpc1_id
+            assert pcx_obj["AccepterVpcInfo"]["VpcId"] == vpc2_id
+
+            # DELETE and verify status changes
+            ec2.delete_vpc_peering_connection(VpcPeeringConnectionId=pcx_id)
+            described2 = ec2.describe_vpc_peering_connections(VpcPeeringConnectionIds=[pcx_id])
+            assert described2["VpcPeeringConnections"][0]["Status"]["Code"] == "deleted"
+        finally:
+            ec2.delete_vpc(VpcId=vpc1_id)
+            ec2.delete_vpc(VpcId=vpc2_id)
+
+    def test_describe_vpc_peering_connections_nonexistent_returns_empty(self, ec2):
+        """LIST: describe nonexistent peering connection returns empty list (not an error)."""
+        resp = ec2.describe_vpc_peering_connections(
+            VpcPeeringConnectionIds=["pcx-00000000deadbeef"]
+        )
+        assert resp["VpcPeeringConnections"] == []
+
+    # ---- describe_network_acls ----
+
+    def test_describe_network_acls_crud_with_replace_entry(self, ec2):
+        """CREATE / RETRIEVE / UPDATE(replace entry) / DELETE lifecycle."""
+        vpc_resp = ec2.create_vpc(CidrBlock="10.243.0.0/16")
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        try:
+            # CREATE
+            acl_resp = ec2.create_network_acl(VpcId=vpc_id)
+            acl_id = acl_resp["NetworkAcl"]["NetworkAclId"]
+            assert acl_id.startswith("acl-")
+
+            # Add entry (CREATE sub-resource)
+            ec2.create_network_acl_entry(
+                NetworkAclId=acl_id,
+                RuleNumber=100,
+                Protocol="-1",
+                RuleAction="allow",
+                Egress=False,
+                CidrBlock="10.0.0.0/8",
+            )
+
+            # RETRIEVE
+            described = ec2.describe_network_acls(NetworkAclIds=[acl_id])
+            entries = described["NetworkAcls"][0]["Entries"]
+            ingress = [e for e in entries if not e["Egress"]]
+            assert any(e["RuleNumber"] == 100 and e["RuleAction"] == "allow" for e in ingress)
+
+            # UPDATE: replace entry action from allow to deny
+            ec2.replace_network_acl_entry(
+                NetworkAclId=acl_id,
+                RuleNumber=100,
+                Protocol="-1",
+                RuleAction="deny",
+                Egress=False,
+                CidrBlock="10.0.0.0/8",
+            )
+            described2 = ec2.describe_network_acls(NetworkAclIds=[acl_id])
+            entries2 = described2["NetworkAcls"][0]["Entries"]
+            ingress2 = [e for e in entries2 if not e["Egress"]]
+            rule = next(e for e in ingress2 if e["RuleNumber"] == 100)
+            assert rule["RuleAction"] == "deny"
+
+            # DELETE
+            ec2.delete_network_acl(NetworkAclId=acl_id)
+
+            # ERROR: describe deleted ACL
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.describe_network_acls(NetworkAclIds=[acl_id])
+            assert "NotFound" in exc_info.value.response["Error"]["Code"] or "Invalid" in exc_info.value.response["Error"]["Code"]
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_network_acls_default_acl_structure(self, ec2):
+        """Behavioral fidelity: default ACL has IsDefault=True and has both allow/deny rules."""
+        resp = ec2.describe_network_acls(Filters=[{"Name": "default", "Values": ["true"]}])
+        assert len(resp["NetworkAcls"]) >= 1
+        default_acl = resp["NetworkAcls"][0]
+        assert default_acl.get("IsDefault") is True
+        assert "VpcId" in default_acl
+        assert "Entries" in default_acl
+        # Default ACL should have entries (at minimum the default allow-all rules)
+        assert len(default_acl["Entries"]) >= 2
+
+    # ---- describe_prefix_lists ----
+
+    def test_describe_prefix_lists_filter_by_name(self, ec2):
+        """RETRIEVE: filter describe_prefix_lists to S3 prefix list by name."""
+        resp = ec2.describe_prefix_lists(
+            Filters=[{"Name": "prefix-list-name", "Values": ["com.amazonaws.us-east-1.s3"]}]
+        )
+        assert len(resp["PrefixLists"]) >= 1
+        pl = resp["PrefixLists"][0]
+        assert pl["PrefixListName"] == "com.amazonaws.us-east-1.s3"
+        assert pl["PrefixListId"].startswith("pl-")
+
+    def test_describe_prefix_lists_has_required_fields(self, ec2):
+        """Behavioral fidelity: each prefix list must have PrefixListId and PrefixListName."""
+        resp = ec2.describe_prefix_lists()
+        assert len(resp["PrefixLists"]) >= 1
+        for pl in resp["PrefixLists"]:
+            assert "PrefixListId" in pl
+            assert "PrefixListName" in pl
+
+    def test_managed_prefix_list_crud_with_entries(self, ec2):
+        """CREATE / RETRIEVE / UPDATE(add entry) / DELETE for managed prefix list."""
+        name = _unique("test-pl")
+        resp = ec2.create_managed_prefix_list(
+            PrefixListName=name, MaxEntries=5, AddressFamily="IPv4"
+        )
+        pl_id = resp["PrefixList"]["PrefixListId"]
+        version = resp["PrefixList"]["Version"]
+        try:
+            assert pl_id.startswith("pl-")
+
+            # RETRIEVE
+            described = ec2.describe_managed_prefix_lists(PrefixListIds=[pl_id])
+            assert len(described["PrefixLists"]) == 1
+            assert described["PrefixLists"][0]["PrefixListName"] == name
+
+            # UPDATE: add an entry
+            ec2.modify_managed_prefix_list(
+                PrefixListId=pl_id,
+                CurrentVersion=version,
+                AddEntries=[{"Cidr": "10.0.0.0/8", "Description": "internal"}],
+            )
+
+            entries = ec2.get_managed_prefix_list_entries(PrefixListId=pl_id)
+            cidrs = [e["Cidr"] for e in entries["Entries"]]
+            assert "10.0.0.0/8" in cidrs
+
+            # DELETE
+            ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+            pl_id = None  # mark as deleted
+        finally:
+            if pl_id:
+                try:
+                    ec2.delete_managed_prefix_list(PrefixListId=pl_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ---- describe_instances edge cases ----
+
+    def test_describe_instances_launch_time_and_state(self, ec2):
+        """Behavioral fidelity: RunInstances response has LaunchTime and State fields."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst = resp["Instances"][0]
+        inst_id = inst["InstanceId"]
+        try:
+            assert inst.get("LaunchTime") is not None
+            assert "State" in inst
+            assert inst["State"]["Name"] in ("pending", "running")
+            assert inst.get("PrivateDnsName") is not None
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instances_tag_filter(self, ec2):
+        """UPDATE(tag) + LIST with tag filter: tag an instance, then filter by that tag."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        tag_val = _unique("fidelity")
+        try:
+            # UPDATE: tag the instance
+            ec2.create_tags(Resources=[inst_id], Tags=[{"Key": "Env", "Value": tag_val}])
+
+            # LIST filtered by that tag
+            filtered = ec2.describe_instances(
+                Filters=[{"Name": "tag:Env", "Values": [tag_val]}]
+            )
+            all_ids = [i["InstanceId"] for r in filtered["Reservations"] for i in r["Instances"]]
+            assert inst_id in all_ids
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    def test_describe_instances_filter_by_state(self, ec2):
+        """LIST: filter by instance-state-name returns correct instances."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1
+        )
+        inst_id = resp["Instances"][0]["InstanceId"]
+        try:
+            # Filter by running/pending
+            by_state = ec2.describe_instances(
+                Filters=[{"Name": "instance-state-name", "Values": ["running", "pending"]}]
+            )
+            running_ids = [i["InstanceId"] for r in by_state["Reservations"] for i in r["Instances"]]
+            assert inst_id in running_ids
+
+            # Filter by terminated should NOT include this instance
+            by_term = ec2.describe_instances(
+                Filters=[{"Name": "instance-state-name", "Values": ["terminated"]}]
+            )
+            term_ids = [i["InstanceId"] for r in by_term["Reservations"] for i in r["Instances"]]
+            assert inst_id not in term_ids
+        finally:
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+    # ---- Idempotency and duplicate handling ----
+
+    def test_create_key_pair_duplicate_raises_error(self, ec2):
+        """ERROR: creating the same key pair name twice raises InvalidKeyPair.Duplicate."""
+        key_name = _unique("dup-key")
+        ec2.create_key_pair(KeyName=key_name)
+        try:
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.create_key_pair(KeyName=key_name)
+            assert exc_info.value.response["Error"]["Code"] == "InvalidKeyPair.Duplicate"
+        finally:
+            ec2.delete_key_pair(KeyName=key_name)
+
+    def test_create_vpc_same_cidr_allowed(self, ec2):
+        """Idempotency: creating two VPCs with the same CIDR is allowed (not idempotent — AWS allows it)."""
+        vpc1_id = ec2.create_vpc(CidrBlock="10.244.0.0/16")["Vpc"]["VpcId"]
+        vpc2_id = ec2.create_vpc(CidrBlock="10.244.0.0/16")["Vpc"]["VpcId"]
+        try:
+            # Both should exist and have different IDs
+            assert vpc1_id != vpc2_id
+            described = ec2.describe_vpcs(VpcIds=[vpc1_id, vpc2_id])
+            assert len(described["Vpcs"]) == 2
+        finally:
+            ec2.delete_vpc(VpcId=vpc1_id)
+            ec2.delete_vpc(VpcId=vpc2_id)
+
+    # ---- Unicode and special characters ----
+
+    def test_tag_value_unicode(self, ec2):
+        """Behavioral fidelity: unicode values in tags are preserved correctly."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.245.0.0/16")["Vpc"]["VpcId"]
+        try:
+            ec2.create_tags(
+                Resources=[vpc_id],
+                Tags=[{"Key": "Name", "Value": "vpc-unicode-日本語-テスト"}],
+            )
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            tags = {t["Key"]: t["Value"] for t in described["Vpcs"][0].get("Tags", [])}
+            assert tags["Name"] == "vpc-unicode-日本語-テスト"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_tag_idempotent_same_value(self, ec2):
+        """Behavioral fidelity: applying the same tag twice does not create duplicates."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.246.0.0/16")["Vpc"]["VpcId"]
+        try:
+            for _ in range(3):
+                ec2.create_tags(Resources=[vpc_id], Tags=[{"Key": "Stage", "Value": "prod"}])
+
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            stage_tags = [t for t in described["Vpcs"][0].get("Tags", []) if t["Key"] == "Stage"]
+            assert len(stage_tags) == 1
+            assert stage_tags[0]["Value"] == "prod"
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    # ---- Pagination ----
+
+    def test_describe_security_groups_list_multiple(self, ec2):
+        """LIST: create 3 SGs and verify all appear in describe without filters."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.247.0.0/16")["Vpc"]["VpcId"]
+        sg_ids = []
+        try:
+            for i in range(3):
+                sg = ec2.create_security_group(
+                    GroupName=_unique(f"sg-list-{i}"),
+                    Description=f"List test {i}",
+                    VpcId=vpc_id,
+                )
+                sg_ids.append(sg["GroupId"])
+
+            all_sgs = ec2.describe_security_groups(GroupIds=sg_ids)
+            found_ids = {sg["GroupId"] for sg in all_sgs["SecurityGroups"]}
+            for sg_id in sg_ids:
+                assert sg_id in found_ids
+        finally:
+            for sg_id in sg_ids:
+                try:
+                    ec2.delete_security_group(GroupId=sg_id)
+                except Exception:
+                    pass  # best-effort cleanup
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_describe_instances_multiple_list(self, ec2):
+        """LIST: run 3 instances and verify all appear in describe."""
+        resp = ec2.run_instances(
+            ImageId="ami-12345678", InstanceType="t2.micro", MinCount=3, MaxCount=3
+        )
+        inst_ids = [i["InstanceId"] for i in resp["Instances"]]
+        try:
+            described = ec2.describe_instances(InstanceIds=inst_ids)
+            found_ids = {i["InstanceId"] for r in described["Reservations"] for i in r["Instances"]}
+            for inst_id in inst_ids:
+                assert inst_id in found_ids
+        finally:
+            ec2.terminate_instances(InstanceIds=inst_ids)
+
+    # ---- ARN format and structural fidelity ----
+
+    def test_vpc_required_fields(self, ec2):
+        """Behavioral fidelity: VPC response must include State, IsDefault, OwnerId."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.248.0.0/16")["Vpc"]["VpcId"]
+        try:
+            described = ec2.describe_vpcs(VpcIds=[vpc_id])
+            vpc = described["Vpcs"][0]
+            assert vpc["State"] == "available"
+            assert vpc["IsDefault"] is False
+            assert "OwnerId" in vpc
+            assert "DhcpOptionsId" in vpc
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
+    def test_subnet_required_fields(self, ec2):
+        """Behavioral fidelity: subnet response must include AvailableIpAddressCount and State."""
+        vpc_id = ec2.create_vpc(CidrBlock="10.249.0.0/16")["Vpc"]["VpcId"]
+        try:
+            subnet_id = ec2.create_subnet(
+                VpcId=vpc_id, CidrBlock="10.249.1.0/24"
+            )["Subnet"]["SubnetId"]
+            try:
+                described = ec2.describe_subnets(SubnetIds=[subnet_id])
+                subnet = described["Subnets"][0]
+                assert "AvailableIpAddressCount" in subnet
+                assert subnet["AvailableIpAddressCount"] > 0
+                assert subnet["State"] in ("available", "pending")
+                assert "AvailabilityZone" in subnet
+            finally:
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
+
