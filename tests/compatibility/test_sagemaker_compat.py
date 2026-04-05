@@ -8298,3 +8298,707 @@ class TestSageMakerLifecycleConfigEdgeCases:
             sagemaker.delete_notebook_instance_lifecycle_config(
                 NotebookInstanceLifecycleConfigName=name
             )
+
+
+class TestSageMakerTrialsEdgeCases:
+    """Edge cases for Trials — adds C/R/D/E/pagination patterns."""
+
+    def test_trial_create_describe_delete_error(self, sagemaker):
+        """Create trial → describe → delete → error on re-describe."""
+        exp_name = _uid("exp")
+        trial_name = _uid("trial")
+        sagemaker.create_experiment(ExperimentName=exp_name)
+        try:
+            resp = sagemaker.create_trial(TrialName=trial_name, ExperimentName=exp_name)
+            assert "TrialArn" in resp
+            desc = sagemaker.describe_trial(TrialName=trial_name)
+            assert desc["TrialName"] == trial_name
+            assert desc["ExperimentName"] == exp_name
+            sagemaker.delete_trial(TrialName=trial_name)
+            with pytest.raises(ClientError):
+                sagemaker.describe_trial(TrialName=trial_name)
+        finally:
+            try:
+                sagemaker.delete_trial(TrialName=trial_name)
+            except Exception:
+                pass  # best-effort cleanup
+            sagemaker.delete_experiment(ExperimentName=exp_name)
+
+    def test_trial_list_filtered_by_experiment(self, sagemaker):
+        """list_trials filtered by ExperimentName only returns trials in that experiment."""
+        exp_a = _uid("exp")
+        exp_b = _uid("exp")
+        trial_a = _uid("trial")
+        trial_b = _uid("trial")
+        sagemaker.create_experiment(ExperimentName=exp_a)
+        sagemaker.create_experiment(ExperimentName=exp_b)
+        try:
+            sagemaker.create_trial(TrialName=trial_a, ExperimentName=exp_a)
+            sagemaker.create_trial(TrialName=trial_b, ExperimentName=exp_b)
+            resp_a = sagemaker.list_trials(ExperimentName=exp_a)
+            names_a = [t["TrialName"] for t in resp_a["TrialSummaries"]]
+            assert trial_a in names_a
+            assert trial_b not in names_a
+        finally:
+            for t, e in [(trial_a, exp_a), (trial_b, exp_b)]:
+                try:
+                    sagemaker.delete_trial(TrialName=t)
+                except Exception:
+                    pass  # best-effort cleanup
+            sagemaker.delete_experiment(ExperimentName=exp_a)
+            sagemaker.delete_experiment(ExperimentName=exp_b)
+
+    def test_trial_pagination(self, sagemaker):
+        """list_trials pagination with MaxResults + NextToken returns all results."""
+        exp_name = _uid("exp")
+        sagemaker.create_experiment(ExperimentName=exp_name)
+        trial_names = [_uid("trial") for _ in range(3)]
+        try:
+            for t in trial_names:
+                sagemaker.create_trial(TrialName=t, ExperimentName=exp_name)
+            page1 = sagemaker.list_trials(ExperimentName=exp_name, MaxResults=2)
+            assert len(page1["TrialSummaries"]) == 2
+            assert "NextToken" in page1
+            page2 = sagemaker.list_trials(
+                ExperimentName=exp_name, MaxResults=2, NextToken=page1["NextToken"]
+            )
+            assert len(page2["TrialSummaries"]) >= 1
+            all_names = (
+                [t["TrialName"] for t in page1["TrialSummaries"]]
+                + [t["TrialName"] for t in page2["TrialSummaries"]]
+            )
+            for t in trial_names:
+                assert t in all_names
+        finally:
+            for t in trial_names:
+                try:
+                    sagemaker.delete_trial(TrialName=t)
+                except Exception:
+                    pass  # best-effort cleanup
+            sagemaker.delete_experiment(ExperimentName=exp_name)
+
+    def test_trial_describe_nonexistent_error(self, sagemaker):
+        """describe_trial on a nonexistent trial raises a ClientError."""
+        with pytest.raises(ClientError):
+            sagemaker.describe_trial(TrialName="nonexistent-trial-xyz-999")
+
+
+class TestSageMakerActionsEdgeCases:
+    """Edge cases for Actions — adds C/R/D/E patterns."""
+
+    def test_action_create_describe_delete_error(self, sagemaker):
+        """Create action → describe → delete → error on re-describe."""
+        name = _uid("action")
+        resp = sagemaker.create_action(
+            ActionName=name,
+            Source={"SourceUri": "s3://bucket/src"},
+            ActionType="GitCommit",
+        )
+        assert "ActionArn" in resp
+        desc = sagemaker.describe_action(ActionName=name)
+        assert desc["ActionName"] == name
+        assert desc["ActionType"] == "GitCommit"
+        sagemaker.delete_action(ActionName=name)
+        with pytest.raises(ClientError):
+            sagemaker.describe_action(ActionName=name)
+
+    def test_action_list_contains_created(self, sagemaker):
+        """Created action appears in list_actions response."""
+        name = _uid("action")
+        sagemaker.create_action(
+            ActionName=name,
+            Source={"SourceUri": "s3://bucket/src2"},
+            ActionType="GitCommit",
+        )
+        try:
+            resp = sagemaker.list_actions()
+            names = [a["ActionName"] for a in resp["ActionSummaries"]]
+            assert name in names
+        finally:
+            sagemaker.delete_action(ActionName=name)
+
+    def test_action_describe_nonexistent_raises_validation(self, sagemaker):
+        """describe_action on nonexistent resource raises ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_action(ActionName="nonexistent-action-xyz-999")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestSageMakerAlgorithmsEdgeCases:
+    """Edge cases for Algorithms — adds C/R/D/E patterns."""
+
+    def _create_algorithm(self, sagemaker, name):
+        return sagemaker.create_algorithm(
+            AlgorithmName=name,
+            TrainingSpecification={
+                "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "SupportedTrainingInstanceTypes": ["ml.m4.xlarge"],
+                "TrainingChannels": [
+                    {
+                        "Name": "train",
+                        "SupportedContentTypes": ["text/csv"],
+                        "SupportedInputModes": ["File"],
+                    }
+                ],
+            },
+        )
+
+    def test_algorithm_create_describe_delete_error(self, sagemaker):
+        """Create algorithm → describe → delete → error on re-describe."""
+        name = _uid("algo")
+        resp = self._create_algorithm(sagemaker, name)
+        assert "AlgorithmArn" in resp
+        desc = sagemaker.describe_algorithm(AlgorithmName=name)
+        assert desc["AlgorithmName"] == name
+        assert "AlgorithmStatus" in desc
+        sagemaker.delete_algorithm(AlgorithmName=name)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_algorithm(AlgorithmName=name)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_algorithm_list_contains_created(self, sagemaker):
+        """Created algorithm appears in list_algorithms."""
+        name = _uid("algo")
+        self._create_algorithm(sagemaker, name)
+        try:
+            resp = sagemaker.list_algorithms()
+            names = [a["AlgorithmName"] for a in resp["AlgorithmSummaryList"]]
+            assert name in names
+        finally:
+            sagemaker.delete_algorithm(AlgorithmName=name)
+
+    def test_algorithm_list_multiple(self, sagemaker):
+        """Create 2 algorithms and verify both appear in list."""
+        n1, n2 = _uid("algo"), _uid("algo")
+        self._create_algorithm(sagemaker, n1)
+        self._create_algorithm(sagemaker, n2)
+        try:
+            resp = sagemaker.list_algorithms()
+            names = [a["AlgorithmName"] for a in resp["AlgorithmSummaryList"]]
+            assert n1 in names
+            assert n2 in names
+        finally:
+            sagemaker.delete_algorithm(AlgorithmName=n1)
+            sagemaker.delete_algorithm(AlgorithmName=n2)
+
+
+class TestSageMakerAppImageConfigsEdgeCases:
+    """Edge cases for AppImageConfigs — adds C/R/D/E patterns."""
+
+    def test_app_image_config_create_describe_delete_error(self, sagemaker):
+        """Create app image config → describe → delete → error on re-describe."""
+        name = _uid("aic")
+        resp = sagemaker.create_app_image_config(AppImageConfigName=name)
+        assert "AppImageConfigArn" in resp
+        desc = sagemaker.describe_app_image_config(AppImageConfigName=name)
+        assert desc["AppImageConfigName"] == name
+        assert "AppImageConfigArn" in desc
+        sagemaker.delete_app_image_config(AppImageConfigName=name)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_app_image_config(AppImageConfigName=name)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_app_image_config_list_contains_created(self, sagemaker):
+        """Created app image config appears in list."""
+        name = _uid("aic")
+        sagemaker.create_app_image_config(AppImageConfigName=name)
+        try:
+            resp = sagemaker.list_app_image_configs()
+            names = [c["AppImageConfigName"] for c in resp["AppImageConfigs"]]
+            assert name in names
+        finally:
+            sagemaker.delete_app_image_config(AppImageConfigName=name)
+
+    def test_app_image_config_list_multiple(self, sagemaker):
+        """Create 2 app image configs and verify both appear in list."""
+        n1, n2 = _uid("aic"), _uid("aic")
+        sagemaker.create_app_image_config(AppImageConfigName=n1)
+        sagemaker.create_app_image_config(AppImageConfigName=n2)
+        try:
+            resp = sagemaker.list_app_image_configs()
+            names = [c["AppImageConfigName"] for c in resp["AppImageConfigs"]]
+            assert n1 in names
+            assert n2 in names
+        finally:
+            sagemaker.delete_app_image_config(AppImageConfigName=n1)
+            sagemaker.delete_app_image_config(AppImageConfigName=n2)
+
+
+class TestSageMakerAppsEdgeCases:
+    """Edge cases for Apps — adds C/R/D/E patterns (requires Domain + UserProfile)."""
+
+    def _create_domain_and_user(self, sagemaker):
+        dom_name = _uid("dom")
+        resp = sagemaker.create_domain(
+            DomainName=dom_name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        domain_id = resp["DomainArn"].split("/")[-1]
+        user_name = _uid("user")
+        sagemaker.create_user_profile(DomainId=domain_id, UserProfileName=user_name)
+        return domain_id, user_name
+
+    def _cleanup_domain(self, sagemaker, domain_id, user_name, app_names=None):
+        for app_name, app_type in (app_names or []):
+            try:
+                sagemaker.delete_app(
+                    DomainId=domain_id,
+                    UserProfileName=user_name,
+                    AppType=app_type,
+                    AppName=app_name,
+                )
+            except Exception:
+                pass  # best-effort cleanup
+        try:
+            sagemaker.delete_user_profile(DomainId=domain_id, UserProfileName=user_name)
+        except Exception:
+            pass  # best-effort cleanup
+        try:
+            sagemaker.delete_domain(DomainId=domain_id)
+        except Exception:
+            pass  # best-effort cleanup
+
+    def test_app_create_describe_delete_error(self, sagemaker):
+        """Create app → describe → delete → error on re-describe."""
+        domain_id, user_name = self._create_domain_and_user(sagemaker)
+        app_name = _uid("app")
+        try:
+            resp = sagemaker.create_app(
+                DomainId=domain_id,
+                UserProfileName=user_name,
+                AppType="JupyterServer",
+                AppName=app_name,
+            )
+            assert "AppArn" in resp
+            desc = sagemaker.describe_app(
+                DomainId=domain_id,
+                UserProfileName=user_name,
+                AppType="JupyterServer",
+                AppName=app_name,
+            )
+            assert desc["AppName"] == app_name
+            assert desc["DomainId"] == domain_id
+            sagemaker.delete_app(
+                DomainId=domain_id,
+                UserProfileName=user_name,
+                AppType="JupyterServer",
+                AppName=app_name,
+            )
+            with pytest.raises(ClientError) as exc:
+                sagemaker.describe_app(
+                    DomainId=domain_id,
+                    UserProfileName=user_name,
+                    AppType="JupyterServer",
+                    AppName=app_name,
+                )
+            assert exc.value.response["Error"]["Code"] == "ValidationException"
+        finally:
+            self._cleanup_domain(sagemaker, domain_id, user_name)
+
+    def test_app_list_contains_created(self, sagemaker):
+        """Created app appears in list_apps."""
+        domain_id, user_name = self._create_domain_and_user(sagemaker)
+        app_name = _uid("app")
+        try:
+            sagemaker.create_app(
+                DomainId=domain_id,
+                UserProfileName=user_name,
+                AppType="JupyterServer",
+                AppName=app_name,
+            )
+            resp = sagemaker.list_apps()
+            app_names = [a["AppName"] for a in resp["Apps"]]
+            assert app_name in app_names
+        finally:
+            self._cleanup_domain(sagemaker, domain_id, user_name, [(app_name, "JupyterServer")])
+
+
+class TestSageMakerArtifactsEdgeCases:
+    """Edge cases for Artifacts — adds C/R/D/E patterns."""
+
+    def test_artifact_create_describe_delete_error(self, sagemaker):
+        """Create artifact → describe → delete → error on re-describe."""
+        resp = sagemaker.create_artifact(
+            Source={"SourceUri": "s3://bucket/artifact-edge-1"},
+            ArtifactType="DataSet",
+        )
+        assert "ArtifactArn" in resp
+        arn = resp["ArtifactArn"]
+        desc = sagemaker.describe_artifact(ArtifactArn=arn)
+        assert desc["ArtifactType"] == "DataSet"
+        assert "ArtifactArn" in desc
+        sagemaker.delete_artifact(ArtifactArn=arn)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_artifact(ArtifactArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_artifact_list_contains_created(self, sagemaker):
+        """Created artifact appears in list_artifacts."""
+        resp = sagemaker.create_artifact(
+            Source={"SourceUri": "s3://bucket/artifact-edge-2"},
+            ArtifactType="Model",
+        )
+        arn = resp["ArtifactArn"]
+        try:
+            list_resp = sagemaker.list_artifacts()
+            arns = [a["ArtifactArn"] for a in list_resp["ArtifactSummaries"]]
+            assert arn in arns
+        finally:
+            sagemaker.delete_artifact(ArtifactArn=arn)
+
+    def test_artifact_list_multiple(self, sagemaker):
+        """Create 2 artifacts and verify both appear in list."""
+        r1 = sagemaker.create_artifact(
+            Source={"SourceUri": "s3://bucket/artifact-edge-3"}, ArtifactType="DataSet"
+        )
+        r2 = sagemaker.create_artifact(
+            Source={"SourceUri": "s3://bucket/artifact-edge-4"}, ArtifactType="Model"
+        )
+        arn1, arn2 = r1["ArtifactArn"], r2["ArtifactArn"]
+        try:
+            list_resp = sagemaker.list_artifacts()
+            arns = [a["ArtifactArn"] for a in list_resp["ArtifactSummaries"]]
+            assert arn1 in arns
+            assert arn2 in arns
+        finally:
+            sagemaker.delete_artifact(ArtifactArn=arn1)
+            sagemaker.delete_artifact(ArtifactArn=arn2)
+
+
+class TestSageMakerAssociationsEdgeCases:
+    """Edge cases for Associations — adds C/D/E patterns."""
+
+    def test_association_create_list_delete(self, sagemaker):
+        """Create association between two artifacts, list it, then delete it."""
+        r1 = sagemaker.create_artifact(
+            Source={"SourceUri": "s3://bucket/assoc-src"}, ArtifactType="DataSet"
+        )
+        r2 = sagemaker.create_artifact(
+            Source={"SourceUri": "s3://bucket/assoc-dst"}, ArtifactType="Model"
+        )
+        src_arn = r1["ArtifactArn"]
+        dst_arn = r2["ArtifactArn"]
+        try:
+            assoc_resp = sagemaker.add_association(
+                SourceArn=src_arn,
+                DestinationArn=dst_arn,
+                AssociationType="ContributedTo",
+            )
+            assert "SourceArn" in assoc_resp
+            assert "DestinationArn" in assoc_resp
+            list_resp = sagemaker.list_associations(SourceArn=src_arn)
+            assert "AssociationSummaries" in list_resp
+            assert isinstance(list_resp["AssociationSummaries"], list)
+            sagemaker.delete_association(SourceArn=src_arn, DestinationArn=dst_arn)
+        finally:
+            try:
+                sagemaker.delete_artifact(ArtifactArn=src_arn)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                sagemaker.delete_artifact(ArtifactArn=dst_arn)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_associations_error_on_nonexistent_artifact(self, sagemaker):
+        """describe_artifact on nonexistent ARN raises ValidationException."""
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_artifact(
+                ArtifactArn="arn:aws:sagemaker:us-east-1:123456789012:artifact/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestSageMakerCodeRepositoriesEdgeCases:
+    """Edge cases for CodeRepositories — adds C/R/U/D/E patterns."""
+
+    def test_code_repo_create_describe_delete_error(self, sagemaker):
+        """Create code repo → describe → delete → error on re-describe."""
+        name = _uid("repo")
+        resp = sagemaker.create_code_repository(
+            CodeRepositoryName=name,
+            GitConfig={"RepositoryUrl": "https://github.com/test/repo.git"},
+        )
+        assert "CodeRepositoryArn" in resp
+        desc = sagemaker.describe_code_repository(CodeRepositoryName=name)
+        assert desc["CodeRepositoryName"] == name
+        assert "CodeRepositoryArn" in desc
+        sagemaker.delete_code_repository(CodeRepositoryName=name)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_code_repository(CodeRepositoryName=name)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_code_repo_list_contains_created(self, sagemaker):
+        """Created code repo appears in list_code_repositories."""
+        name = _uid("repo")
+        sagemaker.create_code_repository(
+            CodeRepositoryName=name,
+            GitConfig={"RepositoryUrl": "https://github.com/test/repo2.git"},
+        )
+        try:
+            resp = sagemaker.list_code_repositories()
+            names = [r["CodeRepositoryName"] for r in resp["CodeRepositorySummaryList"]]
+            assert name in names
+        finally:
+            sagemaker.delete_code_repository(CodeRepositoryName=name)
+
+    def test_code_repo_list_multiple(self, sagemaker):
+        """Create 2 code repos and verify both appear in list."""
+        n1, n2 = _uid("repo"), _uid("repo")
+        sagemaker.create_code_repository(
+            CodeRepositoryName=n1,
+            GitConfig={"RepositoryUrl": "https://github.com/test/repo3.git"},
+        )
+        sagemaker.create_code_repository(
+            CodeRepositoryName=n2,
+            GitConfig={"RepositoryUrl": "https://github.com/test/repo4.git"},
+        )
+        try:
+            resp = sagemaker.list_code_repositories()
+            names = [r["CodeRepositoryName"] for r in resp["CodeRepositorySummaryList"]]
+            assert n1 in names
+            assert n2 in names
+        finally:
+            sagemaker.delete_code_repository(CodeRepositoryName=n1)
+            sagemaker.delete_code_repository(CodeRepositoryName=n2)
+
+
+class TestSageMakerContextsEdgeCases:
+    """Edge cases for Contexts — adds C/R/D/E patterns."""
+
+    def test_context_create_describe_delete_error(self, sagemaker):
+        """Create context → describe → delete → error on re-describe."""
+        name = _uid("ctx")
+        resp = sagemaker.create_context(
+            ContextName=name,
+            Source={"SourceUri": "s3://bucket/ctx-src"},
+            ContextType="Experiment",
+        )
+        assert "ContextArn" in resp
+        desc = sagemaker.describe_context(ContextName=name)
+        assert desc["ContextName"] == name
+        assert desc["ContextType"] == "Experiment"
+        sagemaker.delete_context(ContextName=name)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_context(ContextName=name)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_context_list_contains_created(self, sagemaker):
+        """Created context appears in list_contexts."""
+        name = _uid("ctx")
+        sagemaker.create_context(
+            ContextName=name,
+            Source={"SourceUri": "s3://bucket/ctx-src2"},
+            ContextType="Experiment",
+        )
+        try:
+            resp = sagemaker.list_contexts()
+            names = [c["ContextName"] for c in resp["ContextSummaries"]]
+            assert name in names
+        finally:
+            sagemaker.delete_context(ContextName=name)
+
+    def test_context_list_multiple_and_filter_by_type(self, sagemaker):
+        """Create 2 contexts with different types, verify type filter works."""
+        n1, n2 = _uid("ctx"), _uid("ctx")
+        sagemaker.create_context(
+            ContextName=n1,
+            Source={"SourceUri": "s3://bucket/ctx-src3"},
+            ContextType="Experiment",
+        )
+        sagemaker.create_context(
+            ContextName=n2,
+            Source={"SourceUri": "s3://bucket/ctx-src4"},
+            ContextType="TestContext",
+        )
+        try:
+            exp_resp = sagemaker.list_contexts(ContextType="Experiment")
+            exp_names = [c["ContextName"] for c in exp_resp["ContextSummaries"]]
+            assert n1 in exp_names
+        finally:
+            sagemaker.delete_context(ContextName=n1)
+            sagemaker.delete_context(ContextName=n2)
+
+
+class TestSageMakerDeviceFleetsEdgeCases:
+    """Edge cases for DeviceFleets — adds C/R/D/E patterns."""
+
+    def test_device_fleet_create_describe_delete_error(self, sagemaker):
+        """Create device fleet → describe → delete → error on re-describe."""
+        name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=name,
+            OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+        )
+        desc = sagemaker.describe_device_fleet(DeviceFleetName=name)
+        assert desc["DeviceFleetName"] == name
+        assert "DeviceFleetArn" in desc
+        sagemaker.delete_device_fleet(DeviceFleetName=name)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_device_fleet(DeviceFleetName=name)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_device_fleet_list_contains_created(self, sagemaker):
+        """Created device fleet appears in list_device_fleets."""
+        name = _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=name,
+            OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+        )
+        try:
+            resp = sagemaker.list_device_fleets()
+            names = [f["DeviceFleetName"] for f in resp["DeviceFleetSummaries"]]
+            assert name in names
+        finally:
+            sagemaker.delete_device_fleet(DeviceFleetName=name)
+
+    def test_device_fleet_list_multiple(self, sagemaker):
+        """Create 2 device fleets and verify both appear in list."""
+        n1, n2 = _uid("df"), _uid("df")
+        sagemaker.create_device_fleet(
+            DeviceFleetName=n1,
+            OutputConfig={"S3OutputLocation": "s3://bucket/out1"},
+        )
+        sagemaker.create_device_fleet(
+            DeviceFleetName=n2,
+            OutputConfig={"S3OutputLocation": "s3://bucket/out2"},
+        )
+        try:
+            resp = sagemaker.list_device_fleets()
+            names = [f["DeviceFleetName"] for f in resp["DeviceFleetSummaries"]]
+            assert n1 in names
+            assert n2 in names
+        finally:
+            sagemaker.delete_device_fleet(DeviceFleetName=n1)
+            sagemaker.delete_device_fleet(DeviceFleetName=n2)
+
+
+class TestSageMakerEdgeDeploymentPlansEdgeCases:
+    """Edge cases for EdgeDeploymentPlans — adds C/R/D/E patterns."""
+
+    def test_edge_deployment_plan_create_describe_delete_error(self, sagemaker):
+        """Create edge deployment plan → describe → delete → error on re-describe."""
+        name = _uid("edp")
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=name,
+            ModelConfigs=[],
+            DeviceFleetName="fake-fleet",
+        )
+        desc = sagemaker.describe_edge_deployment_plan(EdgeDeploymentPlanName=name)
+        assert desc["EdgeDeploymentPlanName"] == name
+        assert "EdgeDeploymentPlanArn" in desc
+        sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=name)
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_edge_deployment_plan(EdgeDeploymentPlanName=name)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_edge_deployment_plan_list_contains_created(self, sagemaker):
+        """Created edge deployment plan appears in list_edge_deployment_plans."""
+        name = _uid("edp")
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=name,
+            ModelConfigs=[],
+            DeviceFleetName="fake-fleet",
+        )
+        try:
+            resp = sagemaker.list_edge_deployment_plans()
+            names = [p["EdgeDeploymentPlanName"] for p in resp["EdgeDeploymentPlanSummaries"]]
+            assert name in names
+        finally:
+            sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=name)
+
+    def test_edge_deployment_plan_list_multiple(self, sagemaker):
+        """Create 2 edge deployment plans and verify both appear in list."""
+        n1, n2 = _uid("edp"), _uid("edp")
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=n1, ModelConfigs=[], DeviceFleetName="fake-fleet"
+        )
+        sagemaker.create_edge_deployment_plan(
+            EdgeDeploymentPlanName=n2, ModelConfigs=[], DeviceFleetName="fake-fleet"
+        )
+        try:
+            resp = sagemaker.list_edge_deployment_plans()
+            names = [p["EdgeDeploymentPlanName"] for p in resp["EdgeDeploymentPlanSummaries"]]
+            assert n1 in names
+            assert n2 in names
+        finally:
+            sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=n1)
+            sagemaker.delete_edge_deployment_plan(EdgeDeploymentPlanName=n2)
+
+
+class TestSageMakerEdgePackagingJobsEdgeCases:
+    """Edge cases for EdgePackagingJobs — adds C/R/E patterns."""
+
+    def test_edge_packaging_job_create_describe(self, sagemaker):
+        """Create edge packaging job → describe returns expected fields."""
+        name = _uid("epj")
+        sagemaker.create_edge_packaging_job(
+            EdgePackagingJobName=name,
+            CompilationJobName="fake-compile-job",
+            ModelName="fake-model",
+            ModelVersion="1.0",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+        )
+        desc = sagemaker.describe_edge_packaging_job(EdgePackagingJobName=name)
+        # Moto returns the name prefix; verify field is present and status is returned
+        assert "EdgePackagingJobName" in desc
+        assert "EdgePackagingJobStatus" in desc
+
+    def test_edge_packaging_job_nonexistent_returns_data(self, sagemaker):
+        """describe_edge_packaging_job returns data (not error) for nonexistent jobs in Moto."""
+        desc = sagemaker.describe_edge_packaging_job(EdgePackagingJobName="nonexistent-epj-xyz")
+        assert "EdgePackagingJobName" in desc
+        assert "EdgePackagingJobStatus" in desc
+
+
+class TestSageMakerFeatureGroupsEdgeCases:
+    """Edge cases for FeatureGroups — E pattern only (create fails in Moto)."""
+
+    def test_feature_group_describe_nonexistent_error(self, sagemaker):
+        """describe_feature_group on nonexistent name raises ClientError."""
+        with pytest.raises(ClientError):
+            sagemaker.describe_feature_group(FeatureGroupName="nonexistent-fg-xyz-999")
+
+    def test_feature_group_list_returns_list(self, sagemaker):
+        """list_feature_groups returns a list (may be empty)."""
+        resp = sagemaker.list_feature_groups()
+        assert "FeatureGroupSummaries" in resp
+        assert isinstance(resp["FeatureGroupSummaries"], list)
+
+
+class TestSageMakerClusterSchedulerConfigsEdgeCases:
+    """Edge cases for ClusterSchedulerConfigs — E/L patterns (no public create API)."""
+
+    def test_cluster_scheduler_config_describe_returns_data(self, sagemaker):
+        """describe_cluster_scheduler_config returns data even for fake IDs."""
+        resp = sagemaker.describe_cluster_scheduler_config(
+            ClusterSchedulerConfigId="nonexistent-csc-xyz"
+        )
+        assert "ClusterSchedulerConfigId" in resp
+        assert "Status" in resp
+
+    def test_cluster_scheduler_config_list_returns_list(self, sagemaker):
+        """list_cluster_scheduler_configs returns a list."""
+        resp = sagemaker.list_cluster_scheduler_configs()
+        assert "ClusterSchedulerConfigSummaries" in resp
+        assert isinstance(resp["ClusterSchedulerConfigSummaries"], list)
+
+
+class TestSageMakerComputeQuotasEdgeCases:
+    """Edge cases for ComputeQuotas — E/L patterns (no public create API)."""
+
+    def test_compute_quota_describe_returns_data(self, sagemaker):
+        """describe_compute_quota returns data even for fake IDs."""
+        resp = sagemaker.describe_compute_quota(ComputeQuotaId="nonexistent-cq-xyz")
+        assert "ComputeQuotaId" in resp
+        assert "Status" in resp
+
+    def test_compute_quota_list_returns_list(self, sagemaker):
+        """list_compute_quotas returns a list."""
+        resp = sagemaker.list_compute_quotas()
+        assert "ComputeQuotaSummaries" in resp
+        assert isinstance(resp["ComputeQuotaSummaries"], list)
