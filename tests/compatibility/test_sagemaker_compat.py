@@ -233,79 +233,405 @@ class TestSagemakerAutoCoverage:
             client.describe_cluster(ClusterName="nonexistent-cluster-xyz-999")
 
     def test_list_compilation_jobs(self, client):
-        """ListCompilationJobs returns a response."""
-        resp = client.list_compilation_jobs()
-        assert "CompilationJobSummaries" in resp
+        """ListCompilationJobs: create → describe → list → delete → error."""
+        name = _uid("cj")
+        create_resp = client.create_compilation_job(
+            CompilationJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            InputConfig={
+                "S3Uri": "s3://bucket/model.tar.gz",
+                "DataInputConfig": '{"input":[1,3,224,224]}',
+                "Framework": "PYTORCH",
+            },
+            OutputConfig={"S3OutputLocation": "s3://bucket/out", "TargetDevice": "ml_m4"},
+            StoppingCondition={"MaxRuntimeInSeconds": 900},
+        )
+        assert "CompilationJobArn" in create_resp
+        try:
+            desc = client.describe_compilation_job(CompilationJobName=name)
+            assert desc["CompilationJobName"] == name
+            list_resp = client.list_compilation_jobs()
+            names = [j["CompilationJobName"] for j in list_resp["CompilationJobSummaries"]]
+            assert name in names
+        finally:
+            client.delete_compilation_job(CompilationJobName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_compilation_job(CompilationJobName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_data_quality_job_definitions(self, client):
-        """ListDataQualityJobDefinitions returns a response."""
-        resp = client.list_data_quality_job_definitions()
-        assert "JobDefinitionSummaries" in resp
+        """ListDataQualityJobDefinitions: create → describe → list → delete → error."""
+        name = _uid("dq")
+        create_resp = client.create_data_quality_job_definition(
+            JobDefinitionName=name,
+            DataQualityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+            DataQualityJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"}
+            },
+            DataQualityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {
+                        "S3Output": {
+                            "S3Uri": "s3://bucket/out",
+                            "LocalPath": "/opt/ml/output",
+                            "S3UploadMode": "EndOfJob",
+                        }
+                    }
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {"InstanceCount": 1, "InstanceType": "ml.m4.xlarge", "VolumeSizeInGB": 10}
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "JobDefinitionArn" in create_resp
+        try:
+            desc = client.describe_data_quality_job_definition(JobDefinitionName=name)
+            assert desc["JobDefinitionName"] == name
+            list_resp = client.list_data_quality_job_definitions()
+            names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+            assert name in names
+        finally:
+            client.delete_data_quality_job_definition(JobDefinitionName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_data_quality_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_domains(self, client):
-        """ListDomains returns a response."""
-        resp = client.list_domains()
-        assert "Domains" in resp
+        """ListDomains: create → describe → list → delete → error."""
+        name = _uid("dom")
+        create_resp = client.create_domain(
+            DomainName=name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+        assert "DomainArn" in create_resp
+        domain_id = create_resp["DomainArn"].split("/")[-1]
+        try:
+            desc = client.describe_domain(DomainId=domain_id)
+            assert desc["DomainName"] == name
+            list_resp = client.list_domains()
+            dom_names = [d["DomainName"] for d in list_resp["Domains"]]
+            assert name in dom_names
+        finally:
+            client.delete_domain(DomainId=domain_id)
+        with pytest.raises(ClientError):
+            client.describe_domain(DomainId=domain_id)
 
     def test_list_endpoint_configs(self, client):
-        """ListEndpointConfigs returns a response."""
-        resp = client.list_endpoint_configs()
-        assert "EndpointConfigs" in resp
+        """ListEndpointConfigs: create model+config → describe → list → delete → error."""
+        model_name = _uid("model")
+        ec_name = _uid("ec")
+        client.create_model(
+            ModelName=model_name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={"Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"},
+        )
+        create_resp = client.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {"VariantName": "v1", "ModelName": model_name, "InitialInstanceCount": 1, "InstanceType": "ml.m4.xlarge"}
+            ],
+        )
+        assert "EndpointConfigArn" in create_resp
+        try:
+            desc = client.describe_endpoint_config(EndpointConfigName=ec_name)
+            assert desc["EndpointConfigName"] == ec_name
+            list_resp = client.list_endpoint_configs()
+            names = [c["EndpointConfigName"] for c in list_resp["EndpointConfigs"]]
+            assert ec_name in names
+            client.delete_endpoint_config(EndpointConfigName=ec_name)
+        finally:
+            client.delete_model(ModelName=model_name)
+        with pytest.raises(ClientError):
+            client.describe_endpoint_config(EndpointConfigName=ec_name)
 
     def test_list_hyper_parameter_tuning_jobs(self, client):
-        """ListHyperParameterTuningJobs returns a response."""
-        resp = client.list_hyper_parameter_tuning_jobs()
-        assert "HyperParameterTuningJobSummaries" in resp
+        """ListHyperParameterTuningJobs: create → describe → list → delete → error."""
+        name = _uid("hpt")
+        create_resp = client.create_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName=name,
+            HyperParameterTuningJobConfig={
+                "Strategy": "Bayesian",
+                "ResourceLimits": {"MaxNumberOfTrainingJobs": 10, "MaxParallelTrainingJobs": 2},
+            },
+            TrainingJobDefinition={
+                "RoleArn": "arn:aws:iam::123456789012:role/SageMakerRole",
+                "AlgorithmSpecification": {
+                    "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                    "TrainingInputMode": "File",
+                },
+                "OutputDataConfig": {"S3OutputPath": "s3://bucket/out"},
+                "ResourceConfig": {"InstanceType": "ml.m4.xlarge", "InstanceCount": 1, "VolumeSizeInGB": 10},
+                "StoppingCondition": {"MaxRuntimeInSeconds": 3600},
+            },
+        )
+        assert "HyperParameterTuningJobArn" in create_resp
+        desc = client.describe_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        assert desc["HyperParameterTuningJobName"] == name
+        list_resp = client.list_hyper_parameter_tuning_jobs()
+        names = [j["HyperParameterTuningJobName"] for j in list_resp["HyperParameterTuningJobSummaries"]]
+        assert name in names
+        client.delete_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_model_bias_job_definitions(self, client):
-        """ListModelBiasJobDefinitions returns a response."""
-        resp = client.list_model_bias_job_definitions()
-        assert "JobDefinitionSummaries" in resp
+        """ListModelBiasJobDefinitions: create → describe → list → delete → error."""
+        name = _uid("mb")
+        create_resp = client.create_model_bias_job_definition(
+            JobDefinitionName=name,
+            ModelBiasAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "ConfigUri": "s3://bucket/config",
+            },
+            ModelBiasJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"},
+                "GroundTruthS3Input": {"S3Uri": "s3://bucket/gt"},
+            },
+            ModelBiasJobOutputConfig={
+                "MonitoringOutputs": [
+                    {"S3Output": {"S3Uri": "s3://bucket/out", "LocalPath": "/opt/ml/output", "S3UploadMode": "EndOfJob"}}
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {"InstanceCount": 1, "InstanceType": "ml.m4.xlarge", "VolumeSizeInGB": 10}
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "JobDefinitionArn" in create_resp
+        try:
+            desc = client.describe_model_bias_job_definition(JobDefinitionName=name)
+            assert desc["JobDefinitionName"] == name
+            list_resp = client.list_model_bias_job_definitions()
+            names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+            assert name in names
+        finally:
+            client.delete_model_bias_job_definition(JobDefinitionName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_bias_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_model_cards(self, client):
-        """ListModelCards returns a response."""
-        resp = client.list_model_cards()
-        assert "ModelCardSummaries" in resp
+        """ListModelCards: create → describe → update → list → delete → error."""
+        name = _uid("mc")
+        create_resp = client.create_model_card(
+            ModelCardName=name,
+            Content='{"model_overview":{}}',
+            ModelCardStatus="Draft",
+        )
+        assert "ModelCardArn" in create_resp
+        try:
+            desc = client.describe_model_card(ModelCardName=name)
+            assert desc["ModelCardName"] == name
+            assert desc["ModelCardStatus"] == "Draft"
+            client.update_model_card(ModelCardName=name, ModelCardStatus="PendingReview")
+            desc2 = client.describe_model_card(ModelCardName=name)
+            assert desc2["ModelCardStatus"] == "PendingReview"
+            list_resp = client.list_model_cards()
+            names = [c["ModelCardName"] for c in list_resp["ModelCardSummaries"]]
+            assert name in names
+        finally:
+            client.delete_model_card(ModelCardName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_card(ModelCardName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_model_explainability_job_definitions(self, client):
-        """ListModelExplainabilityJobDefinitions returns a response."""
-        resp = client.list_model_explainability_job_definitions()
-        assert "JobDefinitionSummaries" in resp
+        """ListModelExplainabilityJobDefinitions: create → describe → list → delete → error."""
+        name = _uid("me")
+        create_resp = client.create_model_explainability_job_definition(
+            JobDefinitionName=name,
+            ModelExplainabilityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "ConfigUri": "s3://bucket/config",
+            },
+            ModelExplainabilityJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"}
+            },
+            ModelExplainabilityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {"S3Output": {"S3Uri": "s3://bucket/out", "LocalPath": "/opt/ml/output", "S3UploadMode": "EndOfJob"}}
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {"InstanceCount": 1, "InstanceType": "ml.m4.xlarge", "VolumeSizeInGB": 10}
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "JobDefinitionArn" in create_resp
+        try:
+            desc = client.describe_model_explainability_job_definition(JobDefinitionName=name)
+            assert desc["JobDefinitionName"] == name
+            list_resp = client.list_model_explainability_job_definitions()
+            names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+            assert name in names
+        finally:
+            client.delete_model_explainability_job_definition(JobDefinitionName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_explainability_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_model_package_groups(self, client):
-        """ListModelPackageGroups returns a response."""
-        resp = client.list_model_package_groups()
-        assert "ModelPackageGroupSummaryList" in resp
+        """ListModelPackageGroups: create → describe → list → error on nonexistent."""
+        name = _uid("mpg")
+        create_resp = client.create_model_package_group(
+            ModelPackageGroupName=name,
+            ModelPackageGroupDescription="test group",
+        )
+        assert "ModelPackageGroupArn" in create_resp
+        desc = client.describe_model_package_group(ModelPackageGroupName=name)
+        assert desc["ModelPackageGroupName"] == name
+        list_resp = client.list_model_package_groups()
+        names = [g["ModelPackageGroupName"] for g in list_resp["ModelPackageGroupSummaryList"]]
+        assert name in names
+        with pytest.raises(ClientError):
+            client.describe_model_package_group(ModelPackageGroupName="nonexistent-mpg-xyz-999")
 
     def test_list_model_packages(self, client):
-        """ListModelPackages returns a response."""
-        resp = client.list_model_packages()
-        assert "ModelPackageSummaryList" in resp
+        """ListModelPackages: create → describe → list → update → error on nonexistent."""
+        name = _uid("mp")
+        create_resp = client.create_model_package(
+            ModelPackageName=name,
+            ModelPackageDescription="test package",
+        )
+        assert "ModelPackageArn" in create_resp
+        mp_arn = create_resp["ModelPackageArn"]
+        desc = client.describe_model_package(ModelPackageName=name)
+        assert desc["ModelPackageName"] == name
+        client.update_model_package(ModelPackageArn=mp_arn, ModelApprovalStatus="Approved")
+        desc2 = client.describe_model_package(ModelPackageName=name)
+        assert desc2["ModelApprovalStatus"] == "Approved"
+        list_resp = client.list_model_packages()
+        arns = [p["ModelPackageArn"] for p in list_resp["ModelPackageSummaryList"]]
+        assert any(name in arn for arn in arns)
+        with pytest.raises(ClientError):
+            client.describe_model_package(ModelPackageName="nonexistent-mp-xyz-999")
 
     def test_list_model_quality_job_definitions(self, client):
-        """ListModelQualityJobDefinitions returns a response."""
-        resp = client.list_model_quality_job_definitions()
-        assert "JobDefinitionSummaries" in resp
+        """ListModelQualityJobDefinitions: create → describe → list → delete → error."""
+        name = _uid("mq")
+        create_resp = client.create_model_quality_job_definition(
+            JobDefinitionName=name,
+            ModelQualityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "ProblemType": "BinaryClassification",
+            },
+            ModelQualityJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"},
+                "GroundTruthS3Input": {"S3Uri": "s3://bucket/gt"},
+            },
+            ModelQualityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {"S3Output": {"S3Uri": "s3://bucket/out", "LocalPath": "/opt/ml/output", "S3UploadMode": "EndOfJob"}}
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {"InstanceCount": 1, "InstanceType": "ml.m4.xlarge", "VolumeSizeInGB": 10}
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "JobDefinitionArn" in create_resp
+        try:
+            desc = client.describe_model_quality_job_definition(JobDefinitionName=name)
+            assert desc["JobDefinitionName"] == name
+            list_resp = client.list_model_quality_job_definitions()
+            names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+            assert name in names
+        finally:
+            client.delete_model_quality_job_definition(JobDefinitionName=name)
+        with pytest.raises(ClientError) as exc:
+            client.describe_model_quality_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_pipelines(self, client):
-        """ListPipelines returns a response."""
-        resp = client.list_pipelines()
-        assert "PipelineSummaries" in resp
+        """ListPipelines: create → describe → update → list → delete → error."""
+        name = _uid("pipe")
+        create_resp = client.create_pipeline(
+            PipelineName=name,
+            PipelineDefinition='{"Version":"2020-12-01","Steps":[]}',
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "PipelineArn" in create_resp
+        try:
+            desc = client.describe_pipeline(PipelineName=name)
+            assert desc["PipelineName"] == name
+            client.update_pipeline(PipelineName=name, PipelineDescription="updated")
+            desc2 = client.describe_pipeline(PipelineName=name)
+            assert desc2["PipelineDescription"] == "updated"
+            list_resp = client.list_pipelines()
+            names = [p["PipelineName"] for p in list_resp["PipelineSummaries"]]
+            assert name in names
+        finally:
+            client.delete_pipeline(PipelineName=name)
+        with pytest.raises(ClientError):
+            client.describe_pipeline(PipelineName=name)
 
     def test_list_processing_jobs(self, client):
-        """ListProcessingJobs returns a response."""
-        resp = client.list_processing_jobs()
-        assert "ProcessingJobSummaries" in resp
+        """ListProcessingJobs: create → describe → list → error on nonexistent."""
+        name = _uid("pj")
+        create_resp = client.create_processing_job(
+            ProcessingJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            ProcessingResources={
+                "ClusterConfig": {"InstanceCount": 1, "InstanceType": "ml.m4.xlarge", "VolumeSizeInGB": 10}
+            },
+            AppSpecification={"ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"},
+        )
+        assert "ProcessingJobArn" in create_resp
+        desc = client.describe_processing_job(ProcessingJobName=name)
+        assert desc["ProcessingJobName"] == name
+        assert desc["ProcessingJobStatus"] in ("InProgress", "Completed", "Failed", "Stopping")
+        list_resp = client.list_processing_jobs()
+        names = [j["ProcessingJobName"] for j in list_resp["ProcessingJobSummaries"]]
+        assert name in names
+        with pytest.raises(ClientError):
+            client.describe_processing_job(ProcessingJobName="nonexistent-pj-xyz-999")
 
     def test_list_transform_jobs(self, client):
-        """ListTransformJobs returns a response."""
-        resp = client.list_transform_jobs()
-        assert "TransformJobSummaries" in resp
+        """ListTransformJobs: create → describe → list → error on nonexistent."""
+        name = _uid("tj")
+        create_resp = client.create_transform_job(
+            TransformJobName=name,
+            ModelName="fake-model",
+            TransformInput={
+                "DataSource": {"S3DataSource": {"S3DataType": "S3Prefix", "S3Uri": "s3://bucket/input"}},
+                "ContentType": "text/csv",
+            },
+            TransformOutput={"S3OutputPath": "s3://bucket/output"},
+            TransformResources={"InstanceType": "ml.m4.xlarge", "InstanceCount": 1},
+        )
+        assert "TransformJobArn" in create_resp
+        desc = client.describe_transform_job(TransformJobName=name)
+        assert desc["TransformJobName"] == name
+        assert desc["TransformJobStatus"] in ("InProgress", "Completed", "Failed", "Stopping")
+        list_resp = client.list_transform_jobs()
+        names = [j["TransformJobName"] for j in list_resp["TransformJobSummaries"]]
+        assert name in names
+        with pytest.raises(ClientError):
+            client.describe_transform_job(TransformJobName="nonexistent-tj-xyz-999")
 
     def test_list_trial_components(self, client):
-        """ListTrialComponents returns a response."""
-        resp = client.list_trial_components()
-        assert "TrialComponentSummaries" in resp
+        """ListTrialComponents: create → update → describe → list → delete → error."""
+        name = _uid("tc")
+        create_resp = client.create_trial_component(TrialComponentName=name)
+        assert "TrialComponentArn" in create_resp
+        try:
+            client.update_trial_component(TrialComponentName=name, DisplayName="updated-tc")
+            desc = client.describe_trial_component(TrialComponentName=name)
+            assert desc["TrialComponentName"] == name
+            list_resp = client.list_trial_components()
+            names = [c["TrialComponentName"] for c in list_resp["TrialComponentSummaries"]]
+            assert name in names
+        finally:
+            client.delete_trial_component(TrialComponentName=name)
+        with pytest.raises(ClientError):
+            client.describe_trial_component(TrialComponentName=name)
 
     def test_list_trials(self, client):
         """ListTrials returns a response."""
