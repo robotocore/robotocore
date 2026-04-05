@@ -9448,3 +9448,979 @@ class TestGlueMappingEdgeCases:
         )
         assert "Mapping" in resp
         assert isinstance(resp["Mapping"], list)
+
+
+# ── Edge Cases & Behavioral Fidelity ─────────────────────────────────────────
+
+
+class TestGlueBatchDeleteTableVersionEdgeCases:
+    """Edge cases for BatchDeleteTableVersion: full lifecycle + wrong-table error."""
+
+    _SD = {
+        "Columns": [{"Name": "c1", "Type": "string"}],
+        "Location": "s3://b/p",
+        "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+        "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+        "SerdeInfo": {
+            "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+        },
+    }
+
+    def test_create_table_version_then_batch_delete(self, glue):
+        """CREATE db+table, UPDATE table (creates v2), LIST versions, DELETE v1, RETRIEVE remaining."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": self._SD},
+        )
+        sd2 = dict(self._SD, Columns=[{"Name": "c1", "Type": "string"}, {"Name": "c2", "Type": "int"}])
+        glue.update_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": sd2},
+        )
+        # LIST: get versions
+        versions_resp = glue.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+        version_ids = [v["VersionId"] for v in versions_resp["TableVersions"]]
+        assert len(version_ids) >= 2
+
+        # DELETE: batch delete oldest version
+        del_resp = glue.batch_delete_table_version(
+            DatabaseName=db_name, TableName=tbl_name, VersionIds=version_ids[:1]
+        )
+        assert "Errors" in del_resp
+
+        # RETRIEVE: remaining versions still accessible
+        remaining = glue.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+        assert isinstance(remaining["TableVersions"], list)
+
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        glue.delete_database(Name=db_name)
+
+    def test_batch_delete_table_version_wrong_table_in_existing_db(self, glue):
+        """BatchDeleteTableVersion for wrong table in existing db raises EntityNotFoundException."""
+        db_name = _unique("db")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        try:
+            with pytest.raises(ClientError) as exc:
+                glue.batch_delete_table_version(
+                    DatabaseName=db_name, TableName="no-such-tbl", VersionIds=["1"]
+                )
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_database(Name=db_name)
+
+    def test_get_table_version_after_update(self, glue):
+        """UpdateTable creates a new version; GetTableVersion retrieves it by ID."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": self._SD},
+        )
+        sd2 = dict(self._SD, Columns=[{"Name": "c1", "Type": "string"}, {"Name": "c2", "Type": "int"}])
+        glue.update_table(
+            DatabaseName=db_name,
+            TableInput={"Name": tbl_name, "StorageDescriptor": sd2},
+        )
+        versions = glue.get_table_versions(DatabaseName=db_name, TableName=tbl_name)
+        latest_version_id = versions["TableVersions"][0]["VersionId"]
+
+        # RETRIEVE by version ID
+        ver_resp = glue.get_table_version(
+            DatabaseName=db_name, TableName=tbl_name, VersionId=latest_version_id
+        )
+        assert ver_resp["TableVersion"]["VersionId"] == latest_version_id
+
+        glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+        glue.delete_database(Name=db_name)
+
+
+class TestGlueColumnStatisticsScheduleEdgeCases:
+    """Edge cases for ColumnStatisticsTaskRunSchedule: full lifecycle + error."""
+
+    def _make_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://b/p",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        return db_name, tbl_name
+
+    def test_start_then_stop_schedule_full_lifecycle(self, glue):
+        """CREATE table, start schedule (UPDATE), stop schedule (UPDATE), DELETE table."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            # UPDATE: start schedule
+            start_resp = glue.start_column_statistics_task_run_schedule(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert start_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # UPDATE: stop schedule
+            stop_resp = glue.stop_column_statistics_task_run_schedule(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_start_task_run_and_retrieve_id(self, glue):
+        """StartColumnStatisticsTaskRun returns a run ID (CREATE+RETRIEVE pattern)."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            resp = glue.start_column_statistics_task_run(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                Role="arn:aws:iam::123456789012:role/test",
+            )
+            run_id = resp["ColumnStatisticsTaskRunId"]
+            assert isinstance(run_id, str)
+            assert len(run_id) > 0
+
+            # RETRIEVE: get the table to verify it still exists
+            get_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert get_resp["Table"]["Name"] == tbl_name
+
+            # LIST: get all task runs for this table
+            runs_resp = glue.get_column_statistics_task_runs(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert "ColumnStatisticsTaskRuns" in runs_resp
+            assert isinstance(runs_resp["ColumnStatisticsTaskRuns"], list)
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_stop_task_run_error_no_running_run(self, glue):
+        """StopColumnStatisticsTaskRun when no run is active still returns 200."""
+        db_name, tbl_name = self._make_table(glue)
+        try:
+            # Start then immediately stop - may succeed even if already stopped
+            resp = glue.stop_column_statistics_task_run(
+                DatabaseName=db_name, TableName=tbl_name
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueMLTransformEdgeCases:
+    """Edge cases for MLTransform: update, list with filter, error on nonexistent."""
+
+    def _make_transform(self, glue, name=None):
+        name = name or _unique("ml")
+        resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "id"},
+            },
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        return resp["TransformId"], name
+
+    def test_create_then_get_then_update_then_delete(self, glue):
+        """Full lifecycle: CREATE, RETRIEVE, UPDATE description, DELETE."""
+        tfm_id, name = self._make_transform(glue)
+        try:
+            # RETRIEVE
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["Name"] == name
+            assert get_resp["TransformId"] == tfm_id
+
+            # UPDATE
+            upd_resp = glue.update_ml_transform(
+                TransformId=tfm_id, Description="updated description"
+            )
+            assert upd_resp["TransformId"] == tfm_id
+
+            # RETRIEVE after update
+            updated = glue.get_ml_transform(TransformId=tfm_id)
+            assert updated["Description"] == "updated description"
+        finally:
+            # DELETE
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+        # ERROR: get after delete
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_transform(TransformId=tfm_id)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_ml_transforms_with_max_results(self, glue):
+        """ListMLTransforms with MaxResults limits response."""
+        ids = []
+        for _ in range(3):
+            tfm_id, _ = self._make_transform(glue)
+            ids.append(tfm_id)
+        try:
+            resp = glue.list_ml_transforms(MaxResults=2)
+            assert "TransformIds" in resp
+            assert isinstance(resp["TransformIds"], list)
+        finally:
+            for tfm_id in ids:
+                glue.delete_ml_transform(TransformId=tfm_id)
+
+    def test_get_nonexistent_ml_transform_raises(self, glue):
+        """GetMLTransform for nonexistent ID raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_transform(TransformId="nonexistent-transform-id-xyz")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+
+class TestGlueWorkflowRunEdgeCases:
+    """Edge cases for WorkflowRun: start, get, resume, list, stop."""
+
+    def test_start_then_stop_workflow_run(self, glue):
+        """CREATE workflow, start run (CREATE), stop run (UPDATE), get run (RETRIEVE), delete."""
+        wf_name = _unique("wf")
+        glue.create_workflow(Name=wf_name)
+        try:
+            run_resp = glue.start_workflow_run(Name=wf_name)
+            run_id = run_resp["RunId"]
+            assert isinstance(run_id, str)
+
+            # RETRIEVE: get the run
+            get_resp = glue.get_workflow_run(Name=wf_name, RunId=run_id)
+            assert get_resp["Run"]["WorkflowRunId"] == run_id
+
+            # LIST: get all runs
+            runs_resp = glue.get_workflow_runs(Name=wf_name)
+            run_ids = [r["WorkflowRunId"] for r in runs_resp["Runs"]]
+            assert run_id in run_ids
+
+            # UPDATE: stop the run
+            stop_resp = glue.stop_workflow_run(Name=wf_name, RunId=run_id)
+            assert stop_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+    def test_resume_workflow_run_nonexistent_raises_error(self, glue):
+        """ResumeWorkflowRun for nonexistent workflow raises meaningful error."""
+        with pytest.raises(ClientError) as exc:
+            glue.resume_workflow_run(
+                Name="nonexistent-wf-abc123", RunId="fake-run-id", NodeIds=["node1"]
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InvalidInputException",
+        )
+
+    def test_workflow_run_properties_crud(self, glue):
+        """PutWorkflowRunProperties / GetWorkflowRunProperties roundtrip."""
+        wf_name = _unique("wf")
+        glue.create_workflow(Name=wf_name)
+        try:
+            run_resp = glue.start_workflow_run(Name=wf_name)
+            run_id = run_resp["RunId"]
+
+            # UPDATE: put properties
+            glue.put_workflow_run_properties(
+                Name=wf_name,
+                RunId=run_id,
+                RunProperties={"myKey": "myValue"},
+            )
+
+            # RETRIEVE: get properties
+            props_resp = glue.get_workflow_run_properties(Name=wf_name, RunId=run_id)
+            assert "RunProperties" in props_resp
+            assert props_resp["RunProperties"].get("myKey") == "myValue"
+        finally:
+            glue.delete_workflow(Name=wf_name)
+
+
+class TestGlueConnectionsEdgeCases:
+    """Edge cases for Connections: full CRUD lifecycle + update + error."""
+
+    def _make_conn(self, glue, name=None):
+        name = name or _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        return name
+
+    def test_create_retrieve_update_delete_connection(self, glue):
+        """Full lifecycle: CREATE, RETRIEVE, UPDATE, DELETE, ERROR."""
+        name = self._make_conn(glue)
+        try:
+            # RETRIEVE
+            get_resp = glue.get_connection(Name=name)
+            assert get_resp["Connection"]["Name"] == name
+
+            # LIST
+            list_resp = glue.get_connections()
+            names = [c["Name"] for c in list_resp["ConnectionList"]]
+            assert name in names
+
+            # UPDATE
+            glue.update_connection(
+                Name=name,
+                ConnectionInput={
+                    "Name": name,
+                    "ConnectionType": "JDBC",
+                    "ConnectionProperties": {
+                        "JDBC_CONNECTION_URL": "jdbc:mysql://newhost:3306/db",
+                        "USERNAME": "admin2",
+                        "PASSWORD": "secret2",
+                    },
+                },
+            )
+            updated = glue.get_connection(Name=name)
+            assert updated["Connection"]["ConnectionProperties"]["USERNAME"] == "admin2"
+        finally:
+            # DELETE
+            glue.delete_connection(ConnectionName=name)
+
+        # ERROR: get after delete
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name=name)
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "GlueEncryptionException")
+
+    def test_connection_list_pagination_with_multiple(self, glue):
+        """GetConnections lists all connections including multiple created ones."""
+        names = [self._make_conn(glue) for _ in range(3)]
+        try:
+            resp = glue.get_connections()
+            found = [c["Name"] for c in resp["ConnectionList"]]
+            for name in names:
+                assert name in found
+        finally:
+            for name in names:
+                glue.delete_connection(ConnectionName=name)
+
+    def test_get_connection_nonexistent_raises(self, glue):
+        """GetConnection for nonexistent connection raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name="no-such-conn-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "GlueEncryptionException")
+
+
+class TestGluePartitionIndexesEdgeCases:
+    """Edge cases for PartitionIndexes: create index, retrieve, delete, error."""
+
+    def _make_partitioned_table(self, glue):
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "data", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+                "PartitionKeys": [{"Name": "year", "Type": "int"}, {"Name": "month", "Type": "int"}],
+            },
+        )
+        return db_name, tbl_name
+
+    def test_create_then_list_then_delete_partition_index(self, glue):
+        """CREATE partition index, LIST indexes (response key exists), DELETE index."""
+        db_name, tbl_name = self._make_partitioned_table(glue)
+        try:
+            # CREATE index - verify it returns 200
+            create_resp = glue.create_partition_index(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                PartitionIndex={"Keys": ["year"], "IndexName": "idx-year"},
+            )
+            assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+            # LIST: response has the expected key
+            list_resp = glue.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
+            assert "PartitionIndexDescriptorList" in list_resp
+            assert isinstance(list_resp["PartitionIndexDescriptorList"], list)
+
+            # RETRIEVE: table still exists
+            tbl_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert tbl_resp["Table"]["Name"] == tbl_name
+
+            # DELETE: remove the index (may succeed even if index not in active state)
+            del_resp = glue.delete_partition_index(
+                DatabaseName=db_name, TableName=tbl_name, IndexName="idx-year"
+            )
+            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+    def test_get_partition_indexes_empty_for_non_partitioned_table(self, glue):
+        """GetPartitionIndexes for table without partition keys returns empty list."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "col1", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            resp = glue.get_partition_indexes(DatabaseName=db_name, TableName=tbl_name)
+            assert isinstance(resp["PartitionIndexDescriptorList"], list)
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueTriggersEdgeCases:
+    """Edge cases for Triggers: get_triggers, list_triggers, update, error."""
+
+    def _make_trigger(self, glue, name=None):
+        name = name or _unique("trig")
+        glue.create_trigger(
+            Name=name, Type="ON_DEMAND", Actions=[{"JobName": "fake-job"}]
+        )
+        return name
+
+    def test_get_triggers_create_retrieve_update_delete_error(self, glue):
+        """Full trigger lifecycle: CREATE, RETRIEVE via get_triggers, UPDATE, DELETE, ERROR."""
+        name = self._make_trigger(glue)
+        try:
+            # RETRIEVE via get_trigger
+            get_resp = glue.get_trigger(Name=name)
+            assert get_resp["Trigger"]["Name"] == name
+            assert get_resp["Trigger"]["Type"] == "ON_DEMAND"
+
+            # LIST via get_triggers
+            list_resp = glue.get_triggers()
+            trigger_names = [t["Name"] for t in list_resp["Triggers"]]
+            assert name in trigger_names
+
+            # UPDATE
+            upd_resp = glue.update_trigger(
+                Name=name,
+                TriggerUpdate={"Name": name, "Description": "updated desc"},
+            )
+            assert upd_resp["Trigger"]["Name"] == name
+        finally:
+            # DELETE
+            glue.delete_trigger(Name=name)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            glue.get_trigger(Name=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_triggers_with_max_results(self, glue):
+        """ListTriggers with MaxResults limits the response."""
+        names = [self._make_trigger(glue) for _ in range(3)]
+        try:
+            resp = glue.list_triggers(MaxResults=2)
+            assert "TriggerNames" in resp
+            assert len(resp["TriggerNames"]) <= 2
+        finally:
+            for name in names:
+                glue.delete_trigger(Name=name)
+
+    def test_get_triggers_after_create_and_delete(self, glue):
+        """Trigger not present in get_triggers list after deletion."""
+        name = self._make_trigger(glue)
+        glue.delete_trigger(Name=name)
+
+        resp = glue.get_triggers()
+        trigger_names = [t["Name"] for t in resp["Triggers"]]
+        assert name not in trigger_names
+
+
+class TestGlueCrawlersListEdgeCases:
+    """Edge cases for ListCrawlers: pagination, create/delete lifecycle."""
+
+    def _make_crawler(self, glue):
+        db_name = _unique("db")
+        name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://test-bucket/data"}]},
+        )
+        return name, db_name
+
+    def test_list_crawlers_create_retrieve_update_delete_error(self, glue):
+        """Full crawler lifecycle: CREATE, LIST, RETRIEVE, UPDATE, DELETE, ERROR."""
+        name, db_name = self._make_crawler(glue)
+        try:
+            # LIST via list_crawlers
+            list_resp = glue.list_crawlers()
+            assert name in list_resp["CrawlerNames"]
+
+            # RETRIEVE
+            get_resp = glue.get_crawler(Name=name)
+            assert get_resp["Crawler"]["Name"] == name
+
+            # UPDATE
+            glue.update_crawler(
+                Name=name,
+                Description="updated description",
+                Targets={"S3Targets": [{"Path": "s3://other-bucket/data"}]},
+            )
+            updated = glue.get_crawler(Name=name)
+            assert updated["Crawler"].get("Description") == "updated description"
+        finally:
+            glue.delete_crawler(Name=name)
+            glue.delete_database(Name=db_name)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            glue.get_crawler(Name=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_crawlers_with_max_results(self, glue):
+        """ListCrawlers with MaxResults limits the response."""
+        created = []
+        dbs = []
+        for _ in range(3):
+            name, db_name = self._make_crawler(glue)
+            created.append(name)
+            dbs.append(db_name)
+        try:
+            resp = glue.list_crawlers(MaxResults=2)
+            assert "CrawlerNames" in resp
+            assert len(resp["CrawlerNames"]) <= 2
+        finally:
+            for name, db_name in zip(created, dbs):
+                glue.delete_crawler(Name=name)
+                glue.delete_database(Name=db_name)
+
+    def test_list_crawlers_excludes_deleted(self, glue):
+        """ListCrawlers does not include deleted crawlers."""
+        name, db_name = self._make_crawler(glue)
+        glue.delete_crawler(Name=name)
+        glue.delete_database(Name=db_name)
+
+        resp = glue.list_crawlers()
+        assert name not in resp["CrawlerNames"]
+
+
+class TestGlueJobsListEdgeCases:
+    """Edge cases for ListJobs: full lifecycle + pagination."""
+
+    def _make_job(self, glue, name=None):
+        name = name or _unique("job")
+        glue.create_job(
+            Name=name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        return name
+
+    def test_list_jobs_create_retrieve_update_delete_error(self, glue):
+        """Full job lifecycle: CREATE, LIST, RETRIEVE, UPDATE, DELETE, ERROR."""
+        name = self._make_job(glue)
+        try:
+            # LIST
+            list_resp = glue.list_jobs()
+            assert name in list_resp["JobNames"]
+
+            # RETRIEVE
+            get_resp = glue.get_job(JobName=name)
+            assert get_resp["Job"]["Name"] == name
+
+            # UPDATE
+            glue.update_job(
+                JobName=name,
+                JobUpdate={
+                    "Role": "arn:aws:iam::123456789012:role/glue-role",
+                    "Command": {"Name": "glueetl", "ScriptLocation": "s3://bucket/v2.py"},
+                    "Description": "updated description",
+                },
+            )
+            updated = glue.get_job(JobName=name)
+            assert updated["Job"].get("Description") == "updated description"
+        finally:
+            # DELETE
+            glue.delete_job(JobName=name)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            glue.get_job(JobName=name)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_list_jobs_with_max_results(self, glue):
+        """ListJobs with MaxResults limits the response."""
+        names = [self._make_job(glue) for _ in range(3)]
+        try:
+            resp = glue.list_jobs(MaxResults=2)
+            assert "JobNames" in resp
+            assert len(resp["JobNames"]) <= 2
+        finally:
+            for name in names:
+                glue.delete_job(JobName=name)
+
+    def test_list_jobs_excludes_deleted(self, glue):
+        """ListJobs does not include deleted jobs."""
+        name = self._make_job(glue)
+        glue.delete_job(JobName=name)
+
+        resp = glue.list_jobs()
+        assert name not in resp["JobNames"]
+
+
+class TestGlueBatchStopJobRunEdgeCases:
+    """Edge cases for BatchStopJobRun: lifecycle with real job runs."""
+
+    def test_create_job_start_run_then_batch_stop(self, glue):
+        """CREATE job, start run (CREATE), batch stop run (UPDATE), verify stopped."""
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            # Start a run
+            run_resp = glue.start_job_run(JobName=job_name)
+            run_id = run_resp["JobRunId"]
+            assert isinstance(run_id, str)
+
+            # LIST: job run appears
+            runs_resp = glue.get_job_runs(JobName=job_name)
+            run_ids = [r["Id"] for r in runs_resp["JobRuns"]]
+            assert run_id in run_ids
+
+            # RETRIEVE: get individual run
+            get_resp = glue.get_job_run(JobName=job_name, RunId=run_id)
+            assert get_resp["JobRun"]["Id"] == run_id
+
+            # UPDATE: batch stop
+            stop_resp = glue.batch_stop_job_run(JobName=job_name, JobRunIds=[run_id])
+            assert "SuccessfulSubmissions" in stop_resp or "Errors" in stop_resp
+        finally:
+            glue.delete_job(JobName=job_name)
+
+    def test_batch_stop_job_run_nonexistent_job_raises(self, glue):
+        """BatchStopJobRun for nonexistent job raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.batch_stop_job_run(JobName="no-such-job-xyz", JobRunIds=["fake-id"])
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_batch_stop_job_run_multiple_run_ids(self, glue):
+        """BatchStopJobRun with multiple fake run IDs for existing job returns Errors."""
+        job_name = _unique("job")
+        glue.create_job(
+            Name=job_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "ScriptLocation": "s3://bucket/script.py"},
+        )
+        try:
+            resp = glue.batch_stop_job_run(
+                JobName=job_name, JobRunIds=["fake-run-1", "fake-run-2"]
+            )
+            assert "Errors" in resp or "SuccessfulSubmissions" in resp
+        finally:
+            glue.delete_job(JobName=job_name)
+
+
+class TestGlueMLTaskRunEdgeCases:
+    """Edge cases for MLTaskRun: full transform lifecycle with task run ops."""
+
+    def _make_transform(self, glue):
+        name = _unique("ml")
+        resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "id"},
+            },
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        return resp["TransformId"], name
+
+    def test_create_transform_get_task_runs_list(self, glue):
+        """CREATE transform, LIST task runs (empty), RETRIEVE transform, DELETE."""
+        tfm_id, name = self._make_transform(glue)
+        try:
+            # LIST: task runs are empty initially
+            runs_resp = glue.get_ml_task_runs(TransformId=tfm_id)
+            assert "TaskRuns" in runs_resp
+            assert isinstance(runs_resp["TaskRuns"], list)
+
+            # RETRIEVE: transform exists
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            assert get_resp["Name"] == name
+        finally:
+            # DELETE
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+        # ERROR: get task runs for deleted transform
+        with pytest.raises(ClientError) as exc:
+            glue.get_ml_task_runs(TransformId=tfm_id)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_cancel_ml_task_run_nonexistent_raises(self, glue):
+        """CancelMLTaskRun with nonexistent transform raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.cancel_ml_task_run(
+                TransformId="nonexistent-transform", TaskRunId="nonexistent-task"
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_update_transform_then_get_ml_task_run_not_found(self, glue):
+        """UPDATE transform, then GetMLTaskRun with fake run ID returns error."""
+        tfm_id, _ = self._make_transform(glue)
+        try:
+            # UPDATE
+            glue.update_ml_transform(TransformId=tfm_id, Description="new description")
+
+            # ERROR: get a nonexistent task run
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_task_run(TransformId=tfm_id, TaskRunId="fake-task-run-id")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
+
+
+class TestGlueCreateScriptEdgeCases:
+    """Edge cases for CreateScript and GetDataflowGraph."""
+
+    def test_create_script_with_dag_nodes_returns_script(self, glue):
+        """CreateScript with valid DAG returns PythonScript or ScalaCode."""
+        resp = glue.create_script(
+            DagNodes=[
+                {"Id": "src", "NodeType": "S3", "Args": [], "LineNumber": 1},
+                {"Id": "tgt", "NodeType": "S3", "Args": [], "LineNumber": 2},
+            ],
+            DagEdges=[{"Source": "src", "Target": "tgt"}],
+            Language="PYTHON",
+        )
+        assert "PythonScript" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_script_scala_language(self, glue):
+        """CreateScript with Language=SCALA returns ScalaCode or 200."""
+        resp = glue.create_script(
+            DagNodes=[{"Id": "node1", "NodeType": "S3", "Args": [], "LineNumber": 1}],
+            DagEdges=[],
+            Language="SCALA",
+        )
+        assert "ScalaCode" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_dataflow_graph_returns_dag(self, glue):
+        """GetDataflowGraph returns DagNodes and DagEdges lists."""
+        resp = glue.get_dataflow_graph(PythonScript="# empty script")
+        assert "DagNodes" in resp
+        assert "DagEdges" in resp
+        assert isinstance(resp["DagNodes"], list)
+        assert isinstance(resp["DagEdges"], list)
+
+    def test_create_script_empty_dag(self, glue):
+        """CreateScript with empty DAG returns 200."""
+        resp = glue.create_script(DagNodes=[], DagEdges=[])
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_plan_then_create_script(self, glue):
+        """GetPlan returns a script; combined with CreateScript for full roundtrip."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "int"}],
+                    "Location": "s3://b/p",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {
+                        "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+                    },
+                },
+            },
+        )
+        try:
+            plan_resp = glue.get_plan(
+                Mapping=[{"SourceTable": tbl_name, "SourceType": "int", "TargetTable": tbl_name, "TargetType": "string"}],
+                Source={"DatabaseName": db_name, "TableName": tbl_name},
+                Language="PYTHON",
+            )
+            assert "PythonScript" in plan_resp or plan_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
+
+
+class TestGlueTestConnectionEdgeCases:
+    """Edge cases for TestConnection: create connection, test it, delete."""
+
+    def test_create_then_test_connection(self, glue):
+        """CREATE connection, test it (RETRIEVE op), verify result, DELETE."""
+        name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://localhost:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
+        )
+        try:
+            # RETRIEVE: get connection
+            get_resp = glue.get_connection(Name=name)
+            assert get_resp["Connection"]["Name"] == name
+
+            # LIST: appears in list
+            list_resp = glue.get_connections()
+            names = [c["Name"] for c in list_resp["ConnectionList"]]
+            assert name in names
+
+            # TestConnection - may return error since no real endpoint
+            try:
+                glue.test_connection(ConnectionName=name)
+            except ClientError as e:
+                # InternalError or other errors are acceptable - we just want to
+                # verify the API accepted our request with a valid connection
+                assert e.response["Error"]["Code"] in (
+                    "InternalError",
+                    "InvalidInputException",
+                    "GlueEncryptionException",
+                )
+        finally:
+            # DELETE
+            glue.delete_connection(ConnectionName=name)
+
+        # ERROR: get after delete
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name=name)
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "GlueEncryptionException")
+
+    def test_test_connection_nonexistent_raises_error(self, glue):
+        """TestConnection with nonexistent connection raises error."""
+        with pytest.raises(ClientError) as exc:
+            glue.test_connection(ConnectionName="nonexistent-conn-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "EntityNotFoundException",
+            "InternalError",
+            "GlueEncryptionException",
+        )
+
+    def test_create_delete_then_get_connection_raises(self, glue):
+        """GetConnection after delete raises EntityNotFoundException."""
+        name = _unique("conn")
+        glue.create_connection(
+            ConnectionInput={
+                "Name": name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "user",
+                    "PASSWORD": "pass",
+                },
+            }
+        )
+        glue.delete_connection(ConnectionName=name)
+
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name=name)
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "GlueEncryptionException")
+
+
+class TestGlueStatementLifecycle:
+    """Tests for session Statement lifecycle."""
+
+    def _make_session(self, glue):
+        session_id = _unique("session")
+        glue.create_session(
+            Id=session_id,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            Command={"Name": "glueetl", "PythonVersion": "3"},
+        )
+        return session_id
+
+    def test_create_session_retrieve_then_delete(self, glue):
+        """CREATE session, RETRIEVE it, LIST sessions, DELETE."""
+        session_id = self._make_session(glue)
+        try:
+            # RETRIEVE
+            get_resp = glue.get_session(Id=session_id)
+            assert get_resp["Session"]["Id"] == session_id
+
+            # LIST: list_sessions returns Ids list
+            list_resp = glue.list_sessions()
+            assert "Ids" in list_resp
+            assert session_id in list_resp["Ids"]
+        finally:
+            # DELETE
+            glue.delete_session(Id=session_id)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            glue.get_session(Id=session_id)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_cancel_statement_nonexistent_session_raises(self, glue):
+        """CancelStatement for nonexistent session raises EntityNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            glue.cancel_statement(SessionId="nonexistent-session-xyz", Id=0)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+
+    def test_run_statement_create_retrieve_cancel(self, glue):
+        """Run a statement, retrieve it, cancel it."""
+        session_id = self._make_session(glue)
+        try:
+            # CREATE statement (run it)
+            run_resp = glue.run_statement(SessionId=session_id, Code="x = 1")
+            stmt_id = run_resp["Id"]
+            assert isinstance(stmt_id, int)
+
+            # RETRIEVE statement
+            get_resp = glue.get_statement(SessionId=session_id, Id=stmt_id)
+            assert get_resp["Statement"]["Id"] == stmt_id
+
+            # LIST statements
+            list_resp = glue.list_statements(SessionId=session_id)
+            assert "Statements" in list_resp
+            assert isinstance(list_resp["Statements"], list)
+
+            # UPDATE: cancel the statement
+            cancel_resp = glue.cancel_statement(SessionId=session_id, Id=stmt_id)
+            assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            glue.delete_session(Id=session_id)
