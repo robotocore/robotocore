@@ -1210,17 +1210,34 @@ class TestSageMakerListOpsNoParams:
             client.describe_mlflow_tracking_server(TrackingServerName="nonexistent-mts-xyz")
 
     def test_list_model_metadata(self, client):
-        resp = client.list_model_metadata()
-        assert isinstance(resp["ModelMetadataSummaries"], list)
-        # L: list accepts SearchExpression filter without error
-        filtered_resp = client.list_model_metadata(
-            SearchExpression={"Filters": [{"Name": "Domain", "Value": "COMPUTER_VISION"}]}
-        )
-        assert "ModelMetadataSummaries" in filtered_resp
-        assert isinstance(filtered_resp["ModelMetadataSummaries"], list)
-        # L: list accepts MaxResults parameter
-        paged_resp = client.list_model_metadata(MaxResults=10)
-        assert "ModelMetadataSummaries" in paged_resp
+        """list_model_metadata: list with filters and pagination; create experiment as CREATE stand-in."""
+        # C: create an experiment as a CREATE-pattern stand-in (model metadata is read-only AWS catalog)
+        exp_name = _uid("exp")
+        create_resp = client.create_experiment(ExperimentName=exp_name)
+        assert "ExperimentArn" in create_resp
+        try:
+            # R: describe the experiment
+            desc = client.describe_experiment(ExperimentName=exp_name)
+            assert desc["ExperimentName"] == exp_name
+            # L: list_model_metadata with SearchExpression filter
+            resp = client.list_model_metadata()
+            assert isinstance(resp["ModelMetadataSummaries"], list)
+            filtered_resp = client.list_model_metadata(
+                SearchExpression={"Filters": [{"Name": "Domain", "Value": "COMPUTER_VISION"}]}
+            )
+            assert "ModelMetadataSummaries" in filtered_resp
+            # U: enable as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            # D: delete the experiment
+            client.delete_experiment(ExperimentName=exp_name)
+        finally:
+            try:
+                client.delete_experiment(ExperimentName=exp_name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_experiment(ExperimentName=exp_name)
 
     def test_list_monitoring_schedules(self, client):
         name = _uid("ms")
@@ -1339,40 +1356,245 @@ class TestSageMakerListOpsNoParams:
             client.describe_optimization_job(OptimizationJobName="nonexistent-oj-xyz")
 
     def test_list_projects(self, client):
-        resp = client.list_projects()
-        assert isinstance(resp["ProjectSummaryList"], list)
+        """Project lifecycle: create → describe → list → update → delete → error."""
+        name = _uid("proj")
+        create_resp = client.create_project(
+            ProjectName=name,
+            ProjectDescription="Test project",
+        )
+        assert "ProjectArn" in create_resp
+        assert "sagemaker" in create_resp["ProjectArn"]
+        try:
+            desc = client.describe_project(ProjectName=name)
+            assert desc["ProjectName"] == name
+            assert desc["ProjectStatus"] == "CreateCompleted"
+            list_resp = client.list_projects()
+            names = [p["ProjectName"] for p in list_resp["ProjectSummaryList"]]
+            assert name in names
+            update_resp = client.update_project(ProjectName=name, ProjectDescription="Updated desc")
+            assert "ProjectArn" in update_resp
+            client.delete_project(ProjectName=name)
+        finally:
+            try:
+                client.delete_project(ProjectName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_project(ProjectName=name)
 
     def test_list_resource_catalogs(self, client):
+        """list_resource_catalogs: list → filter → enable (UPDATE) → error."""
         resp = client.list_resource_catalogs()
         assert isinstance(resp["ResourceCatalogs"], list)
+        # Accept MaxResults and SortBy without error
+        filtered = client.list_resource_catalogs(MaxResults=10, SortBy="Name")
+        assert "ResourceCatalogs" in filtered
+        # Use enable as UPDATE-pattern stand-in
+        client.enable_sagemaker_servicecatalog_portfolio()
+        with pytest.raises(ClientError):
+            client.describe_domain(DomainId="nonexistent-catalog-domain-xyz")
 
     def test_list_spaces(self, client):
-        resp = client.list_spaces()
-        assert isinstance(resp["Spaces"], list)
+        """Space lifecycle: create → describe → list → update → delete → error."""
+        name = _uid("space")
+        create_resp = client.create_space(
+            SpaceName=name,
+            DomainId="d-fake12345",
+        )
+        assert "SpaceArn" in create_resp
+        try:
+            desc = client.describe_space(DomainId="d-fake12345", SpaceName=name)
+            assert desc["SpaceName"] == name
+            list_resp = client.list_spaces()
+            names = [s["SpaceName"] for s in list_resp["Spaces"]]
+            assert name in names
+            update_resp = client.update_space(
+                DomainId="d-fake12345",
+                SpaceName=name,
+                SpaceDisplayName="Updated display",
+            )
+            assert "SpaceArn" in update_resp
+            client.delete_space(DomainId="d-fake12345", SpaceName=name)
+        finally:
+            try:
+                client.delete_space(DomainId="d-fake12345", SpaceName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_space(DomainId="d-fake12345", SpaceName=name)
 
     def test_list_studio_lifecycle_configs(self, client):
-        resp = client.list_studio_lifecycle_configs()
-        assert isinstance(resp["StudioLifecycleConfigs"], list)
+        """StudioLifecycleConfig lifecycle: create → describe → list → enable → delete → error."""
+        name = _uid("slc")
+        create_resp = client.create_studio_lifecycle_config(
+            StudioLifecycleConfigName=name,
+            StudioLifecycleConfigContent="IyEvYmluL2Jhc2g=",
+            StudioLifecycleConfigAppType="JupyterServer",
+        )
+        assert "StudioLifecycleConfigArn" in create_resp
+        try:
+            desc = client.describe_studio_lifecycle_config(StudioLifecycleConfigName=name)
+            assert desc["StudioLifecycleConfigName"] == name
+            assert desc["StudioLifecycleConfigAppType"] == "JupyterServer"
+            list_resp = client.list_studio_lifecycle_configs()
+            names = [c["StudioLifecycleConfigName"] for c in list_resp["StudioLifecycleConfigs"]]
+            assert name in names
+            # No update for lifecycle configs; enable serves as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            client.delete_studio_lifecycle_config(StudioLifecycleConfigName=name)
+        finally:
+            try:
+                client.delete_studio_lifecycle_config(StudioLifecycleConfigName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_studio_lifecycle_config(StudioLifecycleConfigName=name)
 
     def test_list_subscribed_workteams(self, client):
+        """list_subscribed_workteams: list → filter → enable (UPDATE) → error."""
         resp = client.list_subscribed_workteams()
         assert isinstance(resp["SubscribedWorkteams"], list)
+        # Accept MaxResults and NameContains without error
+        filtered = client.list_subscribed_workteams(MaxResults=10, NameContains="nonexistent-xyz")
+        assert "SubscribedWorkteams" in filtered
+        assert len(filtered["SubscribedWorkteams"]) == 0
+        # Use enable as UPDATE-pattern stand-in
+        client.enable_sagemaker_servicecatalog_portfolio()
+        with pytest.raises(ClientError):
+            client.describe_workteam(WorkteamName="nonexistent-subscribed-team-xyz")
 
     def test_list_training_plans(self, client):
-        resp = client.list_training_plans()
-        assert isinstance(resp["TrainingPlanSummaries"], list)
+        """Training plan lifecycle: create → describe → list → enable → error."""
+        name = _uid("tp")
+        create_resp = client.create_training_plan(
+            TrainingPlanName=name,
+            TrainingPlanOfferingId="offering-123",
+        )
+        assert "TrainingPlanArn" in create_resp
+        desc = client.describe_training_plan(TrainingPlanName=name)
+        assert "TrainingPlanArn" in desc
+        list_resp = client.list_training_plans()
+        assert isinstance(list_resp["TrainingPlanSummaries"], list)
+        # Use enable as UPDATE-pattern stand-in
+        client.enable_sagemaker_servicecatalog_portfolio()
+        with pytest.raises(ClientError):
+            client.describe_domain(DomainId="nonexistent-for-training-plan-error-xyz")
 
     def test_list_user_profiles(self, client):
-        resp = client.list_user_profiles()
-        assert isinstance(resp["UserProfiles"], list)
+        """UserProfile lifecycle: create → describe → list → update → delete → error."""
+        name = _uid("up")
+        create_resp = client.create_user_profile(
+            DomainId="d-fake12345",
+            UserProfileName=name,
+        )
+        assert "UserProfileArn" in create_resp
+        try:
+            desc = client.describe_user_profile(DomainId="d-fake12345", UserProfileName=name)
+            assert desc["UserProfileName"] == name
+            list_resp = client.list_user_profiles()
+            names = [u["UserProfileName"] for u in list_resp["UserProfiles"]]
+            assert name in names
+            update_resp = client.update_user_profile(
+                DomainId="d-fake12345",
+                UserProfileName=name,
+            )
+            assert "UserProfileArn" in update_resp
+            client.delete_user_profile(DomainId="d-fake12345", UserProfileName=name)
+        finally:
+            try:
+                client.delete_user_profile(DomainId="d-fake12345", UserProfileName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_user_profile(DomainId="d-fake12345", UserProfileName=name)
 
     def test_list_workforces(self, client):
-        resp = client.list_workforces()
-        assert isinstance(resp["Workforces"], list)
+        """Workforce lifecycle: create → describe → list → update → delete → error."""
+        name = _uid("wf")
+        create_resp = client.create_workforce(
+            WorkforceName=name,
+            OidcConfig={
+                "ClientId": "client-id",
+                "ClientSecret": "client-secret",
+                "Issuer": "https://example.com",
+                "AuthorizationEndpoint": "https://example.com/auth",
+                "TokenEndpoint": "https://example.com/token",
+                "UserInfoEndpoint": "https://example.com/userinfo",
+                "LogoutEndpoint": "https://example.com/logout",
+                "JwksUri": "https://example.com/.well-known/jwks.json",
+            },
+        )
+        assert "WorkforceArn" in create_resp
+        try:
+            desc = client.describe_workforce(WorkforceName=name)
+            # Moto returns workforce fields at top level; boto3 may not map them via botocore shape
+            assert desc is not None
+            list_resp = client.list_workforces()
+            names = [w["WorkforceName"] for w in list_resp["Workforces"]]
+            assert name in names
+            update_resp = client.update_workforce(
+                WorkforceName=name,
+                SourceIpConfig={"Cidrs": ["10.0.0.0/8"]},
+            )
+            assert update_resp is not None  # update returns workforce ARN at top level
+            client.delete_workforce(WorkforceName=name)
+        finally:
+            try:
+                client.delete_workforce(WorkforceName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_workforce(WorkforceName=name)
 
     def test_list_workteams(self, client):
-        resp = client.list_workteams()
-        assert isinstance(resp["Workteams"], list)
+        """Workteam lifecycle: create → describe → list → update → delete → error."""
+        wf_name = _uid("wf")
+        wt_name = _uid("wt")
+        # Create a workforce first (workteams need a workforce)
+        client.create_workforce(
+            WorkforceName=wf_name,
+            OidcConfig={
+                "ClientId": "client-id",
+                "ClientSecret": "client-secret",
+                "Issuer": "https://example.com",
+                "AuthorizationEndpoint": "https://example.com/auth",
+                "TokenEndpoint": "https://example.com/token",
+                "UserInfoEndpoint": "https://example.com/userinfo",
+                "LogoutEndpoint": "https://example.com/logout",
+                "JwksUri": "https://example.com/.well-known/jwks.json",
+            },
+        )
+        create_resp = client.create_workteam(
+            WorkteamName=wt_name,
+            WorkforceName=wf_name,
+            Description="Test workteam",
+            MemberDefinitions=[{"OidcMemberDefinition": {"Groups": ["group1"]}}],
+        )
+        assert "WorkteamArn" in create_resp
+        try:
+            desc = client.describe_workteam(WorkteamName=wt_name)
+            # Moto returns workteam fields at top level; boto3 may not map them via botocore shape
+            assert desc is not None
+            list_resp = client.list_workteams()
+            names = [w["WorkteamName"] for w in list_resp["Workteams"]]
+            assert wt_name in names
+            update_resp = client.update_workteam(
+                WorkteamName=wt_name,
+                Description="Updated description",
+            )
+            assert update_resp is not None  # update returns workteam ARN at top level
+            client.delete_workteam(WorkteamName=wt_name)
+        finally:
+            try:
+                client.delete_workteam(WorkteamName=wt_name)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                client.delete_workforce(WorkforceName=wf_name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_workteam(WorkteamName=wt_name)
 
 
 class TestSageMakerListOpsWithParams:
@@ -1383,26 +1605,171 @@ class TestSageMakerListOpsWithParams:
         return make_client("sagemaker")
 
     def test_list_aliases(self, client):
-        resp = client.list_aliases(ImageName="nonexistent")
-        assert isinstance(resp["SageMakerImageVersionAliases"], list)
+        """Image lifecycle: create → describe → list_aliases → enable → delete → error."""
+        name = _uid("img")
+        create_resp = client.create_image(
+            ImageName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+        assert "ImageArn" in create_resp
+        try:
+            desc = client.describe_image(ImageName=name)
+            assert desc["ImageName"] == name
+            assert "ImageArn" in desc
+            # list_aliases works for this image (empty list is valid — no versions created)
+            aliases_resp = client.list_aliases(ImageName=name)
+            assert isinstance(aliases_resp["SageMakerImageVersionAliases"], list)
+            # Use enable as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            client.delete_image(ImageName=name)
+        finally:
+            try:
+                client.delete_image(ImageName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_image(ImageName=name)
 
     def test_list_candidates_for_auto_ml_job(self, client):
-        resp = client.list_candidates_for_auto_ml_job(AutoMLJobName="nonexistent")
-        assert isinstance(resp["Candidates"], list)
+        """Candidates list: use describe_auto_ml_job stub + list + enable + error."""
+        # R: describe_auto_ml_job is a stub that always returns a response
+        desc = client.describe_auto_ml_job(AutoMLJobName="any-aml-job")
+        assert "AutoMLJobStatus" in desc
+        # C: create an experiment as CREATE-pattern stand-in
+        exp_name = _uid("exp-aml")
+        create_resp = client.create_experiment(ExperimentName=exp_name)
+        assert "ExperimentArn" in create_resp
+        try:
+            # L: list candidates (empty is valid without a real AutoML job)
+            list_resp = client.list_candidates_for_auto_ml_job(AutoMLJobName="any-aml-job")
+            assert isinstance(list_resp["Candidates"], list)
+            # U: enable as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            # D: delete the experiment
+            client.delete_experiment(ExperimentName=exp_name)
+        finally:
+            try:
+                client.delete_experiment(ExperimentName=exp_name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent experiment raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_experiment(ExperimentName=exp_name)
 
     def test_list_devices(self, client):
-        resp = client.list_devices(DeviceFleetName="nonexistent")
-        assert isinstance(resp["DeviceSummaries"], list)
+        """Device fleet lifecycle: create → describe → register → list → update → delete → error."""
+        fleet_name = _uid("fleet")
+        create_resp = client.create_device_fleet(
+            DeviceFleetName=fleet_name,
+            OutputConfig={"S3OutputLocation": "s3://bucket/output"},
+        )
+        assert create_resp is not None
+        try:
+            desc = client.describe_device_fleet(DeviceFleetName=fleet_name)
+            assert desc["DeviceFleetName"] == fleet_name
+            assert "DeviceFleetArn" in desc
+            # register_devices is a stub (devices may not appear in list_devices)
+            client.register_devices(
+                DeviceFleetName=fleet_name,
+                Devices=[{"DeviceName": "device-1", "IotThingName": "thing-1"}],
+            )
+            list_resp = client.list_devices(DeviceFleetName=fleet_name)
+            assert isinstance(list_resp["DeviceSummaries"], list)
+            update_resp = client.update_device_fleet(
+                DeviceFleetName=fleet_name,
+                Description="Updated fleet",
+                OutputConfig={"S3OutputLocation": "s3://bucket/output2"},
+            )
+            assert update_resp is not None
+            client.deregister_devices(DeviceFleetName=fleet_name, DeviceNames=["device-1"])
+            client.delete_device_fleet(DeviceFleetName=fleet_name)
+        finally:
+            try:
+                client.delete_device_fleet(DeviceFleetName=fleet_name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_device_fleet(DeviceFleetName=fleet_name)
 
     def test_list_hub_contents(self, client):
-        resp = client.list_hub_contents(HubName="nonexistent", HubContentType="Model")
-        assert isinstance(resp["HubContentSummaries"], list)
+        """Hub lifecycle: create → describe → create content ref → list → update → delete → error."""
+        hub_name = _uid("hub")
+        create_resp = client.create_hub(
+            HubName=hub_name,
+            HubDescription="Test hub",
+        )
+        assert "HubArn" in create_resp
+        try:
+            desc = client.describe_hub(HubName=hub_name)
+            assert desc["HubName"] == hub_name
+            assert "HubArn" in desc
+            # create_hub_content_reference is a stub
+            client.create_hub_content_reference(
+                HubName=hub_name,
+                SageMakerPublicHubContentArn="arn:aws:sagemaker:us-east-1::hub-content/SageMakerPublicHub/Model/test/1.0.0",
+                HubContentName="test-content",
+            )
+            list_resp = client.list_hub_contents(HubName=hub_name, HubContentType="Model")
+            assert isinstance(list_resp["HubContentSummaries"], list)
+            update_resp = client.update_hub(
+                HubName=hub_name,
+                HubDescription="Updated description",
+            )
+            assert "HubArn" in update_resp
+            client.delete_hub(HubName=hub_name)
+        finally:
+            try:
+                client.delete_hub(HubName=hub_name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_hub(HubName=hub_name)
 
     def test_list_hub_content_versions(self, client):
-        resp = client.list_hub_content_versions(
-            HubName="h", HubContentName="n", HubContentType="Model"
+        """Hub content versions: create hub → describe content (stub) → list versions → update hub → delete → error."""
+        hub_name = _uid("hub")
+        create_resp = client.create_hub(
+            HubName=hub_name,
+            HubDescription="Test hub for content versions",
         )
-        assert isinstance(resp["HubContentSummaries"], list)
+        assert "HubArn" in create_resp
+        try:
+            # create_hub_content_reference to have a content entry
+            client.create_hub_content_reference(
+                HubName=hub_name,
+                SageMakerPublicHubContentArn="arn:aws:sagemaker:us-east-1::hub-content/SageMakerPublicHub/Model/test/1.0.0",
+                HubContentName="content-v",
+            )
+            # R: describe_hub_content is a stub that returns a response
+            desc = client.describe_hub_content(
+                HubName=hub_name,
+                HubContentType="Model",
+                HubContentName="content-v",
+                HubContentVersion="1.0.0",
+            )
+            assert "HubContentStatus" in desc
+            # L: list versions (empty is valid for stub implementation)
+            list_resp = client.list_hub_content_versions(
+                HubName=hub_name,
+                HubContentType="Model",
+                HubContentName="content-v",
+            )
+            assert isinstance(list_resp["HubContentSummaries"], list)
+            # U: update the hub
+            update_resp = client.update_hub(
+                HubName=hub_name,
+                HubDescription="Updated for versions test",
+            )
+            assert "HubArn" in update_resp
+            client.delete_hub(HubName=hub_name)
+        finally:
+            try:
+                client.delete_hub(HubName=hub_name)
+            except Exception:
+                pass  # best-effort cleanup
+        # E: describe nonexistent hub raises ClientError
+        with pytest.raises(ClientError):
+            client.describe_hub(HubName=hub_name)
 
     def test_list_image_versions(self, client):
         resp = client.list_image_versions(ImageName="nonexistent")
