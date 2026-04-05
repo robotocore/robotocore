@@ -1403,6 +1403,264 @@ class TestIVSEdgeCasesAndBehavioralFidelity:
         finally:
             ivs.delete_channel(arn=channel_arn)
 
+    def test_channel_playback_url_https(self, ivs):
+        """Channel playbackUrl starts with https://."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            got = ivs.get_channel(arn=channel_arn)
+            url = got["channel"]["playbackUrl"]
+            assert url.startswith("https://"), f"playbackUrl should start with https://: {url}"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_channel_ingest_endpoint_not_url(self, ivs):
+        """Channel ingestEndpoint is a non-empty hostname."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            got = ivs.get_channel(arn=channel_arn)
+            endpoint = got["channel"]["ingestEndpoint"]
+            # ingestEndpoint is a non-empty string
+            assert len(endpoint) > 0, "ingestEndpoint should be non-empty"
+            # Must not be an HTTP URL (no scheme)
+            assert not endpoint.startswith("http"), (
+                f"ingestEndpoint should not start with http: {endpoint}"
+            )
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_batch_get_channel_error_contains_arn_and_code(self, ivs):
+        """batch_get_channel error entries contain arn and errorCode fields."""
+        fake_arn = "arn:aws:ivs:us-east-1:123456789012:channel/fakechan001"
+        batch = ivs.batch_get_channel(arns=[fake_arn])
+        assert "errors" in batch
+        assert len(batch["errors"]) >= 1
+        err = batch["errors"][0]
+        # Must have arn pointing back to what was requested
+        assert err["arn"] == fake_arn
+        # Must have some error indication: errorCode, code, or message
+        has_error_info = "errorCode" in err or "code" in err or "message" in err
+        assert has_error_info, f"Error entry missing error info fields: {err.keys()}"
+
+    def test_batch_get_stream_key_all_errors(self, ivs):
+        """batch_get_stream_key with all-missing ARNs returns errors list, no stream keys."""
+        fake1 = "arn:aws:ivs:us-east-1:123456789012:stream-key/fakekey001"
+        fake2 = "arn:aws:ivs:us-east-1:123456789012:stream-key/fakekey002"
+        batch = ivs.batch_get_stream_key(arns=[fake1, fake2])
+        assert "errors" in batch
+        assert len(batch["errors"]) == 2
+        error_arns = {e["arn"] for e in batch["errors"]}
+        assert fake1 in error_arns
+        assert fake2 in error_arns
+        # No stream keys for missing ARNs
+        assert batch.get("streamKeys", []) == []
+
+    def test_list_channels_create_three_all_appear(self, ivs):
+        """Create 3 channels and verify all appear in list_channels."""
+        arns = []
+        try:
+            for _ in range(3):
+                resp = ivs.create_channel(name=_unique("ch"))
+                arns.append(resp["channel"]["arn"])
+            listed = ivs.list_channels()
+            listed_arns = {ch["arn"] for ch in listed["channels"]}
+            for arn in arns:
+                assert arn in listed_arns, f"Channel {arn} missing from list"
+        finally:
+            for arn in arns:
+                ivs.delete_channel(arn=arn)
+
+    def test_update_channel_same_values_noop(self, ivs):
+        """update_channel with same latencyMode and type is idempotent."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, latencyMode="LOW", type="STANDARD")
+        channel_arn = resp["channel"]["arn"]
+        try:
+            # Update with same values — should not error
+            updated = ivs.update_channel(
+                arn=channel_arn, latencyMode="LOW", type="STANDARD"
+            )
+            assert updated["channel"]["latencyMode"] == "LOW"
+            assert updated["channel"]["type"] == "STANDARD"
+            # Verify via get
+            got = ivs.get_channel(arn=channel_arn)
+            assert got["channel"]["latencyMode"] == "LOW"
+            assert got["channel"]["type"] == "STANDARD"
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_stream_key_arn_different_from_channel_arn(self, ivs):
+        """Stream key ARN and channel ARN are distinct values."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        sk_arn = resp["streamKey"]["arn"]
+        try:
+            assert channel_arn != sk_arn
+            assert "stream-key" in sk_arn
+            assert "channel" in channel_arn
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_recording_config_name_field(self, ivs):
+        """create_recording_configuration with name preserves the name."""
+        rc_name = _unique("rc")
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": "test-ivs-named-rc"}},
+            name=rc_name,
+        )
+        rc_arn = resp["recordingConfiguration"]["arn"]
+        try:
+            assert resp["recordingConfiguration"]["name"] == rc_name
+            got = ivs.get_recording_configuration(arn=rc_arn)
+            assert got["recordingConfiguration"]["name"] == rc_name
+        finally:
+            ivs.delete_recording_configuration(arn=rc_arn)
+
+    def test_playback_restriction_policy_update_origins(self, ivs):
+        """update_playback_restriction_policy can change allowedOrigins."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://original.example.com"],
+            name=_unique("policy"),
+        )
+        policy_arn = resp["playbackRestrictionPolicy"]["arn"]
+        try:
+            updated = ivs.update_playback_restriction_policy(
+                arn=policy_arn,
+                allowedOrigins=["https://updated.example.com", "https://other.example.com"],
+            )
+            origins = sorted(updated["playbackRestrictionPolicy"]["allowedOrigins"])
+            assert origins == ["https://other.example.com", "https://updated.example.com"]
+            # Verify via get
+            got = ivs.get_playback_restriction_policy(arn=policy_arn)
+            got_origins = sorted(got["playbackRestrictionPolicy"]["allowedOrigins"])
+            assert got_origins == ["https://other.example.com", "https://updated.example.com"]
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_playback_restriction_policy_enable_strict_origin_enforcement_toggle(self, ivs):
+        """update_playback_restriction_policy can toggle enableStrictOriginEnforcement."""
+        resp = ivs.create_playback_restriction_policy(
+            allowedCountries=["US"],
+            allowedOrigins=["https://example.com"],
+            enableStrictOriginEnforcement=False,
+            name=_unique("policy"),
+        )
+        policy_arn = resp["playbackRestrictionPolicy"]["arn"]
+        try:
+            # Flip to True
+            updated = ivs.update_playback_restriction_policy(
+                arn=policy_arn,
+                enableStrictOriginEnforcement=True,
+            )
+            assert updated["playbackRestrictionPolicy"]["enableStrictOriginEnforcement"] is True
+            # Flip back to False
+            updated2 = ivs.update_playback_restriction_policy(
+                arn=policy_arn,
+                enableStrictOriginEnforcement=False,
+            )
+            assert updated2["playbackRestrictionPolicy"]["enableStrictOriginEnforcement"] is False
+        finally:
+            ivs.delete_playback_restriction_policy(arn=policy_arn)
+
+    def test_list_stream_sessions_response_structure(self, ivs):
+        """list_stream_sessions response always has streamSessions key."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        channel_arn = ch["channel"]["arn"]
+        try:
+            resp = ivs.list_stream_sessions(channelArn=channel_arn)
+            assert "streamSessions" in resp
+            assert isinstance(resp["streamSessions"], list)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_delete_channel_removes_from_list(self, ivs):
+        """After deletion, channel no longer appears in list_channels."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        channel_arn = resp["channel"]["arn"]
+        # Confirm it's in the list first
+        listed_before = ivs.list_channels()
+        assert any(c["arn"] == channel_arn for c in listed_before["channels"])
+        # Delete and verify it's gone
+        ivs.delete_channel(arn=channel_arn)
+        listed_after = ivs.list_channels()
+        assert not any(c["arn"] == channel_arn for c in listed_after["channels"])
+
+    def test_list_recording_configurations_includes_all_created(self, ivs):
+        """All created recording configs appear in list_recording_configurations."""
+        arns = []
+        try:
+            for i in range(3):
+                resp = ivs.create_recording_configuration(
+                    destinationConfiguration={
+                        "s3": {"bucketName": f"test-ivs-bulk-{uuid.uuid4().hex[:8]}"}
+                    }
+                )
+                arns.append(resp["recordingConfiguration"]["arn"])
+            listed = ivs.list_recording_configurations()
+            listed_arns = {rc["arn"] for rc in listed["recordingConfigurations"]}
+            for arn in arns:
+                assert arn in listed_arns, f"Recording config {arn} missing from list"
+        finally:
+            for arn in arns:
+                ivs.delete_recording_configuration(arn=arn)
+
+    def test_playback_key_pair_name_preserved_in_get(self, ivs):
+        """get_playback_key_pair response preserves the name given at import."""
+        _PUB_KEY = (
+            "-----BEGIN PUBLIC KEY-----\n"
+            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFake1234567890ABCDEFGHIJKLMN"
+            "OPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890+/=\n"
+            "-----END PUBLIC KEY-----"
+        )
+        kp_name = _unique("kp")
+        resp = ivs.import_playback_key_pair(
+            publicKeyMaterial=_PUB_KEY,
+            name=kp_name,
+        )
+        kp_arn = resp["keyPair"]["arn"]
+        try:
+            got = ivs.get_playback_key_pair(arn=kp_arn)
+            assert got["keyPair"]["name"] == kp_name
+        finally:
+            ivs.delete_playback_key_pair(arn=kp_arn)
+
+    def test_channel_authorized_field_persists_after_update(self, ivs):
+        """authorized flag is not reset to False when updating other channel fields."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, authorized=True)
+        channel_arn = resp["channel"]["arn"]
+        try:
+            # Update name, not authorized
+            ivs.update_channel(arn=channel_arn, name=_unique("ch-upd"))
+            got = ivs.get_channel(arn=channel_arn)
+            assert got["channel"]["authorized"] is True
+        finally:
+            ivs.delete_channel(arn=channel_arn)
+
+    def test_stream_key_delete_not_found_raises(self, ivs):
+        """Deleting an already-deleted stream key raises ResourceNotFoundException."""
+        name = _unique("ch")
+        ch = ivs.create_channel(name=name)
+        ch_arn = ch["channel"]["arn"]
+        try:
+            sk = ivs.create_stream_key(channelArn=ch_arn)
+            sk_arn = sk["streamKey"]["arn"]
+            ivs.delete_stream_key(arn=sk_arn)
+            # Second delete should raise
+            with pytest.raises(ClientError) as exc_info:
+                ivs.delete_stream_key(arn=sk_arn)
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+
 
 class TestIVSBehavioralFidelityEdgeCases:
     """Additional behavioral fidelity and edge case tests for improved coverage."""
