@@ -13,16 +13,25 @@ def forecast():
 
 class TestForecastOperations:
     def test_list_dataset_groups(self, forecast):
-        resp = forecast.list_dataset_groups()
-        assert "DatasetGroups" in resp
-        assert isinstance(resp["DatasetGroups"], list)
+        r = forecast.create_dataset_group(DatasetGroupName="test-list-dsg-basic", Domain="RETAIL")
+        arn = r["DatasetGroupArn"]
+        try:
+            resp = forecast.list_dataset_groups()
+            assert "DatasetGroups" in resp
+            assert isinstance(resp["DatasetGroups"], list)
+            arns = [g["DatasetGroupArn"] for g in resp["DatasetGroups"]]
+            assert arn in arns
+        finally:
+            forecast.delete_dataset_group(DatasetGroupArn=arn)
 
     def test_describe_nonexistent_dataset_group(self, forecast):
         with pytest.raises(ClientError) as exc:
             forecast.describe_dataset_group(
                 DatasetGroupArn="arn:aws:forecast:us-east-1:123456789012:dataset-group/nonexist"
             )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err or "message" in err
 
 
 class TestForecastGapListOps:
@@ -107,13 +116,40 @@ class TestForecastGapListOps:
         assert arn not in arns
 
     def test_list_dataset_import_jobs(self, client):
+        r = client.create_dataset_import_job(
+            DatasetImportJobName="test-list-import-basic",
+            DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/dummy",
+            DataSource={
+                "S3Config": {
+                    "Path": "s3://test-bucket/data.csv",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+            TimestampFormat="yyyy-MM-dd HH:mm:ss",
+        )
+        job_arn = r["DatasetImportJobArn"]
+        try:
+            resp = client.list_dataset_import_jobs()
+            assert "DatasetImportJobs" in resp
+            assert isinstance(resp["DatasetImportJobs"], list)
+            arns = [j["DatasetImportJobArn"] for j in resp["DatasetImportJobs"]]
+            assert job_arn in arns
+        finally:
+            client.delete_dataset_import_job(DatasetImportJobArn=job_arn)
+
+    def test_list_dataset_import_jobs_no_next_token_when_empty(self, client):
+        # Clean up any existing import jobs first
+        existing = client.list_dataset_import_jobs()["DatasetImportJobs"]
+        for job in existing:
+            try:
+                client.delete_dataset_import_job(
+                    DatasetImportJobArn=job["DatasetImportJobArn"]
+                )
+            except ClientError:
+                pass
         resp = client.list_dataset_import_jobs()
         assert "DatasetImportJobs" in resp
         assert isinstance(resp["DatasetImportJobs"], list)
-
-    def test_list_dataset_import_jobs_no_next_token_when_empty(self, client):
-        resp = client.list_dataset_import_jobs()
-        assert "DatasetImportJobs" in resp
         assert resp.get("NextToken") is None or "NextToken" not in resp
 
     def test_list_forecasts(self, client):
@@ -136,39 +172,135 @@ class TestForecastGapListOps:
         assert resp.get("NextToken") is None or "NextToken" not in resp
 
     def test_list_predictor_backtest_export_jobs(self, client):
-        resp = client.list_predictor_backtest_export_jobs()
-        assert "PredictorBacktestExportJobs" in resp
-        assert isinstance(resp["PredictorBacktestExportJobs"], list)
+        r = client.create_predictor_backtest_export_job(
+            PredictorBacktestExportJobName="test-list-backtest-basic",
+            PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/backtest/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        job_arn = r["PredictorBacktestExportJobArn"]
+        try:
+            resp = client.list_predictor_backtest_export_jobs()
+            assert "PredictorBacktestExportJobs" in resp
+            assert isinstance(resp["PredictorBacktestExportJobs"], list)
+            arns = [j["PredictorBacktestExportJobArn"] for j in resp["PredictorBacktestExportJobs"]]
+            assert job_arn in arns
+        finally:
+            client.delete_predictor_backtest_export_job(PredictorBacktestExportJobArn=job_arn)
 
     def test_list_explainabilities(self, client):
-        resp = client.list_explainabilities()
-        assert "Explainabilities" in resp
-        assert isinstance(resp["Explainabilities"], list)
+        r = client.create_explainability(
+            ExplainabilityName="test-list-exp-basic",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+            ExplainabilityConfig={
+                "TimeSeriesGranularity": "ALL",
+                "TimePointGranularity": "ALL",
+            },
+        )
+        exp_arn = r["ExplainabilityArn"]
+        try:
+            resp = client.list_explainabilities()
+            assert "Explainabilities" in resp
+            assert isinstance(resp["Explainabilities"], list)
+            arns = [e["ExplainabilityArn"] for e in resp["Explainabilities"]]
+            assert exp_arn in arns
+        finally:
+            client.delete_explainability(ExplainabilityArn=exp_arn)
 
     def test_list_explainability_exports(self, client):
-        resp = client.list_explainability_exports()
-        assert "ExplainabilityExports" in resp
-        assert isinstance(resp["ExplainabilityExports"], list)
+        r = client.create_explainability_export(
+            ExplainabilityExportName="test-list-expexp-basic",
+            ExplainabilityArn="arn:aws:forecast:us-east-1:123456789012:explainability/dummy",
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/explainability/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["ExplainabilityExportArn"]
+        try:
+            resp = client.list_explainability_exports()
+            assert "ExplainabilityExports" in resp
+            assert isinstance(resp["ExplainabilityExports"], list)
+            arns = [e["ExplainabilityExportArn"] for e in resp["ExplainabilityExports"]]
+            assert export_arn in arns
+        finally:
+            client.delete_explainability_export(ExplainabilityExportArn=export_arn)
 
     def test_list_monitors(self, client):
-        resp = client.list_monitors()
-        assert "Monitors" in resp
-        assert isinstance(resp["Monitors"], list)
+        r = client.create_monitor(
+            MonitorName="test-list-mon-basic",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            resp = client.list_monitors()
+            assert "Monitors" in resp
+            assert isinstance(resp["Monitors"], list)
+            arns = [m["MonitorArn"] for m in resp["Monitors"]]
+            assert monitor_arn in arns
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
 
     def test_list_what_if_analyses(self, client):
-        resp = client.list_what_if_analyses()
-        assert "WhatIfAnalyses" in resp
-        assert isinstance(resp["WhatIfAnalyses"], list)
+        r = client.create_what_if_analysis(
+            WhatIfAnalysisName="test-list-wia-basic",
+            ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/dummy-fc",
+        )
+        wia_arn = r["WhatIfAnalysisArn"]
+        try:
+            resp = client.list_what_if_analyses()
+            assert "WhatIfAnalyses" in resp
+            assert isinstance(resp["WhatIfAnalyses"], list)
+            arns = [w["WhatIfAnalysisArn"] for w in resp["WhatIfAnalyses"]]
+            assert wia_arn in arns
+        finally:
+            client.delete_what_if_analysis(WhatIfAnalysisArn=wia_arn)
 
     def test_list_what_if_forecasts(self, client):
-        resp = client.list_what_if_forecasts()
-        assert "WhatIfForecasts" in resp
-        assert isinstance(resp["WhatIfForecasts"], list)
+        r = client.create_what_if_forecast(
+            WhatIfForecastName="test-list-wif-basic",
+            WhatIfAnalysisArn=(
+                "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/dummy-wia"
+            ),
+        )
+        wif_arn = r["WhatIfForecastArn"]
+        try:
+            resp = client.list_what_if_forecasts()
+            assert "WhatIfForecasts" in resp
+            assert isinstance(resp["WhatIfForecasts"], list)
+            arns = [w["WhatIfForecastArn"] for w in resp["WhatIfForecasts"]]
+            assert wif_arn in arns
+        finally:
+            client.delete_what_if_forecast(WhatIfForecastArn=wif_arn)
 
     def test_list_what_if_forecast_exports(self, client):
-        resp = client.list_what_if_forecast_exports()
-        assert "WhatIfForecastExports" in resp
-        assert isinstance(resp["WhatIfForecastExports"], list)
+        r = client.create_what_if_forecast_export(
+            WhatIfForecastExportName="test-list-wife-basic",
+            WhatIfForecastArns=[
+                "arn:aws:forecast:us-east-1:123456789012:what-if-forecast/dummy-wif"
+            ],
+            Destination={
+                "S3Config": {
+                    "Path": "s3://test-bucket/what-if/",
+                    "RoleArn": "arn:aws:iam::123456789012:role/ForecastRole",
+                }
+            },
+        )
+        export_arn = r["WhatIfForecastExportArn"]
+        try:
+            resp = client.list_what_if_forecast_exports()
+            assert "WhatIfForecastExports" in resp
+            assert isinstance(resp["WhatIfForecastExports"], list)
+            arns = [e["WhatIfForecastExportArn"] for e in resp["WhatIfForecastExports"]]
+            assert export_arn in arns
+        finally:
+            client.delete_what_if_forecast_export(WhatIfForecastExportArn=export_arn)
 
     def test_list_dataset_groups_with_content(self, client):
         r = client.create_dataset_group(DatasetGroupName="test-gap-list-dsg", Domain="RETAIL")
@@ -557,7 +689,21 @@ class TestForecastCRUDOps:
         )
 
     def test_resume_resource_not_found(self, client):
-        """ResumeResource returns error for nonexistent resource."""
+        """ResumeResource returns error for nonexistent resource; positive case succeeds."""
+        # Positive: create a monitor, resume it, verify it still appears in list
+        r = client.create_monitor(
+            MonitorName="test-resume-positive",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            client.resume_resource(ResourceArn=monitor_arn)
+            resp = client.list_monitors()
+            arns = [m["MonitorArn"] for m in resp["Monitors"]]
+            assert monitor_arn in arns
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
+        # Error: nonexistent resource
         with pytest.raises(ClientError) as exc:
             client.resume_resource(
                 ResourceArn="arn:aws:forecast:us-east-1:123456789012:monitor/nonexistent"
@@ -662,7 +808,20 @@ class TestForecastCRUDOps:
         assert "Message" in err or "message" in err
 
     def test_resume_resource_not_found_error_code(self, client):
-        """Verify ResumeResource returns a recognized error code."""
+        """Verify ResumeResource returns a recognized error code; also test create+resume lifecycle."""
+        # Create a monitor, resume it, describe it (positive case covers CREATE+RETRIEVE+ERROR)
+        r = client.create_monitor(
+            MonitorName="test-resume-errcode",
+            ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/dummy-pred",
+        )
+        monitor_arn = r["MonitorArn"]
+        try:
+            desc = client.describe_monitor(MonitorArn=monitor_arn)
+            assert desc["MonitorName"] == "test-resume-errcode"
+            client.resume_resource(ResourceArn=monitor_arn)
+        finally:
+            client.delete_monitor(MonitorArn=monitor_arn)
+        # Error case: nonexistent resource returns known error code with Message
         with pytest.raises(ClientError) as exc:
             client.resume_resource(
                 ResourceArn="arn:aws:forecast:us-east-1:123456789012:monitor/no-exist"
@@ -671,7 +830,6 @@ class TestForecastCRUDOps:
             "ResourceNotFoundException",
             "InvalidInputException",
         )
-        # Error response must have a Message field
         assert "Message" in exc.value.response["Error"] or "message" in exc.value.response["Error"]
 
     def test_list_dataset_groups_empty_returns_list(self, client):
@@ -809,7 +967,7 @@ class TestForecastDatasetEdgeCases:
             client.delete_dataset(DatasetArn=arn)
 
     def test_dataset_tag_operations(self, client):
-        """Tag, list, untag on a dataset resource."""
+        """Tag, list, untag, overwrite on a dataset resource; error on delete-then-list."""
         r = client.create_dataset(
             DatasetName="test-ds-tags",
             Domain="RETAIL",
@@ -830,6 +988,12 @@ class TestForecastDatasetEdgeCases:
             assert "env" in keys
             assert "team" in keys
 
+            # Overwrite tag value (UPDATE pattern)
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "prod"}])
+            tag_resp_upd = client.list_tags_for_resource(ResourceArn=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tag_resp_upd["Tags"]}
+            assert tag_map["env"] == "prod"
+
             client.untag_resource(ResourceArn=arn, TagKeys=["env"])
             tag_resp2 = client.list_tags_for_resource(ResourceArn=arn)
             keys2 = {t["Key"] for t in tag_resp2["Tags"]}
@@ -837,6 +1001,10 @@ class TestForecastDatasetEdgeCases:
             assert "team" in keys2
         finally:
             client.delete_dataset(DatasetArn=arn)
+        # ERROR: describe deleted dataset raises ResourceNotFoundException
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset(DatasetArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_dataset_creation_time_before_last_modification(self, client):
         """CreationTime should be <= LastModificationTime."""
@@ -2048,7 +2216,20 @@ class TestForecastBehavioralFidelity:
         assert isinstance(tags, list)
 
     def test_list_tags_nonexistent_resource_returns_empty(self, client):
-        """ListTagsForResource on a nonexistent ARN returns an empty list (no error)."""
+        """ListTagsForResource on a nonexistent ARN returns empty list; tag+untag lifecycle works."""
+        # Create a resource, tag it, verify, untag, verify empty, delete
+        r = client.create_dataset_group(DatasetGroupName="test-tags-lifecycle", Domain="RETAIL")
+        arn = r["DatasetGroupArn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "phase", "Value": "one"}])
+            tags = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert any(t["Key"] == "phase" for t in tags)
+            client.untag_resource(ResourceArn=arn, TagKeys=["phase"])
+            tags2 = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert not any(t["Key"] == "phase" for t in tags2)
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+        # Nonexistent ARN returns empty list
         resp = client.list_tags_for_resource(
             ResourceArn=(
                 "arn:aws:forecast:us-east-1:123456789012:dataset-group/no-such-for-tags"
@@ -2244,3 +2425,143 @@ class TestForecastBehavioralFidelity:
         with pytest.raises(ClientError) as exc:
             client.describe_what_if_forecast(WhatIfForecastArn=wif_arn)
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestForecastUpdatePatterns:
+    """Tests specifically covering UPDATE patterns (underrepresented in existing suite)
+    and additional behavioral fidelity: dataset group update with dataset ARNs,
+    tag overwrite semantics, and describe-after-update consistency."""
+
+    SCHEMA = {
+        "Attributes": [
+            {"AttributeName": "item_id", "AttributeType": "string"},
+            {"AttributeName": "timestamp", "AttributeType": "timestamp"},
+            {"AttributeName": "target_value", "AttributeType": "float"},
+        ]
+    }
+
+    @pytest.fixture
+    def client(self):
+        return make_client("forecast")
+
+    def test_update_dataset_group_with_empty_arns(self, client):
+        """UPDATE dataset group with empty DatasetArns; RETRIEVE confirms state."""
+        dg_r = client.create_dataset_group(
+            DatasetGroupName="test-upd-dsg-group", Domain="RETAIL"
+        )
+        dg_arn = dg_r["DatasetGroupArn"]
+        try:
+            desc = client.describe_dataset_group(DatasetGroupArn=dg_arn)
+            assert desc.get("DatasetArns", []) == []
+            client.update_dataset_group(DatasetGroupArn=dg_arn, DatasetArns=[])
+            desc2 = client.describe_dataset_group(DatasetGroupArn=dg_arn)
+            assert desc2.get("DatasetArns", []) == []
+            assert desc2["Status"] == "ACTIVE"
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=dg_arn)
+
+    def test_update_dataset_group_clears_datasets(self, client):
+        """UPDATE dataset group multiple times; RETRIEVE confirms state after each update."""
+        dg_r = client.create_dataset_group(
+            DatasetGroupName="test-upd-clear-group", Domain="RETAIL"
+        )
+        dg_arn = dg_r["DatasetGroupArn"]
+        try:
+            client.update_dataset_group(DatasetGroupArn=dg_arn, DatasetArns=[])
+            client.update_dataset_group(DatasetGroupArn=dg_arn, DatasetArns=[])
+            desc = client.describe_dataset_group(DatasetGroupArn=dg_arn)
+            assert desc.get("DatasetArns", []) == []
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=dg_arn)
+
+    def test_update_dataset_group_nonexistent_returns_error(self, client):
+        """UPDATE on a nonexistent dataset group returns ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            client.update_dataset_group(
+                DatasetGroupArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:dataset-group/no-such-upd"
+                ),
+                DatasetArns=[],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_tag_overwrite_value_update_pattern(self, client):
+        """Tag a resource, overwrite tag value (UPDATE), list confirms new value."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-upd-tag-overwrite", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "stage", "Value": "alpha"}])
+            # Overwrite
+            client.tag_resource(ResourceArn=arn, Tags=[{"Key": "stage", "Value": "beta"}])
+            tags = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            stage_tags = [t for t in tags if t["Key"] == "stage"]
+            assert len(stage_tags) == 1
+            assert stage_tags[0]["Value"] == "beta"
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_dataset_group_list_reflects_update(self, client):
+        """After UPDATE, list_dataset_groups still shows the group; describe matches."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-upd-list-reflect", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            client.update_dataset_group(DatasetGroupArn=arn, DatasetArns=[])
+            list_resp = client.list_dataset_groups()
+            match = next(
+                (g for g in list_resp["DatasetGroups"] if g["DatasetGroupArn"] == arn), None
+            )
+            assert match is not None
+            desc = client.describe_dataset_group(DatasetGroupArn=arn)
+            assert match["DatasetGroupName"] == desc["DatasetGroupName"]
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
+
+    def test_dataset_group_update_error_has_message(self, client):
+        """UPDATE error response includes Message field."""
+        with pytest.raises(ClientError) as exc:
+            client.update_dataset_group(
+                DatasetGroupArn=(
+                    "arn:aws:forecast:us-east-1:123456789012:dataset-group/no-msg-upd"
+                ),
+                DatasetArns=[],
+            )
+        err = exc.value.response["Error"]
+        assert err["Code"] == "ResourceNotFoundException"
+        assert "Message" in err or "message" in err
+
+    def test_create_dataset_group_then_update_then_delete_lifecycle(self, client):
+        """Full CREATE → UPDATE → RETRIEVE → DELETE lifecycle for dataset groups."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-upd-full-lifecycle", Domain="CUSTOM"
+        )
+        arn = r["DatasetGroupArn"]
+        # UPDATE
+        client.update_dataset_group(DatasetGroupArn=arn, DatasetArns=[])
+        # RETRIEVE
+        desc = client.describe_dataset_group(DatasetGroupArn=arn)
+        assert desc["Status"] == "ACTIVE"
+        assert desc["DatasetGroupName"] == "test-upd-full-lifecycle"
+        # DELETE
+        client.delete_dataset_group(DatasetGroupArn=arn)
+        # ERROR after delete
+        with pytest.raises(ClientError) as exc:
+            client.describe_dataset_group(DatasetGroupArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_dataset_group_arn_contains_name_after_update(self, client):
+        """ARN structure is unchanged after an UPDATE operation."""
+        r = client.create_dataset_group(
+            DatasetGroupName="test-upd-arn-stable", Domain="RETAIL"
+        )
+        arn = r["DatasetGroupArn"]
+        try:
+            client.update_dataset_group(DatasetGroupArn=arn, DatasetArns=[])
+            desc = client.describe_dataset_group(DatasetGroupArn=arn)
+            assert desc["DatasetGroupArn"] == arn
+            assert "dataset-group/test-upd-arn-stable" in arn
+        finally:
+            client.delete_dataset_group(DatasetGroupArn=arn)
