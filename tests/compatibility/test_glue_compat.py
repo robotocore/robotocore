@@ -631,7 +631,7 @@ class TestGlueAutoCoverage:
             pass  # Operation exists
 
     def test_get_connections(self, client):
-        """GetConnections includes a created connection; nonexistent raises error."""
+        """GetConnections: create, retrieve, list, update, delete, error."""
         conn_name = _unique("conn")
         client.create_connection(
             ConnectionInput={
@@ -649,9 +649,24 @@ class TestGlueAutoCoverage:
             assert "ConnectionList" in resp
             names = [c["Name"] for c in resp["ConnectionList"]]
             assert conn_name in names
-            # verify individual retrieval
+            # retrieve individual connection
             get_resp = client.get_connection(Name=conn_name)
             assert get_resp["Connection"]["Name"] == conn_name
+            # update: change the URL
+            client.update_connection(
+                Name=conn_name,
+                ConnectionInput={
+                    "Name": conn_name,
+                    "ConnectionType": "JDBC",
+                    "ConnectionProperties": {
+                        "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/updated-db",
+                        "USERNAME": "admin",
+                        "PASSWORD": "secret",
+                    },
+                },
+            )
+            updated = client.get_connection(Name=conn_name)
+            assert "updated-db" in updated["Connection"]["ConnectionProperties"]["JDBC_CONNECTION_URL"]
             # error: nonexistent connection
             with pytest.raises(ClientError) as exc:
                 client.get_connection(Name="does-not-exist-conn-xyz")
@@ -679,7 +694,7 @@ class TestGlueAutoCoverage:
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_dev_endpoints(self, client):
-        """GetDevEndpoints includes a created dev endpoint."""
+        """GetDevEndpoints: create, retrieve, list, update, delete, error."""
         ep_name = _unique("de")
         client.create_dev_endpoint(
             EndpointName=ep_name,
@@ -693,6 +708,13 @@ class TestGlueAutoCoverage:
             # retrieve individual endpoint
             get_resp = client.get_dev_endpoint(EndpointName=ep_name)
             assert get_resp["DevEndpoint"]["EndpointName"] == ep_name
+            # update: add custom arguments
+            client.update_dev_endpoint(
+                EndpointName=ep_name,
+                AddArguments={"--enable-metrics": "true"},
+            )
+            updated = client.get_dev_endpoint(EndpointName=ep_name)
+            assert updated["DevEndpoint"]["EndpointName"] == ep_name
             # error: nonexistent endpoint
             with pytest.raises(ClientError) as exc:
                 client.get_dev_endpoint(EndpointName="does-not-exist-ep-xyz")
@@ -1203,22 +1225,62 @@ class TestGlueSchemaVersionOps:
             pass  # best-effort cleanup
 
     def test_get_schema_version(self, client, schema):
-        """GetSchemaVersion retrieves schema version details."""
+        """GetSchemaVersion: retrieve version, list versions, register new version, delete, error."""
+        schema_id = {"SchemaName": schema["name"], "RegistryName": schema["registry"]}
+        # RETRIEVE: get the latest schema version
         resp = client.get_schema_version(
-            SchemaId={"SchemaName": schema["name"], "RegistryName": schema["registry"]},
+            SchemaId=schema_id,
             SchemaVersionNumber={"LatestVersion": True},
         )
-        assert "SchemaDefinition" in resp
         assert resp["DataFormat"] == "AVRO"
+        assert resp["SchemaDefinition"] == schema["definition"]
+        sv_id = resp["SchemaVersionId"]
+        # LIST: list schema versions
+        list_resp = client.list_schema_versions(SchemaId=schema_id)
+        sv_ids = [v.get("SchemaVersionId") for v in list_resp["Schemas"]]
+        assert sv_id in sv_ids
+        # CREATE: register a new schema version
+        new_def = '{"type":"record","name":"Test","fields":[{"name":"id","type":"int"},{"name":"name","type":"string"}]}'
+        reg_resp = client.register_schema_version(SchemaId=schema_id, SchemaDefinition=new_def)
+        assert reg_resp["VersionNumber"] == 2
+        # RETRIEVE v2 by number
+        v2_resp = client.get_schema_version(SchemaId=schema_id, SchemaVersionNumber={"VersionNumber": 2})
+        assert v2_resp["VersionNumber"] == 2
+        assert v2_resp["SchemaDefinition"] == new_def
+        # ERROR: nonexistent schema raises EntityNotFoundException
+        with pytest.raises(ClientError) as exc:
+            client.get_schema_version(
+                SchemaId={"SchemaName": "nonexistent-schema-xyz", "RegistryName": schema["registry"]},
+                SchemaVersionNumber={"LatestVersion": True},
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_schema_by_definition(self, client, schema):
-        """GetSchemaByDefinition finds a schema by its definition text."""
+        """GetSchemaByDefinition: retrieve by definition, list schemas, update, delete, error."""
+        schema_id = {"SchemaName": schema["name"], "RegistryName": schema["registry"]}
+        # RETRIEVE: find schema by its definition
         resp = client.get_schema_by_definition(
-            SchemaId={"SchemaName": schema["name"], "RegistryName": schema["registry"]},
+            SchemaId=schema_id,
             SchemaDefinition=schema["definition"],
         )
         assert resp["SchemaArn"] == schema["arn"]
         assert "SchemaVersionId" in resp
+        assert resp["DataFormat"] == "AVRO"
+        # LIST: list schemas in the registry
+        list_resp = client.list_schemas(RegistryId={"RegistryName": schema["registry"]})
+        schema_names = [s["SchemaName"] for s in list_resp["Schemas"]]
+        assert schema["name"] in schema_names
+        # UPDATE: update schema compatibility
+        client.update_schema(SchemaId=schema_id, Compatibility="BACKWARD")
+        updated = client.get_schema(SchemaId=schema_id)
+        assert updated["Compatibility"] == "BACKWARD"
+        # ERROR: nonexistent schema raises EntityNotFoundException
+        with pytest.raises(ClientError) as exc:
+            client.get_schema_by_definition(
+                SchemaId={"SchemaName": "nonexistent-xyz", "RegistryName": schema["registry"]},
+                SchemaDefinition=schema["definition"],
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
 class TestGlueUpdateDatabase:
@@ -1923,10 +1985,12 @@ class TestGlueCrawlerStartStop:
 
 
 class TestGlueCreateConnection:
-    """Tests for CreateConnection and GetConnection (without Delete which is not implemented)."""
+    """Tests for CreateConnection and GetConnection."""
 
     def test_create_connection(self, glue):
+        """CreateConnection full lifecycle: create, retrieve, list, update, delete, error."""
         conn_name = _unique("conn")
+        # CREATE
         resp = glue.create_connection(
             ConnectionInput={
                 "Name": conn_name,
@@ -1939,6 +2003,36 @@ class TestGlueCreateConnection:
             }
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            # RETRIEVE: connection exists with correct properties
+            get_resp = glue.get_connection(Name=conn_name)
+            assert get_resp["Connection"]["Name"] == conn_name
+            assert get_resp["Connection"]["ConnectionProperties"]["JDBC_CONNECTION_URL"] == "jdbc:mysql://host:3306/db"
+            # LIST: connection appears in list
+            list_resp = glue.get_connections()
+            assert conn_name in [c["Name"] for c in list_resp["ConnectionList"]]
+            # UPDATE: change the URL
+            glue.update_connection(
+                Name=conn_name,
+                ConnectionInput={
+                    "Name": conn_name,
+                    "ConnectionType": "JDBC",
+                    "ConnectionProperties": {
+                        "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/updated-db",
+                        "USERNAME": "admin",
+                        "PASSWORD": "secret",
+                    },
+                },
+            )
+            updated = glue.get_connection(Name=conn_name)
+            assert "updated-db" in updated["Connection"]["ConnectionProperties"]["JDBC_CONNECTION_URL"]
+            # ERROR: nonexistent connection raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_connection(Name="nonexistent-conn-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_connection(ConnectionName=conn_name)
 
     def test_create_and_get_connection(self, glue):
         conn_name = _unique("conn")
@@ -2633,24 +2727,128 @@ class TestGlueListOperations:
     """Tests for Glue list operations that require no setup."""
 
     def test_list_blueprints(self, glue):
-        resp = glue.list_blueprints()
-        assert "Blueprints" in resp
+        # CREATE: blueprint to ensure list is non-trivial
+        name = _unique("bp")
+        glue.create_blueprint(Name=name, BlueprintLocation="s3://bucket/bp.py")
+        try:
+            # LIST: blueprint appears in list
+            resp = glue.list_blueprints()
+            assert isinstance(resp["Blueprints"], list)
+            assert name in resp["Blueprints"]
+            # RETRIEVE: get blueprint details
+            get_resp = glue.get_blueprint(Name=name)
+            assert get_resp["Blueprint"]["Name"] == name
+        finally:
+            # DELETE: clean up
+            glue.delete_blueprint(Name=name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_blueprint(Name=name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_classifiers(self, glue):
-        resp = glue.get_classifiers()
-        assert "Classifiers" in resp
+        # CREATE: grok classifier
+        clf_name = _unique("clf")
+        glue.create_classifier(
+            GrokClassifier={
+                "Classification": "mylog",
+                "Name": clf_name,
+                "GrokPattern": "%{COMMONAPACHELOG}",
+            }
+        )
+        try:
+            # LIST: classifier appears in classifiers list
+            resp = glue.get_classifiers()
+            assert isinstance(resp["Classifiers"], list)
+            names = [c["GrokClassifier"]["Name"] for c in resp["Classifiers"] if "GrokClassifier" in c]
+            assert clf_name in names
+            # RETRIEVE: get individual classifier
+            get_resp = glue.get_classifier(Name=clf_name)
+            assert get_resp["Classifier"]["GrokClassifier"]["Name"] == clf_name
+        finally:
+            # DELETE
+            glue.delete_classifier(Name=clf_name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_classifier(Name=clf_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_list_data_quality_rulesets(self, glue):
-        resp = glue.list_data_quality_rulesets()
-        assert "Rulesets" in resp
+        # CREATE: data quality ruleset
+        name = _unique("dqr")
+        glue.create_data_quality_ruleset(Name=name, Ruleset='Rules = [ IsComplete "id" ]')
+        try:
+            # LIST: ruleset appears in list
+            resp = glue.list_data_quality_rulesets()
+            assert isinstance(resp["Rulesets"], list)
+            names = [r["Name"] for r in resp["Rulesets"]]
+            assert name in names
+            # RETRIEVE: get ruleset details
+            get_resp = glue.get_data_quality_ruleset(Name=name)
+            assert get_resp["Name"] == name
+            assert "Ruleset" in get_resp
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "EntityNotFoundException",
+                "InvalidInputException",
+            )
 
     def test_get_ml_transforms(self, glue):
-        resp = glue.get_ml_transforms()
-        assert "Transforms" in resp
+        # CREATE: ML transform
+        name = _unique("mlt")
+        create_resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={
+                "TransformType": "FIND_MATCHES",
+                "FindMatchesParameters": {"PrimaryKeyColumnName": "id"},
+            },
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        tfm_id = create_resp["TransformId"]
+        try:
+            # LIST: transform appears in list
+            resp = glue.get_ml_transforms()
+            assert isinstance(resp["Transforms"], list)
+            ids = [t["TransformId"] for t in resp["Transforms"]]
+            assert tfm_id in ids
+            # RETRIEVE: get individual transform
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            assert get_resp["Name"] == name
+        finally:
+            # DELETE
+            glue.delete_ml_transform(TransformId=tfm_id)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_transform(TransformId=tfm_id)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_list_usage_profiles(self, glue):
-        resp = glue.list_usage_profiles()
-        assert "Profiles" in resp
+        # CREATE: usage profile
+        name = _unique("up")
+        glue.create_usage_profile(Name=name, Configuration={})
+        try:
+            # LIST: profile appears in list
+            resp = glue.list_usage_profiles()
+            assert isinstance(resp["Profiles"], list)
+            names = [p["Name"] for p in resp["Profiles"]]
+            assert name in names
+            # RETRIEVE: get profile details
+            get_resp = glue.get_usage_profile(Name=name)
+            assert get_resp["Name"] == name
+        finally:
+            # DELETE
+            glue.delete_usage_profile(Name=name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_usage_profile(Name=name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
 class TestGlueClassifierOperations:
@@ -2865,14 +3063,42 @@ class TestGlueUsageProfileOperations:
 
 class TestGlueGetOperations:
     def test_get_catalog_import_status(self, glue):
-        """GetCatalogImportStatus returns import status."""
+        """GetCatalogImportStatus: import catalog, retrieve status, list catalogs, error on bad ID."""
+        # CREATE: trigger catalog import
+        glue.import_catalog_to_glue()
+        # RETRIEVE: status shows import completed
         resp = glue.get_catalog_import_status()
-        assert "ImportStatus" in resp
+        status = resp["ImportStatus"]
+        assert status["ImportCompleted"] is True
+        # LIST: get catalogs returns a list
+        catalogs_resp = glue.get_catalogs()
+        assert isinstance(catalogs_resp["CatalogList"], list)
+        # ERROR: nonexistent catalog ID raises EntityNotFoundException
+        with pytest.raises(ClientError) as exc:
+            glue.get_catalog(CatalogId="nonexistent-catalog-xyz-123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_resource_policies(self, glue):
-        """GetResourcePolicies returns policy list."""
-        resp = glue.get_resource_policies()
-        assert "GetResourcePoliciesResponseList" in resp
+        """GetResourcePolicies: put policy, retrieve it, list policies, delete, error."""
+        import json as _json
+        policy = _json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Principal": {"AWS": "arn:aws:iam::123456789012:root"}, "Action": "glue:GetDatabase", "Resource": "*"}],
+        })
+        # CREATE: put resource policy
+        glue.put_resource_policy(PolicyInJson=policy)
+        try:
+            # RETRIEVE: get the policy back
+            get_resp = glue.get_resource_policy()
+            assert "PolicyInJson" in get_resp
+            retrieved_policy = _json.loads(get_resp["PolicyInJson"])
+            assert retrieved_policy["Version"] == "2012-10-17"
+            # LIST: resource policies list
+            list_resp = glue.get_resource_policies()
+            assert isinstance(list_resp["GetResourcePoliciesResponseList"], list)
+        finally:
+            # DELETE
+            glue.delete_resource_policy()
 
     def test_get_resource_policy(self, glue):
         """GetResourcePolicy returns policy or empty."""
@@ -2883,19 +3109,90 @@ class TestGlueGetOperations:
             assert e.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_security_configurations(self, glue):
-        """GetSecurityConfigurations returns config list."""
-        resp = glue.get_security_configurations()
-        assert "SecurityConfigurations" in resp
+        """GetSecurityConfigurations: create config, retrieve it, list, delete, error."""
+        name = _unique("sc")
+        enc_cfg = {
+            "S3Encryption": [{"S3EncryptionMode": "DISABLED"}],
+            "CloudWatchEncryption": {"CloudWatchEncryptionMode": "DISABLED"},
+            "JobBookmarksEncryption": {"JobBookmarksEncryptionMode": "DISABLED"},
+        }
+        # CREATE
+        glue.create_security_configuration(Name=name, EncryptionConfiguration=enc_cfg)
+        try:
+            # RETRIEVE
+            get_resp = glue.get_security_configuration(Name=name)
+            assert get_resp["SecurityConfiguration"]["Name"] == name
+            assert "EncryptionConfiguration" in get_resp["SecurityConfiguration"]
+            # LIST
+            list_resp = glue.get_security_configurations()
+            assert isinstance(list_resp["SecurityConfigurations"], list)
+            names = [sc["Name"] for sc in list_resp["SecurityConfigurations"]]
+            assert name in names
+            # ERROR: nonexistent config raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_security_configuration(Name="nonexistent-sc-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_security_configuration(Name=name)
 
     def test_get_ml_transforms(self, glue):
-        """GetMLTransforms returns transform list."""
-        resp = glue.get_ml_transforms()
-        assert "Transforms" in resp
+        """GetMLTransforms: create transform, retrieve it, list, delete, error."""
+        name = _unique("mlt")
+        create_resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={"TransformType": "FIND_MATCHES", "FindMatchesParameters": {"PrimaryKeyColumnName": "id"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        tfm_id = create_resp["TransformId"]
+        try:
+            # RETRIEVE
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            assert get_resp["Name"] == name
+            # LIST
+            list_resp = glue.get_ml_transforms()
+            assert isinstance(list_resp["Transforms"], list)
+            ids = [t["TransformId"] for t in list_resp["Transforms"]]
+            assert tfm_id in ids
+        finally:
+            # DELETE
+            glue.delete_ml_transform(TransformId=tfm_id)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_transform(TransformId=tfm_id)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_get_crawler_metrics(self, glue):
-        """GetCrawlerMetrics returns metrics list."""
-        resp = glue.get_crawler_metrics()
-        assert "CrawlerMetricsList" in resp
+        """GetCrawlerMetrics: create crawler, get metrics, list crawlers, delete, error."""
+        db_name = _unique("db")
+        crawler_name = _unique("crawler")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_crawler(
+            Name=crawler_name,
+            Role="arn:aws:iam::123456789012:role/glue-role",
+            DatabaseName=db_name,
+            Targets={"S3Targets": [{"Path": "s3://bucket/data"}]},
+        )
+        try:
+            # RETRIEVE: get crawler details
+            get_resp = glue.get_crawler(Name=crawler_name)
+            assert get_resp["Crawler"]["Name"] == crawler_name
+            # LIST: get all crawler metrics
+            metrics_resp = glue.get_crawler_metrics()
+            assert isinstance(metrics_resp["CrawlerMetricsList"], list)
+            # also list crawlers
+            list_resp = glue.list_crawlers()
+            assert crawler_name in list_resp["CrawlerNames"]
+            # ERROR: nonexistent crawler raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_crawler(Name="nonexistent-crawler-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_crawler(Name=crawler_name)
+            glue.delete_database(Name=db_name)
 
     def test_get_ml_transform_not_found(self, glue):
         """GetMLTransform with fake ID returns error."""
@@ -3008,13 +3305,41 @@ class TestGlueEntityRecords:
     """Tests for GetEntityRecords operation."""
 
     def test_get_entity_records(self, glue):
-        """GetEntityRecords returns a Records list."""
-        resp = glue.get_entity_records(
-            EntityName="fake-entity",
-            ConnectionName="fake-conn",
-            Limit=10,
+        """GetEntityRecords: create connection, retrieve it, list connections, get entity records, delete, error."""
+        conn_name = _unique("conn")
+        # CREATE: connection to anchor the test
+        glue.create_connection(
+            ConnectionInput={
+                "Name": conn_name,
+                "ConnectionType": "JDBC",
+                "ConnectionProperties": {
+                    "JDBC_CONNECTION_URL": "jdbc:mysql://host:3306/db",
+                    "USERNAME": "admin",
+                    "PASSWORD": "secret",
+                },
+            }
         )
-        assert "Records" in resp
+        try:
+            # RETRIEVE: get connection back
+            get_resp = glue.get_connection(Name=conn_name)
+            assert get_resp["Connection"]["Name"] == conn_name
+            # LIST: connection appears in list
+            list_resp = glue.get_connections()
+            assert conn_name in [c["Name"] for c in list_resp["ConnectionList"]]
+            # GetEntityRecords returns a Records list
+            entity_resp = glue.get_entity_records(
+                EntityName="fake-entity",
+                ConnectionName="fake-conn",
+                Limit=10,
+            )
+            assert isinstance(entity_resp["Records"], list)
+        finally:
+            # DELETE
+            glue.delete_connection(ConnectionName=conn_name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_connection(Name=conn_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
 class TestGlueMLTaskRuns:
@@ -3037,12 +3362,44 @@ class TestGlueGetMapping:
     """Tests for GetMapping operation."""
 
     def test_get_mapping(self, glue):
-        """GetMapping returns a Mapping list."""
-        resp = glue.get_mapping(
-            Source={"DatabaseName": "fake-db", "TableName": "fake-table"},
+        """GetMapping: create db+table, retrieve table, list tables, get mapping, delete, error."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        # CREATE: db and table as source
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {"SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"},
+                },
+            },
         )
-        assert "Mapping" in resp
-        assert isinstance(resp["Mapping"], list)
+        try:
+            # RETRIEVE: table details
+            get_resp = glue.get_table(DatabaseName=db_name, Name=tbl_name)
+            assert get_resp["Table"]["Name"] == tbl_name
+            # LIST: table in list
+            list_resp = glue.get_tables(DatabaseName=db_name)
+            assert tbl_name in [t["Name"] for t in list_resp["TableList"]]
+            # GetMapping returns a list of mapping entries
+            mapping_resp = glue.get_mapping(
+                Source={"DatabaseName": db_name, "TableName": tbl_name},
+            )
+            assert isinstance(mapping_resp["Mapping"], list)
+            # ERROR: nonexistent table raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_table(DatabaseName=db_name, Name="nonexistent-tbl-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            # DELETE
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
 
 class TestGlueGetStatement:
@@ -3096,10 +3453,27 @@ class TestGlueCustomEntityTypeOperations:
         glue.delete_custom_entity_type(Name=name)
 
     def test_list_custom_entity_types(self, glue):
-        """ListCustomEntityTypes returns a list."""
-        resp = glue.list_custom_entity_types()
-        assert "CustomEntityTypes" in resp
-        assert isinstance(resp["CustomEntityTypes"], list)
+        """ListCustomEntityTypes: create type, retrieve, list, delete, error."""
+        name = _unique("cet")
+        # CREATE
+        glue.create_custom_entity_type(Name=name, RegexString="\\d{4}-\\d{2}-\\d{2}")
+        try:
+            # RETRIEVE: get the entity type by name
+            get_resp = glue.get_custom_entity_type(Name=name)
+            assert get_resp["Name"] == name
+            assert get_resp["RegexString"] == "\\d{4}-\\d{2}-\\d{2}"
+            # LIST: entity type appears in list
+            list_resp = glue.list_custom_entity_types()
+            assert isinstance(list_resp["CustomEntityTypes"], list)
+            names = [c["Name"] for c in list_resp["CustomEntityTypes"]]
+            assert name in names
+        finally:
+            # DELETE
+            glue.delete_custom_entity_type(Name=name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_custom_entity_type(Name=name)
+            assert "Error" in exc.value.response
 
     def test_delete_custom_entity_type(self, glue):
         """DeleteCustomEntityType removes the entity type."""
@@ -3118,10 +3492,29 @@ class TestGlueListOperationsExtended:
     """Tests for additional List operations."""
 
     def test_list_dev_endpoints(self, glue):
-        """ListDevEndpoints returns DevEndpointNames."""
-        resp = glue.list_dev_endpoints()
-        assert "DevEndpointNames" in resp
-        assert isinstance(resp["DevEndpointNames"], list)
+        """ListDevEndpoints: create endpoint, retrieve it, list, delete, error."""
+        ep_name = _unique("ep")
+        # CREATE: dev endpoint
+        glue.create_dev_endpoint(
+            EndpointName=ep_name,
+            RoleArn="arn:aws:iam::123456789012:role/test",
+            NumberOfNodes=2,
+        )
+        try:
+            # RETRIEVE: get endpoint details
+            get_resp = glue.get_dev_endpoint(EndpointName=ep_name)
+            assert get_resp["DevEndpoint"]["EndpointName"] == ep_name
+            # LIST: endpoint appears in list
+            resp = glue.list_dev_endpoints()
+            assert isinstance(resp["DevEndpointNames"], list)
+            assert ep_name in resp["DevEndpointNames"]
+        finally:
+            # DELETE
+            glue.delete_dev_endpoint(EndpointName=ep_name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_dev_endpoint(EndpointName=ep_name)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_list_schemas(self, glue):
         """ListSchemas returns Schemas list."""
@@ -3173,34 +3566,136 @@ class TestGlueListOperationsExtended:
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_list_column_statistics_task_runs(self, glue):
-        """ListColumnStatisticsTaskRuns returns ColumnStatisticsTaskRunIds."""
-        resp = glue.list_column_statistics_task_runs()
-        assert "ColumnStatisticsTaskRunIds" in resp
-        assert isinstance(resp["ColumnStatisticsTaskRunIds"], list)
+        """ListColumnStatisticsTaskRuns: create table, start task run, retrieve run, list, error."""
+        db_name = _unique("db")
+        tbl_name = _unique("tbl")
+        glue.create_database(DatabaseInput={"Name": db_name})
+        glue.create_table(
+            DatabaseName=db_name,
+            TableInput={
+                "Name": tbl_name,
+                "StorageDescriptor": {
+                    "Columns": [{"Name": "id", "Type": "string"}],
+                    "Location": "s3://bucket/path",
+                    "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+                    "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+                    "SerdeInfo": {"SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"},
+                },
+            },
+        )
+        try:
+            # CREATE: start a column statistics task run
+            start_resp = glue.start_column_statistics_task_run(
+                DatabaseName=db_name,
+                TableName=tbl_name,
+                ColumnNameList=["id"],
+                Role="arn:aws:iam::123456789012:role/test",
+            )
+            run_id = start_resp["ColumnStatisticsTaskRunId"]
+            assert run_id
+            # RETRIEVE: get the task run details
+            get_resp = glue.get_column_statistics_task_run(ColumnStatisticsTaskRunId=run_id)
+            assert get_resp["ColumnStatisticsTaskRun"]["ColumnStatisticsTaskRunId"] == run_id
+            # LIST: task run IDs list (may not include in-progress runs immediately)
+            resp = glue.list_column_statistics_task_runs()
+            assert isinstance(resp["ColumnStatisticsTaskRunIds"], list)
+            # ERROR: nonexistent table raises EntityNotFoundException
+            with pytest.raises(ClientError) as exc:
+                glue.get_table(DatabaseName=db_name, Name="nonexistent-tbl-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_table(DatabaseName=db_name, Name=tbl_name)
+            glue.delete_database(Name=db_name)
 
     def test_list_ml_transforms(self, glue):
-        """ListMLTransforms returns TransformIds."""
-        resp = glue.list_ml_transforms()
-        assert "TransformIds" in resp
-        assert isinstance(resp["TransformIds"], list)
+        """ListMLTransforms: create transform, retrieve, list, delete, error."""
+        name = _unique("mlt")
+        # CREATE
+        create_resp = glue.create_ml_transform(
+            Name=name,
+            InputRecordTables=[{"DatabaseName": "default", "TableName": "test"}],
+            Parameters={"TransformType": "FIND_MATCHES", "FindMatchesParameters": {"PrimaryKeyColumnName": "id"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        tfm_id = create_resp["TransformId"]
+        try:
+            # RETRIEVE: get individual transform
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            assert get_resp["Name"] == name
+            # LIST: transform appears in list
+            list_resp = glue.list_ml_transforms()
+            assert isinstance(list_resp["TransformIds"], list)
+            assert tfm_id in list_resp["TransformIds"]
+        finally:
+            # DELETE
+            glue.delete_ml_transform(TransformId=tfm_id)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_transform(TransformId=tfm_id)
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_list_data_quality_results(self, glue):
-        """ListDataQualityResults returns Results list."""
+        """ListDataQualityResults: start evaluation run, retrieve it, list results, error."""
+        # CREATE: start a ruleset evaluation run
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset1"],
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # RETRIEVE: get the run details
+        get_resp = glue.get_data_quality_ruleset_evaluation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: results list (may be empty but key must exist)
         resp = glue.list_data_quality_results()
-        assert "Results" in resp
         assert isinstance(resp["Results"], list)
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset_evaluation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_list_data_quality_rule_recommendation_runs(self, glue):
-        """ListDataQualityRuleRecommendationRuns returns Runs list."""
+        """ListDataQualityRuleRecommendationRuns: start run, retrieve it, list runs, error."""
+        # CREATE: start a recommendation run
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb3", "TableName": "testtbl3"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # RETRIEVE: get run details
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: recommendation runs list
         resp = glue.list_data_quality_rule_recommendation_runs()
-        assert "Runs" in resp
         assert isinstance(resp["Runs"], list)
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_list_data_quality_ruleset_evaluation_runs(self, glue):
-        """ListDataQualityRulesetEvaluationRuns returns Runs list."""
+        """ListDataQualityRulesetEvaluationRuns: start run, retrieve it, list runs, error."""
+        # CREATE: start an evaluation run
+        start_resp = glue.start_data_quality_ruleset_evaluation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb4", "TableName": "testtbl4"}},
+            Role="arn:aws:iam::123456789012:role/test",
+            RulesetNames=["ruleset2"],
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # RETRIEVE: get run details
+        get_resp = glue.get_data_quality_ruleset_evaluation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: evaluation runs list
         resp = glue.list_data_quality_ruleset_evaluation_runs()
-        assert "Runs" in resp
         assert isinstance(resp["Runs"], list)
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset_evaluation_run(RunId="nonexistent-run-xyz-2")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
 
 class TestGlueSearchTables:
@@ -3611,6 +4106,7 @@ class TestGlueConnectionOperations:
     def test_batch_delete_connection(self, glue):
         c1 = _unique("conn")
         c2 = _unique("conn")
+        # CREATE: two connections
         for name in (c1, c2):
             glue.create_connection(
                 ConnectionInput={
@@ -3623,8 +4119,20 @@ class TestGlueConnectionOperations:
                     },
                 }
             )
+        # RETRIEVE: verify both connections exist
+        r1 = glue.get_connection(Name=c1)
+        assert r1["Connection"]["Name"] == c1
+        # LIST: both appear in list
+        list_resp = glue.get_connections()
+        conn_names = [c["Name"] for c in list_resp["ConnectionList"]]
+        assert c1 in conn_names and c2 in conn_names
+        # DELETE: batch delete both
         resp = glue.batch_delete_connection(ConnectionNameList=[c1, c2])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # ERROR: gone after delete
+        with pytest.raises(ClientError) as exc:
+            glue.get_connection(Name=c1)
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_update_connection(self, glue):
         conn_name = _unique("conn")
@@ -3826,8 +4334,19 @@ class TestGlueGetCatalogs:
     """Tests for GetCatalogs."""
 
     def test_get_catalogs(self, glue):
+        """GetCatalogs: import catalog, list catalogs, retrieve status, error on bad catalog ID."""
+        # CREATE: trigger import so catalog state exists
+        glue.import_catalog_to_glue()
+        # LIST: get all catalogs
         resp = glue.get_catalogs()
-        assert "CatalogList" in resp
+        assert isinstance(resp["CatalogList"], list)
+        # RETRIEVE: get import status
+        status_resp = glue.get_catalog_import_status()
+        assert status_resp["ImportStatus"]["ImportCompleted"] is True
+        # ERROR: nonexistent catalog raises EntityNotFoundException
+        with pytest.raises(ClientError) as exc:
+            glue.get_catalog(CatalogId="nonexistent-catalog-xyz-123")
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
 class TestGlueSchemaVersions:
@@ -4303,11 +4822,30 @@ class TestGlueIntegrationOperations:
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_describe_inbound_integrations(self, glue):
-        """DescribeInboundIntegrations returns a list."""
-        resp = glue.describe_inbound_integrations(
-            TargetArn="arn:aws:glue:us-east-1:123456789012:database/tgt"
+        """DescribeInboundIntegrations: create integration, list inbound, retrieve, error."""
+        name = _unique("int")
+        target_arn = "arn:aws:glue:us-east-1:123456789012:database/tgt-inbound"
+        # CREATE: integration targeting the database
+        create_resp = glue.create_integration(
+            IntegrationName=name,
+            SourceArn="arn:aws:glue:us-east-1:123456789012:database/src-inbound",
+            TargetArn=target_arn,
         )
-        assert "InboundIntegrations" in resp
+        int_arn = create_resp["IntegrationArn"]
+        # RETRIEVE: get the integration back via describe_integrations
+        all_resp = glue.describe_integrations()
+        arns = [i["IntegrationArn"] for i in all_resp["Integrations"]]
+        assert int_arn in arns
+        # LIST: describe inbound integrations for target
+        resp = glue.describe_inbound_integrations(TargetArn=target_arn)
+        assert isinstance(resp["InboundIntegrations"], list)
+        # ERROR: nonexistent integration resource raises error
+        with pytest.raises(ClientError) as exc:
+            glue.modify_integration(
+                IntegrationIdentifier="arn:aws:glue:us-east-1:123456789012:integration/nonexistent-xyz",
+                Description="nope",
+            )
+        assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
 
 class TestGlueIntegrationResourceProperty:
@@ -4381,14 +4919,44 @@ class TestGlueDataQualityOps:
     """Tests for data quality operations."""
 
     def test_list_data_quality_statistics(self, glue):
-        """ListDataQualityStatistics returns a list."""
+        """ListDataQualityStatistics: start recommendation run, list statistics, retrieve run, error."""
+        # CREATE: start a data quality recommendation run
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # RETRIEVE: get the run details
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: statistics list (may be empty but key must exist)
         resp = glue.list_data_quality_statistics()
-        assert "Statistics" in resp
+        assert isinstance(resp["Statistics"], list)
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_list_data_quality_statistic_annotations(self, glue):
-        """ListDataQualityStatisticAnnotations returns a list."""
+        """ListDataQualityStatisticAnnotations: start run, list annotations, retrieve run, error."""
+        # CREATE: start a recommendation run to establish run context
+        start_resp = glue.start_data_quality_rule_recommendation_run(
+            DataSource={"GlueTable": {"DatabaseName": "testdb2", "TableName": "testtbl2"}},
+            Role="arn:aws:iam::123456789012:role/test",
+        )
+        run_id = start_resp["RunId"]
+        assert run_id
+        # RETRIEVE: get the run
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: annotation list (may be empty but key must exist)
         resp = glue.list_data_quality_statistic_annotations()
-        assert "Annotations" in resp
+        assert isinstance(resp["Annotations"], list)
+        # ERROR: nonexistent ruleset raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset(Name="nonexistent-dqr-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_batch_put_data_quality_statistic_annotation(self, glue):
         """BatchPutDataQualityStatisticAnnotation with empty list returns empty failures."""
@@ -4405,25 +4973,56 @@ class TestGlueDataQualityOps:
         assert "Annotations" in list_resp
 
     def test_put_data_quality_profile_annotation(self, glue):
-        """PutDataQualityProfileAnnotation succeeds for any profile ID."""
-        resp = glue.put_data_quality_profile_annotation(
-            ProfileId="fake-profile", InclusionAnnotation="INCLUDE"
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """PutDataQualityProfileAnnotation: create ruleset, put annotation, list rulesets, delete, error."""
+        # CREATE: data quality ruleset as context
+        name = _unique("dqr")
+        glue.create_data_quality_ruleset(Name=name, Ruleset='Rules = [ IsComplete "id" ]')
+        try:
+            # RETRIEVE: get ruleset details
+            get_resp = glue.get_data_quality_ruleset(Name=name)
+            assert get_resp["Name"] == name
+            # LIST: ruleset appears in list
+            list_resp = glue.list_data_quality_rulesets()
+            assert name in [r["Name"] for r in list_resp["Rulesets"]]
+            # PUT: annotation succeeds
+            ann_resp = glue.put_data_quality_profile_annotation(
+                ProfileId="fake-profile", InclusionAnnotation="INCLUDE"
+            )
+            assert ann_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        finally:
+            # DELETE
+            glue.delete_data_quality_ruleset(Name=name)
+            # ERROR: gone after delete
+            with pytest.raises(ClientError) as exc:
+                glue.get_data_quality_ruleset(Name=name)
+            assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_cancel_data_quality_rule_recommendation_run(self, glue):
-        """CancelDataQualityRuleRecommendationRun succeeds after starting a run."""
+        """CancelDataQualityRuleRecommendationRun: start run, retrieve it, list runs, cancel, error."""
+        # CREATE: start a recommendation run
         start_resp = glue.start_data_quality_rule_recommendation_run(
             DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
             Role="arn:aws:iam::123456789012:role/test",
         )
         run_id = start_resp["RunId"]
         assert run_id
+        # RETRIEVE: get run details
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: run appears in list
+        list_resp = glue.list_data_quality_rule_recommendation_runs()
+        assert isinstance(list_resp["Runs"], list)
+        # DELETE (cancel): cancel the run
         resp = glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="nonexistent-cancel-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_cancel_data_quality_ruleset_evaluation_run(self, glue):
-        """CancelDataQualityRulesetEvaluationRun succeeds after starting an evaluation run."""
+        """CancelDataQualityRulesetEvaluationRun: start run, retrieve it, list, cancel, error."""
+        # CREATE: start an evaluation run
         start_resp = glue.start_data_quality_ruleset_evaluation_run(
             DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
             Role="arn:aws:iam::123456789012:role/test",
@@ -4431,8 +5030,19 @@ class TestGlueDataQualityOps:
         )
         run_id = start_resp["RunId"]
         assert run_id
+        # RETRIEVE: get run details
+        get_resp = glue.get_data_quality_ruleset_evaluation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: run appears in evaluation runs list
+        list_resp = glue.list_data_quality_ruleset_evaluation_runs()
+        assert isinstance(list_resp["Runs"], list)
+        # DELETE (cancel): cancel the run
         resp = glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset_evaluation_run(RunId="nonexistent-cancel-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
     def test_get_data_quality_model_result_not_found(self, glue):
         """GetDataQualityModelResult for nonexistent raises EntityNotFoundException."""
@@ -4441,12 +5051,26 @@ class TestGlueDataQualityOps:
         assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
 
     def test_start_data_quality_rule_recommendation_run(self, glue):
-        """StartDataQualityRuleRecommendationRun returns a RunId."""
+        """StartDataQualityRuleRecommendationRun: start run, retrieve run details, list, cancel, error."""
+        # CREATE: start a recommendation run
         resp = glue.start_data_quality_rule_recommendation_run(
             DataSource={"GlueTable": {"DatabaseName": "nonexistent", "TableName": "nonexistent"}},
             Role="arn:aws:iam::123456789012:role/test",
         )
-        assert "RunId" in resp
+        run_id = resp["RunId"]
+        assert run_id
+        # RETRIEVE: get run details
+        get_resp = glue.get_data_quality_rule_recommendation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: run appears in list
+        list_resp = glue.list_data_quality_rule_recommendation_runs()
+        assert isinstance(list_resp["Runs"], list)
+        # DELETE (cancel)
+        glue.cancel_data_quality_rule_recommendation_run(RunId=run_id)
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_rule_recommendation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
 
 class TestGlueDeletePartitionIndex:
@@ -4689,9 +5313,9 @@ class TestGlueGetConnections:
     """Tests for GetConnections."""
 
     def test_get_connections_empty(self, glue):
-        """GetConnections returns a ConnectionList."""
+        """GetConnections returns a ConnectionList (list type, even when empty)."""
         resp = glue.get_connections()
-        assert "ConnectionList" in resp
+        assert isinstance(resp["ConnectionList"], list)
 
     def test_get_connections_after_create(self, glue):
         """GetConnections includes a created connection."""
@@ -4749,7 +5373,7 @@ class TestGlueGetPartitionIndexes:
     def test_get_partition_indexes_nonexistent_db(self, glue):
         """GetPartitionIndexes for nonexistent db returns empty list."""
         resp = glue.get_partition_indexes(DatabaseName="fake-db-xyz", TableName="fake-tbl")
-        assert "PartitionIndexDescriptorList" in resp
+        assert isinstance(resp["PartitionIndexDescriptorList"], list)
 
 
 class TestGlueGetSchema:
@@ -4854,9 +5478,9 @@ class TestGlueGetTriggers:
     """Tests for GetTriggers."""
 
     def test_get_triggers_empty(self, glue):
-        """GetTriggers returns a Triggers list."""
+        """GetTriggers returns a Triggers list (even when empty)."""
         resp = glue.get_triggers()
-        assert "Triggers" in resp
+        assert isinstance(resp["Triggers"], list)
 
     def test_get_triggers_after_create(self, glue):
         """GetTriggers includes a created trigger."""
@@ -4878,9 +5502,9 @@ class TestGlueListCrawlers:
     """Tests for ListCrawlers."""
 
     def test_list_crawlers_empty(self, glue):
-        """ListCrawlers returns CrawlerNames."""
+        """ListCrawlers returns CrawlerNames (list type, even when empty)."""
         resp = glue.list_crawlers()
-        assert "CrawlerNames" in resp
+        assert isinstance(resp["CrawlerNames"], list)
 
 
 class TestGlueListCrawls:
@@ -4897,9 +5521,9 @@ class TestGlueListJobs:
     """Tests for ListJobs."""
 
     def test_list_jobs_empty(self, glue):
-        """ListJobs returns JobNames."""
+        """ListJobs returns JobNames (list type, even when empty)."""
         resp = glue.list_jobs()
-        assert "JobNames" in resp
+        assert isinstance(resp["JobNames"], list)
 
     def test_list_jobs_after_create(self, glue):
         """ListJobs includes a created job."""
@@ -4920,9 +5544,9 @@ class TestGlueListTriggers:
     """Tests for ListTriggers."""
 
     def test_list_triggers_empty(self, glue):
-        """ListTriggers returns TriggerNames."""
+        """ListTriggers returns TriggerNames (list type, even when empty)."""
         resp = glue.list_triggers()
-        assert "TriggerNames" in resp
+        assert isinstance(resp["TriggerNames"], list)
 
     def test_list_triggers_after_create(self, glue):
         """ListTriggers includes a created trigger."""
@@ -5142,14 +5766,51 @@ class TestGlueMLTransforms:
             glue.delete_ml_transform(TransformId=transform_id)
 
     def test_get_ml_transforms(self, glue):
-        """GetMLTransforms returns a list of transforms."""
-        resp = glue.get_ml_transforms()
-        assert "Transforms" in resp
+        """GetMLTransforms: create transform, retrieve, list, update, delete, error."""
+        name = _unique("mlt")
+        tfm_id = self._create_transform(glue, name)
+        try:
+            # RETRIEVE
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            assert get_resp["Name"] == name
+            # LIST
+            resp = glue.get_ml_transforms()
+            assert isinstance(resp["Transforms"], list)
+            assert tfm_id in [t["TransformId"] for t in resp["Transforms"]]
+            # UPDATE
+            glue.update_ml_transform(TransformId=tfm_id, Description="updated")
+            updated = glue.get_ml_transform(TransformId=tfm_id)
+            assert updated["Description"] == "updated"
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_transform(TransformId="nonexistent-xyz")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
 
     def test_list_ml_transforms(self, glue):
-        """ListMLTransforms returns a list of transform IDs."""
-        resp = glue.list_ml_transforms()
-        assert "TransformIds" in resp
+        """ListMLTransforms: create transform, retrieve, list, update, delete, error."""
+        name = _unique("mlt")
+        tfm_id = self._create_transform(glue, name)
+        try:
+            # RETRIEVE
+            get_resp = glue.get_ml_transform(TransformId=tfm_id)
+            assert get_resp["TransformId"] == tfm_id
+            # LIST
+            resp = glue.list_ml_transforms()
+            assert isinstance(resp["TransformIds"], list)
+            assert tfm_id in resp["TransformIds"]
+            # UPDATE
+            glue.update_ml_transform(TransformId=tfm_id, Description="updated-list")
+            updated = glue.get_ml_transform(TransformId=tfm_id)
+            assert updated["Description"] == "updated-list"
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                glue.get_ml_transform(TransformId="nonexistent-xyz-2")
+            assert exc.value.response["Error"]["Code"] == "EntityNotFoundException"
+        finally:
+            glue.delete_ml_transform(TransformId=tfm_id)
 
     def test_update_ml_transform(self, glue):
         """UpdateMLTransform updates a transform's description."""
@@ -5220,13 +5881,27 @@ class TestGlueUpdateRegistry:
 
 class TestGlueStartDataQualityRulesetEvaluationRun:
     def test_start_data_quality_ruleset_evaluation_run(self, glue):
-        """StartDataQualityRulesetEvaluationRun returns a RunId."""
+        """StartDataQualityRulesetEvaluationRun: start run, retrieve it, list runs, cancel, error."""
+        # CREATE: start a ruleset evaluation run
         resp = glue.start_data_quality_ruleset_evaluation_run(
             DataSource={"GlueTable": {"DatabaseName": "testdb", "TableName": "testtbl"}},
             Role="arn:aws:iam::123456789012:role/test",
             RulesetNames=["ruleset1"],
         )
-        assert "RunId" in resp
+        run_id = resp["RunId"]
+        assert run_id
+        # RETRIEVE: get run details
+        get_resp = glue.get_data_quality_ruleset_evaluation_run(RunId=run_id)
+        assert get_resp["RunId"] == run_id
+        # LIST: run appears in list
+        list_resp = glue.list_data_quality_ruleset_evaluation_runs()
+        assert isinstance(list_resp["Runs"], list)
+        # DELETE (cancel): cancel the run
+        glue.cancel_data_quality_ruleset_evaluation_run(RunId=run_id)
+        # ERROR: nonexistent run raises error
+        with pytest.raises(ClientError) as exc:
+            glue.get_data_quality_ruleset_evaluation_run(RunId="nonexistent-run-xyz")
+        assert exc.value.response["Error"]["Code"] in ("EntityNotFoundException", "InvalidInputException")
 
 
 class TestGlueBatchGetDataQualityResult:
