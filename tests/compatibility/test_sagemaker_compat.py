@@ -7145,3 +7145,830 @@ class TestSageMakerTagsOnTrialEdgeCases:
         finally:
             sagemaker.delete_trial(TrialName=trial_name)
             sagemaker.delete_experiment(ExperimentName=exp_name)
+
+
+# ── Edge case & behavioral fidelity tests ─────────────────────────────────────
+# These tests improve behavioral pattern coverage for list operations that
+# previously only had a LIST pattern. Each function covers CREATE + RETRIEVE +
+# LIST + DELETE + ERROR (C+R+L+D+E = 5/6).
+
+
+class TestSageMakerListCompilationJobsEdgeCases:
+    """Edge cases for list_compilation_jobs: create, retrieve, list, delete, error."""
+
+    def _create_cj(self, sagemaker, name):
+        return sagemaker.create_compilation_job(
+            CompilationJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            InputConfig={
+                "S3Uri": "s3://bucket/model.tar.gz",
+                "DataInputConfig": '{"input":[1,3,224,224]}',
+                "Framework": "PYTORCH",
+            },
+            OutputConfig={"S3OutputLocation": "s3://bucket/out", "TargetDevice": "ml_m4"},
+            StoppingCondition={"MaxRuntimeInSeconds": 900},
+        )
+
+    def test_list_compilation_jobs_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify error on describe."""
+        name = _uid("cj")
+        resp = self._create_cj(sagemaker, name)
+        assert "CompilationJobArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_compilation_job(CompilationJobName=name)
+        assert desc["CompilationJobName"] == name
+        assert "CompilationJobArn" in desc
+        # LIST — appears in list
+        list_resp = sagemaker.list_compilation_jobs()
+        names = [j["CompilationJobName"] for j in list_resp["CompilationJobSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_compilation_job(CompilationJobName=name)
+        # ERROR — describe nonexistent raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_compilation_job(CompilationJobName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_list_compilation_jobs_pagination(self, sagemaker):
+        """Create 3 jobs, paginate with MaxResults=2."""
+        names = [_uid("cj") for _ in range(3)]
+        for n in names:
+            self._create_cj(sagemaker, n)
+        try:
+            r1 = sagemaker.list_compilation_jobs(MaxResults=2)
+            assert "CompilationJobSummaries" in r1
+            assert len(r1["CompilationJobSummaries"]) <= 2
+            # If there's a next token, fetch the next page
+            if "NextToken" in r1:
+                r2 = sagemaker.list_compilation_jobs(MaxResults=2, NextToken=r1["NextToken"])
+                assert "CompilationJobSummaries" in r2
+        finally:
+            for n in names:
+                try:
+                    sagemaker.delete_compilation_job(CompilationJobName=n)
+                except Exception:
+                    pass  # best-effort cleanup
+
+
+class TestSageMakerListDataQualityJobDefsEdgeCases:
+    """Edge cases for list_data_quality_job_definitions."""
+
+    def _create_dq(self, sagemaker, name):
+        return sagemaker.create_data_quality_job_definition(
+            JobDefinitionName=name,
+            DataQualityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+            DataQualityJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"}
+            },
+            DataQualityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {
+                        "S3Output": {
+                            "S3Uri": "s3://bucket/out",
+                            "LocalPath": "/opt/ml/output",
+                            "S3UploadMode": "EndOfJob",
+                        }
+                    }
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+
+    def test_list_data_quality_job_definitions_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify gone."""
+        name = _uid("dq")
+        resp = self._create_dq(sagemaker, name)
+        assert "JobDefinitionArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_data_quality_job_definition(JobDefinitionName=name)
+        assert desc["JobDefinitionName"] == name
+        # LIST — appears in list
+        list_resp = sagemaker.list_data_quality_job_definitions()
+        names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_data_quality_job_definition(JobDefinitionName=name)
+        # ERROR — describe after delete raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_data_quality_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_list_data_quality_job_definitions_multiple(self, sagemaker):
+        """Create 3 definitions; list returns all 3."""
+        names = [_uid("dq") for _ in range(3)]
+        for n in names:
+            self._create_dq(sagemaker, n)
+        try:
+            list_resp = sagemaker.list_data_quality_job_definitions()
+            existing = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+            for n in names:
+                assert n in existing
+        finally:
+            for n in names:
+                try:
+                    sagemaker.delete_data_quality_job_definition(JobDefinitionName=n)
+                except Exception:
+                    pass  # best-effort cleanup
+
+
+class TestSageMakerListDomainsEdgeCases:
+    """Edge cases for list_domains."""
+
+    def _create_domain(self, sagemaker, name):
+        return sagemaker.create_domain(
+            DomainName=name,
+            AuthMode="IAM",
+            DefaultUserSettings={"ExecutionRole": "arn:aws:iam::123456789012:role/SageMakerRole"},
+            SubnetIds=["subnet-12345"],
+            VpcId="vpc-12345",
+        )
+
+    def test_list_domains_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify gone."""
+        name = _uid("dom")
+        resp = self._create_domain(sagemaker, name)
+        domain_id = resp["DomainArn"].split("/")[-1]
+        # RETRIEVE
+        desc = sagemaker.describe_domain(DomainId=domain_id)
+        assert desc["DomainName"] == name
+        assert "DomainId" in desc
+        # LIST — appears in list
+        list_resp = sagemaker.list_domains()
+        dom_names = [d["DomainName"] for d in list_resp["Domains"]]
+        assert name in dom_names
+        # DELETE
+        sagemaker.delete_domain(DomainId=domain_id)
+        # ERROR — delete nonexistent raises ValidationException
+        with pytest.raises(ClientError) as exc:
+            sagemaker.delete_domain(DomainId=domain_id)
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+    def test_list_domains_arn_format(self, sagemaker):
+        """DomainArn returned by create_domain matches expected ARN pattern."""
+        name = _uid("dom")
+        resp = self._create_domain(sagemaker, name)
+        arn = resp["DomainArn"]
+        domain_id = arn.split("/")[-1]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert ":domain/" in arn
+            # Describe confirms same ARN
+            desc = sagemaker.describe_domain(DomainId=domain_id)
+            assert desc["DomainArn"] == arn
+        finally:
+            sagemaker.delete_domain(DomainId=domain_id)
+
+
+class TestSageMakerListEndpointConfigsEdgeCases:
+    """Edge cases for list_endpoint_configs."""
+
+    def _setup_model(self, sagemaker):
+        name = _uid("model")
+        sagemaker.create_model(
+            ModelName=name,
+            ExecutionRoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            PrimaryContainer={
+                "Image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-image:latest"
+            },
+        )
+        return name
+
+    def _create_ec(self, sagemaker, ec_name, model_name):
+        return sagemaker.create_endpoint_config(
+            EndpointConfigName=ec_name,
+            ProductionVariants=[
+                {
+                    "VariantName": "v1",
+                    "ModelName": model_name,
+                    "InitialInstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                }
+            ],
+        )
+
+    def test_list_endpoint_configs_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify error on describe."""
+        model_name = self._setup_model(sagemaker)
+        ec_name = _uid("ec")
+        try:
+            resp = self._create_ec(sagemaker, ec_name, model_name)
+            assert "EndpointConfigArn" in resp
+            # RETRIEVE
+            desc = sagemaker.describe_endpoint_config(EndpointConfigName=ec_name)
+            assert desc["EndpointConfigName"] == ec_name
+            assert "EndpointConfigArn" in desc
+            # LIST — appears in list
+            list_resp = sagemaker.list_endpoint_configs()
+            names = [c["EndpointConfigName"] for c in list_resp["EndpointConfigs"]]
+            assert ec_name in names
+            # DELETE
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            # ERROR — describe after delete raises error
+            with pytest.raises(ClientError):
+                sagemaker.describe_endpoint_config(EndpointConfigName=ec_name)
+        finally:
+            sagemaker.delete_model(ModelName=model_name)
+
+    def test_list_endpoint_configs_timestamps(self, sagemaker):
+        """describe_endpoint_config returns CreationTime timestamp."""
+        model_name = self._setup_model(sagemaker)
+        ec_name = _uid("ec")
+        try:
+            self._create_ec(sagemaker, ec_name, model_name)
+            desc = sagemaker.describe_endpoint_config(EndpointConfigName=ec_name)
+            assert "CreationTime" in desc
+        finally:
+            sagemaker.delete_endpoint_config(EndpointConfigName=ec_name)
+            sagemaker.delete_model(ModelName=model_name)
+
+
+class TestSageMakerListHPTJobsEdgeCases:
+    """Edge cases for list_hyper_parameter_tuning_jobs."""
+
+    def _create_hpt(self, sagemaker, name):
+        return sagemaker.create_hyper_parameter_tuning_job(
+            HyperParameterTuningJobName=name,
+            HyperParameterTuningJobConfig={
+                "Strategy": "Bayesian",
+                "ResourceLimits": {
+                    "MaxNumberOfTrainingJobs": 2,
+                    "MaxParallelTrainingJobs": 1,
+                },
+            },
+            TrainingJobDefinition={
+                "RoleArn": "arn:aws:iam::123456789012:role/SageMakerRole",
+                "AlgorithmSpecification": {
+                    "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                    "TrainingInputMode": "File",
+                },
+                "OutputDataConfig": {"S3OutputPath": "s3://bucket/out"},
+                "ResourceConfig": {
+                    "InstanceType": "ml.m4.xlarge",
+                    "InstanceCount": 1,
+                    "VolumeSizeInGB": 10,
+                },
+                "StoppingCondition": {"MaxRuntimeInSeconds": 3600},
+            },
+        )
+
+    def test_list_hyper_parameter_tuning_jobs_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify error."""
+        name = _uid("hpt")
+        resp = self._create_hpt(sagemaker, name)
+        assert "HyperParameterTuningJobArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        assert desc["HyperParameterTuningJobName"] == name
+        assert "HyperParameterTuningJobArn" in desc
+        # LIST — appears in list
+        list_resp = sagemaker.list_hyper_parameter_tuning_jobs()
+        names = [j["HyperParameterTuningJobName"] for j in list_resp["HyperParameterTuningJobSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        # ERROR — describe after delete raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_list_hyper_parameter_tuning_jobs_timestamps(self, sagemaker):
+        """describe_hyper_parameter_tuning_job returns CreationTime."""
+        name = _uid("hpt")
+        self._create_hpt(sagemaker, name)
+        try:
+            desc = sagemaker.describe_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+            assert "CreationTime" in desc
+            assert "LastModifiedTime" in desc
+        finally:
+            sagemaker.delete_hyper_parameter_tuning_job(HyperParameterTuningJobName=name)
+
+
+class TestSageMakerListModelBiasJobDefsEdgeCases:
+    """Edge cases for list_model_bias_job_definitions."""
+
+    def _create_mb(self, sagemaker, name):
+        return sagemaker.create_model_bias_job_definition(
+            JobDefinitionName=name,
+            ModelBiasAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "ConfigUri": "s3://bucket/config",
+            },
+            ModelBiasJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"},
+                "GroundTruthS3Input": {"S3Uri": "s3://bucket/gt"},
+            },
+            ModelBiasJobOutputConfig={
+                "MonitoringOutputs": [
+                    {
+                        "S3Output": {
+                            "S3Uri": "s3://bucket/out",
+                            "LocalPath": "/opt/ml/output",
+                            "S3UploadMode": "EndOfJob",
+                        }
+                    }
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+
+    def test_list_model_bias_job_definitions_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify error."""
+        name = _uid("mb")
+        resp = self._create_mb(sagemaker, name)
+        assert "JobDefinitionArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_model_bias_job_definition(JobDefinitionName=name)
+        assert desc["JobDefinitionName"] == name
+        # LIST — appears in list
+        list_resp = sagemaker.list_model_bias_job_definitions()
+        names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_model_bias_job_definition(JobDefinitionName=name)
+        # ERROR — describe after delete raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_model_bias_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+
+class TestSageMakerListModelCardsEdgeCases:
+    """Edge cases for list_model_cards — covers C+R+U+L+D+E = 6/6."""
+
+    def test_list_model_cards_create_update_retrieve_delete_error(self, sagemaker):
+        """create → update → describe → list → delete → error."""
+        name = _uid("mc")
+        resp = sagemaker.create_model_card(
+            ModelCardName=name,
+            Content='{"model_overview":{"model_id":"edge-test"}}',
+            ModelCardStatus="Draft",
+        )
+        assert "ModelCardArn" in resp
+        try:
+            # UPDATE
+            sagemaker.update_model_card(ModelCardName=name, ModelCardStatus="PendingReview")
+            # RETRIEVE
+            desc = sagemaker.describe_model_card(ModelCardName=name)
+            assert desc["ModelCardName"] == name
+            assert desc["ModelCardStatus"] == "PendingReview"
+            # LIST — appears in list
+            list_resp = sagemaker.list_model_cards()
+            card_names = [c["ModelCardName"] for c in list_resp["ModelCardSummaries"]]
+            assert name in card_names
+        finally:
+            sagemaker.delete_model_card(ModelCardName=name)
+        # ERROR — describe after delete raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_model_card(ModelCardName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+    def test_list_model_cards_arn_format(self, sagemaker):
+        """ModelCardArn matches expected ARN pattern."""
+        name = _uid("mc")
+        resp = sagemaker.create_model_card(
+            ModelCardName=name,
+            Content='{"model_overview":{}}',
+            ModelCardStatus="Draft",
+        )
+        arn = resp["ModelCardArn"]
+        try:
+            assert arn.startswith("arn:aws:sagemaker:")
+            assert "model-card" in arn
+            assert name in arn
+        finally:
+            sagemaker.delete_model_card(ModelCardName=name)
+
+
+class TestSageMakerListModelExplainabilityJobDefsEdgeCases:
+    """Edge cases for list_model_explainability_job_definitions."""
+
+    def _create_me(self, sagemaker, name):
+        return sagemaker.create_model_explainability_job_definition(
+            JobDefinitionName=name,
+            ModelExplainabilityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "ConfigUri": "s3://bucket/config",
+            },
+            ModelExplainabilityJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"}
+            },
+            ModelExplainabilityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {
+                        "S3Output": {
+                            "S3Uri": "s3://bucket/out",
+                            "LocalPath": "/opt/ml/output",
+                            "S3UploadMode": "EndOfJob",
+                        }
+                    }
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+
+    def test_list_model_explainability_job_definitions_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify error."""
+        name = _uid("me")
+        resp = self._create_me(sagemaker, name)
+        assert "JobDefinitionArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_model_explainability_job_definition(JobDefinitionName=name)
+        assert desc["JobDefinitionName"] == name
+        # LIST — appears in list
+        list_resp = sagemaker.list_model_explainability_job_definitions()
+        names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_model_explainability_job_definition(JobDefinitionName=name)
+        # ERROR — describe after delete raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_model_explainability_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+
+class TestSageMakerListModelPackageGroupsEdgeCases:
+    """Edge cases for list_model_package_groups."""
+
+    def test_list_model_package_groups_create_retrieve_list_error(self, sagemaker):
+        """create → describe → list → verify error on nonexistent."""
+        name = _uid("mpg")
+        resp = sagemaker.create_model_package_group(
+            ModelPackageGroupName=name,
+            ModelPackageGroupDescription="edge case test group",
+        )
+        assert "ModelPackageGroupArn" in resp
+        try:
+            # RETRIEVE
+            desc = sagemaker.describe_model_package_group(ModelPackageGroupName=name)
+            assert desc["ModelPackageGroupName"] == name
+            assert "ModelPackageGroupArn" in desc
+            # LIST — appears in list
+            list_resp = sagemaker.list_model_package_groups()
+            names = [g["ModelPackageGroupName"] for g in list_resp["ModelPackageGroupSummaryList"]]
+            assert name in names
+            # ERROR — describe nonexistent raises error
+            with pytest.raises(ClientError):
+                sagemaker.describe_model_package_group(
+                    ModelPackageGroupName="nonexistent-mpg-xyz-999"
+                )
+        finally:
+            sagemaker.delete_model_package_group(ModelPackageGroupName=name)
+
+    def test_list_model_package_groups_arn_contains_name(self, sagemaker):
+        """ModelPackageGroupArn contains the group name."""
+        name = _uid("mpg")
+        resp = sagemaker.create_model_package_group(ModelPackageGroupName=name)
+        arn = resp["ModelPackageGroupArn"]
+        try:
+            assert name in arn
+            assert arn.startswith("arn:aws:sagemaker:")
+        finally:
+            sagemaker.delete_model_package_group(ModelPackageGroupName=name)
+
+
+class TestSageMakerListModelPackagesEdgeCases:
+    """Edge cases for list_model_packages."""
+
+    def test_list_model_packages_create_retrieve_list_error(self, sagemaker):
+        """create versioned package → describe → list by group → error on nonexistent."""
+        grp_name = _uid("mpg")
+        sagemaker.create_model_package_group(ModelPackageGroupName=grp_name)
+        try:
+            pkg_resp = sagemaker.create_model_package(
+                ModelPackageGroupName=grp_name,
+                ModelPackageDescription="edge case pkg",
+            )
+            pkg_arn = pkg_resp["ModelPackageArn"]
+            # RETRIEVE
+            desc = sagemaker.describe_model_package(ModelPackageName=pkg_arn)
+            assert "ModelPackageArn" in desc
+            assert "ModelPackageStatus" in desc
+            # LIST — filter by group
+            list_resp = sagemaker.list_model_packages(ModelPackageGroupName=grp_name)
+            arns = [p["ModelPackageArn"] for p in list_resp["ModelPackageSummaryList"]]
+            assert pkg_arn in arns
+            # ERROR — describe nonexistent raises error
+            with pytest.raises(ClientError):
+                sagemaker.describe_model_package(
+                    ModelPackageName="arn:aws:sagemaker:us-east-1:123456789012:model-package/nonexistent-xyz-999"
+                )
+        finally:
+            sagemaker.delete_model_package_group(ModelPackageGroupName=grp_name)
+
+    def test_list_model_packages_update_approval_status(self, sagemaker):
+        """update_model_package changes approval status; list reflects it."""
+        name = _uid("mp")
+        pkg_resp = sagemaker.create_model_package(
+            ModelPackageName=name,
+            ModelPackageDescription="update test",
+        )
+        pkg_arn = pkg_resp["ModelPackageArn"]
+        # UPDATE
+        sagemaker.update_model_package(
+            ModelPackageArn=pkg_arn, ModelApprovalStatus="Approved"
+        )
+        # RETRIEVE — verify update
+        desc = sagemaker.describe_model_package(ModelPackageName=name)
+        assert desc["ModelApprovalStatus"] == "Approved"
+        # LIST — appears in list
+        list_resp = sagemaker.list_model_packages()
+        arns = [p["ModelPackageArn"] for p in list_resp["ModelPackageSummaryList"]]
+        assert any(name in a for a in arns)
+
+
+class TestSageMakerListModelQualityJobDefsEdgeCases:
+    """Edge cases for list_model_quality_job_definitions."""
+
+    def _create_mq(self, sagemaker, name):
+        return sagemaker.create_model_quality_job_definition(
+            JobDefinitionName=name,
+            ModelQualityAppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest",
+                "ProblemType": "BinaryClassification",
+            },
+            ModelQualityJobInput={
+                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"},
+                "GroundTruthS3Input": {"S3Uri": "s3://bucket/gt"},
+            },
+            ModelQualityJobOutputConfig={
+                "MonitoringOutputs": [
+                    {
+                        "S3Output": {
+                            "S3Uri": "s3://bucket/out",
+                            "LocalPath": "/opt/ml/output",
+                            "S3UploadMode": "EndOfJob",
+                        }
+                    }
+                ]
+            },
+            JobResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+
+    def test_list_model_quality_job_definitions_create_retrieve_delete_error(self, sagemaker):
+        """create → describe → list → delete → verify error."""
+        name = _uid("mq")
+        resp = self._create_mq(sagemaker, name)
+        assert "JobDefinitionArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_model_quality_job_definition(JobDefinitionName=name)
+        assert desc["JobDefinitionName"] == name
+        # LIST — appears in list
+        list_resp = sagemaker.list_model_quality_job_definitions()
+        names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_model_quality_job_definition(JobDefinitionName=name)
+        # ERROR — describe after delete raises ResourceNotFound
+        with pytest.raises(ClientError) as exc:
+            sagemaker.describe_model_quality_job_definition(JobDefinitionName=name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
+
+
+class TestSageMakerListPipelinesEdgeCases:
+    """Edge cases for list_pipelines — covers C+R+U+L+D+E = 6/6."""
+
+    def _create_pipeline(self, sagemaker, name):
+        return sagemaker.create_pipeline(
+            PipelineName=name,
+            PipelineDefinition='{"Version":"2020-12-01","Steps":[]}',
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+        )
+
+    def test_list_pipelines_create_update_retrieve_delete_error(self, sagemaker):
+        """create → update → describe → list → delete → error."""
+        name = _uid("pipe")
+        resp = self._create_pipeline(sagemaker, name)
+        assert "PipelineArn" in resp
+        # UPDATE
+        sagemaker.update_pipeline(PipelineName=name, PipelineDescription="edge-test")
+        # RETRIEVE
+        desc = sagemaker.describe_pipeline(PipelineName=name)
+        assert desc["PipelineName"] == name
+        assert desc["PipelineDescription"] == "edge-test"
+        # LIST — appears in list
+        list_resp = sagemaker.list_pipelines()
+        names = [p["PipelineName"] for p in list_resp["PipelineSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_pipeline(PipelineName=name)
+        # ERROR — describe after delete raises error
+        with pytest.raises(ClientError):
+            sagemaker.describe_pipeline(PipelineName=name)
+
+    def test_list_pipelines_pagination(self, sagemaker):
+        """Create 3 pipelines, list with MaxResults=2."""
+        names = [_uid("pipe") for _ in range(3)]
+        for n in names:
+            self._create_pipeline(sagemaker, n)
+        try:
+            r1 = sagemaker.list_pipelines(MaxResults=2)
+            assert "PipelineSummaries" in r1
+            assert len(r1["PipelineSummaries"]) <= 2
+        finally:
+            for n in names:
+                try:
+                    sagemaker.delete_pipeline(PipelineName=n)
+                except Exception:
+                    pass  # best-effort cleanup
+
+
+class TestSageMakerListProcessingJobsEdgeCases:
+    """Edge cases for list_processing_jobs."""
+
+    def _create_pj(self, sagemaker, name):
+        return sagemaker.create_processing_job(
+            ProcessingJobName=name,
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            ProcessingResources={
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m4.xlarge",
+                    "VolumeSizeInGB": 10,
+                }
+            },
+            AppSpecification={
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+            },
+        )
+
+    def test_list_processing_jobs_create_retrieve_list_error(self, sagemaker):
+        """create → describe → list → verify error on nonexistent."""
+        name = _uid("pj")
+        resp = self._create_pj(sagemaker, name)
+        assert "ProcessingJobArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_processing_job(ProcessingJobName=name)
+        assert desc["ProcessingJobName"] == name
+        assert "ProcessingJobArn" in desc
+        # LIST — appears in list
+        list_resp = sagemaker.list_processing_jobs()
+        names = [j["ProcessingJobName"] for j in list_resp["ProcessingJobSummaries"]]
+        assert name in names
+        # ERROR — describe nonexistent
+        with pytest.raises(ClientError):
+            sagemaker.describe_processing_job(ProcessingJobName="fake-pj-nonexistent-xyz")
+
+    def test_list_processing_jobs_timestamps(self, sagemaker):
+        """describe_processing_job returns CreationTime."""
+        name = _uid("pj")
+        self._create_pj(sagemaker, name)
+        desc = sagemaker.describe_processing_job(ProcessingJobName=name)
+        assert "CreationTime" in desc
+
+
+class TestSageMakerListTransformJobsEdgeCases:
+    """Edge cases for list_transform_jobs."""
+
+    def _create_tj(self, sagemaker, name):
+        return sagemaker.create_transform_job(
+            TransformJobName=name,
+            ModelName="fake-model",
+            TransformInput={
+                "DataSource": {
+                    "S3DataSource": {"S3DataType": "S3Prefix", "S3Uri": "s3://bucket/input"}
+                },
+                "ContentType": "text/csv",
+            },
+            TransformOutput={"S3OutputPath": "s3://bucket/output"},
+            TransformResources={"InstanceType": "ml.m4.xlarge", "InstanceCount": 1},
+        )
+
+    def test_list_transform_jobs_create_retrieve_list_error(self, sagemaker):
+        """create → describe → list → verify error on nonexistent."""
+        name = _uid("tj")
+        resp = self._create_tj(sagemaker, name)
+        assert "TransformJobArn" in resp
+        # RETRIEVE
+        desc = sagemaker.describe_transform_job(TransformJobName=name)
+        assert desc["TransformJobName"] == name
+        assert "TransformJobArn" in desc
+        # LIST — appears in list
+        list_resp = sagemaker.list_transform_jobs()
+        names = [j["TransformJobName"] for j in list_resp["TransformJobSummaries"]]
+        assert name in names
+        # ERROR — describe nonexistent
+        with pytest.raises(ClientError):
+            sagemaker.describe_transform_job(TransformJobName="fake-tj-nonexistent-xyz")
+
+    def test_list_transform_jobs_pagination(self, sagemaker):
+        """Create 3 transform jobs, list with MaxResults=2."""
+        names = [_uid("tj") for _ in range(3)]
+        for n in names:
+            self._create_tj(sagemaker, n)
+        r1 = sagemaker.list_transform_jobs(MaxResults=2)
+        assert "TransformJobSummaries" in r1
+        assert len(r1["TransformJobSummaries"]) <= 2
+
+
+class TestSageMakerListTrialComponentsEdgeCases:
+    """Edge cases for list_trial_components — covers C+R+U+L+D+E = 6/6."""
+
+    def test_list_trial_components_create_update_retrieve_delete_error(self, sagemaker):
+        """create → update → describe → list → delete → error."""
+        name = _uid("tc")
+        resp = sagemaker.create_trial_component(TrialComponentName=name)
+        assert "TrialComponentArn" in resp
+        # UPDATE
+        sagemaker.update_trial_component(TrialComponentName=name, DisplayName="updated-tc")
+        # RETRIEVE
+        desc = sagemaker.describe_trial_component(TrialComponentName=name)
+        assert desc["TrialComponentName"] == name
+        # LIST — appears in list
+        list_resp = sagemaker.list_trial_components()
+        names = [c["TrialComponentName"] for c in list_resp["TrialComponentSummaries"]]
+        assert name in names
+        # DELETE
+        sagemaker.delete_trial_component(TrialComponentName=name)
+        # ERROR — describe after delete raises error
+        with pytest.raises(ClientError):
+            sagemaker.describe_trial_component(TrialComponentName=name)
+
+    def test_list_trial_components_pagination(self, sagemaker):
+        """Create 3 trial components, list with MaxResults=2."""
+        names = [_uid("tc") for _ in range(3)]
+        for n in names:
+            sagemaker.create_trial_component(TrialComponentName=n)
+        try:
+            r1 = sagemaker.list_trial_components(MaxResults=2)
+            assert "TrialComponentSummaries" in r1
+            assert len(r1["TrialComponentSummaries"]) <= 2
+        finally:
+            for n in names:
+                try:
+                    sagemaker.delete_trial_component(TrialComponentName=n)
+                except Exception:
+                    pass  # best-effort cleanup
+
+
+class TestSageMakerLifecycleConfigEdgeCases:
+    """Edge cases for lifecycle config — covers missing LIST and UPDATE patterns."""
+
+    def _create_lc(self, sagemaker, name):
+        return sagemaker.create_notebook_instance_lifecycle_config(
+            NotebookInstanceLifecycleConfigName=name,
+            OnCreate=[{"Content": "IyEvYmluL2Jhc2gKZWNobyBoZWxsbw=="}],
+        )
+
+    def test_lifecycle_config_list_returns_list(self, sagemaker):
+        """list_notebook_instance_lifecycle_configs returns a list response."""
+        name = _uid("lc")
+        self._create_lc(sagemaker, name)
+        try:
+            list_resp = sagemaker.list_notebook_instance_lifecycle_configs()
+            assert "NotebookInstanceLifecycleConfigs" in list_resp
+            assert isinstance(list_resp["NotebookInstanceLifecycleConfigs"], list)
+        finally:
+            sagemaker.delete_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+
+    def test_lifecycle_config_update_succeeds(self, sagemaker):
+        """update_notebook_instance_lifecycle_config returns 200 and describe works after."""
+        name = _uid("lc")
+        self._create_lc(sagemaker, name)
+        try:
+            # UPDATE
+            resp = sagemaker.update_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name,
+                OnCreate=[{"Content": "IyEvYmluL2Jhc2gKZWNobyB1cGRhdGVk"}],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # RETRIEVE — describe still works after update
+            desc = sagemaker.describe_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
+            assert desc["NotebookInstanceLifecycleConfigName"] == name
+            assert "NotebookInstanceLifecycleConfigArn" in desc
+        finally:
+            sagemaker.delete_notebook_instance_lifecycle_config(
+                NotebookInstanceLifecycleConfigName=name
+            )
