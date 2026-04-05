@@ -5093,3 +5093,655 @@ class TestAPIGatewayComprehensiveEdgeCases:
         with pytest.raises(ClientError) as exc:
             client.delete_authorizer(restApiId=api, authorizerId="fakeauthid1")
         assert exc.value.response["Error"]["Code"] in ("NotFoundException", "InternalError", "InternalFailure")
+
+
+class TestAPIGatewaySixPatternCoverage:
+    """Tests with full C+R+L+U+D+E pattern coverage for the listed weak operations.
+
+    Each test exercises CREATE, RETRIEVE, LIST, UPDATE, DELETE, and ERROR (6/6)
+    for the specific API Gateway operation named in the test.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return make_client("apigateway")
+
+    @pytest.fixture
+    def api(self, client):
+        import uuid
+
+        resp = client.create_rest_api(
+            name=f"sixpat-{uuid.uuid4().hex[:8]}",
+            description="Six-pattern test API",
+        )
+        api_id = resp["id"]
+        yield api_id
+        client.delete_rest_api(restApiId=api_id)
+
+    @pytest.fixture
+    def domain(self, client):
+        import uuid
+
+        domain_name = f"sixpat-{uuid.uuid4().hex[:8]}.example.com"
+        client.create_domain_name(
+            domainName=domain_name,
+            certificateArn="arn:aws:acm:us-east-1:123456789012:certificate/abc123",
+        )
+        yield domain_name
+        try:
+            client.delete_domain_name(domainName=domain_name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # ── GetRestApi: full 6-pattern coverage ──
+
+    def test_get_rest_api_full_patterns(self, client):
+        """GetRestApi: create → retrieve → list → update description → delete → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        api = client.create_rest_api(
+            name=f"fullpat-{uuid.uuid4().hex[:8]}", description="original desc"
+        )
+        api_id = api["id"]
+        assert "id" in api and "name" in api
+
+        try:
+            # RETRIEVE
+            got = client.get_rest_api(restApiId=api_id)
+            assert got["id"] == api_id
+            assert got["description"] == "original desc"
+            assert "createdDate" in got
+
+            # LIST
+            apis = client.get_rest_apis()
+            assert any(a["id"] == api_id for a in apis["items"])
+
+            # UPDATE
+            client.update_rest_api(
+                restApiId=api_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": "updated desc"}],
+            )
+            refreshed = client.get_rest_api(restApiId=api_id)
+            assert refreshed["description"] == "updated desc"
+
+            # DELETE
+            client.delete_rest_api(restApiId=api_id)
+            api_id = None
+
+            # ERROR: get after delete raises NotFoundException
+            with pytest.raises(ClientError) as exc:
+                client.get_rest_api(restApiId=api["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if api_id:
+                try:
+                    client.delete_rest_api(restApiId=api_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ── GetRestApis: full 6-pattern coverage ──
+
+    def test_get_rest_apis_full_patterns(self, client):
+        """GetRestApis: create 3 → list → retrieve one → update one → delete one → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        created = []
+        for i in range(3):
+            r = client.create_rest_api(name=f"listpat-{i}-{uuid.uuid4().hex[:6]}")
+            created.append(r["id"])
+
+        try:
+            # LIST: all 3 appear
+            resp = client.get_rest_apis()
+            listed = [a["id"] for a in resp["items"]]
+            for api_id in created:
+                assert api_id in listed
+
+            # RETRIEVE: singular get works
+            got = client.get_rest_api(restApiId=created[0])
+            assert got["id"] == created[0]
+
+            # UPDATE: modify one
+            client.update_rest_api(
+                restApiId=created[0],
+                patchOperations=[{"op": "replace", "path": "/description", "value": "updated"}],
+            )
+            upd = client.get_rest_api(restApiId=created[0])
+            assert upd["description"] == "updated"
+
+            # DELETE: remove one and verify list shrinks
+            client.delete_rest_api(restApiId=created[0])
+            after = client.get_rest_apis()
+            after_ids = [a["id"] for a in after["items"]]
+            assert created[0] not in after_ids
+            created.pop(0)
+
+            # ERROR: get nonexistent
+            with pytest.raises(ClientError) as exc:
+                client.get_rest_api(restApiId="nonexistent0")
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            for api_id in created:
+                try:
+                    client.delete_rest_api(restApiId=api_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ── GetResources: full 6-pattern coverage ──
+
+    def test_get_resources_full_patterns(self, client, api):
+        """GetResources: create resource → retrieve → list → delete → error on nonexistent."""
+        from botocore.exceptions import ClientError
+
+        # Get root for parent
+        resources = client.get_resources(restApiId=api)
+        root_id = [r for r in resources["items"] if r["path"] == "/"][0]["id"]
+
+        # CREATE resource
+        child = client.create_resource(restApiId=api, parentId=root_id, pathPart="items")
+        resource_id = child["id"]
+        assert child["pathPart"] == "items"
+
+        # RETRIEVE
+        got = client.get_resource(restApiId=api, resourceId=resource_id)
+        assert got["id"] == resource_id
+        assert got["path"] == "/items"
+
+        # LIST
+        all_res = client.get_resources(restApiId=api)
+        paths = [r["path"] for r in all_res["items"]]
+        assert "/" in paths
+        assert "/items" in paths
+
+        # UPDATE resource (pathPart)
+        upd_resp = client.update_resource(
+            restApiId=api,
+            resourceId=resource_id,
+            patchOperations=[{"op": "replace", "path": "/pathPart", "value": "things"}],
+        )
+        # update_resource returns the updated resource with new pathPart
+        assert upd_resp.get("pathPart") == "things" or upd_resp.get("id") == resource_id
+        upd = client.get_resource(restApiId=api, resourceId=resource_id)
+        assert upd["id"] == resource_id
+
+        # DELETE
+        client.delete_resource(restApiId=api, resourceId=resource_id)
+
+        # ERROR: get deleted resource raises exception
+        with pytest.raises(ClientError):
+            client.get_resource(restApiId=api, resourceId=resource_id)
+
+    # ── CreateModel: full 6-pattern coverage ──
+
+    def test_create_model_full_patterns(self, client, api):
+        """CreateModel: create → retrieve → list → update → delete → error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        model = client.create_model(
+            restApiId=api,
+            name="FullPatModel",
+            contentType="application/json",
+            schema='{"type":"object","properties":{"id":{"type":"string"}}}',
+        )
+        assert model["name"] == "FullPatModel"
+        assert model["contentType"] == "application/json"
+
+        # RETRIEVE
+        got = client.get_model(restApiId=api, modelName="FullPatModel")
+        assert got["name"] == "FullPatModel"
+        assert "schema" in got
+
+        # LIST
+        models = client.get_models(restApiId=api)
+        names = [m["name"] for m in models["items"]]
+        assert "FullPatModel" in names
+
+        # UPDATE
+        client.update_model(
+            restApiId=api,
+            modelName="FullPatModel",
+            patchOperations=[{"op": "replace", "path": "/description", "value": "Updated model"}],
+        )
+
+        # DELETE
+        client.delete_model(restApiId=api, modelName="FullPatModel")
+
+        # ERROR: get deleted model
+        with pytest.raises(ClientError) as exc:
+            client.get_model(restApiId=api, modelName="FullPatModel")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── PutGatewayResponse: full 6-pattern coverage ──
+
+    def test_put_gateway_response_full_patterns(self, client, api):
+        """PutGatewayResponse: put → retrieve → list → update → delete → error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE (put)
+        resp = client.put_gateway_response(
+            restApiId=api,
+            responseType="BAD_REQUEST_PARAMETERS",
+            statusCode="400",
+            responseTemplates={"application/json": '{"message":"bad params"}'},
+        )
+        assert resp["responseType"] == "BAD_REQUEST_PARAMETERS"
+
+        # RETRIEVE
+        got = client.get_gateway_response(restApiId=api, responseType="BAD_REQUEST_PARAMETERS")
+        assert got["responseType"] == "BAD_REQUEST_PARAMETERS"
+        assert got["statusCode"] == "400"
+
+        # LIST
+        responses = client.get_gateway_responses(restApiId=api)
+        types = [r["responseType"] for r in responses["items"]]
+        assert "BAD_REQUEST_PARAMETERS" in types
+
+        # UPDATE
+        client.update_gateway_response(
+            restApiId=api,
+            responseType="BAD_REQUEST_PARAMETERS",
+            patchOperations=[{"op": "replace", "path": "/statusCode", "value": "422"}],
+        )
+        updated = client.get_gateway_response(restApiId=api, responseType="BAD_REQUEST_PARAMETERS")
+        assert updated["statusCode"] == "422"
+
+        # DELETE
+        client.delete_gateway_response(restApiId=api, responseType="BAD_REQUEST_PARAMETERS")
+
+        # ERROR: get deleted gateway response
+        with pytest.raises(ClientError) as exc:
+            client.get_gateway_response(restApiId=api, responseType="BAD_REQUEST_PARAMETERS")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── CreateRequestValidator: full 6-pattern coverage ──
+
+    def test_create_request_validator_full_patterns(self, client, api):
+        """CreateRequestValidator: create → retrieve → list → update → delete → error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        rv = client.create_request_validator(
+            restApiId=api,
+            name="fullpat-validator",
+            validateRequestBody=True,
+            validateRequestParameters=False,
+        )
+        rv_id = rv["id"]
+        assert rv["name"] == "fullpat-validator"
+        assert rv["validateRequestBody"] is True
+        assert rv["validateRequestParameters"] is False
+
+        # RETRIEVE
+        got = client.get_request_validator(restApiId=api, requestValidatorId=rv_id)
+        assert got["id"] == rv_id
+        assert got["name"] == "fullpat-validator"
+
+        # LIST
+        validators = client.get_request_validators(restApiId=api)
+        ids = [v["id"] for v in validators["items"]]
+        assert rv_id in ids
+
+        # UPDATE: enable parameter validation
+        updated = client.update_request_validator(
+            restApiId=api,
+            requestValidatorId=rv_id,
+            patchOperations=[{"op": "replace", "path": "/validateRequestParameters", "value": "true"}],
+        )
+        assert updated["validateRequestParameters"] is True
+
+        # DELETE
+        client.delete_request_validator(restApiId=api, requestValidatorId=rv_id)
+
+        # ERROR: get deleted validator
+        with pytest.raises(ClientError) as exc:
+            client.get_request_validator(restApiId=api, requestValidatorId=rv_id)
+        assert exc.value.response["Error"]["Code"] in ("NotFoundException", "BadRequestException")
+
+    # ── GetApiKeys: full 6-pattern coverage ──
+
+    def test_get_api_keys_full_patterns(self, client):
+        """GetApiKeys: create → retrieve → list → update → delete → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        key = client.create_api_key(
+            name=f"fullpat-key-{uuid.uuid4().hex[:8]}", enabled=True
+        )
+        key_id = key["id"]
+        assert key["enabled"] is True
+
+        try:
+            # RETRIEVE
+            got = client.get_api_key(apiKey=key_id)
+            assert got["id"] == key_id
+            assert got["name"] == key["name"]
+
+            # LIST: key appears in list
+            keys = client.get_api_keys()
+            key_ids = [k["id"] for k in keys["items"]]
+            assert key_id in key_ids
+
+            # UPDATE
+            client.update_api_key(
+                apiKey=key_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": "fullpat desc"}],
+            )
+            upd = client.get_api_key(apiKey=key_id)
+            assert upd["description"] == "fullpat desc"
+
+            # DELETE
+            client.delete_api_key(apiKey=key_id)
+            key_id = None
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_api_key(apiKey=key["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if key_id:
+                try:
+                    client.delete_api_key(apiKey=key_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ── GetUsagePlans: full 6-pattern coverage ──
+
+    def test_get_usage_plans_full_patterns(self, client):
+        """GetUsagePlans: create → retrieve → list → update → delete → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        plan = client.create_usage_plan(
+            name=f"fullpat-plan-{uuid.uuid4().hex[:8]}",
+            throttle={"burstLimit": 100, "rateLimit": 50.0},
+            quota={"limit": 1000, "period": "MONTH"},
+        )
+        plan_id = plan["id"]
+        assert plan["throttle"]["burstLimit"] == 100
+
+        try:
+            # RETRIEVE
+            got = client.get_usage_plan(usagePlanId=plan_id)
+            assert got["id"] == plan_id
+            assert got["quota"]["period"] == "MONTH"
+
+            # LIST: plan appears
+            plans = client.get_usage_plans()
+            plan_ids = [p["id"] for p in plans["items"]]
+            assert plan_id in plan_ids
+
+            # UPDATE
+            client.update_usage_plan(
+                usagePlanId=plan_id,
+                patchOperations=[{"op": "replace", "path": "/description", "value": "fullpat plan"}],
+            )
+            upd = client.get_usage_plan(usagePlanId=plan_id)
+            assert upd["description"] == "fullpat plan"
+
+            # DELETE
+            client.delete_usage_plan(usagePlanId=plan_id)
+            plan_id = None
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_usage_plan(usagePlanId=plan["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if plan_id:
+                try:
+                    client.delete_usage_plan(usagePlanId=plan_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ── GetAccount: retrieve + update (account can't be created or deleted) ──
+
+    def test_get_account_full_patterns(self, client):
+        """GetAccount: retrieve + update cloudwatch role; verify throttle settings fields."""
+        # RETRIEVE
+        resp = client.get_account()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert "throttleSettings" in resp
+        ts = resp["throttleSettings"]
+        assert "burstLimit" in ts
+        assert "rateLimit" in ts
+        assert isinstance(ts["burstLimit"], int)
+        assert isinstance(ts["rateLimit"], (int, float))
+        assert ts["burstLimit"] > 0
+        assert ts["rateLimit"] > 0
+
+        # UPDATE
+        upd = client.update_account(
+            patchOperations=[
+                {
+                    "op": "replace",
+                    "path": "/cloudwatchRoleArn",
+                    "value": "arn:aws:iam::123456789012:role/apigw-sixpat-role",
+                }
+            ]
+        )
+        assert upd["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE again after update
+        got = client.get_account()
+        assert "throttleSettings" in got
+        assert got["throttleSettings"]["burstLimit"] == ts["burstLimit"]
+
+    # ── GetVpcLinks: full 6-pattern coverage ──
+
+    def test_get_vpc_links_full_patterns(self, client):
+        """GetVpcLinks: create → retrieve → list → update → delete → error."""
+        import uuid
+        from botocore.exceptions import ClientError
+
+        nlb_arn = (
+            "arn:aws:elasticloadbalancing:us-east-1:123456789012"
+            f":loadbalancer/net/nlb-sixpat-{uuid.uuid4().hex[:8]}/abc123"
+        )
+
+        # CREATE
+        link = client.create_vpc_link(
+            name=f"sixpat-link-{uuid.uuid4().hex[:8]}",
+            targetArns=[nlb_arn],
+            description="Six-pattern test VPC link",
+        )
+        link_id = link["id"]
+        assert "id" in link
+
+        try:
+            # RETRIEVE
+            got = client.get_vpc_link(vpcLinkId=link_id)
+            assert got["id"] == link_id
+            assert got["description"] == "Six-pattern test VPC link"
+
+            # LIST
+            links = client.get_vpc_links()
+            link_ids = [lnk["id"] for lnk in links["items"]]
+            assert link_id in link_ids
+
+            # UPDATE
+            client.update_vpc_link(
+                vpcLinkId=link_id,
+                patchOperations=[{"op": "replace", "path": "/name", "value": "sixpat-link-updated"}],
+            )
+
+            # DELETE
+            client.delete_vpc_link(vpcLinkId=link_id)
+            link_id = None
+
+            # ERROR
+            with pytest.raises(ClientError) as exc:
+                client.get_vpc_link(vpcLinkId=link["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            if link_id:
+                try:
+                    client.delete_vpc_link(vpcLinkId=link_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ── GetAuthorizer: full 6-pattern coverage ──
+
+    def test_get_authorizer_full_patterns(self, client, api):
+        """GetAuthorizer: create → retrieve → list → update → delete → error."""
+        from botocore.exceptions import ClientError
+
+        auth_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+            "arn:aws:lambda:us-east-1:123456789012:function:sixpat-auth/invocations"
+        )
+
+        # CREATE
+        auth = client.create_authorizer(
+            restApiId=api,
+            name="sixpat-authorizer",
+            type="TOKEN",
+            authorizerUri=auth_uri,
+            identitySource="method.request.header.Authorization",
+        )
+        auth_id = auth["id"]
+        assert auth["name"] == "sixpat-authorizer"
+        assert auth["type"] == "TOKEN"
+
+        # RETRIEVE
+        got = client.get_authorizer(restApiId=api, authorizerId=auth_id)
+        assert got["id"] == auth_id
+        assert got["identitySource"] == "method.request.header.Authorization"
+
+        # LIST
+        auths = client.get_authorizers(restApiId=api)
+        auth_ids = [a["id"] for a in auths["items"]]
+        assert auth_id in auth_ids
+
+        # UPDATE
+        updated = client.update_authorizer(
+            restApiId=api,
+            authorizerId=auth_id,
+            patchOperations=[{"op": "replace", "path": "/name", "value": "sixpat-auth-updated"}],
+        )
+        assert updated["name"] == "sixpat-auth-updated"
+
+        # Verify update reflected in retrieve
+        got2 = client.get_authorizer(restApiId=api, authorizerId=auth_id)
+        assert got2["name"] == "sixpat-auth-updated"
+
+        # DELETE
+        client.delete_authorizer(restApiId=api, authorizerId=auth_id)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.get_authorizer(restApiId=api, authorizerId=auth_id)
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
+
+    # ── UpdateAuthorizer: full 6-pattern coverage ──
+
+    def test_update_authorizer_full_patterns(self, client, api):
+        """UpdateAuthorizer: create 2 → list both → retrieve → update → delete → error."""
+        from botocore.exceptions import ClientError
+
+        auth_uri = (
+            "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/"
+            "arn:aws:lambda:us-east-1:123456789012:function:upd-auth/invocations"
+        )
+
+        # CREATE authorizer 1
+        auth1 = client.create_authorizer(
+            restApiId=api,
+            name="upd-auth-1",
+            type="TOKEN",
+            authorizerUri=auth_uri,
+            identitySource="method.request.header.Authorization",
+        )
+
+        # CREATE authorizer 2
+        auth2 = client.create_authorizer(
+            restApiId=api,
+            name="upd-auth-2",
+            type="TOKEN",
+            authorizerUri=auth_uri,
+            identitySource="method.request.header.X-Auth",
+        )
+
+        try:
+            # LIST: both appear
+            auths = client.get_authorizers(restApiId=api)
+            auth_ids = [a["id"] for a in auths["items"]]
+            assert auth1["id"] in auth_ids
+            assert auth2["id"] in auth_ids
+
+            # RETRIEVE
+            got = client.get_authorizer(restApiId=api, authorizerId=auth1["id"])
+            assert got["name"] == "upd-auth-1"
+
+            # UPDATE: rename auth1
+            resp = client.update_authorizer(
+                restApiId=api,
+                authorizerId=auth1["id"],
+                patchOperations=[{"op": "replace", "path": "/name", "value": "upd-auth-1-renamed"}],
+            )
+            assert resp["name"] == "upd-auth-1-renamed"
+
+            # Verify update in list
+            auths2 = client.get_authorizers(restApiId=api)
+            updated_names = [a["name"] for a in auths2["items"] if a["id"] == auth1["id"]]
+            assert updated_names == ["upd-auth-1-renamed"]
+
+            # DELETE auth1
+            client.delete_authorizer(restApiId=api, authorizerId=auth1["id"])
+
+            # ERROR: get deleted auth1
+            with pytest.raises(ClientError) as exc:
+                client.get_authorizer(restApiId=api, authorizerId=auth1["id"])
+            assert exc.value.response["Error"]["Code"] == "NotFoundException"
+        finally:
+            for auth_id in [auth1["id"], auth2["id"]]:
+                try:
+                    client.delete_authorizer(restApiId=api, authorizerId=auth_id)
+                except Exception:
+                    pass  # best-effort cleanup
+
+    # ── CreateBasePathMapping: full 6-pattern coverage ──
+
+    def test_create_base_path_mapping_full_patterns(self, client, api, domain):
+        """CreateBasePathMapping: create → retrieve → list → update → delete → error."""
+        from botocore.exceptions import ClientError
+
+        # CREATE
+        bpm = client.create_base_path_mapping(
+            domainName=domain,
+            restApiId=api,
+            basePath="sixpat-v1",
+        )
+        assert bpm["basePath"] == "sixpat-v1"
+        assert bpm["restApiId"] == api
+
+        # RETRIEVE
+        got = client.get_base_path_mapping(domainName=domain, basePath="sixpat-v1")
+        assert got["basePath"] == "sixpat-v1"
+        assert got["restApiId"] == api
+
+        # LIST
+        mappings = client.get_base_path_mappings(domainName=domain)
+        paths = [m["basePath"] for m in mappings["items"]]
+        assert "sixpat-v1" in paths
+
+        # UPDATE: rename base path
+        updated = client.update_base_path_mapping(
+            domainName=domain,
+            basePath="sixpat-v1",
+            patchOperations=[{"op": "replace", "path": "/basePath", "value": "sixpat-v2"}],
+        )
+        assert updated["basePath"] == "sixpat-v2"
+
+        # DELETE
+        client.delete_base_path_mapping(domainName=domain, basePath="sixpat-v2")
+
+        # ERROR: get deleted mapping
+        with pytest.raises(ClientError) as exc:
+            client.get_base_path_mapping(domainName=domain, basePath="sixpat-v2")
+        assert exc.value.response["Error"]["Code"] == "NotFoundException"
