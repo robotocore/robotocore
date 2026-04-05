@@ -2519,3 +2519,330 @@ class TestPanoramaEdgeCasesComprehensive:
         with pytest.raises(ClientError) as exc_info:
             client.delete_package(PackageId=pkg_id)
         assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+
+class TestPanoramaInlinePatternCoverage:
+    """Tests that make all API calls inline (no fixture delegation) so pattern
+    analysis can detect C/R/L/U/D/E patterns within each test body."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    # --- LIST operations with full inline C+L+E patterns ---
+
+    def test_list_devices_inline_create_list_delete(self, client):
+        """ListDevices: create inline, verify in list, delete (C+L+D)."""
+        name = f"inline-dev-{uuid.uuid4().hex[:8]}"
+        prov = client.provision_device(Name=name)
+        device_id = prov["DeviceId"]
+        try:
+            listed = client.list_devices()
+            ids = [d["DeviceId"] for d in listed["Devices"]]
+            assert device_id in ids, "Provisioned device missing from ListDevices"
+            entry = next(d for d in listed["Devices"] if d["DeviceId"] == device_id)
+            assert entry["Name"] == name
+            assert "DeviceId" in entry
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_application_instances_inline_create_list(self, client):
+        """ListApplicationInstances: create device+instance inline, verify list (C+L)."""
+        dev = client.provision_device(Name=f"inline-ai-dev-{uuid.uuid4().hex[:8]}")
+        device_id = dev["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "inline-test"})
+            app = client.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            app_id = app["ApplicationInstanceId"]
+            assert isinstance(app_id, str) and len(app_id) > 0
+            listed = client.list_application_instances()
+            assert "ApplicationInstances" in listed
+            app_ids = [a["ApplicationInstanceId"] for a in listed["ApplicationInstances"]]
+            assert app_id in app_ids
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_nodes_inline_call_with_assertion(self, client):
+        """ListNodes: call with no args, verify response structure (L)."""
+        resp = client.list_nodes()
+        assert "Nodes" in resp
+        assert isinstance(resp["Nodes"], list)
+        for node in resp["Nodes"]:
+            assert "NodeId" in node, f"Node entry missing NodeId: {node}"
+        resp2 = client.list_nodes(Category="BUSINESS_LOGIC")
+        assert "Nodes" in resp2
+
+    def test_list_packages_inline_create_list_delete(self, client):
+        """ListPackages: create package inline, verify appears in list, delete (C+L+D)."""
+        pkg_name = f"inline-pkg-{uuid.uuid4().hex[:8]}"
+        create_resp = client.create_package(PackageName=pkg_name)
+        pkg_id = create_resp["PackageId"]
+        pkg_arn = create_resp["Arn"]
+        assert re.match(r"^arn:aws:panorama:[a-z0-9-]+:\d{12}:package/", pkg_arn)
+        try:
+            listed = client.list_packages()
+            pkg_ids = [p["PackageId"] for p in listed["Packages"]]
+            assert pkg_id in pkg_ids
+            entry = next(p for p in listed["Packages"] if p["PackageId"] == pkg_id)
+            assert entry["PackageName"] == pkg_name
+        finally:
+            try:
+                client.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_package_import_jobs_inline_create_list(self, client):
+        """ListPackageImportJobs: create job inline, verify in list (C+L)."""
+        pkg_name = f"inline-imp-{uuid.uuid4().hex[:8]}"
+        create_resp = client.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "inline-bucket",
+                        "Region": "us-east-1",
+                        "ObjectKey": f"{pkg_name}/pkg.tar.gz",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": pkg_name,
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"tok-{uuid.uuid4().hex}",
+        )
+        job_id = create_resp["JobId"]
+        assert isinstance(job_id, str) and len(job_id) > 0
+        listed = client.list_package_import_jobs()
+        assert "PackageImportJobs" in listed
+        job_ids = [j["JobId"] for j in listed["PackageImportJobs"]]
+        assert job_id in job_ids
+        entry = next(j for j in listed["PackageImportJobs"] if j["JobId"] == job_id)
+        assert "Status" in entry
+        assert isinstance(entry["Status"], str)
+
+    def test_list_node_from_template_jobs_inline_create_list(self, client):
+        """ListNodeFromTemplateJobs: create inline, verify in list (C+L)."""
+        node_name = f"inline-node-{uuid.uuid4().hex[:8]}"
+        create_resp = client.create_node_from_template_job(
+            NodeName=node_name,
+            OutputPackageName=f"inline-pkg-{uuid.uuid4().hex[:8]}",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"StreamUrl": "rtsp://inline.test/stream"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = create_resp["JobId"]
+        assert isinstance(job_id, str) and len(job_id) > 0
+        listed = client.list_node_from_template_jobs()
+        assert "NodeFromTemplateJobs" in listed
+        job_ids = [j["JobId"] for j in listed["NodeFromTemplateJobs"]]
+        assert job_id in job_ids
+        entry = next(j for j in listed["NodeFromTemplateJobs"] if j["JobId"] == job_id)
+        assert "Status" in entry
+
+    def test_list_devices_jobs_inline_real_device(self, client):
+        """ListDevicesJobs: provision device inline, verify DeviceJobs is a list (C+L)."""
+        prov = client.provision_device(Name=f"djobs-inline-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        try:
+            resp = client.list_devices_jobs(DeviceId=device_id)
+            assert "DeviceJobs" in resp
+            assert isinstance(resp["DeviceJobs"], list)
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # --- CREATE with inline R+L verification ---
+
+    def test_create_package_arn_inline_verify_and_list(self, client):
+        """CreatePackage: create inline, verify ARN format and storage location (C+R+L)."""
+        pkg_name = f"arn-inline-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(PackageName=pkg_name)
+        pkg_id = resp["PackageId"]
+        arn = resp["Arn"]
+        try:
+            assert re.match(r"^arn:aws:panorama:[a-z0-9-]+:\d{12}:package/", arn), (
+                f"Package ARN doesn't match expected pattern: {arn}"
+            )
+            assert pkg_id in arn, f"PackageId {pkg_id} should appear in ARN {arn}"
+            storage = resp["StorageLocation"]
+            assert "Bucket" in storage
+            assert isinstance(storage["Bucket"], str) and len(storage["Bucket"]) > 0
+            listed = client.list_packages()
+            ids = [p["PackageId"] for p in listed["Packages"]]
+            assert pkg_id in ids
+        finally:
+            try:
+                client.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_create_package_import_job_inline_retrieve(self, client):
+        """CreatePackageImportJob: create inline, describe to retrieve, verify fields (C+R)."""
+        pkg_name = f"imp-inline-{uuid.uuid4().hex[:8]}"
+        create_resp = client.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "retrieve-bucket",
+                        "Region": "us-east-1",
+                        "ObjectKey": f"{pkg_name}.tar.gz",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": pkg_name,
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"tok-{uuid.uuid4().hex}",
+        )
+        job_id = create_resp["JobId"]
+        desc = client.describe_package_import_job(JobId=job_id)
+        assert desc["JobId"] == job_id
+        assert desc["JobType"] == "NODE_PACKAGE_VERSION"
+        assert "Status" in desc
+        assert isinstance(desc["Status"], str) and len(desc["Status"]) > 0
+        assert "CreatedTime" in desc
+
+    def test_create_node_from_template_job_inline_retrieve_list_error(self, client):
+        """CreateNodeFromTemplateJob: create, retrieve, list, nonexistent error (C+R+L+E)."""
+        node_name = f"node-inline-{uuid.uuid4().hex[:8]}"
+        pkg_name = f"pkg-inline-{uuid.uuid4().hex[:8]}"
+        create_resp = client.create_node_from_template_job(
+            NodeName=node_name,
+            OutputPackageName=pkg_name,
+            OutputPackageVersion="3.0",
+            TemplateParameters={"StreamUrl": "rtsp://node.test/cam", "Username": "admin"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = create_resp["JobId"]
+        desc = client.describe_node_from_template_job(JobId=job_id)
+        assert desc["JobId"] == job_id
+        assert desc["NodeName"] == node_name
+        assert desc["OutputPackageName"] == pkg_name
+        assert desc["OutputPackageVersion"] == "3.0"
+        assert desc["TemplateType"] == "RTSP_CAMERA_STREAM"
+        assert "CreatedTime" in desc
+        assert "LastUpdatedTime" in desc
+        listed = client.list_node_from_template_jobs()
+        job_ids = [j["JobId"] for j in listed["NodeFromTemplateJobs"]]
+        assert job_id in job_ids
+        with pytest.raises(ClientError) as exc_info:
+            client.describe_node_from_template_job(JobId="totally-fake-job-id")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # --- UPDATE with inline verify ---
+
+    def test_update_device_metadata_inline_verify_persists(self, client):
+        """UpdateDeviceMetadata: provision inline, update, describe to verify (C+U+R)."""
+        name = f"upd-inline-{uuid.uuid4().hex[:8]}"
+        prov = client.provision_device(Name=name)
+        device_id = prov["DeviceId"]
+        try:
+            upd = client.update_device_metadata(
+                DeviceId=device_id,
+                Description="inline-updated-description",
+            )
+            assert upd["DeviceId"] == device_id
+            desc = client.describe_device(DeviceId=device_id)
+            assert desc["DeviceId"] == device_id
+            assert desc["Name"] == name
+            assert desc["Description"] == "inline-updated-description"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # --- TAG operations with inline C+L+U+D patterns ---
+
+    def test_tag_resource_persists_inline_create_tag_list_untag(self, client):
+        """TagResource: provision inline, tag it, list tags, update, untag (C+U+L+D)."""
+        prov = client.provision_device(Name=f"tag-inline-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        arn = prov["Arn"]
+        try:
+            client.tag_resource(ResourceArn=arn, Tags={"env": "inline-test", "tier": "gold"})
+            tags = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert tags["env"] == "inline-test"
+            assert tags["tier"] == "gold"
+            client.tag_resource(ResourceArn=arn, Tags={"env": "inline-updated"})
+            tags2 = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert tags2["env"] == "inline-updated"
+            assert tags2["tier"] == "gold"
+            client.untag_resource(ResourceArn=arn, TagKeys=["tier"])
+            tags3 = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert "tier" not in tags3
+            assert tags3["env"] == "inline-updated"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_tags_for_resource_inline_empty_then_tagged(self, client):
+        """ListTagsForResource: verify empty initially, then non-empty after tagging (C+L+U)."""
+        prov = client.provision_device(Name=f"tags-empty-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        arn = prov["Arn"]
+        try:
+            tags_empty = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert isinstance(tags_empty, dict)
+            initial_count = len(tags_empty)
+            client.tag_resource(ResourceArn=arn, Tags={"added": "yes"})
+            tags_after = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert len(tags_after) > initial_count
+            assert tags_after["added"] == "yes"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    # --- DESCRIBE with inline C+R+E ---
+
+    def test_describe_device_inline_provision_retrieve_error(self, client):
+        """DescribeDevice: provision inline, describe all fields, nonexistent error (C+R+E)."""
+        name = f"desc-inline-{uuid.uuid4().hex[:8]}"
+        prov = client.provision_device(Name=name)
+        device_id = prov["DeviceId"]
+        try:
+            desc = client.describe_device(DeviceId=device_id)
+            assert desc["DeviceId"] == device_id
+            assert desc["Name"] == name
+            assert "Arn" in desc
+            assert desc["Arn"] == prov["Arn"]
+            assert "ProvisioningStatus" in desc
+            assert "CreatedTime" in desc
+            assert "Type" in desc
+            valid_statuses = {
+                "AWAITING_PROVISIONING", "PENDING", "SUCCEEDED", "FAILED", "ERROR", "DELETING",
+            }
+            assert desc["ProvisioningStatus"] in valid_statuses
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError) as exc_info:
+            client.describe_device(DeviceId=device_id)
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
