@@ -2982,3 +2982,380 @@ class TestServiceCatalogDisassociateServiceAction:
         finally:
             servicecatalog.delete_service_action(Id=sa_id)
             servicecatalog.delete_product(Id=prod_id)
+
+
+class TestServiceCatalogIdempotency:
+    """Tests that verify idempotency tokens work correctly."""
+
+    def test_create_portfolio_same_idempotency_token_returns_same_id(self, servicecatalog):
+        """CREATE twice with same IdempotencyToken returns the same portfolio ID."""
+        token = uuid.uuid4().hex
+        name = _uid("idem-pf")
+        resp1 = servicecatalog.create_portfolio(
+            DisplayName=name,
+            ProviderName="TestProvider",
+            IdempotencyToken=token,
+        )
+        pid1 = resp1["PortfolioDetail"]["Id"]
+        try:
+            resp2 = servicecatalog.create_portfolio(
+                DisplayName=name,
+                ProviderName="TestProvider",
+                IdempotencyToken=token,
+            )
+            pid2 = resp2["PortfolioDetail"]["Id"]
+            assert pid1 == pid2
+        finally:
+            servicecatalog.delete_portfolio(Id=pid1)
+
+    def test_create_product_same_idempotency_token_returns_same_id(self, servicecatalog):
+        """CREATE product twice with same IdempotencyToken returns the same product ID."""
+        token = uuid.uuid4().hex
+        name = _uid("idem-prod")
+        resp1 = servicecatalog.create_product(
+            Name=name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=token,
+        )
+        pid1 = resp1["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            resp2 = servicecatalog.create_product(
+                Name=name,
+                Owner="TestOwner",
+                ProductType="CLOUD_FORMATION_TEMPLATE",
+                ProvisioningArtifactParameters={
+                    "Name": "v1",
+                    "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                    "Type": "CLOUD_FORMATION_TEMPLATE",
+                },
+                IdempotencyToken=token,
+            )
+            pid2 = resp2["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+            assert pid1 == pid2
+        finally:
+            servicecatalog.delete_product(Id=pid1)
+
+
+class TestServiceCatalogUnicodeAndSpecialChars:
+    """Tests that unicode and special characters in names are handled correctly."""
+
+    def test_portfolio_unicode_display_name(self, servicecatalog):
+        """CREATE portfolio with unicode DisplayName, RETRIEVE and verify preserved."""
+        unicode_name = "测试-portfolio-" + uuid.uuid4().hex[:6]
+        resp = servicecatalog.create_portfolio(
+            DisplayName=unicode_name,
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert desc["PortfolioDetail"]["DisplayName"] == unicode_name
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_portfolio_description_with_special_chars(self, servicecatalog):
+        """CREATE portfolio with description containing special chars, RETRIEVE and verify."""
+        special_desc = "A portfolio with <special> & 'chars' and \"quotes\""
+        resp = servicecatalog.create_portfolio(
+            DisplayName=_uid("special-pf"),
+            ProviderName="TestProvider",
+            Description=special_desc,
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            desc = servicecatalog.describe_portfolio(Id=pid)
+            assert desc["PortfolioDetail"]["Description"] == special_desc
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+    def test_product_unicode_name_preserved(self, servicecatalog):
+        """CREATE product with unicode name, RETRIEVE and verify name is preserved."""
+        unicode_name = "Ünïcödé-product-" + uuid.uuid4().hex[:6]
+        resp = servicecatalog.create_product(
+            Name=unicode_name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            desc = servicecatalog.describe_product(Id=prod_id)
+            assert desc["ProductViewSummary"]["Name"] == unicode_name
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+
+class TestServiceCatalogProductARNAndTimestamps:
+    """Behavioral fidelity tests for product ARN format and timestamp fields."""
+
+    def test_product_arn_format(self, servicecatalog):
+        """CREATE product, verify ARN starts with arn:aws:catalog: and contains product."""
+        resp = servicecatalog.create_product(
+            Name=_uid("arn-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            arn = resp["ProductViewDetail"]["ProductARN"]
+            assert arn.startswith("arn:aws:catalog:")
+            assert "product" in arn
+            assert prod_id in arn
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_product_created_time_is_datetime(self, servicecatalog):
+        """CREATE product, verify CreatedTime field is a datetime."""
+        import datetime
+        resp = servicecatalog.create_product(
+            Name=_uid("ts-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            detail = resp["ProductViewDetail"]
+            assert "CreatedTime" in detail
+            assert isinstance(detail["CreatedTime"], datetime.datetime)
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_portfolio_created_time_is_datetime(self, servicecatalog):
+        """CREATE portfolio, verify CreatedTime is a datetime object."""
+        import datetime
+        resp = servicecatalog.create_portfolio(
+            DisplayName=_uid("ts-pf"),
+            ProviderName="TestProvider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        pid = resp["PortfolioDetail"]["Id"]
+        try:
+            ct = resp["PortfolioDetail"]["CreatedTime"]
+            assert isinstance(ct, datetime.datetime)
+        finally:
+            servicecatalog.delete_portfolio(Id=pid)
+
+
+class TestServiceCatalogConstraintUpdateBehavior:
+    """Tests for constraint update behavior — fills UPDATE + LIST gaps in coverage."""
+
+    @pytest.fixture
+    def portfolio_product(self, servicecatalog):
+        import json as _json
+        pid = servicecatalog.create_portfolio(
+            DisplayName=_uid("cu-pf"),
+            ProviderName="Provider",
+            IdempotencyToken=uuid.uuid4().hex,
+        )["PortfolioDetail"]["Id"]
+        prod_id = servicecatalog.create_product(
+            Name=_uid("cu-prod"),
+            Owner="Owner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        servicecatalog.associate_product_with_portfolio(ProductId=prod_id, PortfolioId=pid)
+        yield {"portfolio_id": pid, "product_id": prod_id, "json": _json}
+        try:
+            servicecatalog.disassociate_product_from_portfolio(ProductId=prod_id, PortfolioId=pid)
+        except Exception:
+            pass
+        servicecatalog.delete_product(Id=prod_id)
+        servicecatalog.delete_portfolio(Id=pid)
+
+    def test_describe_constraint_not_found_after_delete_update_list(
+        self, servicecatalog, portfolio_product
+    ):
+        """Full C+R+L+U+D+E pattern: create, describe, list, update, delete, then error."""
+        import json
+        cs = servicecatalog.create_constraint(
+            PortfolioId=portfolio_product["portfolio_id"],
+            ProductId=portfolio_product["product_id"],
+            Type="NOTIFICATION",
+            Parameters=json.dumps(
+                {"NotificationArns": ["arn:aws:sns:us-east-1:123456789012:first"]}
+            ),
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        cs_id = cs["ConstraintDetail"]["ConstraintId"]
+
+        # RETRIEVE
+        desc = servicecatalog.describe_constraint(Id=cs_id)
+        assert desc["ConstraintDetail"]["ConstraintId"] == cs_id
+
+        # LIST
+        listed = servicecatalog.list_constraints_for_portfolio(
+            PortfolioId=portfolio_product["portfolio_id"]
+        )
+        ids = [c["ConstraintId"] for c in listed["ConstraintDetails"]]
+        assert cs_id in ids
+
+        # UPDATE
+        upd = servicecatalog.update_constraint(
+            Id=cs_id,
+            Parameters=json.dumps(
+                {"NotificationArns": ["arn:aws:sns:us-east-1:123456789012:updated"]}
+            ),
+        )
+        assert "ConstraintDetail" in upd
+        assert upd["ConstraintDetail"]["ConstraintId"] == cs_id
+
+        # DELETE
+        servicecatalog.delete_constraint(Id=cs_id)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_constraint(Id=cs_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_update_constraint_description_persists(
+        self, servicecatalog, portfolio_product
+    ):
+        """UPDATE constraint description, RETRIEVE via describe to verify persistence."""
+        import json
+        cs = servicecatalog.create_constraint(
+            PortfolioId=portfolio_product["portfolio_id"],
+            ProductId=portfolio_product["product_id"],
+            Type="NOTIFICATION",
+            Parameters=json.dumps(
+                {"NotificationArns": ["arn:aws:sns:us-east-1:123456789012:test"]}
+            ),
+            Description="original description",
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        cs_id = cs["ConstraintDetail"]["ConstraintId"]
+        try:
+            upd = servicecatalog.update_constraint(Id=cs_id, Description="updated description")
+            assert "ConstraintDetail" in upd
+            # Verify update persists
+            desc = servicecatalog.describe_constraint(Id=cs_id)
+            assert desc["ConstraintDetail"]["Description"] == "updated description"
+        finally:
+            servicecatalog.delete_constraint(Id=cs_id)
+
+
+class TestServiceCatalogListPortfoliosPagination:
+    """Pagination tests using NextToken for list_portfolios."""
+
+    def test_list_portfolios_nexttoken_pagination(self, servicecatalog):
+        """Create 4 portfolios, page through with PageSize=2 + NextToken, collect all."""
+        pids = []
+        for i in range(4):
+            resp = servicecatalog.create_portfolio(
+                DisplayName=_uid(f"pgnt-{i}"),
+                ProviderName="Provider",
+                IdempotencyToken=uuid.uuid4().hex,
+            )
+            pids.append(resp["PortfolioDetail"]["Id"])
+        try:
+            collected = []
+            kwargs = {"PageSize": 2}
+            while True:
+                page = servicecatalog.list_portfolios(**kwargs)
+                collected.extend(page["PortfolioDetails"])
+                token = page.get("NextPageToken")
+                if not token:
+                    break
+                kwargs["PageToken"] = token
+            collected_ids = [p["Id"] for p in collected]
+            for pid in pids:
+                assert pid in collected_ids
+        finally:
+            for pid in pids:
+                servicecatalog.delete_portfolio(Id=pid)
+
+
+class TestServiceCatalogProductUpdateBehavior:
+    """Tests for product update behavioral fidelity."""
+
+    def test_update_product_name_reflected_in_describe(self, servicecatalog):
+        """CREATE product, UPDATE name, RETRIEVE and verify new name."""
+        old_name = _uid("upd-prod")
+        resp = servicecatalog.create_product(
+            Name=old_name,
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            new_name = _uid("upd-new-name")
+            servicecatalog.update_product(Id=prod_id, Name=new_name)
+            desc = servicecatalog.describe_product(Id=prod_id)
+            assert desc["ProductViewSummary"]["Name"] == new_name
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_update_product_owner_reflected_in_describe(self, servicecatalog):
+        """CREATE product, UPDATE owner, RETRIEVE and verify new owner."""
+        resp = servicecatalog.create_product(
+            Name=_uid("upd-owner-prod"),
+            Owner="OriginalOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        try:
+            servicecatalog.update_product(Id=prod_id, Owner="UpdatedOwner")
+            desc = servicecatalog.describe_product(Id=prod_id)
+            assert desc["ProductViewSummary"]["Owner"] == "UpdatedOwner"
+        finally:
+            servicecatalog.delete_product(Id=prod_id)
+
+    def test_delete_product_not_found_after_deletion(self, servicecatalog):
+        """CREATE product, DELETE it, verify RETRIEVE raises ResourceNotFoundException."""
+        resp = servicecatalog.create_product(
+            Name=_uid("del-err-prod"),
+            Owner="TestOwner",
+            ProductType="CLOUD_FORMATION_TEMPLATE",
+            ProvisioningArtifactParameters={
+                "Name": "v1",
+                "Info": {"LoadTemplateFromURL": "https://example.com/t.json"},
+                "Type": "CLOUD_FORMATION_TEMPLATE",
+            },
+            IdempotencyToken=uuid.uuid4().hex,
+        )
+        prod_id = resp["ProductViewDetail"]["ProductViewSummary"]["ProductId"]
+        servicecatalog.delete_product(Id=prod_id)
+        with pytest.raises(ClientError) as exc:
+            servicecatalog.describe_product(Id=prod_id)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
