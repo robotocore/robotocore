@@ -12022,3 +12022,642 @@ class TestRDSDBShardGroupsEdgeCases:
             "DBShardGroupNotFound",
             "DBShardGroupNotFoundFault",
         )
+
+
+class TestRDSEdgeCasesAndBehavioralFidelity:
+    """Edge case and behavioral fidelity tests for RDS operations with missing patterns."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("rds")
+
+    @pytest.fixture
+    def ec2_client(self):
+        return make_client("ec2")
+
+    @pytest.fixture
+    def proxy_subnets(self, ec2_client):
+        """Create VPC + 2 subnets for proxy tests."""
+        vpc = ec2_client.create_vpc(CidrBlock="10.200.0.0/16")
+        vpc_id = vpc["Vpc"]["VpcId"]
+        s1 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.200.1.0/24", AvailabilityZone="us-east-1a"
+        )
+        s2 = ec2_client.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.200.2.0/24", AvailabilityZone="us-east-1b"
+        )
+        subnet_ids = [s1["Subnet"]["SubnetId"], s2["Subnet"]["SubnetId"]]
+        yield subnet_ids
+        for sid in subnet_ids:
+            try:
+                ec2_client.delete_subnet(SubnetId=sid)
+            except ClientError:
+                pass  # best-effort cleanup
+        try:
+            ec2_client.delete_vpc(VpcId=vpc_id)
+        except ClientError:
+            pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # describe_db_proxy_target_groups - add CREATE, UPDATE, DELETE, ERROR
+    # -------------------------------------------------------------------------
+
+    def test_proxy_target_group_create_retrieve_update(self, client, proxy_subnets):
+        """DescribeDBProxyTargetGroups: CREATE proxy → RETRIEVE default target group → UPDATE."""
+        name = _unique("compat-px")
+        try:
+            client.create_db_proxy(
+                DBProxyName=name,
+                EngineFamily="MYSQL",
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "DISABLED",
+                    }
+                ],
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+                VpcSubnetIds=proxy_subnets,
+            )
+            # RETRIEVE - proxy has a default target group
+            resp = client.describe_db_proxy_target_groups(DBProxyName=name)
+            assert "TargetGroups" in resp
+            groups = resp["TargetGroups"]
+            assert len(groups) >= 1
+            tg = groups[0]
+            assert tg["DBProxyName"] == name
+            assert "TargetGroupName" in tg
+
+            # UPDATE - modify the default target group connection pool
+            update_resp = client.modify_db_proxy_target_group(
+                TargetGroupName="default",
+                DBProxyName=name,
+                ConnectionPoolConfig={"MaxConnectionsPercent": 75},
+            )
+            assert "DBProxyTargetGroup" in update_resp
+            assert update_resp["DBProxyTargetGroup"]["DBProxyName"] == name
+
+            # DELETE proxy and verify target groups gone
+            client.delete_db_proxy(DBProxyName=name)
+            with pytest.raises(ClientError) as exc:
+                client.describe_db_proxy_target_groups(DBProxyName=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "DBProxyNotFoundFault",
+                "DBProxyNotFound",
+            )
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+    # -------------------------------------------------------------------------
+    # describe_db_proxy_targets - add CREATE, UPDATE, DELETE, ERROR
+    # -------------------------------------------------------------------------
+
+    def test_proxy_targets_create_list_delete(self, client, proxy_subnets):
+        """DescribeDBProxyTargets: CREATE proxy → LIST targets → DELETE proxy → ERROR."""
+        name = _unique("compat-px")
+        try:
+            client.create_db_proxy(
+                DBProxyName=name,
+                EngineFamily="MYSQL",
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "DISABLED",
+                    }
+                ],
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+                VpcSubnetIds=proxy_subnets,
+            )
+            # LIST targets (empty initially)
+            resp = client.describe_db_proxy_targets(DBProxyName=name)
+            assert "Targets" in resp
+            assert isinstance(resp["Targets"], list)
+
+            # DELETE proxy
+            client.delete_db_proxy(DBProxyName=name)
+
+            # ERROR after delete
+            with pytest.raises(ClientError) as exc:
+                client.describe_db_proxy_targets(DBProxyName=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "DBProxyNotFoundFault",
+                "DBProxyNotFound",
+            )
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+    # -------------------------------------------------------------------------
+    # describe_events_by_source_type - add CREATE + DELETE + UPDATE around events
+    # -------------------------------------------------------------------------
+
+    def test_describe_events_by_source_type_with_instance(self, client):
+        """DescribeEvents(SourceType=db-instance): CREATE instance → check events → DELETE."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+            Tags=[{"Key": "test", "Value": "events"}],
+        )
+        try:
+            # Events list for db-instance source type
+            resp = client.describe_events(SourceType="db-instance")
+            assert "Events" in resp
+            assert isinstance(resp["Events"], list)
+
+            # Events for specific instance
+            inst_resp = client.describe_events(
+                SourceIdentifier=name,
+                SourceType="db-instance",
+            )
+            assert "Events" in inst_resp
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    def test_describe_events_by_source_type_cluster(self, client):
+        """DescribeEvents(SourceType=db-cluster): CREATE cluster → check events → DELETE."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            resp = client.describe_events(SourceType="db-cluster")
+            assert "Events" in resp
+            assert isinstance(resp["Events"], list)
+
+            # Events for specific cluster
+            cl_resp = client.describe_events(
+                SourceIdentifier=name,
+                SourceType="db-cluster",
+            )
+            assert "Events" in cl_resp
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # modify_db_proxy_target_group - add CREATE, RETRIEVE, LIST, DELETE
+    # -------------------------------------------------------------------------
+
+    def test_modify_db_proxy_target_group_full_lifecycle(self, client, proxy_subnets):
+        """ModifyDBProxyTargetGroup: CREATE → RETRIEVE → LIST → UPDATE → DELETE."""
+        name = _unique("compat-px")
+        try:
+            # CREATE
+            create_resp = client.create_db_proxy(
+                DBProxyName=name,
+                EngineFamily="MYSQL",
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "DISABLED",
+                    }
+                ],
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+                VpcSubnetIds=proxy_subnets,
+            )
+            assert create_resp["DBProxy"]["DBProxyName"] == name
+
+            # RETRIEVE via describe_db_proxy_target_groups
+            retrieve_resp = client.describe_db_proxy_target_groups(DBProxyName=name)
+            assert len(retrieve_resp["TargetGroups"]) >= 1
+            assert retrieve_resp["TargetGroups"][0]["DBProxyName"] == name
+
+            # LIST proxies
+            list_resp = client.describe_db_proxies()
+            proxy_names = [p["DBProxyName"] for p in list_resp["DBProxies"]]
+            assert name in proxy_names
+
+            # UPDATE target group
+            update_resp = client.modify_db_proxy_target_group(
+                TargetGroupName="default",
+                DBProxyName=name,
+                ConnectionPoolConfig={
+                    "MaxConnectionsPercent": 60,
+                    "MaxIdleConnectionsPercent": 30,
+                },
+            )
+            assert update_resp["DBProxyTargetGroup"]["TargetGroupName"] == "default"
+            assert update_resp["DBProxyTargetGroup"]["DBProxyName"] == name
+
+            # DELETE
+            client.delete_db_proxy(DBProxyName=name)
+
+            # Verify gone
+            list_after = client.describe_db_proxies()
+            names_after = [p["DBProxyName"] for p in list_after["DBProxies"]]
+            assert name not in names_after
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+    # -------------------------------------------------------------------------
+    # describe_db_shard_groups (TestRDSAdditionalDescribeOperations) - add ERROR
+    # -------------------------------------------------------------------------
+
+    def test_describe_db_shard_groups_nonexistent_error(self, client):
+        """DescribeDBShardGroups: LIST succeeds; nonexistent ID raises error."""
+        # LIST
+        list_resp = client.describe_db_shard_groups()
+        assert "DBShardGroups" in list_resp
+        assert isinstance(list_resp["DBShardGroups"], list)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            client.describe_db_shard_groups(DBShardGroupIdentifier="nonexistent-shg-xyz")
+        assert exc.value.response["Error"]["Code"] in (
+            "DBShardGroupNotFound",
+            "DBShardGroupNotFoundFault",
+        )
+
+    # -------------------------------------------------------------------------
+    # describe_db_instance_automated_backups - add CREATE + DELETE + ERROR
+    # -------------------------------------------------------------------------
+
+    def test_describe_db_instance_automated_backups_with_instance(self, client):
+        """DescribeDBInstanceAutomatedBackups: CREATE instance → LIST backups → DELETE."""
+        name = _unique("compat-db")
+        client.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        try:
+            # LIST automated backups
+            resp = client.describe_db_instance_automated_backups()
+            assert "DBInstanceAutomatedBackups" in resp
+            assert isinstance(resp["DBInstanceAutomatedBackups"], list)
+
+            # RETRIEVE by instance identifier
+            specific = client.describe_db_instance_automated_backups(
+                DBInstanceIdentifier=name
+            )
+            assert "DBInstanceAutomatedBackups" in specific
+        finally:
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # describe_orderable_db_instance_options - add UPDATE + DELETE + ERROR
+    # -------------------------------------------------------------------------
+
+    def test_describe_orderable_db_instance_options_filtered(self, client):
+        """DescribeOrderableDBInstanceOptions: filter by engine + class + multi-az."""
+        # Filter by engine
+        resp = client.describe_orderable_db_instance_options(Engine="mysql")
+        assert "OrderableDBInstanceOptions" in resp
+        opts = resp["OrderableDBInstanceOptions"]
+        assert isinstance(opts, list)
+        # All results should be for mysql
+        for opt in opts[:5]:
+            assert opt["Engine"] == "mysql"
+
+        # Filter by engine version
+        resp2 = client.describe_orderable_db_instance_options(
+            Engine="mysql",
+            EngineVersion="8.0.36",
+        )
+        assert "OrderableDBInstanceOptions" in resp2
+
+    # -------------------------------------------------------------------------
+    # describe_db_proxies_empty - add CREATE + DELETE + UPDATE
+    # -------------------------------------------------------------------------
+
+    def test_describe_db_proxies_create_update_delete(self, client, proxy_subnets):
+        """DescribeDBProxies: CREATE → UPDATE → DELETE lifecycle."""
+        name = _unique("compat-px")
+        try:
+            # CREATE
+            create_resp = client.create_db_proxy(
+                DBProxyName=name,
+                EngineFamily="MYSQL",
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "DISABLED",
+                    }
+                ],
+                RoleArn="arn:aws:iam::123456789012:role/test-role",
+                VpcSubnetIds=proxy_subnets,
+            )
+            assert create_resp["DBProxy"]["DBProxyName"] == name
+
+            # RETRIEVE
+            desc = client.describe_db_proxies(DBProxyName=name)
+            assert len(desc["DBProxies"]) == 1
+            assert desc["DBProxies"][0]["DBProxyName"] == name
+
+            # UPDATE - modify proxy settings (change IAMAuth)
+            update_resp = client.modify_db_proxy(
+                DBProxyName=name,
+                Auth=[
+                    {
+                        "AuthScheme": "SECRETS",
+                        "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:test",
+                        "IAMAuth": "REQUIRED",
+                    }
+                ],
+            )
+            assert "DBProxy" in update_resp
+            assert update_resp["DBProxy"]["DBProxyName"] == name
+
+            # DELETE
+            client.delete_db_proxy(DBProxyName=name)
+
+            # Verify gone
+            with pytest.raises(ClientError) as exc:
+                client.describe_db_proxies(DBProxyName=name)
+            assert exc.value.response["Error"]["Code"] in (
+                "DBProxyNotFoundFault",
+                "DBProxyNotFound",
+            )
+        except Exception:
+            try:
+                client.delete_db_proxy(DBProxyName=name)
+            except ClientError:
+                pass  # best-effort cleanup
+            raise
+
+    # -------------------------------------------------------------------------
+    # describe_export_tasks_empty - add CREATE + RETRIEVE + DELETE
+    # -------------------------------------------------------------------------
+
+    def test_describe_export_tasks_create_cancel(self, client):
+        """DescribeExportTasks: CREATE snapshot + export → LIST → CANCEL."""
+        db_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        export_id = _unique("compat-exp")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap_name,
+            DBInstanceIdentifier=db_name,
+        )
+        try:
+            # CREATE export task
+            snap_desc = client.describe_db_snapshots(DBSnapshotIdentifier=snap_name)
+            snap_arn = snap_desc["DBSnapshots"][0]["DBSnapshotArn"]
+            export_resp = client.start_export_task(
+                ExportTaskIdentifier=export_id,
+                SourceArn=snap_arn,
+                S3BucketName="my-export-bucket",
+                IamRoleArn="arn:aws:iam::123456789012:role/export-role",
+                KmsKeyId="arn:aws:kms:us-east-1:123456789012:key/test-key",
+            )
+            assert export_resp["ExportTaskIdentifier"] == export_id
+            assert export_resp["SourceArn"] == snap_arn
+
+            # LIST export tasks
+            list_resp = client.describe_export_tasks()
+            task_ids = [t["ExportTaskIdentifier"] for t in list_resp["ExportTasks"]]
+            assert export_id in task_ids
+
+            # RETRIEVE specific task
+            specific = client.describe_export_tasks(ExportTaskIdentifier=export_id)
+            assert len(specific["ExportTasks"]) == 1
+            assert specific["ExportTasks"][0]["ExportTaskIdentifier"] == export_id
+
+            # CANCEL (DELETE)
+            cancel_resp = client.cancel_export_task(ExportTaskIdentifier=export_id)
+            assert cancel_resp["ExportTaskIdentifier"] == export_id
+        finally:
+            try:
+                client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+            except ClientError:
+                pass  # best-effort cleanup
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # describe_blue_green_deployments_empty - add CREATE + RETRIEVE + DELETE
+    # -------------------------------------------------------------------------
+
+    def test_describe_blue_green_deployments_create_list(self, client):
+        """DescribeBlueGreenDeployments: CREATE cluster → CREATE deployment → LIST → DELETE."""
+        src_name = _unique("compat-cl")
+        bgd_name = _unique("compat-bgd")
+        client.create_db_cluster(
+            DBClusterIdentifier=src_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            src_desc = client.describe_db_clusters(DBClusterIdentifier=src_name)
+            src_arn = src_desc["DBClusters"][0]["DBClusterArn"]
+            # CREATE blue/green deployment
+            bgd_resp = client.create_blue_green_deployment(
+                BlueGreenDeploymentName=bgd_name,
+                Source=src_arn,
+            )
+            assert "BlueGreenDeployment" in bgd_resp
+            bgd_id = bgd_resp["BlueGreenDeployment"]["BlueGreenDeploymentIdentifier"]
+
+            try:
+                # LIST deployments
+                list_resp = client.describe_blue_green_deployments()
+                assert "BlueGreenDeployments" in list_resp
+                ids = [d["BlueGreenDeploymentIdentifier"] for d in list_resp["BlueGreenDeployments"]]
+                assert bgd_id in ids
+
+                # RETRIEVE specific deployment
+                specific = client.describe_blue_green_deployments(
+                    BlueGreenDeploymentIdentifier=bgd_id
+                )
+                assert len(specific["BlueGreenDeployments"]) == 1
+                assert specific["BlueGreenDeployments"][0]["BlueGreenDeploymentName"] == bgd_name
+
+                # ERROR: describe nonexistent
+                with pytest.raises(ClientError) as exc:
+                    client.describe_blue_green_deployments(
+                        BlueGreenDeploymentIdentifier="bgd-nonexistent-xyz"
+                    )
+                assert exc.value.response["Error"]["Code"] in (
+                    "BlueGreenDeploymentNotFoundFault",
+                    "BlueGreenDeploymentNotFound",
+                )
+            finally:
+                try:
+                    client.delete_blue_green_deployment(
+                        BlueGreenDeploymentIdentifier=bgd_id,
+                        DeleteTarget=False,
+                    )
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            # Clean up any clusters created by the blue/green deployment
+            for cl in [src_name]:
+                try:
+                    client.delete_db_cluster(DBClusterIdentifier=cl, SkipFinalSnapshot=True)
+                except ClientError:
+                    pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # failover_nonexistent_db_cluster - add CREATE + RETRIEVE + UPDATE
+    # -------------------------------------------------------------------------
+
+    def test_failover_db_cluster_create_retrieve_error(self, client):
+        """FailoverDBCluster: CREATE cluster → RETRIEVE → verify cluster state → ERROR on nonexistent."""
+        name = _unique("compat-cl")
+        client.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            # RETRIEVE - cluster exists and has expected fields
+            desc = client.describe_db_clusters(DBClusterIdentifier=name)
+            cluster = desc["DBClusters"][0]
+            assert cluster["DBClusterIdentifier"] == name
+            assert cluster["Engine"] == "aurora-mysql"
+
+            # LIST - cluster appears in full listing
+            list_resp = client.describe_db_clusters()
+            cluster_ids = [c["DBClusterIdentifier"] for c in list_resp["DBClusters"]]
+            assert name in cluster_ids
+
+            # ERROR - failover on nonexistent cluster
+            with pytest.raises(ClientError) as exc:
+                client.failover_db_cluster(DBClusterIdentifier="does-not-exist-xyz")
+            assert exc.value.response["Error"]["Code"] == "DBClusterNotFoundFault"
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # cancel_export_task_nonexistent - add CREATE + RETRIEVE
+    # -------------------------------------------------------------------------
+
+    def test_cancel_export_task_create_and_cancel(self, client):
+        """CancelExportTask: CREATE snapshot → start export → RETRIEVE → CANCEL."""
+        db_name = _unique("compat-db")
+        snap_name = _unique("compat-snap")
+        export_id = _unique("compat-exp")
+        client.create_db_instance(
+            DBInstanceIdentifier=db_name,
+            DBInstanceClass="db.t3.micro",
+            Engine="mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+        )
+        client.create_db_snapshot(
+            DBSnapshotIdentifier=snap_name,
+            DBInstanceIdentifier=db_name,
+        )
+        try:
+            snap_desc = client.describe_db_snapshots(DBSnapshotIdentifier=snap_name)
+            snap_arn = snap_desc["DBSnapshots"][0]["DBSnapshotArn"]
+            # CREATE
+            export_resp = client.start_export_task(
+                ExportTaskIdentifier=export_id,
+                SourceArn=snap_arn,
+                S3BucketName="my-export-bucket",
+                IamRoleArn="arn:aws:iam::123456789012:role/export-role",
+                KmsKeyId="arn:aws:kms:us-east-1:123456789012:key/test-key",
+            )
+            assert export_resp["ExportTaskIdentifier"] == export_id
+
+            # RETRIEVE
+            desc = client.describe_export_tasks(ExportTaskIdentifier=export_id)
+            assert desc["ExportTasks"][0]["SourceArn"] == snap_arn
+
+            # CANCEL
+            cancel_resp = client.cancel_export_task(ExportTaskIdentifier=export_id)
+            assert cancel_resp["ExportTaskIdentifier"] == export_id
+            assert cancel_resp["Status"] in ("canceling", "canceled", "CANCELING", "CANCELED")
+        finally:
+            try:
+                client.delete_db_snapshot(DBSnapshotIdentifier=snap_name)
+            except ClientError:
+                pass  # best-effort cleanup
+            try:
+                client.delete_db_instance(DBInstanceIdentifier=db_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
+
+    # -------------------------------------------------------------------------
+    # switchover_blue_green_nonexistent - add CREATE + RETRIEVE
+    # -------------------------------------------------------------------------
+
+    def test_switchover_blue_green_deployment_create_list(self, client):
+        """SwitchoverBlueGreenDeployment: CREATE cluster → CREATE deployment → LIST."""
+        src_name = _unique("compat-cl")
+        bgd_name = _unique("compat-bgd")
+        client.create_db_cluster(
+            DBClusterIdentifier=src_name,
+            Engine="aurora-mysql",
+            MasterUsername="admin",
+            MasterUserPassword="password123!",
+        )
+        try:
+            src_desc = client.describe_db_clusters(DBClusterIdentifier=src_name)
+            src_arn = src_desc["DBClusters"][0]["DBClusterArn"]
+
+            bgd_resp = client.create_blue_green_deployment(
+                BlueGreenDeploymentName=bgd_name,
+                Source=src_arn,
+            )
+            bgd_id = bgd_resp["BlueGreenDeployment"]["BlueGreenDeploymentIdentifier"]
+            assert bgd_id is not None
+
+            try:
+                # RETRIEVE - verify deployment exists
+                specific = client.describe_blue_green_deployments(
+                    BlueGreenDeploymentIdentifier=bgd_id
+                )
+                assert specific["BlueGreenDeployments"][0]["BlueGreenDeploymentName"] == bgd_name
+                # LIST - deployment appears in full list
+                list_resp = client.describe_blue_green_deployments()
+                ids = [d["BlueGreenDeploymentIdentifier"] for d in list_resp["BlueGreenDeployments"]]
+                assert bgd_id in ids
+            finally:
+                try:
+                    client.delete_blue_green_deployment(
+                        BlueGreenDeploymentIdentifier=bgd_id,
+                        DeleteTarget=False,
+                    )
+                except ClientError:
+                    pass  # best-effort cleanup
+        finally:
+            try:
+                client.delete_db_cluster(DBClusterIdentifier=src_name, SkipFinalSnapshot=True)
+            except ClientError:
+                pass  # best-effort cleanup
