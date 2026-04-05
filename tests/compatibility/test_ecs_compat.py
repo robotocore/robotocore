@@ -322,7 +322,7 @@ class TestECSExtended:
 
     def test_list_task_definition_families(self, ecs):
         resp = ecs.list_task_definition_families()
-        assert "families" in resp
+        assert isinstance(resp["families"], list)
 
     def test_create_cluster_with_settings(self, ecs):
         name = _unique("settings-cluster")
@@ -347,7 +347,9 @@ class TestECSExtended:
             )
             desc = ecs.describe_clusters(clusters=[name], include=["SETTINGS"])
             cluster = desc["clusters"][0]
-            assert "FARGATE" in cluster.get("capacityProviders", [])
+            cap_providers = cluster.get("capacityProviders", [])
+            assert "FARGATE" in cap_providers
+            assert len(cap_providers) >= 1
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -518,8 +520,8 @@ class TestECSExtendedV2:
         try:
             containers = resp["taskDefinition"]["containerDefinitions"]
             names = [c["name"] for c in containers]
-            assert "web" in names
-            assert "sidecar" in names
+            assert len(names) == 2
+            assert set(names) == {"web", "sidecar"}
         finally:
             ecs.deregister_task_definition(taskDefinition=f"{family}:1")
 
@@ -638,24 +640,25 @@ class TestEcsAutoCoverage:
         return make_client("ecs")
 
     def test_discover_poll_endpoint(self, client):
-        """DiscoverPollEndpoint returns a response."""
+        """DiscoverPollEndpoint returns endpoint URL strings."""
         resp = client.discover_poll_endpoint()
-        assert "endpoint" in resp
+        assert isinstance(resp["endpoint"], str)
+        assert len(resp["endpoint"]) > 0
 
     def test_list_account_settings(self, client):
-        """ListAccountSettings returns a response."""
+        """ListAccountSettings returns a list of settings."""
         resp = client.list_account_settings()
-        assert "settings" in resp
+        assert isinstance(resp["settings"], list)
 
     def test_list_container_instances(self, client):
-        """ListContainerInstances returns a response."""
+        """ListContainerInstances returns a list of ARNs."""
         resp = client.list_container_instances()
-        assert "containerInstanceArns" in resp
+        assert isinstance(resp["containerInstanceArns"], list)
 
     def test_list_tasks(self, client):
-        """ListTasks returns a response."""
+        """ListTasks returns a list of task ARNs."""
         resp = client.list_tasks()
-        assert "taskArns" in resp
+        assert isinstance(resp["taskArns"], list)
 
 
 class TestCapacityProviderOperations:
@@ -730,9 +733,11 @@ class TestAccountSettingOperations:
     def test_put_and_list_account_settings(self, ecs):
         ecs.put_account_setting(name="serviceLongArnFormat", value="enabled")
         resp = ecs.list_account_settings()
-        assert "settings" in resp
+        assert isinstance(resp["settings"], list)
         names = [s["name"] for s in resp["settings"]]
         assert "serviceLongArnFormat" in names
+        found = [s for s in resp["settings"] if s["name"] == "serviceLongArnFormat"]
+        assert found[0]["value"] == "enabled"
 
     def test_put_account_setting_effective(self, ecs):
         ecs.put_account_setting(name="taskLongArnFormat", value="enabled")
@@ -754,8 +759,8 @@ class TestListAttributesOperation:
         ecs.create_cluster(clusterName=name)
         try:
             resp = ecs.list_attributes(cluster=name, targetType="container-instance")
-            assert "attributes" in resp
             assert isinstance(resp["attributes"], list)
+            assert len(resp["attributes"]) == 0
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -769,7 +774,9 @@ class TestDescribeCapacityProviders:
 
     def test_describe_capacity_providers_empty(self, ecs):
         resp = ecs.describe_capacity_providers(capacityProviders=["nonexistent-cp"])
-        assert "capacityProviders" in resp
+        assert isinstance(resp["capacityProviders"], list)
+        found = [cp for cp in resp["capacityProviders"] if cp["name"] == "nonexistent-cp"]
+        assert len(found) == 0
 
     def test_describe_capacity_providers_after_create(self, ecs):
         cp_name = _unique("desc-cp")
@@ -1103,9 +1110,11 @@ class TestAttributeOperations:
             ],
         )
         resp = ecs.list_attributes(cluster=cluster, targetType="container-instance")
-        assert "attributes" in resp
+        assert isinstance(resp["attributes"], list)
         names = [a["name"] for a in resp["attributes"]]
         assert "team" in names
+        found = [a for a in resp["attributes"] if a["name"] == "team"]
+        assert found[0]["value"] == "platform"
 
     def test_delete_attributes(self, ecs, cluster):
         ecs.put_attributes(
@@ -1177,7 +1186,7 @@ class TestECSAdditionalOperations:
         ecs.create_cluster(clusterName=name)
         try:
             resp = ecs.submit_container_state_change(cluster=name, status="RUNNING")
-            assert "acknowledgment" in resp
+            assert isinstance(resp["acknowledgment"], str)
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -1186,7 +1195,7 @@ class TestECSAdditionalOperations:
         ecs.create_cluster(clusterName=name)
         try:
             resp = ecs.submit_task_state_change(cluster=name, status="RUNNING")
-            assert "acknowledgment" in resp
+            assert isinstance(resp["acknowledgment"], str)
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -1265,15 +1274,15 @@ class TestEcsServiceDeployments:
         """DescribeServiceDeployments with unknown ARNs returns empty list."""
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-deployment/fake-id"
         resp = ecs.describe_service_deployments(serviceDeploymentArns=[fake_arn])
-        assert "serviceDeployments" in resp
-        assert "failures" in resp
+        assert isinstance(resp["serviceDeployments"], list)
+        assert isinstance(resp["failures"], list)
 
     def test_describe_service_revisions_empty(self, ecs):
         """DescribeServiceRevisions with unknown ARNs returns empty list."""
         fake_arn = "arn:aws:ecs:us-east-1:123456789012:service-revision/fake-id"
         resp = ecs.describe_service_revisions(serviceRevisionArns=[fake_arn])
-        assert "serviceRevisions" in resp
-        assert "failures" in resp
+        assert isinstance(resp["serviceRevisions"], list)
+        assert isinstance(resp["failures"], list)
 
     def test_list_service_deployments_nonexistent_service(self, ecs):
         """ListServiceDeployments with a nonexistent service raises ServiceNotFoundException."""
@@ -1350,7 +1359,8 @@ class TestECSMissingGapOps:
                 }
             ],
         )
-        assert "acknowledgment" in resp
+        assert isinstance(resp["acknowledgment"], str)
+        assert len(resp["acknowledgment"]) > 0
 
 
 class TestECSExpressGatewayService:
@@ -1442,8 +1452,8 @@ class TestDiscoverPollEndpointEdgeCases:
     def test_discover_poll_endpoint_has_telemetry(self, ecs):
         """discover_poll_endpoint returns both endpoint and telemetryEndpoint."""
         resp = ecs.discover_poll_endpoint()
-        assert "endpoint" in resp
-        assert "telemetryEndpoint" in resp
+        assert isinstance(resp["endpoint"], str)
+        assert isinstance(resp["telemetryEndpoint"], str)
 
     def test_discover_poll_endpoint_endpoint_is_url(self, ecs):
         """discover_poll_endpoint endpoint value looks like a URL."""
@@ -1456,14 +1466,16 @@ class TestDiscoverPollEndpointEdgeCases:
         ecs.create_cluster(clusterName=name)
         try:
             resp = ecs.discover_poll_endpoint(cluster=name)
-            assert "endpoint" in resp
+            assert isinstance(resp["endpoint"], str)
+            assert len(resp["endpoint"]) > 0
         finally:
             ecs.delete_cluster(cluster=name)
 
     def test_discover_poll_endpoint_with_container_instance(self, ecs):
         """discover_poll_endpoint with containerInstance returns endpoint."""
         resp = ecs.discover_poll_endpoint(containerInstance="fake-ci-id")
-        assert "endpoint" in resp
+        assert isinstance(resp["endpoint"], str)
+        assert len(resp["endpoint"]) > 0
 
     def test_discover_poll_endpoint_telemetry_is_url(self, ecs):
         """discover_poll_endpoint telemetryEndpoint value looks like a URL."""
@@ -1523,7 +1535,8 @@ class TestSubmitAttachmentStateChangesEdgeCases:
                     }
                 ],
             )
-            assert "acknowledgment" in resp
+            assert isinstance(resp["acknowledgment"], str)
+            assert len(resp["acknowledgment"]) > 0
         finally:
             ecs.delete_cluster(cluster=name)
 
@@ -1845,7 +1858,7 @@ class TestDescribeCapacityProvidersEdgeCases:
     def test_describe_capacity_providers_builtin_fargate(self, ecs):
         """describe_capacity_providers returns FARGATE as built-in provider."""
         resp = ecs.describe_capacity_providers(capacityProviders=["FARGATE"])
-        assert "capacityProviders" in resp
+        assert isinstance(resp["capacityProviders"], list)
         if resp["capacityProviders"]:
             names = [cp["name"] for cp in resp["capacityProviders"]]
             assert "FARGATE" in names
@@ -1904,7 +1917,7 @@ class TestListServicesByNamespaceEdgeCases:
     def test_list_services_by_namespace_response_has_next_token_key(self, ecs):
         """list_services_by_namespace response structure is valid."""
         resp = ecs.list_services_by_namespace(namespace="any-namespace")
-        assert "serviceArns" in resp
+        assert isinstance(resp["serviceArns"], list)
 
 
 class TestPutAttributesEdgeCases:
@@ -2037,3 +2050,608 @@ class TestDescribeServiceDeploymentsEdgeCases:
         assert "serviceRevisions" in resp
         assert "failures" in resp
         assert isinstance(resp["serviceRevisions"], list)
+
+
+class TestDiscoverPollEndpointWithLifecycle:
+    """discover_poll_endpoint with cluster lifecycle for full CRUD pattern coverage."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_discover_poll_endpoint_cluster_lifecycle(self, ecs):
+        """discover_poll_endpoint in cluster lifecycle: create cluster, poll, delete."""
+        cluster_name = _unique("dpoll-lifecycle")
+        ecs.create_cluster(clusterName=cluster_name)
+        try:
+            resp = ecs.discover_poll_endpoint(cluster=cluster_name)
+            assert resp["endpoint"].startswith("http")
+            assert resp["telemetryEndpoint"].startswith("http")
+            desc = ecs.describe_clusters(clusters=[cluster_name])
+            assert desc["clusters"][0]["clusterName"] == cluster_name
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_discover_poll_endpoint_with_container_instance_lifecycle(self, ecs):
+        """discover_poll_endpoint with container instance in cluster lifecycle."""
+        cluster_name = _unique("dpoll-ci")
+        ecs.create_cluster(clusterName=cluster_name)
+        try:
+            reg = ecs.register_container_instance(
+                cluster=cluster_name,
+                instanceIdentityDocument=(
+                    '{"region": "us-east-1", "instanceId": "i-dpoll001", "accountId": "123456789012"}'
+                ),
+            )
+            ci_arn = reg["containerInstance"]["containerInstanceArn"]
+            resp = ecs.discover_poll_endpoint(
+                cluster=cluster_name, containerInstance=ci_arn
+            )
+            assert resp["endpoint"].startswith("http")
+            assert len(resp["endpoint"]) > 7
+            # Verify container instance is registered
+            listed = ecs.list_container_instances(cluster=cluster_name)
+            assert ci_arn in listed["containerInstanceArns"]
+            ecs.deregister_container_instance(
+                cluster=cluster_name, containerInstance=ci_arn, force=True
+            )
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_discover_poll_endpoint_response_values_non_empty(self, ecs):
+        """discover_poll_endpoint returns non-empty endpoint strings."""
+        cluster_name = _unique("dpoll-val")
+        ecs.create_cluster(clusterName=cluster_name)
+        try:
+            resp = ecs.discover_poll_endpoint(cluster=cluster_name)
+            assert len(resp["endpoint"]) > 0
+            assert len(resp["telemetryEndpoint"]) > 0
+            # Both should be distinct-ish URLs
+            assert "endpoint" in resp
+            assert "telemetryEndpoint" in resp
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+
+class TestSubmitAttachmentWithLifecycle:
+    """submit_attachment_state_changes with full cluster lifecycle."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_submit_attachment_in_cluster_lifecycle(self, ecs):
+        """submit_attachment_state_changes within create/describe/delete lifecycle."""
+        cluster_name = _unique("attach-lifecycle")
+        resp = ecs.create_cluster(clusterName=cluster_name)
+        assert resp["cluster"]["status"] == "ACTIVE"
+        try:
+            attach_resp = ecs.submit_attachment_state_changes(
+                cluster=cluster_name,
+                attachments=[
+                    {
+                        "attachmentArn": f"arn:aws:ecs:us-east-1:123456789012:attachment/{uuid.uuid4().hex}",
+                        "status": "ATTACHED",
+                    }
+                ],
+            )
+            assert isinstance(attach_resp["acknowledgment"], str)
+            assert len(attach_resp["acknowledgment"]) > 0
+            desc = ecs.describe_clusters(clusters=[cluster_name])
+            assert desc["clusters"][0]["status"] == "ACTIVE"
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_submit_multiple_attachments_lifecycle(self, ecs):
+        """submit_attachment_state_changes with multiple attachments in lifecycle."""
+        cluster_name = _unique("attach-multi")
+        ecs.create_cluster(clusterName=cluster_name)
+        try:
+            resp = ecs.submit_attachment_state_changes(
+                cluster=cluster_name,
+                attachments=[
+                    {
+                        "attachmentArn": f"arn:aws:ecs:us-east-1:123456789012:attachment/{uuid.uuid4().hex}",
+                        "status": "ATTACHED",
+                    },
+                    {
+                        "attachmentArn": f"arn:aws:ecs:us-east-1:123456789012:attachment/{uuid.uuid4().hex}",
+                        "status": "DETACHED",
+                    },
+                ],
+            )
+            assert isinstance(resp["acknowledgment"], str)
+            assert len(resp["acknowledgment"]) > 0
+            # Verify cluster still healthy after submission
+            listed = ecs.list_clusters()
+            assert any(cluster_name in arn for arn in listed["clusterArns"])
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+    def test_submit_attachment_acknowledgment_is_nonempty_string(self, ecs):
+        """submit_attachment_state_changes acknowledgment is non-empty string in lifecycle."""
+        cluster_name = _unique("attach-ack")
+        ecs.create_cluster(clusterName=cluster_name)
+        try:
+            resp = ecs.submit_attachment_state_changes(
+                cluster=cluster_name,
+                attachments=[
+                    {
+                        "attachmentArn": f"arn:aws:ecs:us-east-1:123456789012:attachment/{uuid.uuid4().hex}",
+                        "status": "ATTACHED",
+                    }
+                ],
+            )
+            assert isinstance(resp["acknowledgment"], str)
+            assert resp["acknowledgment"] != ""
+            desc = ecs.describe_clusters(clusters=[cluster_name])
+            assert len(desc["clusters"]) == 1
+        finally:
+            ecs.delete_cluster(cluster=cluster_name)
+
+
+class TestRunTaskRetrieveUpdateError:
+    """run_task: add RETRIEVE, UPDATE, and ERROR patterns."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("rttue-cls")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("rttue-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_run_task_retrieve_via_describe(self, ecs, cluster, task_def_arn):
+        """run_task then describe_tasks retrieves exact task by ARN."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        desc = ecs.describe_tasks(cluster=cluster, tasks=[task_arn])
+        assert len(desc["tasks"]) == 1
+        assert desc["tasks"][0]["taskArn"] == task_arn
+        assert desc["tasks"][0]["taskDefinitionArn"] == task_def_arn
+        assert desc["tasks"][0]["clusterArn"].endswith(f"/{cluster}")
+
+    def test_run_task_stop_updates_status(self, ecs, cluster, task_def_arn):
+        """run_task then stop_task transitions desired status to STOPPED."""
+        run_resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run_resp["tasks"][0]["taskArn"]
+        stop_resp = ecs.stop_task(cluster=cluster, task=task_arn, reason="fidelity-test")
+        assert stop_resp["task"]["desiredStatus"] == "STOPPED"
+        assert stop_resp["task"]["stoppedReason"] == "fidelity-test"
+
+    def test_run_task_nonexistent_cluster_raises(self, ecs, task_def_arn):
+        """run_task on nonexistent cluster raises ClusterNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            ecs.run_task(cluster="nonexistent-cluster-xyz", taskDefinition=task_def_arn)
+        assert exc.value.response["Error"]["Code"] == "ClusterNotFoundException"
+
+    def test_run_task_has_last_status(self, ecs, cluster, task_def_arn):
+        """run_task response includes lastStatus field."""
+        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task = resp["tasks"][0]
+        assert "lastStatus" in task
+        assert task["lastStatus"] in ("RUNNING", "PENDING", "PROVISIONING")
+
+    def test_run_task_count_list_verifies(self, ecs, cluster, task_def_arn):
+        """run_task with count=2 returns 2 tasks visible in list_tasks."""
+        resp = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn, count=2)
+        assert len(resp["tasks"]) == 2
+        task_arns = {t["taskArn"] for t in resp["tasks"]}
+        listed = ecs.list_tasks(cluster=cluster)
+        for arn in task_arns:
+            assert arn in listed["taskArns"]
+
+
+class TestListAccountSettingsFullLifecycle:
+    """list_account_settings with full CRUD lifecycle."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_account_settings_after_put(self, ecs):
+        """put_account_setting then list retrieves the specific setting."""
+        setting_name = "containerInstanceLongArnFormat"
+        ecs.put_account_setting(name=setting_name, value="enabled")
+        resp = ecs.list_account_settings(name=setting_name)
+        assert isinstance(resp["settings"], list)
+        found = [s for s in resp["settings"] if s["name"] == setting_name]
+        assert len(found) >= 1
+        assert found[0]["value"] == "enabled"
+
+    def test_list_account_settings_update_overwrites(self, ecs):
+        """put_account_setting twice: second value overwrites first."""
+        setting_name = "taskLongArnFormat"
+        ecs.put_account_setting(name=setting_name, value="disabled")
+        ecs.put_account_setting(name=setting_name, value="enabled")
+        resp = ecs.list_account_settings(name=setting_name)
+        found = [s for s in resp["settings"] if s["name"] == setting_name]
+        assert len(found) >= 1
+        assert found[0]["value"] == "enabled"
+
+    def test_list_account_settings_delete_resets(self, ecs):
+        """delete_account_setting after put returns 200 and list remains valid."""
+        setting_name = "serviceLongArnFormat"
+        ecs.put_account_setting(name=setting_name, value="enabled")
+        del_resp = ecs.delete_account_setting(name=setting_name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        resp = ecs.list_account_settings(name=setting_name)
+        assert isinstance(resp["settings"], list)
+
+    def test_list_account_settings_returns_list_type(self, ecs):
+        """list_account_settings response settings is always a list."""
+        resp = ecs.list_account_settings()
+        assert isinstance(resp["settings"], list)
+
+
+class TestListContainerInstancesFullLifecycle:
+    """list_container_instances with full CRUD lifecycle."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("lci-full-cls")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    def test_register_describe_list_deregister(self, ecs, cluster):
+        """Full container instance lifecycle: register → describe → list → deregister."""
+        reg = ecs.register_container_instance(
+            cluster=cluster,
+            instanceIdentityDocument=(
+                '{"region": "us-east-1", "instanceId": "i-full001", "accountId": "123456789012"}'
+            ),
+        )
+        ci_arn = reg["containerInstance"]["containerInstanceArn"]
+        assert reg["containerInstance"]["status"] == "ACTIVE"
+
+        # RETRIEVE
+        desc = ecs.describe_container_instances(cluster=cluster, containerInstances=[ci_arn])
+        assert len(desc["containerInstances"]) == 1
+        assert desc["containerInstances"][0]["containerInstanceArn"] == ci_arn
+
+        # LIST
+        listed = ecs.list_container_instances(cluster=cluster)
+        assert ci_arn in listed["containerInstanceArns"]
+
+        # UPDATE (drain)
+        update_resp = ecs.update_container_instances_state(
+            cluster=cluster, containerInstances=[ci_arn], status="DRAINING"
+        )
+        assert update_resp["containerInstances"][0]["status"] == "DRAINING"
+
+        # DELETE (deregister)
+        dereg = ecs.deregister_container_instance(
+            cluster=cluster, containerInstance=ci_arn, force=True
+        )
+        assert dereg["containerInstance"]["status"] == "INACTIVE"
+
+    def test_list_container_instances_nonexistent_cluster_empty(self, ecs):
+        """list_container_instances for nonexistent cluster returns empty list (Moto behavior)."""
+        resp = ecs.list_container_instances(cluster="nonexistent-cluster-xyz")
+        assert isinstance(resp["containerInstanceArns"], list)
+        assert len(resp["containerInstanceArns"]) == 0
+
+    def test_describe_container_instances_nonexistent_in_failures(self, ecs, cluster):
+        """describe_container_instances for unknown ARN returns failure."""
+        resp = ecs.describe_container_instances(
+            cluster=cluster, containerInstances=["fake-ci-arn"]
+        )
+        assert "failures" in resp
+        assert len(resp["failures"]) >= 1
+
+
+class TestListTasksFullLifecycle:
+    """list_tasks with full CRUD lifecycle and ERROR cases."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("lt-full-cls")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("lt-full-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_list_tasks_full_lifecycle(self, ecs, cluster, task_def_arn):
+        """Full task lifecycle: run → describe → list → stop."""
+        # CREATE
+        run = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run["tasks"][0]["taskArn"]
+
+        # RETRIEVE
+        desc = ecs.describe_tasks(cluster=cluster, tasks=[task_arn])
+        assert desc["tasks"][0]["taskArn"] == task_arn
+
+        # LIST
+        listed = ecs.list_tasks(cluster=cluster)
+        assert task_arn in listed["taskArns"]
+        assert isinstance(listed["taskArns"], list)
+
+        # DELETE (stop)
+        stop = ecs.stop_task(cluster=cluster, task=task_arn)
+        assert stop["task"]["desiredStatus"] == "STOPPED"
+
+    def test_list_tasks_nonexistent_cluster_empty(self, ecs):
+        """list_tasks for nonexistent cluster returns empty list (Moto behavior)."""
+        resp = ecs.list_tasks(cluster="nonexistent-cluster-xyz")
+        assert isinstance(resp["taskArns"], list)
+        assert len(resp["taskArns"]) == 0
+
+    def test_list_tasks_by_family_filter(self, ecs, cluster, task_def_arn):
+        """list_tasks with family filter returns only matching tasks."""
+        run = ecs.run_task(cluster=cluster, taskDefinition=task_def_arn)
+        task_arn = run["tasks"][0]["taskArn"]
+        # Extract family from ARN (arn:.../family:revision)
+        family = task_def_arn.split("/")[-1].rsplit(":", 1)[0]
+        resp = ecs.list_tasks(cluster=cluster, family=family)
+        assert task_arn in resp["taskArns"]
+
+
+class TestPutAccountSettingFullLifecycle:
+    """put_account_setting: RETRIEVE, LIST, UPDATE, DELETE, ERROR patterns."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_put_account_setting_full_lifecycle(self, ecs):
+        """put → list (retrieve) → update → delete lifecycle."""
+        setting_name = "containerInstanceLongArnFormat"
+
+        # CREATE
+        put_resp = ecs.put_account_setting(name=setting_name, value="enabled")
+        assert put_resp["setting"]["name"] == setting_name
+        assert put_resp["setting"]["value"] == "enabled"
+
+        # RETRIEVE via list with filter
+        list_resp = ecs.list_account_settings(name=setting_name)
+        found = [s for s in list_resp["settings"] if s["name"] == setting_name]
+        assert len(found) >= 1
+        assert found[0]["value"] == "enabled"
+
+        # UPDATE
+        update_resp = ecs.put_account_setting(name=setting_name, value="disabled")
+        assert update_resp["setting"]["value"] == "disabled"
+
+        # DELETE
+        del_resp = ecs.delete_account_setting(name=setting_name)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestDescribeCapacityProvidersFullLifecycle:
+    """describe_capacity_providers: full CRUD lifecycle with ERROR."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_describe_capacity_providers_full_lifecycle(self, ecs):
+        """Full lifecycle: create → describe (retrieve) → list → update → delete."""
+        cp_name = _unique("full-cp")
+        # CREATE
+        create_resp = ecs.create_capacity_provider(
+            name=cp_name,
+            autoScalingGroupProvider={
+                "autoScalingGroupArn": (
+                    "arn:aws:autoscaling:us-east-1:123456789012:"
+                    "autoScalingGroup:xxx:autoScalingGroupName/my-asg"
+                ),
+                "managedScaling": {"status": "ENABLED", "targetCapacity": 50},
+            },
+        )
+        assert create_resp["capacityProvider"]["name"] == cp_name
+
+        try:
+            # RETRIEVE
+            desc_resp = ecs.describe_capacity_providers(capacityProviders=[cp_name])
+            assert len(desc_resp["capacityProviders"]) == 1
+            assert desc_resp["capacityProviders"][0]["status"] == "ACTIVE"
+
+            # UPDATE
+            update_resp = ecs.update_capacity_provider(
+                name=cp_name,
+                autoScalingGroupProvider={
+                    "managedScaling": {"status": "ENABLED", "targetCapacity": 90},
+                },
+            )
+            assert update_resp["capacityProvider"]["name"] == cp_name
+            scaling = update_resp["capacityProvider"]["autoScalingGroupProvider"]["managedScaling"]
+            assert scaling["targetCapacity"] == 90
+
+        finally:
+            # DELETE
+            del_resp = ecs.delete_capacity_provider(capacityProvider=cp_name)
+            assert del_resp["capacityProvider"]["name"] == cp_name
+
+    def test_describe_capacity_providers_nonexistent_returns_empty(self, ecs):
+        """describe_capacity_providers for nonexistent provider returns empty or failure."""
+        resp = ecs.describe_capacity_providers(capacityProviders=["no-such-cp-zzz"])
+        # Must have the key and it must be a list
+        assert isinstance(resp["capacityProviders"], list)
+        found = [cp for cp in resp["capacityProviders"] if cp["name"] == "no-such-cp-zzz"]
+        assert len(found) == 0
+
+
+class TestListServicesByNamespaceFullCoverage:
+    """list_services_by_namespace with edge cases and behavioral patterns."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_list_services_by_namespace_empty_is_list(self, ecs):
+        """list_services_by_namespace for unknown namespace returns empty list."""
+        resp = ecs.list_services_by_namespace(namespace="nonexistent-ns-xyz")
+        assert isinstance(resp["serviceArns"], list)
+        assert len(resp["serviceArns"]) == 0
+
+    def test_list_services_by_namespace_missing_namespace_raises(self, ecs):
+        """list_services_by_namespace without namespace param raises."""
+        with pytest.raises(Exception):
+            ecs.list_services_by_namespace()
+
+    def test_list_services_by_namespace_different_ns_independent(self, ecs):
+        """Two different namespaces return independent lists."""
+        resp_a = ecs.list_services_by_namespace(namespace="ns-alpha-fidelity")
+        resp_b = ecs.list_services_by_namespace(namespace="ns-beta-fidelity")
+        assert isinstance(resp_a["serviceArns"], list)
+        assert isinstance(resp_b["serviceArns"], list)
+        # Each namespace result is independent
+        overlap = set(resp_a["serviceArns"]) & set(resp_b["serviceArns"])
+        assert len(overlap) == 0
+
+
+class TestListTaskDefinitionFamiliesFullLifecycle:
+    """list_task_definition_families: full lifecycle with RETRIEVE, UPDATE, DELETE, ERROR."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    def test_task_definition_families_full_lifecycle(self, ecs):
+        """register → list families → re-register (update) → deregister → verify inactive."""
+        family = _unique("td-fam-full")
+
+        # CREATE
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "v1", "image": "nginx:1.0", "memory": 128}],
+        )
+
+        # LIST
+        resp = ecs.list_task_definition_families(familyPrefix=family)
+        assert family in resp["families"]
+        assert isinstance(resp["families"], list)
+
+        # UPDATE (new revision = new register)
+        ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "v2", "image": "nginx:2.0", "memory": 256}],
+        )
+        # Describe the new revision (RETRIEVE)
+        desc = ecs.describe_task_definition(taskDefinition=f"{family}:2")
+        assert desc["taskDefinition"]["revision"] == 2
+        assert desc["taskDefinition"]["containerDefinitions"][0]["image"] == "nginx:2.0"
+
+        # DELETE (deregister both)
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+        ecs.deregister_task_definition(taskDefinition=f"{family}:2")
+
+        # Verify inactive
+        inactive_resp = ecs.list_task_definition_families(
+            familyPrefix=family, status="INACTIVE"
+        )
+        assert family in inactive_resp["families"]
+
+    def test_list_task_definition_families_nonexistent_prefix_empty(self, ecs):
+        """list_task_definition_families with nonexistent prefix returns empty list."""
+        resp = ecs.list_task_definition_families(
+            familyPrefix=f"nonexistent-prefix-{uuid.uuid4().hex}"
+        )
+        assert isinstance(resp["families"], list)
+        assert len(resp["families"]) == 0
+
+
+class TestServiceFullLifecycleWithDeployments:
+    """Service lifecycle including deployment and revision operations."""
+
+    @pytest.fixture
+    def ecs(self):
+        return make_client("ecs")
+
+    @pytest.fixture
+    def cluster(self, ecs):
+        name = _unique("svc-deploy-cls")
+        ecs.create_cluster(clusterName=name)
+        yield name
+        ecs.delete_cluster(cluster=name)
+
+    @pytest.fixture
+    def task_def_arn(self, ecs):
+        family = _unique("svc-deploy-td")
+        resp = ecs.register_task_definition(
+            family=family,
+            containerDefinitions=[{"name": "app", "image": "nginx", "memory": 128}],
+        )
+        yield resp["taskDefinition"]["taskDefinitionArn"]
+        ecs.deregister_task_definition(taskDefinition=f"{family}:1")
+
+    def test_service_full_lifecycle(self, ecs, cluster, task_def_arn):
+        """Full service lifecycle: create → describe → update → list → delete."""
+        svc_name = _unique("full-svc")
+
+        # CREATE
+        create_resp = ecs.create_service(
+            cluster=cluster,
+            serviceName=svc_name,
+            taskDefinition=task_def_arn,
+            desiredCount=0,
+        )
+        assert create_resp["service"]["serviceName"] == svc_name
+        assert create_resp["service"]["desiredCount"] == 0
+
+        try:
+            # RETRIEVE
+            desc_resp = ecs.describe_services(cluster=cluster, services=[svc_name])
+            assert len(desc_resp["services"]) == 1
+            svc = desc_resp["services"][0]
+            assert svc["serviceName"] == svc_name
+            assert "serviceArn" in svc
+            assert svc["serviceArn"].startswith("arn:aws:ecs:")
+
+            # LIST
+            list_resp = ecs.list_services(cluster=cluster)
+            assert any(svc_name in arn for arn in list_resp["serviceArns"])
+
+            # UPDATE
+            update_resp = ecs.update_service(cluster=cluster, service=svc_name, desiredCount=1)
+            assert update_resp["service"]["desiredCount"] == 1
+
+            # ERROR: list deployments for nonexistent service
+            with pytest.raises(ClientError) as exc:
+                ecs.list_service_deployments(
+                    cluster=cluster, service="nonexistent-svc-xyz"
+                )
+            assert exc.value.response["Error"]["Code"] == "ServiceNotFoundException"
+
+        finally:
+            # DELETE
+            del_resp = ecs.delete_service(cluster=cluster, service=svc_name, force=True)
+            assert del_resp["service"]["serviceName"] == svc_name
+
+    def test_describe_services_nonexistent_in_failures(self, ecs, cluster):
+        """describe_services for unknown service name returns failure."""
+        resp = ecs.describe_services(cluster=cluster, services=["nonexistent-svc-xyz"])
+        assert "failures" in resp
+        assert len(resp["failures"]) >= 1
+        assert resp["failures"][0]["reason"] == "MISSING"
