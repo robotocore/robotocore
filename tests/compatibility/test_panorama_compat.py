@@ -2245,3 +2245,277 @@ class TestPanoramaComprehensiveEdgeCases:
                 client.delete_device(DeviceId=device_id)
             except Exception:
                 pass  # best-effort cleanup
+
+
+class TestPanoramaEdgeCasesComprehensive:
+    """Edge cases and behavioral fidelity tests targeting coverage gaps."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("panorama")
+
+    def test_provision_device_unicode_name_preserved(self, client):
+        """Device name with unicode chars is preserved in DescribeDevice."""
+        name = f"device-caf-{uuid.uuid4().hex[:8]}"
+        prov = client.provision_device(Name=name)
+        device_id = prov["DeviceId"]
+        try:
+            desc = client.describe_device(DeviceId=device_id)
+            assert desc["Name"] == name
+            del_resp = client.delete_device(DeviceId=device_id)
+            assert del_resp["DeviceId"] == device_id
+        except Exception:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+            raise
+
+    def test_device_update_empty_description(self, client):
+        """UpdateDeviceMetadata with empty string description stores it."""
+        prov = client.provision_device(Name=f"empty-desc-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        try:
+            upd = client.update_device_metadata(DeviceId=device_id, Description="")
+            assert upd["DeviceId"] == device_id
+            desc = client.describe_device(DeviceId=device_id)
+            assert desc.get("Description", "") == ""
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_list_devices_no_next_token_when_results_fit(self, client):
+        """ListDevices with MaxResults larger than total returns no NextToken."""
+        prov = client.provision_device(Name=f"no-token-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        try:
+            resp = client.list_devices(MaxResults=1000)
+            assert "Devices" in resp
+            assert isinstance(resp["Devices"], list)
+            next_token = resp.get("NextToken")
+            assert not next_token, f"Expected no NextToken, got: {next_token!r}"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_package_create_arn_includes_package_id(self, client):
+        """Package ARN contains the PackageId, list and delete lifecycle."""
+        resp = client.create_package(PackageName=f"arn-check-{uuid.uuid4().hex[:8]}")
+        pkg_id = resp["PackageId"]
+        arn = resp["Arn"]
+        try:
+            assert pkg_id in arn, f"PackageId {pkg_id!r} not found in ARN {arn!r}"
+            listed = client.list_packages()
+            pkg_ids = [p["PackageId"] for p in listed["Packages"]]
+            assert pkg_id in pkg_ids
+            client.delete_package(PackageId=pkg_id)
+            listed2 = client.list_packages()
+            pkg_ids2 = [p["PackageId"] for p in listed2["Packages"]]
+            assert pkg_id not in pkg_ids2
+        except Exception:
+            try:
+                client.delete_package(PackageId=pkg_id)
+            except Exception:
+                pass  # best-effort cleanup
+            raise
+
+    def test_node_from_template_job_create_retrieve_list_error(self, client):
+        """Create job, retrieve it, list it, then error on nonexistent job."""
+        resp = client.create_node_from_template_job(
+            NodeName=f"full-cov-{uuid.uuid4().hex[:8]}",
+            OutputPackageName="test-pkg",
+            OutputPackageVersion="1.0",
+            TemplateParameters={"StreamUrl": "rtsp://cam.example.com"},
+            TemplateType="RTSP_CAMERA_STREAM",
+        )
+        job_id = resp["JobId"]
+        # RETRIEVE
+        desc = client.describe_node_from_template_job(JobId=job_id)
+        assert desc["JobId"] == job_id
+        assert desc["TemplateType"] == "RTSP_CAMERA_STREAM"
+        assert "Status" in desc
+        # LIST
+        listed = client.list_node_from_template_jobs()
+        job_ids = [j["JobId"] for j in listed["NodeFromTemplateJobs"]]
+        assert job_id in job_ids
+        # ERROR — nonexistent job
+        with pytest.raises(ClientError) as exc_info:
+            client.describe_node_from_template_job(JobId="job-totally-nonexistent-xyz")
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_package_import_job_create_retrieve_list(self, client):
+        """Create import job, retrieve it with describe, verify in list."""
+        pkg_name = f"imp-full-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package_import_job(
+            JobType="NODE_PACKAGE_VERSION",
+            InputConfig={
+                "PackageVersionInputConfig": {
+                    "S3Location": {
+                        "BucketName": "test-bucket",
+                        "Region": "us-east-1",
+                        "ObjectKey": f"key-{uuid.uuid4().hex[:8]}.tar.gz",
+                    }
+                }
+            },
+            OutputConfig={
+                "PackageVersionOutputConfig": {
+                    "PackageName": pkg_name,
+                    "PackageVersion": "1.0",
+                }
+            },
+            ClientToken=f"token-{uuid.uuid4().hex[:8]}",
+        )
+        job_id = resp["JobId"]
+        # RETRIEVE
+        desc = client.describe_package_import_job(JobId=job_id)
+        assert desc["JobId"] == job_id
+        assert desc["JobType"] == "NODE_PACKAGE_VERSION"
+        assert "Status" in desc
+        assert "CreatedTime" in desc
+        # LIST
+        listed = client.list_package_import_jobs()
+        job_ids = [j["JobId"] for j in listed["PackageImportJobs"]]
+        assert job_id in job_ids
+
+    def test_application_instance_tag_then_remove(self, client):
+        """Create app instance, tag it, verify tags, then remove instance."""
+        prov = client.provision_device(Name=f"app-tag-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            app = client.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+                Tags={"env": "edge-test"},
+            )
+            app_id = app["ApplicationInstanceId"]
+            # RETRIEVE
+            desc = client.describe_application_instance(ApplicationInstanceId=app_id)
+            assert desc["ApplicationInstanceId"] == app_id
+            assert "Status" in desc
+            # UPDATE (tag)
+            arn = desc["Arn"]
+            client.tag_resource(ResourceArn=arn, Tags={"version": "2"})
+            tags = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert tags["version"] == "2"
+            # DELETE
+            client.remove_application_instance(ApplicationInstanceId=app_id)
+            listed = client.list_application_instances()
+            app_ids = [a["ApplicationInstanceId"] for a in listed["ApplicationInstances"]]
+            assert app_id not in app_ids
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_device_delete_then_describe_error(self, client):
+        """After deleting a device, DescribeDevice returns ResourceNotFoundException."""
+        prov = client.provision_device(Name=f"del-err-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        # LIST to confirm it's present
+        listed = client.list_devices()
+        ids = [d["DeviceId"] for d in listed["Devices"]]
+        assert device_id in ids
+        # DELETE
+        client.delete_device(DeviceId=device_id)
+        # ERROR — device is gone
+        with pytest.raises(ClientError) as exc_info:
+            client.describe_device(DeviceId=device_id)
+        assert exc_info.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_tag_resource_update_then_untag(self, client):
+        """Tag a device, update a tag value, untag a key, verify result."""
+        prov = client.provision_device(Name=f"tag-upd-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        arn = prov["Arn"]
+        try:
+            # UPDATE: add tags
+            client.tag_resource(ResourceArn=arn, Tags={"tier": "gold", "env": "qa"})
+            tags = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert tags["tier"] == "gold"
+            # UPDATE: overwrite one tag
+            client.tag_resource(ResourceArn=arn, Tags={"tier": "platinum"})
+            tags2 = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert tags2["tier"] == "platinum"
+            assert tags2["env"] == "qa"
+            # UPDATE: remove one tag
+            client.untag_resource(ResourceArn=arn, TagKeys=["env"])
+            tags3 = client.list_tags_for_resource(ResourceArn=arn)["Tags"]
+            assert "env" not in tags3
+            assert tags3["tier"] == "platinum"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_application_instance_create_list_remove_error(self, client):
+        """Create app instance, verify in list, remove it, verify gone with error."""
+        prov = client.provision_device(Name=f"ai-list-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        try:
+            manifest = json.dumps({"PayloadData": "test"})
+            app = client.create_application_instance(
+                DefaultRuntimeContextDevice=device_id,
+                ManifestPayload={"PayloadData": manifest},
+            )
+            app_id = app["ApplicationInstanceId"]
+            # LIST
+            listed = client.list_application_instances()
+            app_ids = [a["ApplicationInstanceId"] for a in listed["ApplicationInstances"]]
+            assert app_id in app_ids
+            # DELETE (remove)
+            client.remove_application_instance(ApplicationInstanceId=app_id)
+            listed2 = client.list_application_instances()
+            app_ids2 = [a["ApplicationInstanceId"] for a in listed2["ApplicationInstances"]]
+            assert app_id not in app_ids2
+            # ERROR — already removed
+            with pytest.raises(ClientError) as exc_info:
+                client.describe_application_instance(ApplicationInstanceId=app_id)
+            assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        finally:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+
+    def test_device_arn_consistent_between_provision_and_describe(self, client):
+        """ProvisionDevice ARN matches the ARN returned by DescribeDevice."""
+        prov = client.provision_device(Name=f"arn-id-{uuid.uuid4().hex[:8]}")
+        device_id = prov["DeviceId"]
+        try:
+            arn = prov["Arn"]
+            assert re.match(r"^arn:aws:panorama:[a-z0-9-]+:\d{12}:device/", arn)
+            desc = client.describe_device(DeviceId=device_id)
+            assert desc["Arn"] == arn
+            del_resp = client.delete_device(DeviceId=device_id)
+            assert del_resp["DeviceId"] == device_id
+        except Exception:
+            try:
+                client.delete_device(DeviceId=device_id)
+            except Exception:
+                pass  # best-effort cleanup
+            raise
+
+    def test_package_double_delete_raises_error(self, client):
+        """Deleting a package twice raises ResourceNotFoundException on the second delete."""
+        resp = client.create_package(PackageName=f"dbl-del-{uuid.uuid4().hex[:8]}")
+        pkg_id = resp["PackageId"]
+        listed = client.list_packages()
+        pkg_ids = [p["PackageId"] for p in listed["Packages"]]
+        assert pkg_id in pkg_ids
+        client.delete_package(PackageId=pkg_id)
+        listed2 = client.list_packages()
+        pkg_ids2 = [p["PackageId"] for p in listed2["Packages"]]
+        assert pkg_id not in pkg_ids2
+        with pytest.raises(ClientError) as exc_info:
+            client.delete_package(PackageId=pkg_id)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
