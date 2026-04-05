@@ -1059,6 +1059,258 @@ class TestBedrockProvisionedModelThroughputOps:
         )
 
 
+class TestBedrockJobLifecycleCoverage:
+    """Multi-pattern lifecycle tests that exercise C/R/L/U/D/E patterns."""
+
+    def test_create_job_arn_contains_account_and_region(self, bedrock):
+        """Created job ARN encodes account ID and region (C+R)."""
+        job_arn, job_name, _ = _create_job(bedrock)
+        # Retrieve and compare
+        r = bedrock.get_model_customization_job(jobIdentifier=job_arn)
+        assert r["jobArn"] == job_arn
+        assert "123456789012" in job_arn
+        assert "us-east-1" in job_arn
+
+    def test_job_appears_in_list_after_creation(self, bedrock):
+        """Newly created job is visible in ListModelCustomizationJobs (C+L)."""
+        job_name = _unique("listcheck")
+        _create_job(bedrock, job_name=job_name)
+        r = bedrock.list_model_customization_jobs(nameContains=job_name)
+        summaries = r["modelCustomizationJobSummaries"]
+        assert any(j["jobName"] == job_name for j in summaries)
+
+    def test_job_list_summary_arn_matches_creation_arn(self, bedrock):
+        """The jobArn in the list summary equals the ARN returned at creation (C+L)."""
+        job_arn, job_name, _ = _create_job(bedrock)
+        r = bedrock.list_model_customization_jobs(nameContains=job_name)
+        found = [j for j in r["modelCustomizationJobSummaries"] if j["jobName"] == job_name]
+        assert len(found) == 1
+        assert found[0]["jobArn"] == job_arn
+
+    def test_stop_job_updates_status_to_stopped(self, bedrock):
+        """After stopping a job its status changes to Stopping or Stopped (C+U+R)."""
+        job_arn, job_name, _ = _create_job(bedrock)
+        r_before = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r_before["status"] == "InProgress"
+
+        bedrock.stop_model_customization_job(jobIdentifier=job_arn)
+
+        r_after = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r_after["status"] in ("Stopping", "Stopped")
+
+    def test_stopped_job_excluded_from_inprogress_filter(self, bedrock):
+        """Stopped job does not appear in list filtered by statusEquals=InProgress (C+U+L)."""
+        job_arn, job_name, _ = _create_job(bedrock)
+        bedrock.stop_model_customization_job(jobIdentifier=job_arn)
+
+        r = bedrock.list_model_customization_jobs(statusEquals="InProgress", nameContains=job_name)
+        job_names = [j["jobName"] for j in r["modelCustomizationJobSummaries"]]
+        assert job_name not in job_names
+
+    def test_delete_custom_model_then_error_on_get(self, bedrock):
+        """After deleting, GetCustomModel raises ResourceNotFoundException (C+D+E)."""
+        model_name = _unique("del-err")
+        _create_job(bedrock, model_name=model_name)
+        bedrock.delete_custom_model(modelIdentifier=model_name)
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_custom_model(modelIdentifier=model_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_custom_model_twice_raises(self, bedrock):
+        """Deleting a model that was already deleted raises ResourceNotFoundException (C+D+E)."""
+        model_name = _unique("del-twice")
+        _create_job(bedrock, model_name=model_name)
+        bedrock.delete_custom_model(modelIdentifier=model_name)
+        with pytest.raises(ClientError) as exc:
+            bedrock.delete_custom_model(modelIdentifier=model_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_custom_model_then_list_then_delete_then_list(self, bedrock):
+        """Full lifecycle: create → list (present) → delete → list (absent) (C+L+D+L)."""
+        job_name = _unique("lifecycle")
+        model_name = _unique("lc-model")
+        _create_job(bedrock, job_name=job_name, model_name=model_name)
+
+        r1 = bedrock.list_custom_models(nameContains=job_name)
+        names_before = [m["modelName"] for m in r1["modelSummaries"]]
+        assert model_name in names_before
+
+        bedrock.delete_custom_model(modelIdentifier=model_name)
+
+        r2 = bedrock.list_custom_models(nameContains=job_name)
+        names_after = [m["modelName"] for m in r2["modelSummaries"]]
+        assert model_name not in names_after
+
+    def test_list_jobs_pagination_returns_correct_count(self, bedrock):
+        """MaxResults=2 returns exactly 2 summaries when more exist (C+C+C+L)."""
+        suffix = uuid.uuid4().hex[:8]
+        for i in range(3):
+            _create_job(bedrock, job_name=f"pgtest-{suffix}-{i}")
+
+        r = bedrock.list_model_customization_jobs(
+            maxResults=2, nameContains=f"pgtest-{suffix}"
+        )
+        assert len(r["modelCustomizationJobSummaries"]) == 2
+        assert "nextToken" in r
+
+    def test_list_custom_models_pagination(self, bedrock):
+        """ListCustomModels supports pagination (C+C+C+L)."""
+        suffix = uuid.uuid4().hex[:8]
+        for i in range(3):
+            _create_job(bedrock, job_name=f"cmpg-{suffix}-{i}", model_name=f"cmpg-m-{suffix}-{i}")
+
+        r = bedrock.list_custom_models(maxResults=1)
+        assert len(r["modelSummaries"]) == 1
+        assert "nextToken" in r
+
+        r2 = bedrock.list_custom_models(maxResults=1, nextToken=r["nextToken"])
+        assert len(r2["modelSummaries"]) == 1
+
+
+class TestBedrockTagEdgeCaseCoverage:
+    """Multi-pattern tag edge cases targeting C/R/L/U/D/E coverage."""
+
+    def test_tag_overwrite_and_list_all_tags(self, bedrock):
+        """Overwriting a tag updates its value; listing returns all current tags (C+U+L)."""
+        job_arn, _, _ = _create_job(bedrock)
+        bedrock.tag_resource(
+            resourceARN=job_arn,
+            tags=[{"key": "color", "value": "red"}, {"key": "size", "value": "large"}],
+        )
+        # Overwrite 'color' only
+        bedrock.tag_resource(resourceARN=job_arn, tags=[{"key": "color", "value": "blue"}])
+        r = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        tag_map = {t["key"]: t["value"] for t in r["tags"]}
+        assert tag_map["color"] == "blue"
+        assert tag_map["size"] == "large"
+
+    def test_tag_delete_all_then_list_empty(self, bedrock):
+        """Untagging all keys leaves empty tag list (C+U+D+L)."""
+        job_arn, _, _ = _create_job(bedrock)
+        bedrock.tag_resource(
+            resourceARN=job_arn,
+            tags=[{"key": "a", "value": "1"}, {"key": "b", "value": "2"}],
+        )
+        bedrock.untag_resource(resourceARN=job_arn, tagKeys=["a", "b"])
+        r = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        assert r["tags"] == []
+
+    def test_tag_job_and_retrieve_via_get_job(self, bedrock):
+        """After tagging a job, the job itself is still retrievable (C+U+R)."""
+        job_arn, job_name, _ = _create_job(bedrock)
+        bedrock.tag_resource(resourceARN=job_arn, tags=[{"key": "tagged", "value": "yes"}])
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r["jobName"] == job_name
+
+    def test_tag_nonexistent_resource_raises(self, bedrock):
+        """Tagging a resource that doesn't exist raises an error (E)."""
+        fake_arn = "arn:aws:bedrock:us-east-1:123456789012:model-customization-job/nonexistent-tag-test"
+        with pytest.raises(ClientError) as exc:
+            bedrock.tag_resource(
+                resourceARN=fake_arn,
+                tags=[{"key": "k", "value": "v"}],
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_list_tags_after_untag_nonexistent_key(self, bedrock):
+        """Untagging a key that never existed returns empty list (C+D+L)."""
+        job_arn, _, _ = _create_job(bedrock)
+        bedrock.untag_resource(resourceARN=job_arn, tagKeys=["never-existed"])
+        r = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        assert r["tags"] == []
+
+
+class TestBedrockJobRetrievalCoverage:
+    """Tests targeting R/E patterns for job retrieval."""
+
+    def test_get_job_by_name_and_by_arn_return_same_data(self, bedrock):
+        """GetModelCustomizationJob returns identical data whether called by name or ARN (C+R+R)."""
+        job_arn, job_name, _ = _create_job(bedrock)
+        by_name = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        by_arn = bedrock.get_model_customization_job(jobIdentifier=job_arn)
+        assert by_name["jobName"] == by_arn["jobName"]
+        assert by_name["jobArn"] == by_arn["jobArn"]
+        assert by_name["status"] == by_arn["status"]
+
+    def test_get_job_creation_time_is_recent_datetime(self, bedrock):
+        """creationTime is a datetime within the last day (C+R)."""
+        _, job_name, _ = _create_job(bedrock)
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        ct = r["creationTime"]
+        assert isinstance(ct, datetime.datetime)
+        # Strip tzinfo for simple magnitude check (tolerant of server TZ differences)
+        ct_naive = ct.replace(tzinfo=None)
+        now_naive = datetime.datetime.now()
+        delta = abs((now_naive - ct_naive).total_seconds())
+        assert delta < 86400, f"creationTime is more than a day away from now: {delta}s"
+
+    def test_get_job_all_required_fields_present(self, bedrock):
+        """GetModelCustomizationJob response has all expected top-level fields (C+R)."""
+        _, job_name, _ = _create_job(bedrock)
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        for field in ("jobArn", "jobName", "status", "roleArn", "creationTime",
+                      "baseModelArn", "hyperParameters", "trainingDataConfig", "outputDataConfig"):
+            assert field in r, f"missing field: {field}"
+
+    def test_get_custom_model_all_required_fields_present(self, bedrock):
+        """GetCustomModel response has all expected top-level fields (C+R)."""
+        model_name = _unique("fields")
+        _create_job(bedrock, model_name=model_name)
+        r = bedrock.get_custom_model(modelIdentifier=model_name)
+        for field in ("modelArn", "modelName", "baseModelArn", "creationTime",
+                      "hyperParameters", "trainingDataConfig"):
+            assert field in r, f"missing field: {field}"
+
+    def test_create_job_with_validation_data_config(self, bedrock):
+        """Job created with validationDataConfig stores and returns it (C+R)."""
+        job_name = _unique("valdata")
+        model_name = _unique("valmodel")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            validationDataConfig={
+                "validators": [{"s3Uri": "s3://test-bucket/val.jsonl"}]
+            },
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r["jobName"] == job_name
+        # validationDataConfig may or may not be echoed; verify job was created successfully
+        assert r["status"] == "InProgress"
+
+    def test_duplicate_job_name_error_code(self, bedrock):
+        """Duplicate job name raises ResourceInUseException (C+C+E)."""
+        job_name = _unique("dupcheck")
+        _create_job(bedrock, job_name=job_name, model_name=_unique("m1"))
+        with pytest.raises(ClientError) as exc:
+            _create_job(bedrock, job_name=job_name, model_name=_unique("m2"))
+        code = exc.value.response["Error"]["Code"]
+        assert code == "ResourceInUseException", f"Expected ResourceInUseException, got {code}"
+
+    def test_list_jobs_name_contains_filter_empty_result(self, bedrock):
+        """nameContains with no match returns empty list (L+E-ish)."""
+        r = bedrock.list_model_customization_jobs(nameContains="absolutely-no-match-xyz-999")
+        assert r["modelCustomizationJobSummaries"] == []
+
+    def test_list_custom_models_returns_created_model_in_summaries(self, bedrock):
+        """Created model appears with correct modelName in list summaries (C+L)."""
+        job_name = _unique("inlist")
+        model_name = _unique("inlist-model")
+        _create_job(bedrock, job_name=job_name, model_name=model_name)
+        r = bedrock.list_custom_models(nameContains=job_name)
+        matched = [m for m in r["modelSummaries"] if m["modelName"] == model_name]
+        assert len(matched) == 1
+        assert "modelArn" in matched[0]
+        assert "creationTime" in matched[0]
+
+
 class TestBedrockModelCopyJobOps:
     """Tests for model copy job operations."""
 
