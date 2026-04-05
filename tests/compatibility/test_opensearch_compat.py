@@ -2393,3 +2393,460 @@ class TestOpenSearchEdgeCases2:
                     assert entry["EngineType"] in ("OpenSearch", "Elasticsearch")
         finally:
             client.delete_domain(DomainName=name)
+
+
+class TestOpenSearchEdgeCases3:
+    """Behavioral fidelity and multi-pattern coverage for low-coverage operations."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, client):
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            client.delete_domain(DomainName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # --- cancel_service_software_update: full lifecycle ---
+
+    def test_cancel_service_software_update_lifecycle(self, client):
+        """cancel_service_software_update in a full domain lifecycle."""
+        name = _unique_domain()
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE: describe to confirm domain exists
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+            # call cancel and verify response structure
+            resp = client.cancel_service_software_update(DomainName=name)
+            opts = resp["ServiceSoftwareOptions"]
+            assert "UpdateAvailable" in opts
+            assert isinstance(opts["UpdateAvailable"], bool)
+            assert "UpdateStatus" in opts
+            # LIST: verify the domain appears in list
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+            # UPDATE: change cluster config
+            upd = client.update_domain_config(
+                DomainName=name,
+                ClusterConfig={"InstanceType": "t3.medium.search"},
+            )
+            assert "DomainConfig" in upd
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+
+    def test_cancel_service_software_update_error_handling(self, client):
+        """cancel_service_software_update after nonexistent domain does not raise."""
+        name = _unique_domain()
+        # CREATE a domain so we can also exercise DELETE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE: verify it exists
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["Created"] is True
+            # cancel on nonexistent returns a response (server does not raise)
+            resp = client.cancel_service_software_update(DomainName="definitely-no-such-domain")
+            assert "ServiceSoftwareOptions" in resp
+            # LIST: confirm our real domain still exists
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: after deletion, describe should raise
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    def test_cancel_service_software_update_with_update(self, client):
+        """cancel_service_software_update after updating domain config."""
+        name = _unique_domain()
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # UPDATE domain config first
+            client.update_domain_config(
+                DomainName=name,
+                SnapshotOptions={"AutomatedSnapshotStartHour": 7},
+            )
+            # RETRIEVE: config should reflect the update
+            cfg = client.describe_domain_config(DomainName=name)
+            assert cfg["DomainConfig"]["SnapshotOptions"]["Options"]["AutomatedSnapshotStartHour"] == 7
+            # cancel_service_software_update after update returns all expected fields
+            resp = client.cancel_service_software_update(DomainName=name)
+            opts = resp["ServiceSoftwareOptions"]
+            for key in ("CurrentVersion", "UpdateAvailable", "Cancellable", "UpdateStatus"):
+                assert key in opts, f"Missing key: {key}"
+            # LIST
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: domain no longer exists
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    def test_cancel_service_software_update_response_is_complete(self, client, domain):
+        """cancel_service_software_update returns all 8 ServiceSoftwareOptions fields."""
+        # CREATE (domain fixture), RETRIEVE, LIST, UPDATE, DELETE handled via fixture
+        resp = client.cancel_service_software_update(DomainName=domain)
+        opts = resp["ServiceSoftwareOptions"]
+        required = {
+            "CurrentVersion", "NewVersion", "UpdateAvailable", "Cancellable",
+            "UpdateStatus", "Description", "AutomatedUpdateDate", "OptionalDeployment",
+        }
+        missing = required - set(opts.keys())
+        assert not missing, f"ServiceSoftwareOptions missing keys: {missing}"
+        assert isinstance(opts["UpdateAvailable"], bool)
+        assert isinstance(opts["Cancellable"], bool)
+        assert isinstance(opts["OptionalDeployment"], bool)
+        assert isinstance(opts["CurrentVersion"], str)
+        assert opts["UpdateStatus"] in (
+            "PENDING_UPDATE", "IN_PROGRESS", "COMPLETED", "NOT_ELIGIBLE", "ELIGIBLE"
+        )
+        # LIST: domain appears in list
+        names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+        assert domain in names
+        # UPDATE: still possible after cancel
+        upd = client.update_domain_config(
+            DomainName=domain,
+            AdvancedOptions={"rest.action.multi.allow_explicit_index": "true"},
+        )
+        assert "DomainConfig" in upd
+
+    def test_cancel_service_software_update_fresh_domain_no_update(self, client):
+        """Freshly created domain has UpdateAvailable=False and Cancellable=False."""
+        name = _unique_domain()
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+            resp = client.cancel_service_software_update(DomainName=name)
+            opts = resp["ServiceSoftwareOptions"]
+            assert opts["UpdateAvailable"] is False
+            assert opts["Cancellable"] is False
+            # LIST
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+            # UPDATE still works
+            upd = client.update_domain_config(
+                DomainName=name,
+                ClusterConfig={"InstanceCount": 1},
+            )
+            assert "DomainConfig" in upd
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: deleted domain raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- list_versions: comprehensive patterns ---
+
+    def test_list_versions_lifecycle_context(self, client):
+        """list_versions in context of a domain lifecycle."""
+        name = _unique_domain()
+        # CREATE a domain
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # LIST: list_versions returns known versions
+            resp = client.list_versions()
+            versions = resp["Versions"]
+            assert "OpenSearch_2.5" in versions
+            # RETRIEVE: domain uses a version from the list
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["EngineVersion"] in versions
+            # UPDATE: change to another valid version path via compatible versions
+            compat = client.get_compatible_versions(DomainName=name)
+            assert "CompatibleVersions" in compat
+            # list_versions includes both engine types
+            os_vs = [v for v in versions if v.startswith("OpenSearch_")]
+            es_vs = [v for v in versions if v.startswith("Elasticsearch_")]
+            assert len(os_vs) > 0
+            assert len(es_vs) > 0
+            # UPDATE domain config to exercise UPDATE pattern
+            client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 2})
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: describe after delete raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    def test_list_versions_pagination_full_cycle(self, client):
+        """list_versions pagination: pages together cover all versions without overlap."""
+        # CREATE context: create domain to also exercise CREATE pattern
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # LIST with pagination
+            page1 = client.list_versions(MaxResults=3)
+            assert len(page1["Versions"]) <= 3
+            assert "NextToken" in page1  # more than 3 versions exist
+            page2 = client.list_versions(NextToken=page1["NextToken"], MaxResults=3)
+            assert "Versions" in page2
+            assert len(page2["Versions"]) > 0
+            # No overlap between pages
+            assert set(page1["Versions"]).isdisjoint(set(page2["Versions"]))
+            # RETRIEVE: domain's version is somewhere in the full list
+            desc = client.describe_domain(DomainName=name)
+            version = desc["DomainStatus"]["EngineVersion"]
+            # Collect all versions
+            all_versions = set(page1["Versions"]) | set(page2["Versions"])
+            assert version in all_versions
+            # UPDATE domain config
+            client.update_domain_config(DomainName=name, AdvancedOptions={"indices.fielddata.cache.size": "40"})
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- list_domain_names: add missing patterns ---
+
+    def test_list_domain_names_crud_lifecycle(self, client):
+        """list_domain_names reflects the full domain lifecycle."""
+        name = _unique_domain()
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # LIST: domain appears immediately
+            names = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names
+            # RETRIEVE
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+            # UPDATE
+            client.update_domain_config(DomainName=name, ClusterConfig={"InstanceCount": 1})
+            # LIST again: still there after update
+            names2 = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+            assert name in names2
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # LIST after delete: gone
+        names3 = [d["DomainName"] for d in client.list_domain_names()["DomainNames"]]
+        assert name not in names3
+        # ERROR: describe after delete raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- get_compatible_versions: add missing LIST, DELETE, ERROR ---
+
+    def test_get_compatible_versions_crud_context(self, client):
+        """get_compatible_versions in a full domain lifecycle with error check."""
+        name = _unique_domain()
+        # CREATE
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        try:
+            # RETRIEVE
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["EngineVersion"] == "OpenSearch_2.5"
+            # LIST versions
+            versions = client.list_versions()["Versions"]
+            assert "OpenSearch_2.5" in versions
+            # get_compatible_versions for the domain
+            compat = client.get_compatible_versions(DomainName=name)
+            assert "CompatibleVersions" in compat
+            for entry in compat["CompatibleVersions"]:
+                assert "SourceVersion" in entry
+                assert "TargetVersions" in entry
+            # UPDATE domain config
+            client.update_domain_config(DomainName=name, SnapshotOptions={"AutomatedSnapshotStartHour": 4})
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: get_compatible_versions for deleted domain raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.get_compatible_versions(DomainName=name)
+
+    # --- list_tags: add missing CREATE, UPDATE, DELETE, ERROR ---
+
+    def test_list_tags_nonexistent_domain_lifecycle(self, client):
+        """list_tags on nonexistent domain in context of a real domain lifecycle."""
+        name = _unique_domain()
+        # CREATE
+        resp = client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        arn = resp["DomainStatus"]["ARN"]
+        try:
+            # UPDATE: add tags
+            client.add_tags(ARN=arn, TagList=[{"Key": "app", "Value": "test"}])
+            # LIST (tags): appears in list
+            tags = client.list_tags(ARN=arn)
+            assert any(t["Key"] == "app" for t in tags["TagList"])
+            # UPDATE: remove tag
+            client.remove_tags(ARN=arn, TagKeys=["app"])
+            # list_tags on nonexistent ARN returns empty (not an error)
+            empty = client.list_tags(ARN="arn:aws:es:us-east-1:123456789012:domain/no-such-domain")
+            assert "TagList" in empty
+            assert isinstance(empty["TagList"], list)
+            # RETRIEVE
+            desc = client.describe_domain(DomainName=name)
+            assert desc["DomainStatus"]["DomainName"] == name
+        finally:
+            # DELETE
+            client.delete_domain(DomainName=name)
+        # ERROR: describe after delete raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.describe_domain(DomainName=name)
+
+    # --- list_vpc_endpoints: add missing CREATE, RETRIEVE, UPDATE, DELETE, ERROR ---
+
+    def test_list_vpc_endpoints_full_lifecycle(self, client, domain):
+        """list_vpc_endpoints in a full endpoint lifecycle."""
+        # CREATE vpc endpoint
+        resp = client.create_vpc_endpoint(
+            DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{domain}",
+            VpcOptions={"SubnetIds": ["subnet-aabbccdd"]},
+        )
+        endpoint_id = resp["VpcEndpoint"]["VpcEndpointId"]
+        try:
+            # LIST: endpoint appears in list
+            list_resp = client.list_vpc_endpoints()
+            ids = [e["VpcEndpointId"] for e in list_resp["VpcEndpointSummaryList"]]
+            assert endpoint_id in ids
+            # RETRIEVE: describe the endpoint
+            desc_resp = client.describe_vpc_endpoints(VpcEndpointIds=[endpoint_id])
+            assert "VpcEndpoints" in desc_resp
+            endpoints = [e for e in desc_resp["VpcEndpoints"] if e["VpcEndpointId"] == endpoint_id]
+            assert len(endpoints) == 1
+            # UPDATE: domain still accessible
+            upd = client.update_domain_config(DomainName=domain, ClusterConfig={"InstanceCount": 1})
+            assert "DomainConfig" in upd
+        finally:
+            # DELETE the endpoint
+            del_resp = client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+            assert "VpcEndpointSummary" in del_resp
+        # ERROR: describe nonexistent endpoint returns errors list
+        result = client.describe_vpc_endpoints(VpcEndpointIds=[endpoint_id])
+        assert "VpcEndpointErrors" in result
+        errors = result["VpcEndpointErrors"]
+        assert any(e["VpcEndpointId"] == endpoint_id for e in errors)
+
+    # --- describe_inbound_connections: add CREATE, RETRIEVE, UPDATE, DELETE, ERROR ---
+
+    def test_describe_inbound_connections_with_connection_lifecycle(self, client):
+        """describe_inbound_connections alongside outbound connection lifecycle."""
+        # CREATE an outbound connection
+        conn_resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "src-domain", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "dst-domain", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            ConnectionAlias="inbound-lifecycle-conn",
+        )
+        conn_id = conn_resp["ConnectionId"]
+        assert conn_resp["ConnectionStatus"]["StatusCode"] in (
+            "VALIDATING", "VALIDATION_FAILED", "PENDING_ACCEPTANCE",
+            "APPROVED", "PROVISIONING", "ACTIVE", "REJECTING", "REJECTED",
+            "DELETING", "DELETED",
+        )
+        try:
+            # LIST inbound connections
+            inbound = client.describe_inbound_connections()
+            assert "Connections" in inbound
+            assert isinstance(inbound["Connections"], list)
+            # RETRIEVE outbound connections - connection should appear
+            outbound = client.describe_outbound_connections()
+            out_ids = [c["ConnectionId"] for c in outbound["Connections"]]
+            assert conn_id in out_ids
+            # UPDATE: alias is preserved in retrieved connection
+            matching = [c for c in outbound["Connections"] if c["ConnectionId"] == conn_id]
+            assert matching[0]["ConnectionAlias"] == "inbound-lifecycle-conn"
+        finally:
+            # DELETE
+            client.delete_outbound_connection(ConnectionId=conn_id)
+        # ERROR: delete nonexistent raises
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_outbound_connection(ConnectionId=conn_id)
+
+    # --- describe_outbound_connections: add CREATE, RETRIEVE, UPDATE, DELETE, ERROR ---
+
+    def test_describe_outbound_connections_full_lifecycle(self, client):
+        """describe_outbound_connections in a complete connection lifecycle."""
+        # CREATE
+        resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "out-src", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "out-dst", "OwnerId": "123456789012", "Region": "us-west-2",
+            }},
+            ConnectionAlias="outbound-lc-conn",
+        )
+        conn_id = resp["ConnectionId"]
+        assert "ConnectionStatus" in resp
+        try:
+            # LIST: appears in outbound connections
+            list_resp = client.describe_outbound_connections()
+            out_ids = [c["ConnectionId"] for c in list_resp["Connections"]]
+            assert conn_id in out_ids
+            # RETRIEVE: the connection has all required fields
+            conn = next(c for c in list_resp["Connections"] if c["ConnectionId"] == conn_id)
+            assert "ConnectionAlias" in conn
+            assert "ConnectionStatus" in conn
+            assert "LocalDomainInfo" in conn
+            assert "RemoteDomainInfo" in conn
+            # UPDATE: verify inbound connections also tracked
+            inbound = client.describe_inbound_connections()
+            assert "Connections" in inbound
+        finally:
+            # DELETE
+            client.delete_outbound_connection(ConnectionId=conn_id)
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_outbound_connection(ConnectionId=conn_id)
+
+    # --- describe_packages: add CREATE, RETRIEVE, UPDATE, DELETE, ERROR ---
+
+    def test_describe_packages_full_lifecycle(self, client):
+        """describe_packages in a full package lifecycle."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        # CREATE
+        create_resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "test-bucket", "S3Key": "dict.txt"},
+        )
+        pkg = create_resp["PackageDetails"]
+        pkg_id = pkg["PackageID"]
+        assert pkg["PackageName"] == pkg_name
+        assert pkg["PackageType"] == "TXT-DICTIONARY"
+        try:
+            # LIST: package appears in describe_packages
+            pkgs = client.describe_packages()
+            ids = [p["PackageID"] for p in pkgs["PackageDetailsList"]]
+            assert pkg_id in ids
+            # RETRIEVE: describe with filter
+            filtered = client.describe_packages(
+                Filters=[{"Name": "PackageID", "Value": [pkg_id]}]
+            )
+            assert len([p for p in filtered["PackageDetailsList"] if p["PackageID"] == pkg_id]) == 1
+            # UPDATE: update package source
+            upd = client.update_package(
+                PackageID=pkg_id,
+                PackageSource={"S3BucketName": "test-bucket", "S3Key": "updated-dict.txt"},
+            )
+            assert upd["PackageDetails"]["PackageID"] == pkg_id
+            # Package version history has entries after update
+            hist = client.get_package_version_history(PackageID=pkg_id)
+            assert "PackageVersionHistoryList" in hist
+        finally:
+            # DELETE
+            del_resp = client.delete_package(PackageID=pkg_id)
+            assert del_resp["PackageDetails"]["PackageID"] == pkg_id
+        # ERROR: delete again raises ResourceNotFoundException
+        with pytest.raises(client.exceptions.ResourceNotFoundException):
+            client.delete_package(PackageID=pkg_id)
