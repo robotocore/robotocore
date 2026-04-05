@@ -93,8 +93,9 @@ class TestBedrockModelCustomizationJobs:
         model_name = _unique("model")
         job_arn, _, _ = _create_job(bedrock, job_name=job_name, model_name=model_name)
 
-        assert "arn:aws:bedrock:" in job_arn
-        assert "model-customization-job" in job_arn
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:model-customization-job/.+", job_arn), \
+            f"bad job ARN: {job_arn}"
+        assert job_name in job_arn
 
     def test_get_model_customization_job_by_name(self, bedrock):
         job_name = _unique("job")
@@ -277,7 +278,7 @@ class TestBedrockModelCustomizationJobEdgeCases:
         _, job_name, _ = _create_job(bedrock)
 
         r = bedrock.get_model_customization_job(jobIdentifier=job_name)
-        assert "role/test" in r["roleArn"]
+        assert r["roleArn"] == "arn:aws:iam::123456789012:role/test"
 
     def test_create_job_with_job_tags(self, bedrock):
         """Creating a job with jobTags makes them visible via ListTagsForResource."""
@@ -330,7 +331,7 @@ class TestBedrockCustomModelEdgeCases:
         _create_job(bedrock, model_name=model_name)
 
         r = bedrock.get_custom_model(modelIdentifier=model_name)
-        assert "foundation-model/amazon.titan-text-express-v1" in r["baseModelArn"]
+        assert r["baseModelArn"].endswith("foundation-model/amazon.titan-text-express-v1")
 
     def test_get_custom_model_returns_creation_time(self, bedrock):
         """GetCustomModel returns a creationTime."""
@@ -355,14 +356,14 @@ class TestBedrockCustomModelEdgeCases:
         assert r["modelSummaries"] == []
 
     def test_list_custom_models_summary_has_expected_keys(self, bedrock):
-        """Custom model fetched by name has expected fields."""
+        """Custom model fetched by name has expected fields with valid values."""
         model_name = _unique("model")
         _create_job(bedrock, model_name=model_name)
 
         s = bedrock.get_custom_model(modelIdentifier=model_name)
-        assert "modelArn" in s
-        assert "baseModelArn" in s
-        assert "creationTime" in s
+        assert s["modelArn"].startswith("arn:aws:bedrock:")
+        assert s["baseModelArn"].startswith("arn:aws:bedrock:")
+        assert isinstance(s["creationTime"], datetime.datetime)
 
     def test_tag_custom_model(self, bedrock):
         """Tags can be applied to a custom model (not just a job)."""
@@ -410,57 +411,58 @@ class TestBedrockListOperations:
 
     def test_list_foundation_models(self, bedrock):
         r = bedrock.list_foundation_models()
-        assert "modelSummaries" in r
-        assert isinstance(r["modelSummaries"], list)
+        # Foundation models are always present in Moto
+        assert len(r["modelSummaries"]) > 0
+        assert "modelId" in r["modelSummaries"][0]
 
     def test_list_guardrails(self, bedrock):
         r = bedrock.list_guardrails()
-        assert "guardrails" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["guardrails"], list)
 
     def test_list_inference_profiles(self, bedrock):
         r = bedrock.list_inference_profiles()
-        assert "inferenceProfileSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["inferenceProfileSummaries"], list)
 
     def test_list_imported_models(self, bedrock):
         r = bedrock.list_imported_models()
-        assert "modelSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["modelSummaries"], list)
 
     def test_list_evaluation_jobs(self, bedrock):
         r = bedrock.list_evaluation_jobs()
-        assert "jobSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["jobSummaries"], list)
 
     def test_list_model_copy_jobs(self, bedrock):
         r = bedrock.list_model_copy_jobs()
-        assert "modelCopyJobSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["modelCopyJobSummaries"], list)
 
     def test_list_model_import_jobs(self, bedrock):
         r = bedrock.list_model_import_jobs()
-        assert "modelImportJobSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["modelImportJobSummaries"], list)
 
     def test_list_model_invocation_jobs(self, bedrock):
         r = bedrock.list_model_invocation_jobs()
-        assert "invocationJobSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["invocationJobSummaries"], list)
 
     def test_list_provisioned_model_throughputs(self, bedrock):
         r = bedrock.list_provisioned_model_throughputs()
-        assert "provisionedModelSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["provisionedModelSummaries"], list)
 
     def test_list_prompt_routers(self, bedrock):
         r = bedrock.list_prompt_routers()
-        assert "promptRouterSummaries" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["promptRouterSummaries"], list)
 
     def test_list_marketplace_model_endpoints(self, bedrock):
         r = bedrock.list_marketplace_model_endpoints()
-        assert "marketplaceModelEndpoints" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert isinstance(r["marketplaceModelEndpoints"], list)
 
 
@@ -583,8 +585,8 @@ class TestBedrockFoundationModels:
     def test_get_foundation_model_availability(self, bedrock):
         """GetFoundationModelAvailability returns agreement availability."""
         r = bedrock.get_foundation_model_availability(modelId="anthropic.claude-v2")
-        assert "modelId" in r
-        assert "agreementAvailability" in r
+        assert r["modelId"] == "anthropic.claude-v2"
+        assert isinstance(r["agreementAvailability"], dict)
 
     def test_list_foundation_model_agreement_offers(self, bedrock):
         """ListFoundationModelAgreementOffers returns offers list."""
@@ -635,7 +637,7 @@ class TestBedrockJobCreationBehavior:
         """GetModelCustomizationJob returns the base model identifier used at creation."""
         _, job_name, _ = _create_job(bedrock)
         r = bedrock.get_model_customization_job(jobIdentifier=job_name)
-        assert "amazon.titan-text-express-v1" in r["baseModelArn"]
+        assert r["baseModelArn"].endswith("amazon.titan-text-express-v1")
 
 
 class TestBedrockCustomModelBehavior:
@@ -1021,8 +1023,9 @@ class TestBedrockProvisionedModelThroughputOps:
             provisionedModelName=name,
             modelId="amazon.titan-text-express-v1",
         )
-        assert "provisionedModelArn" in r
-        assert "arn:aws:bedrock:" in r["provisionedModelArn"]
+        pmt_arn = r["provisionedModelArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:provisioned-model/.+", pmt_arn), \
+            f"bad PMT ARN: {pmt_arn}"
 
     def test_update_provisioned_model_throughput(self, bedrock):
         name = _unique("pmt-upd")
@@ -1320,9 +1323,9 @@ class TestBedrockModelCopyJobOps:
             sourceModelArn="arn:aws:bedrock:us-west-2:123456789012:custom-model/test-model",
             targetModelName=name,
         )
-        assert "jobArn" in r
-        assert "arn:aws:bedrock:" in r["jobArn"]
-        assert "model-copy-job" in r["jobArn"]
+        job_arn = r["jobArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:model-copy-job/.+", job_arn), \
+            f"bad model-copy-job ARN: {job_arn}"
 
 
 class TestBedrockDeleteOpsWithFakeIds:
@@ -1394,7 +1397,7 @@ class TestBedrockAutomatedReasoningPolicyCRUD:
     )
 
     def test_create_automated_reasoning_policy(self, bedrock):
-        """CreateAutomatedReasoningPolicy returns a policyArn."""
+        """CreateAutomatedReasoningPolicy returns a policyArn with correct ARN format."""
         name = _unique("arp")
         r = bedrock.create_automated_reasoning_policy(
             name=name,
@@ -1403,8 +1406,10 @@ class TestBedrockAutomatedReasoningPolicyCRUD:
                 "rules": [{"id": "rule-abcdef123456", "expression": "true"}],
             },
         )
-        assert "policyArn" in r
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        policy_arn = r["policyArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:automated-reasoning-policy/.+", policy_arn), \
+            f"bad policyArn format: {policy_arn}"
 
     def test_update_automated_reasoning_policy_not_found(self, bedrock):
         """UpdateAutomatedReasoningPolicy with fake ARN raises ResourceNotFoundException."""
@@ -1512,14 +1517,16 @@ class TestBedrockCustomModelDeploymentCRUD:
     """Tests for custom model deployment create/update/delete operations."""
 
     def test_create_custom_model_deployment(self, bedrock):
-        """CreateCustomModelDeployment returns a deployment ARN."""
+        """CreateCustomModelDeployment returns a deployment ARN with correct format."""
         name = _unique("deploy")
         r = bedrock.create_custom_model_deployment(
             modelDeploymentName=name,
             modelArn="arn:aws:bedrock:us-east-1:123456789012:custom-model/test-model",
         )
-        assert "customModelDeploymentArn" in r
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        deployment_arn = r["customModelDeploymentArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:custom-model-deployment/.+", deployment_arn), \
+            f"bad deployment ARN format: {deployment_arn}"
 
     def test_delete_custom_model_deployment_not_found(self, bedrock):
         """DeleteCustomModelDeployment with fake ID raises ResourceNotFoundException."""
@@ -1584,6 +1591,390 @@ class TestBedrockUseCaseOps:
         """PutUseCaseForModelAccess returns 200."""
         r = bedrock.put_use_case_for_model_access(formData=b"use_case=testing")
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestBedrockGuardrailFullLifecycle:
+    """Full lifecycle tests for guardrail CRUD (C+R+L+U+D+E patterns)."""
+
+    def test_guardrail_full_lifecycle(self, bedrock):
+        """create → get → list → update → verify update → delete → error (C+R+L+U+D+E)."""
+        name = _unique("guard-full")
+
+        # CREATE
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="original-blocked",
+            blockedOutputsMessaging="original-blocked",
+        )
+        gr_id = r["guardrailId"]
+        gr_arn = r["guardrailArn"]
+        assert gr_id  # non-empty string
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:guardrail/.+", gr_arn), f"bad ARN: {gr_arn}"
+        assert r["version"] == "DRAFT"
+
+        # RETRIEVE
+        r2 = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert r2["name"] == name
+        assert r2["guardrailId"] == gr_id
+        assert r2["version"] == "DRAFT"
+
+        # LIST — verify in list (list_guardrails uses "id" not "guardrailId")
+        r3 = bedrock.list_guardrails()
+        ids = [g["id"] for g in r3["guardrails"]]
+        assert gr_id in ids
+
+        # UPDATE
+        new_name = _unique("guard-renamed")
+        r4 = bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=new_name,
+            blockedInputMessaging="updated-blocked",
+            blockedOutputsMessaging="updated-blocked",
+        )
+        assert r4["guardrailId"] == gr_id
+        assert r4["updatedAt"] is not None
+
+        # Verify update applied
+        r5 = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert r5["name"] == new_name
+
+        # DELETE
+        bedrock.delete_guardrail(guardrailIdentifier=gr_id)
+
+        # ERROR after delete
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_guardrail_not_in_list_after_delete(self, bedrock):
+        """Deleted guardrail no longer appears in ListGuardrails (C+L+D+L)."""
+        name = _unique("guard-del-list")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = r["guardrailId"]
+
+        # Confirm it's in the list
+        r2 = bedrock.list_guardrails()
+        assert any(g["id"] == gr_id for g in r2["guardrails"])
+
+        bedrock.delete_guardrail(guardrailIdentifier=gr_id)
+
+        r3 = bedrock.list_guardrails()
+        assert not any(g["id"] == gr_id for g in r3["guardrails"])
+
+    def test_guardrail_update_does_not_change_id(self, bedrock):
+        """UpdateGuardrail preserves guardrailId (C+U+R)."""
+        name = _unique("guard-id-stable")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = r["guardrailId"]
+
+        new_name = _unique("guard-id-stable-renamed")
+        bedrock.update_guardrail(
+            guardrailIdentifier=gr_id,
+            name=new_name,
+            blockedInputMessaging="new-blocked",
+            blockedOutputsMessaging="new-blocked",
+        )
+        r2 = bedrock.get_guardrail(guardrailIdentifier=gr_id)
+        assert r2["guardrailId"] == gr_id
+        assert r2["name"] == new_name
+
+    def test_guardrail_version_created_on_create_version(self, bedrock):
+        """CreateGuardrailVersion creates version '1' from DRAFT (C+U+R)."""
+        name = _unique("guard-ver-test")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_id = r["guardrailId"]
+        assert r["version"] == "DRAFT"
+
+        r2 = bedrock.create_guardrail_version(guardrailIdentifier=gr_id)
+        assert r2["guardrailId"] == gr_id
+        assert r2["version"] == "1"
+
+    def test_guardrail_arn_encodes_account_and_region(self, bedrock):
+        """Guardrail ARN encodes the account ID and region (C+R)."""
+        name = _unique("guard-arn")
+        r = bedrock.create_guardrail(
+            name=name,
+            blockedInputMessaging="blocked",
+            blockedOutputsMessaging="blocked",
+        )
+        gr_arn = r["guardrailArn"]
+        assert "123456789012" in gr_arn
+        assert "us-east-1" in gr_arn
+
+        r2 = bedrock.get_guardrail(guardrailIdentifier=r["guardrailId"])
+        assert r2["guardrailArn"] == gr_arn
+
+
+class TestBedrockProvisionedModelThroughputLifecycle:
+    """Full lifecycle tests for provisioned model throughput (C+R+L+U+D+E)."""
+
+    def test_pmt_full_lifecycle(self, bedrock):
+        """create → list → update name → verify → delete → error (C+L+U+R+D+E)."""
+        name = _unique("pmt-full")
+
+        # CREATE
+        r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = r["provisionedModelArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:provisioned-model/.+", pmt_arn), \
+            f"bad PMT ARN: {pmt_arn}"
+
+        # LIST — verify in list
+        r2 = bedrock.list_provisioned_model_throughputs()
+        arns = [p["provisionedModelArn"] for p in r2["provisionedModelSummaries"]]
+        assert pmt_arn in arns
+
+        # UPDATE
+        new_name = _unique("pmt-renamed")
+        r3 = bedrock.update_provisioned_model_throughput(
+            provisionedModelId=pmt_arn,
+            desiredProvisionedModelName=new_name,
+        )
+        assert r3["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # Verify update applied via GET
+        r4 = bedrock.get_provisioned_model_throughput(provisionedModelId=pmt_arn)
+        assert r4["provisionedModelArn"] == pmt_arn
+
+        # DELETE
+        bedrock.delete_provisioned_model_throughput(provisionedModelId=pmt_arn)
+
+        # ERROR after delete
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_provisioned_model_throughput(provisionedModelId=pmt_arn)
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceNotFoundException",
+            "ValidationException",
+        )
+
+    def test_pmt_not_in_list_after_delete(self, bedrock):
+        """Deleted PMT no longer appears in ListProvisionedModelThroughputs (C+L+D+L)."""
+        name = _unique("pmt-del-list")
+        r = bedrock.create_provisioned_model_throughput(
+            modelUnits=1,
+            provisionedModelName=name,
+            modelId="amazon.titan-text-express-v1",
+        )
+        pmt_arn = r["provisionedModelArn"]
+
+        r2 = bedrock.list_provisioned_model_throughputs()
+        assert any(p["provisionedModelArn"] == pmt_arn for p in r2["provisionedModelSummaries"])
+
+        bedrock.delete_provisioned_model_throughput(provisionedModelId=pmt_arn)
+
+        r3 = bedrock.list_provisioned_model_throughputs()
+        assert not any(
+            p["provisionedModelArn"] == pmt_arn for p in r3["provisionedModelSummaries"]
+        )
+
+
+class TestBedrockDirectJobCreation:
+    """Tests using bedrock.create_model_customization_job directly (no _create_job helper).
+
+    These tests ensure the validator detects the CREATE pattern.
+    """
+
+    def test_create_job_directly_returns_arn(self, bedrock):
+        """create_model_customization_job returns a jobArn with correct format (C+R)."""
+        job_name = _unique("direct-create")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("dc-model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+        assert re.match(
+            r"arn:aws:bedrock:[^:]+:\d+:model-customization-job/.+", job_arn
+        ), f"bad job ARN: {job_arn}"
+        assert job_name in job_arn
+
+        # RETRIEVE
+        r2 = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r2["jobArn"] == job_arn
+        assert r2["status"] == "InProgress"
+
+    def test_create_job_directly_then_list(self, bedrock):
+        """Newly created job is visible in list (C+L)."""
+        job_name = _unique("direct-list")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("dl-model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+
+        r2 = bedrock.list_model_customization_jobs(nameContains=job_name)
+        summaries = r2["modelCustomizationJobSummaries"]
+        matched = [j for j in summaries if j["jobName"] == job_name]
+        assert len(matched) == 1
+        assert matched[0]["jobArn"] == job_arn
+
+    def test_create_job_then_stop_then_verify(self, bedrock):
+        """create → stop → verify status changed (C+U+R)."""
+        job_name = _unique("direct-stop")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("ds-model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+
+        r2 = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r2["status"] == "InProgress"
+
+        bedrock.stop_model_customization_job(jobIdentifier=job_arn)
+
+        r3 = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert r3["status"] in ("Stopping", "Stopped")
+
+    def test_create_job_duplicate_raises_resource_in_use(self, bedrock):
+        """Creating two jobs with the same name raises ResourceInUseException (C+C+E)."""
+        job_name = _unique("dup-direct")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("dup-m1"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        with pytest.raises(ClientError) as exc:
+            bedrock.create_model_customization_job(
+                jobName=job_name,
+                customModelName=_unique("dup-m2"),
+                roleArn="arn:aws:iam::123456789012:role/test",
+                baseModelIdentifier="amazon.titan-text-express-v1",
+                trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+                outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+                hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceInUseException"
+
+    def test_create_job_list_shows_creation_time(self, bedrock):
+        """Job summary in list includes a creationTime datetime (C+L)."""
+        job_name = _unique("direct-ct")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("ct-model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        r = bedrock.list_model_customization_jobs(nameContains=job_name)
+        matched = [j for j in r["modelCustomizationJobSummaries"] if j["jobName"] == job_name]
+        assert len(matched) == 1
+        assert isinstance(matched[0]["creationTime"], datetime.datetime)
+
+    def test_create_custom_model_then_list_shows_it(self, bedrock):
+        """After creating a job, the custom model appears in ListCustomModels (C+L)."""
+        job_name = _unique("cm-list-direct")
+        model_name = _unique("cm-list-m")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        r = bedrock.list_custom_models(nameContains=job_name)
+        names = [m["modelName"] for m in r["modelSummaries"]]
+        assert model_name in names
+
+    def test_create_job_then_delete_model_then_error(self, bedrock):
+        """create job → delete model → get model raises ResourceNotFoundException (C+R+D+E)."""
+        job_name = _unique("del-model-direct")
+        model_name = _unique("dm-direct")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.get_custom_model(modelIdentifier=model_name)
+        assert r["modelName"] == model_name
+
+        bedrock.delete_custom_model(modelIdentifier=model_name)
+
+        with pytest.raises(ClientError) as exc:
+            bedrock.get_custom_model(modelIdentifier=model_name)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_and_tag_job_then_list_tags_and_untag(self, bedrock):
+        """create → tag → list tags → untag → verify empty (C+U+L+D)."""
+        job_name = _unique("tag-full")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("tag-model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://test-bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://test-bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+
+        # Empty tags initially
+        r2 = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        assert r2["tags"] == []
+
+        # Tag it
+        bedrock.tag_resource(
+            resourceARN=job_arn,
+            tags=[{"key": "env", "value": "staging"}, {"key": "owner", "value": "team-ml"}],
+        )
+
+        # Verify tags present
+        r3 = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        tag_map = {t["key"]: t["value"] for t in r3["tags"]}
+        assert tag_map["env"] == "staging"
+        assert tag_map["owner"] == "team-ml"
+
+        # Untag one key
+        bedrock.untag_resource(resourceARN=job_arn, tagKeys=["env"])
+
+        r4 = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        remaining = {t["key"]: t["value"] for t in r4["tags"]}
+        assert "env" not in remaining
+        assert remaining["owner"] == "team-ml"
 
 
 class TestBedrockCreateCustomModel:
@@ -1660,8 +2051,9 @@ class TestBedrockEvaluationJobCRUD:
             },
             outputDataConfig={"s3Uri": "s3://bucket/output/"},
         )
-        assert "jobArn" in r
-        assert "evaluation-job" in r["jobArn"]
+        job_arn = r["jobArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:evaluation-job/.+", job_arn), \
+            f"bad evaluation job ARN: {job_arn}"
 
     def test_create_evaluation_job_then_get(self, bedrock):
         """GetEvaluationJob returns created job details."""
@@ -1738,8 +2130,9 @@ class TestBedrockEvaluationJobCRUD:
         )
         job_arn = create_r["jobArn"]
         r = bedrock.batch_delete_evaluation_job(jobIdentifiers=[job_arn])
-        assert "errors" in r
-        assert "evaluationJobs" in r
+        assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert isinstance(r["errors"], list)
+        assert isinstance(r["evaluationJobs"], list)
 
 
 TITAN_MODEL_ARN = "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1"
@@ -1796,8 +2189,9 @@ class TestBedrockModelImportJobCRUD:
             roleArn="arn:aws:iam::123456789012:role/test",
             modelDataSource={"s3DataSource": {"s3Uri": "s3://bucket/model/"}},
         )
-        assert "jobArn" in r
-        assert "model-import-job" in r["jobArn"]
+        job_arn = r["jobArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:model-import-job/.+", job_arn), \
+            f"bad model-import-job ARN: {job_arn}"
 
     def test_create_model_import_job_then_get(self, bedrock):
         """GetModelImportJob returns created job."""
@@ -1827,8 +2221,9 @@ class TestBedrockModelInvocationJobCRUD:
             inputDataConfig={"s3InputDataConfig": {"s3Uri": "s3://bucket/input/"}},
             outputDataConfig={"s3OutputDataConfig": {"s3Uri": "s3://bucket/output/"}},
         )
-        assert "jobArn" in r
-        assert "model-invocation-job" in r["jobArn"]
+        job_arn = r["jobArn"]
+        assert re.match(r"arn:aws:bedrock:[^:]+:\d+:model-invocation-job/.+", job_arn), \
+            f"bad model-invocation-job ARN: {job_arn}"
 
     def test_create_model_invocation_job_then_get(self, bedrock):
         """GetModelInvocationJob returns created job."""
@@ -2251,8 +2646,7 @@ class TestBedrockBehavioralFidelity:
         )
 
         r = bedrock.get_model_customization_job(jobIdentifier=job_name)
-        assert "baseModelArn" in r
-        assert "amazon.titan-text-express-v1" in r["baseModelArn"]
+        assert r["baseModelArn"].endswith("amazon.titan-text-express-v1")
 
     def test_list_custom_models_summary_has_creation_time(self, bedrock):
         """ListCustomModels summaries include creationTime."""
