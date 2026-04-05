@@ -1,6 +1,7 @@
 """Bedrock compatibility tests."""
 
 import datetime
+import re
 import uuid
 
 import pytest
@@ -1711,3 +1712,312 @@ class TestBedrockUpdateMarketplaceModelEndpoint:
             )
         except ClientError as exc:
             assert exc.response["Error"]["Code"] is not None
+
+
+class TestBedrockJobLifecycle:
+    """Full lifecycle tests: create → retrieve → list → delete."""
+
+    def test_create_and_retrieve_job_directly(self, bedrock):
+        """Create a job inline and immediately retrieve it to verify fields."""
+        job_name = _unique("direct")
+        model_name = _unique("model")
+        create_r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = create_r["jobArn"]
+
+        get_r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert get_r["jobName"] == job_name
+        assert get_r["jobArn"] == job_arn
+        assert get_r["outputModelName"].startswith(model_name)
+        assert get_r["status"] == "InProgress"
+
+    def test_create_job_arn_contains_job_name(self, bedrock):
+        """JobArn returned by CreateModelCustomizationJob contains the job name."""
+        job_name = _unique("arncheck")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        assert job_name in r["jobArn"]
+        assert "arn:aws:bedrock:" in r["jobArn"]
+        assert "model-customization-job" in r["jobArn"]
+
+    def test_list_includes_newly_created_job(self, bedrock):
+        """A created job appears in ListModelCustomizationJobs."""
+        job_name = _unique("listtest")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        listed = bedrock.list_model_customization_jobs(nameContains=job_name)
+        job_names = [j["jobName"] for j in listed["modelCustomizationJobSummaries"]]
+        assert job_name in job_names
+
+    def test_list_custom_models_includes_model_from_job(self, bedrock):
+        """A custom model appears in ListCustomModels after job is created."""
+        job_name = _unique("listjob")
+        model_name = _unique("listmod")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        listed = bedrock.list_custom_models(nameContains=job_name)
+        model_names = [m["modelName"] for m in listed["modelSummaries"]]
+        assert model_name in model_names
+
+    def test_delete_custom_model_removes_from_list(self, bedrock):
+        """After deleting a custom model, it no longer appears in ListCustomModels."""
+        model_name = _unique("delmod")
+        bedrock.create_model_customization_job(
+            jobName=_unique("job"),
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        bedrock.delete_custom_model(modelIdentifier=model_name)
+
+        listed = bedrock.list_custom_models()
+        model_names = [m["modelName"] for m in listed["modelSummaries"]]
+        assert model_name not in model_names
+
+    def test_stop_job_then_get_reflects_status(self, bedrock):
+        """After stopping a job, status transitions to Stopping or Stopped."""
+        job_name = _unique("stoptest")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+
+        bedrock.stop_model_customization_job(jobIdentifier=job_arn)
+
+        get_r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert get_r["status"] in ("Stopping", "Stopped")
+
+    def test_duplicate_model_name_raises_error(self, bedrock):
+        """Creating two jobs with the same customModelName raises an error."""
+        model_name = _unique("dupmodel")
+        bedrock.create_model_customization_job(
+            jobName=_unique("job1"),
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        with pytest.raises(ClientError) as exc:
+            bedrock.create_model_customization_job(
+                jobName=_unique("job2"),
+                customModelName=model_name,
+                roleArn="arn:aws:iam::123456789012:role/test",
+                baseModelIdentifier="amazon.titan-text-express-v1",
+                trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+                outputDataConfig={"s3Uri": "s3://bucket/output/"},
+                hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "ResourceInUseException", "ConflictException", "ValidationException"
+        )
+
+
+class TestBedrockTagsLifecycle:
+    """Tag lifecycle: create resource, tag it, verify, untag, verify."""
+
+    def test_tag_job_then_list_and_untag(self, bedrock):
+        """Full tag lifecycle: tag → list → untag → verify removed."""
+        job_name = _unique("tagcycle")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+
+        # Tag it
+        bedrock.tag_resource(
+            resourceARN=job_arn,
+            tags=[{"key": "stage", "value": "dev"}, {"key": "owner", "value": "alice"}],
+        )
+
+        # List and verify
+        tags_r = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        tag_map = {t["key"]: t["value"] for t in tags_r["tags"]}
+        assert tag_map["stage"] == "dev"
+        assert tag_map["owner"] == "alice"
+
+        # Untag one
+        bedrock.untag_resource(resourceARN=job_arn, tagKeys=["stage"])
+
+        # Verify only owner remains
+        tags_r2 = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        tag_map2 = {t["key"]: t["value"] for t in tags_r2["tags"]}
+        assert "stage" not in tag_map2
+        assert tag_map2["owner"] == "alice"
+
+    def test_list_tags_for_nonexistent_resource(self, bedrock):
+        """ListTagsForResource on nonexistent resource raises ResourceNotFoundException."""
+        with pytest.raises(ClientError) as exc:
+            bedrock.list_tags_for_resource(
+                resourceARN="arn:aws:bedrock:us-east-1:123456789012:model-customization-job/nonexistent-xyz"
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_tag_overwrite_existing_key(self, bedrock):
+        """Tagging with an existing key overwrites the value."""
+        job_name = _unique("tagover")
+        r = bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+        job_arn = r["jobArn"]
+
+        bedrock.tag_resource(resourceARN=job_arn, tags=[{"key": "env", "value": "dev"}])
+        bedrock.tag_resource(resourceARN=job_arn, tags=[{"key": "env", "value": "prod"}])
+
+        tags_r = bedrock.list_tags_for_resource(resourceARN=job_arn)
+        tag_map = {t["key"]: t["value"] for t in tags_r["tags"]}
+        assert tag_map["env"] == "prod"
+
+
+class TestBedrockBehavioralFidelity:
+    """Behavioral fidelity: timestamps, ARN format, status values."""
+
+    def test_job_creationtime_is_set(self, bedrock):
+        """GetModelCustomizationJob returns a non-None creationTime."""
+        job_name = _unique("timejob")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert "creationTime" in r
+        ct = r["creationTime"]
+        assert ct is not None
+        # Must be a datetime-like object
+        assert hasattr(ct, "year") or isinstance(ct, str)
+
+    def test_custom_model_arn_format(self, bedrock):
+        """Custom model ARN matches arn:aws:bedrock:<region>:<account>:custom-model/<name>."""
+        model_name = _unique("arnmod")
+        bedrock.create_model_customization_job(
+            jobName=_unique("job"),
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.get_custom_model(modelIdentifier=model_name)
+        model_arn = r["modelArn"]
+        assert model_arn.startswith("arn:aws:bedrock:")
+        assert ":custom-model/" in model_arn
+        assert model_name in model_arn
+
+    def test_list_job_summaries_have_expected_fields(self, bedrock):
+        """ListModelCustomizationJobs returns summaries with required fields."""
+        job_name = _unique("sumjob")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.list_model_customization_jobs(nameContains=job_name)
+        summaries = r["modelCustomizationJobSummaries"]
+        assert len(summaries) >= 1
+        summary = next(s for s in summaries if s["jobName"] == job_name)
+        assert "jobArn" in summary
+        assert "status" in summary
+        assert "creationTime" in summary
+
+    def test_get_job_base_model_identifier_preserved(self, bedrock):
+        """GetModelCustomizationJob preserves the baseModelArn."""
+        job_name = _unique("basejob")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=_unique("model"),
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.get_model_customization_job(jobIdentifier=job_name)
+        assert "baseModelArn" in r
+        assert "amazon.titan-text-express-v1" in r["baseModelArn"]
+
+    def test_list_custom_models_summary_has_creation_time(self, bedrock):
+        """ListCustomModels summaries include creationTime."""
+        job_name = _unique("timejob2")
+        model_name = _unique("timelist")
+        bedrock.create_model_customization_job(
+            jobName=job_name,
+            customModelName=model_name,
+            roleArn="arn:aws:iam::123456789012:role/test",
+            baseModelIdentifier="amazon.titan-text-express-v1",
+            trainingDataConfig={"s3Uri": "s3://bucket/train.jsonl"},
+            outputDataConfig={"s3Uri": "s3://bucket/output/"},
+            hyperParameters={"epochCount": "1", "batchSize": "1", "learningRate": "0.00001"},
+        )
+
+        r = bedrock.list_custom_models(nameContains=job_name)
+        summaries = r["modelSummaries"]
+        match = next((m for m in summaries if m["modelName"] == model_name), None)
+        assert match is not None
+        assert "creationTime" in match
