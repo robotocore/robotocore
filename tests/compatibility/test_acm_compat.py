@@ -1304,6 +1304,14 @@ class TestACMFullPatternCoverage:
         arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
         assert arn in arns
 
+        # UPDATE — set transparency logging preference
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+        cert_after = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert_after.get("Options", {}).get("CertificateTransparencyLoggingPreference") == "DISABLED"
+
         # DELETE
         acm.delete_certificate(CertificateArn=arn)
 
@@ -1365,6 +1373,273 @@ class TestACMFullPatternCoverage:
 
         # DELETE
         acm.delete_certificate(CertificateArn=arn)
+
+    def test_import_cert_type_and_created_at_full_crlude(self, acm):
+        """Import (C) → verify Type=IMPORTED and CreatedAt timestamp (R) → list (L) → update opts (U) → delete (D) → error (E)."""
+        before = datetime.datetime.now(datetime.UTC).replace(microsecond=0)
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+        after = datetime.datetime.now(datetime.UTC)
+
+        # RETRIEVE — type and timing fields
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+        assert cert["Status"] == "ISSUED"
+        imported_at = cert.get("ImportedAt") or cert.get("CreatedAt")
+        assert imported_at is not None
+        if imported_at.tzinfo is None:
+            imported_at = imported_at.replace(tzinfo=datetime.UTC)
+        assert before <= imported_at.astimezone(datetime.UTC) <= after + datetime.timedelta(seconds=5)
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # UPDATE
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "ENABLED"},
+        )
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc2:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc2.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_status_filter_issued_full_crlude(self, acm):
+        """Import (C) → ISSUED status (R) → filter list by ISSUED (L) → update opts (U) → delete (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE — imported certs are immediately ISSUED
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Status"] == "ISSUED"
+
+        # LIST — appears under ISSUED filter, NOT under PENDING_VALIDATION
+        issued_arns = [
+            c["CertificateArn"]
+            for c in acm.list_certificates(CertificateStatuses=["ISSUED"])["CertificateSummaryList"]
+        ]
+        assert arn in issued_arns
+        pending_arns = [
+            c["CertificateArn"]
+            for c in acm.list_certificates(CertificateStatuses=["PENDING_VALIDATION"])["CertificateSummaryList"]
+        ]
+        assert arn not in pending_arns
+
+        # UPDATE
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+        cert_after = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert_after.get("Options", {}).get("CertificateTransparencyLoggingPreference") == "DISABLED"
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_four_certs_pagination_full_crlude(self, acm):
+        """Import 4 certs (C) → describe first (R) → paginate all (L) → update opts (U) → delete all (D) → errors (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arns = [
+            acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+            for _ in range(4)
+        ]
+
+        # RETRIEVE — describe first cert
+        cert = acm.describe_certificate(CertificateArn=arns[0])["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+        assert cert["CertificateArn"] == arns[0]
+
+        # LIST — paginate with MaxItems=2, verify all 4 appear somewhere
+        collected = set()
+        resp = acm.list_certificates(MaxItems=2)
+        collected.update(c["CertificateArn"] for c in resp["CertificateSummaryList"])
+        while "NextToken" in resp:
+            resp = acm.list_certificates(MaxItems=2, NextToken=resp["NextToken"])
+            collected.update(c["CertificateArn"] for c in resp["CertificateSummaryList"])
+        for arn in arns:
+            assert arn in collected
+
+        # UPDATE — modify options on first cert
+        acm.update_certificate_options(
+            CertificateArn=arns[0],
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+
+        # DELETE all
+        for arn in arns:
+            acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — each raises after delete
+        for arn in arns:
+            with pytest.raises(ClientError) as exc:
+                acm.describe_certificate(CertificateArn=arn)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_lifecycle_then_renew_resend_nonexistent_errors(self, acm):
+        """Import (C) → describe (R) → list (L) → update (U) → delete (D) → renew/resend fake ARN raise (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # UPDATE
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "ENABLED"},
+        )
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — renew and resend on nonexistent cert both raise ResourceNotFoundException
+        fake_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+        with pytest.raises(ClientError) as exc:
+            acm.renew_certificate(CertificateArn=fake_arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        with pytest.raises(ClientError) as exc:
+            acm.resend_validation_email(
+                CertificateArn=fake_arn,
+                Domain="nonexistent.example.com",
+                ValidationDomain="example.com",
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_with_tags_update_opts_full_crlude(self, acm):
+        """Import with inline tags (C) → describe + verify tags (R) → list (L) → update opts (U) → delete (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(
+            Certificate=cert_pem,
+            PrivateKey=key_pem,
+            Tags=[{"Key": "env", "Value": "test"}, {"Key": "team", "Value": "platform"}],
+        )["CertificateArn"]
+
+        # RETRIEVE — cert details and tags
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+        tags = {t["Key"]: t["Value"] for t in acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "platform"
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # UPDATE — modify cert options
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+        cert_updated = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert_updated.get("Options", {}).get("CertificateTransparencyLoggingPreference") == "DISABLED"
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_dns_validation_cert_combo_crlude(self, acm):
+        """Import (C) → describe import type (R) → verify DNS validation method on request cert (R) → list both (L) → update (U) → delete both (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn_imported = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE — imported cert type
+        cert = acm.describe_certificate(CertificateArn=arn_imported)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+
+        # Also verify DNS validation method is preserved in describe
+        arn_dns = acm.request_certificate(
+            DomainName="dns-combo.example.com",
+            ValidationMethod="DNS",
+        )["CertificateArn"]
+        dns_cert = acm.describe_certificate(CertificateArn=arn_dns)["Certificate"]
+        options = dns_cert.get("DomainValidationOptions", [])
+        assert len(options) >= 1
+        assert options[0]["ValidationMethod"] == "DNS"
+
+        # LIST — both certs appear
+        all_arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn_imported in all_arns
+        assert arn_dns in all_arns
+
+        # UPDATE — update opts on imported cert
+        acm.update_certificate_options(
+            CertificateArn=arn_imported,
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+
+        # DELETE both
+        acm.delete_certificate(CertificateArn=arn_imported)
+        acm.delete_certificate(CertificateArn=arn_dns)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn_imported)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_wildcard_and_multisan_combo_crlude(self, acm):
+        """Import (C) → describe (R) → verify wildcard domain + multiple SANs on request certs (R) → list all (L) → update (U) → delete all (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn_imported = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE — imported cert
+        cert = acm.describe_certificate(CertificateArn=arn_imported)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+
+        # Wildcard domain is preserved verbatim in describe
+        arn_wild = acm.request_certificate(DomainName="*.edge-case.example.com")["CertificateArn"]
+        wild_cert = acm.describe_certificate(CertificateArn=arn_wild)["Certificate"]
+        assert wild_cert["DomainName"] == "*.edge-case.example.com"
+
+        # Multiple SANs all appear in SubjectAlternativeNames
+        sans = ["multi.example.com", "a.example.com", "b.example.com"]
+        arn_sans = acm.request_certificate(
+            DomainName="multi.example.com",
+            SubjectAlternativeNames=sans,
+        )["CertificateArn"]
+        sans_cert = acm.describe_certificate(CertificateArn=arn_sans)["Certificate"]
+        for san in sans:
+            assert san in sans_cert.get("SubjectAlternativeNames", [])
+
+        # LIST — all three appear
+        all_arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn_imported in all_arns
+        assert arn_wild in all_arns
+        assert arn_sans in all_arns
+
+        # UPDATE — update opts on imported cert
+        acm.update_certificate_options(
+            CertificateArn=arn_imported,
+            Options={"CertificateTransparencyLoggingPreference": "ENABLED"},
+        )
+
+        # DELETE all three
+        for arn in [arn_imported, arn_wild, arn_sans]:
+            acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn_imported)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_reimport_certificate_updates_existing(self, acm):
         """Import cert (C) → reimport to same ARN (U) → describe reflects update (R) → list (L) → delete (D) → error (E)."""
