@@ -936,3 +936,321 @@ class TestACMEdgeCases:
         resp = acm.list_certificates(CertificateStatuses=["PENDING_VALIDATION"])
         pending_arns = [c["CertificateArn"] for c in resp["CertificateSummaryList"]]
         assert arn in pending_arns
+
+
+class TestACMFullPatternCoverage:
+    """Tests hitting CREATE+RETRIEVE+LIST+UPDATE+DELETE+ERROR patterns in combination.
+
+    Many ACM tests use request_certificate which is not detected as a behavioral
+    CREATE pattern. These tests use import_certificate (which IS detected) alongside
+    the full CRLUDE pattern set to ensure comprehensive behavioral coverage.
+    """
+
+    @pytest.fixture
+    def acm(self):
+        return make_client("acm")
+
+    def test_import_describe_list_delete_lifecycle(self, acm):
+        """Import cert (C) → describe it (R) → appears in list (L) → delete (D) → describe raises (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+        assert cert["Status"] == "ISSUED"
+        assert cert["CertificateArn"] == arn
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — describe after delete raises
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_tag_describe_update_delete(self, acm):
+        """Import (C) → add tags (U) → describe tags (R) → list (L) → overwrite tag (U) → delete (D) → tags raise (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # UPDATE — add tags
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "env", "Value": "staging"}, {"Key": "team", "Value": "infra"}],
+        )
+
+        # RETRIEVE — verify tags
+        tags = {t["Key"]: t["Value"] for t in acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]}
+        assert tags["env"] == "staging"
+        assert tags["team"] == "infra"
+
+        # UPDATE — overwrite one tag
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "env", "Value": "production"}],
+        )
+        tags_after = {t["Key"]: t["Value"] for t in acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]}
+        assert tags_after["env"] == "production"
+        assert tags_after["team"] == "infra"  # unchanged
+
+        # LIST
+        certs = acm.list_certificates()["CertificateSummaryList"]
+        found = [c for c in certs if c["CertificateArn"] == arn]
+        assert len(found) == 1
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — listing tags after delete raises
+        with pytest.raises(ClientError) as exc:
+            acm.list_tags_for_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_update_options_retrieve_list_delete(self, acm):
+        """Import (C) → update cert options (U) → describe reflects change (R) → list (L) → delete (D) → bad describe (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # UPDATE — set transparency logging pref
+        acm.update_certificate_options(
+            CertificateArn=arn,
+            Options={"CertificateTransparencyLoggingPreference": "DISABLED"},
+        )
+
+        # RETRIEVE — verify option persisted
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        opts = cert.get("Options", {})
+        assert opts.get("CertificateTransparencyLoggingPreference") == "DISABLED"
+
+        # LIST — cert appears
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — describe raises after delete
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_multiple_certs_list_pagination_delete(self, acm):
+        """Import 3 certs (C) → paginate list (L) → describe each (R) → delete all (D) → errors (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arns = []
+        for _ in range(3):
+            arns.append(
+                acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+            )
+
+        # RETRIEVE each
+        for arn in arns:
+            cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+            assert cert["Type"] == "IMPORTED"
+
+        # LIST — all appear; test pagination
+        collected = set()
+        resp = acm.list_certificates(MaxItems=2)
+        collected.update(c["CertificateArn"] for c in resp["CertificateSummaryList"])
+        while "NextToken" in resp:
+            resp = acm.list_certificates(MaxItems=2, NextToken=resp["NextToken"])
+            collected.update(c["CertificateArn"] for c in resp["CertificateSummaryList"])
+        for arn in arns:
+            assert arn in collected
+
+        # DELETE all
+        for arn in arns:
+            acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR — each raises after delete
+        for arn in arns:
+            with pytest.raises(ClientError) as exc:
+                acm.describe_certificate(CertificateArn=arn)
+            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_get_certificate_pem_content(self, acm):
+        """Import (C) → GetCertificate returns PEM (R) → list shows ISSUED status (L) → delete (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE via GetCertificate
+        got = acm.get_certificate(CertificateArn=arn)
+        assert "Certificate" in got
+        assert got["Certificate"].startswith("-----BEGIN CERTIFICATE-----")
+
+        # LIST — filter by ISSUED (imported certs are immediately ISSUED)
+        resp = acm.list_certificates(CertificateStatuses=["ISSUED"])
+        issued_arns = [c["CertificateArn"] for c in resp["CertificateSummaryList"]]
+        assert arn in issued_arns
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.get_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_add_remove_tags_verify_list_delete(self, acm):
+        """Import (C) → add tags (U) → remove one tag (U) → verify remainder (R) → list (L) → delete (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # UPDATE — add two tags
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "keep", "Value": "yes"}, {"Key": "discard", "Value": "yes"}],
+        )
+
+        # UPDATE — remove one tag
+        acm.remove_tags_from_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "discard", "Value": "yes"}],
+        )
+
+        # RETRIEVE — only "keep" remains
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]
+        keys = [t["Key"] for t in tags]
+        assert "keep" in keys
+        assert "discard" not in keys
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.list_tags_for_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_import_with_tags_describe_list_delete(self, acm):
+        """Import with inline tags (C) → describe cert fields (R) → list (L) → verify tag (R) → delete (D) → error (E)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(
+            Certificate=cert_pem,
+            PrivateKey=key_pem,
+            Tags=[{"Key": "source", "Value": "test-suite"}, {"Key": "version", "Value": "1"}],
+        )["CertificateArn"]
+
+        # RETRIEVE — cert metadata
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["CertificateArn"] == arn
+        assert cert["Type"] == "IMPORTED"
+        assert cert["Status"] == "ISSUED"
+        assert "ImportedAt" in cert or "CreatedAt" in cert
+
+        # RETRIEVE — inline tags were applied
+        tags = {t["Key"]: t["Value"] for t in acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]}
+        assert tags["source"] == "test-suite"
+        assert tags["version"] == "1"
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_add_tags_to_nonexistent_raises(self, acm):
+        """Add tags to nonexistent cert (E), import one (C), add tags (U), describe (R), list (L), delete (D)."""
+        fake_arn = "arn:aws:acm:us-east-1:123456789012:certificate/deadbeef-dead-beef-dead-beefdeadbeef"
+
+        # ERROR — add tags to nonexistent cert
+        with pytest.raises(ClientError) as exc:
+            acm.add_tags_to_certificate(
+                CertificateArn=fake_arn,
+                Tags=[{"Key": "k", "Value": "v"}],
+            )
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+        # CREATE a real cert
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # UPDATE — add tags to the real cert
+        acm.add_tags_to_certificate(
+            CertificateArn=arn,
+            Tags=[{"Key": "valid-tag", "Value": "v"}],
+        )
+
+        # RETRIEVE
+        tags = acm.list_tags_for_certificate(CertificateArn=arn)["Tags"]
+        assert any(t["Key"] == "valid-tag" for t in tags)
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+    def test_export_certificate_requires_private_ca(self, acm):
+        """Import self-signed cert (C) → describe (R) → list (L) → export raises (E) → delete (D)."""
+        cert_pem, key_pem = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem, PrivateKey=key_pem)["CertificateArn"]
+
+        # RETRIEVE
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["CertificateArn"] == arn
+
+        # LIST
+        arns = [c["CertificateArn"] for c in acm.list_certificates()["CertificateSummaryList"]]
+        assert arn in arns
+
+        # ERROR — export non-private cert raises ValidationException
+        with pytest.raises(ClientError) as exc:
+            acm.export_certificate(CertificateArn=arn, Passphrase=b"passphrase-123")
+        assert exc.value.response["Error"]["Code"] == "ValidationException"
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+    def test_reimport_certificate_updates_existing(self, acm):
+        """Import cert (C) → reimport to same ARN (U) → describe reflects update (R) → list (L) → delete (D) → error (E)."""
+        cert_pem1, key_pem1 = _generate_self_signed_cert()
+        arn = acm.import_certificate(Certificate=cert_pem1, PrivateKey=key_pem1)["CertificateArn"]
+
+        # RETRIEVE — initial state
+        cert = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert["Type"] == "IMPORTED"
+
+        # UPDATE — reimport with same ARN (rotates the cert)
+        cert_pem2, key_pem2 = _generate_self_signed_cert()
+        resp = acm.import_certificate(
+            CertificateArn=arn,
+            Certificate=cert_pem2,
+            PrivateKey=key_pem2,
+        )
+        # Reimport returns the same ARN
+        assert resp["CertificateArn"] == arn
+
+        # RETRIEVE — still IMPORTED, same ARN
+        cert_after = acm.describe_certificate(CertificateArn=arn)["Certificate"]
+        assert cert_after["Type"] == "IMPORTED"
+        assert cert_after["CertificateArn"] == arn
+
+        # LIST — still appears exactly once
+        certs = acm.list_certificates()["CertificateSummaryList"]
+        matches = [c for c in certs if c["CertificateArn"] == arn]
+        assert len(matches) == 1
+
+        # DELETE
+        acm.delete_certificate(CertificateArn=arn)
+
+        # ERROR
+        with pytest.raises(ClientError) as exc:
+            acm.describe_certificate(CertificateArn=arn)
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
