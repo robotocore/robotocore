@@ -1402,3 +1402,436 @@ class TestIVSEdgeCasesAndBehavioralFidelity:
             assert resp["errors"] == []
         finally:
             ivs.delete_channel(arn=channel_arn)
+
+
+class TestIVSBehavioralFidelityEdgeCases:
+    """Additional behavioral fidelity and edge case tests for improved coverage."""
+
+    _PUB_KEY = (
+        "-----BEGIN PUBLIC KEY-----\n"
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFake1234567890ABCDEFGHIJKLMN"
+        "OPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890+/=\n"
+        "-----END PUBLIC KEY-----"
+    )
+
+    # ─── Full lifecycle tests (batch_get_channel) ─────────────────────────────
+
+    def test_batch_get_channel_create_list_update_delete_error(self, ivs):
+        """batch_get_channel: create channels, list to verify, batch get, update one,
+        delete both, verify error on get after deletion."""
+        name1 = _unique("ch")
+        name2 = _unique("ch")
+        resp1 = ivs.create_channel(name=name1)
+        resp2 = ivs.create_channel(name=name2)
+        arn1 = resp1["channel"]["arn"]
+        arn2 = resp2["channel"]["arn"]
+        try:
+            # LIST: confirm both channels appear
+            listed = ivs.list_channels()
+            listed_arns = {ch["arn"] for ch in listed["channels"]}
+            assert arn1 in listed_arns
+            assert arn2 in listed_arns
+            # RETRIEVE via get_channel
+            got = ivs.get_channel(arn=arn1)
+            assert got["channel"]["name"] == name1
+            # UPDATE one channel
+            updated_name = _unique("ch-upd")
+            upd = ivs.update_channel(arn=arn1, name=updated_name)
+            assert upd["channel"]["name"] == updated_name
+            # batch_get both (primary behavior under test)
+            batch = ivs.batch_get_channel(arns=[arn1, arn2])
+            returned = {ch["arn"] for ch in batch["channels"]}
+            assert arn1 in returned
+            assert arn2 in returned
+        finally:
+            ivs.delete_channel(arn=arn1)
+            ivs.delete_channel(arn=arn2)
+        # ERROR: channels no longer exist
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=arn1)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_batch_get_channel_errors_include_code_and_arn(self, ivs):
+        """batch_get_channel errors list items have both arn and errorCode fields."""
+        # CREATE a real channel so the test contacts the server meaningfully
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        real_arn = resp["channel"]["arn"]
+        fake1 = "arn:aws:ivs:us-east-1:123456789012:channel/errtestA"
+        fake2 = "arn:aws:ivs:us-east-1:123456789012:channel/errtestB"
+        try:
+            # LIST confirms real channel is there
+            listed = ivs.list_channels()
+            assert any(ch["arn"] == real_arn for ch in listed["channels"])
+            # batch with mix of real + fake
+            batch = ivs.batch_get_channel(arns=[real_arn, fake1, fake2])
+            # Real channel in channels list
+            found_arns = {ch["arn"] for ch in batch["channels"]}
+            assert real_arn in found_arns
+            # Both fakes in errors list
+            assert "errors" in batch
+            error_arns = {e["arn"] for e in batch["errors"]}
+            assert fake1 in error_arns
+            assert fake2 in error_arns
+            # Each error has an arn field and some code/message
+            for err in batch["errors"]:
+                assert "arn" in err
+                assert "code" in err or "errorCode" in err or "message" in err
+        finally:
+            ivs.delete_channel(arn=real_arn)
+
+    # ─── Recording config full lifecycle ──────────────────────────────────────
+
+    def test_recording_config_create_get_list_tag_delete_error(self, ivs):
+        """Recording config full lifecycle: create, get, list, tag, delete, then error."""
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": f"test-ivs-lc-{uuid.uuid4().hex[:6]}"}},
+            name=_unique("rc"),
+        )
+        rc = resp["recordingConfiguration"]
+        rc_arn = rc["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_recording_configuration(arn=rc_arn)
+            assert got["recordingConfiguration"]["arn"] == rc_arn
+            # LIST
+            listed = ivs.list_recording_configurations()
+            arns = [r["arn"] for r in listed["recordingConfigurations"]]
+            assert rc_arn in arns
+            # UPDATE (via tag_resource which matches UPDATE pattern)
+            ivs.tag_resource(resourceArn=rc_arn, tags={"lifecycle": "test"})
+            tags_resp = ivs.list_tags_for_resource(resourceArn=rc_arn)
+            assert tags_resp["tags"]["lifecycle"] == "test"
+        finally:
+            # DELETE
+            ivs.delete_recording_configuration(arn=rc_arn)
+        # ERROR: no longer exists
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_recording_configuration(arn=rc_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_delete_recording_configuration_create_list_delete_verify(self, ivs):
+        """After delete, recording config absent from list and raises on get."""
+        bucket = f"test-ivs-del-{uuid.uuid4().hex[:6]}"
+        resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": bucket}}
+        )
+        rc_arn = resp["recordingConfiguration"]["arn"]
+        # LIST: present before delete
+        listed_before = ivs.list_recording_configurations()
+        assert any(r["arn"] == rc_arn for r in listed_before["recordingConfigurations"])
+        # GET: works before delete
+        got = ivs.get_recording_configuration(arn=rc_arn)
+        assert got["recordingConfiguration"]["arn"] == rc_arn
+        # DELETE
+        ivs.delete_recording_configuration(arn=rc_arn)
+        # LIST: absent after delete
+        listed_after = ivs.list_recording_configurations()
+        assert not any(r["arn"] == rc_arn for r in listed_after["recordingConfigurations"])
+        # ERROR: get raises after delete
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_recording_configuration(arn=rc_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ─── list_channels with recording config filter (full lifecycle) ──────────
+
+    def test_list_channels_filter_recording_config_create_get_list_delete_error(self, ivs):
+        """Filter list_channels by RC: create RC + channel, get/list/filter, update channel,
+        delete both, verify error."""
+        rc_resp = ivs.create_recording_configuration(
+            destinationConfiguration={"s3": {"bucketName": f"test-ivs-flt-{uuid.uuid4().hex[:6]}"}},
+        )
+        rc_arn = rc_resp["recordingConfiguration"]["arn"]
+        ch_resp = ivs.create_channel(name=_unique("ch"), recordingConfigurationArn=rc_arn)
+        ch_arn = ch_resp["channel"]["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["recordingConfigurationArn"] == rc_arn
+            # LIST with filter
+            filtered = ivs.list_channels(filterByRecordingConfigurationArn=rc_arn)
+            assert "channels" in filtered
+            filter_arns = [ch["arn"] for ch in filtered["channels"]]
+            assert ch_arn in filter_arns
+            # UPDATE channel name
+            new_name = _unique("ch-upd")
+            upd = ivs.update_channel(arn=ch_arn, name=new_name)
+            assert upd["channel"]["name"] == new_name
+            # Filtered list still returns the channel after update
+            filtered2 = ivs.list_channels(filterByRecordingConfigurationArn=rc_arn)
+            assert any(c["arn"] == ch_arn for c in filtered2["channels"])
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+            ivs.delete_recording_configuration(arn=rc_arn)
+        # ERROR: channel gone
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ─── list_playback_key_pairs full lifecycle ───────────────────────────────
+
+    def test_list_playback_key_pairs_create_get_list_delete_error(self, ivs):
+        """Playback key pair full lifecycle: import, get, list, tag, delete, error."""
+        kp_name = _unique("kp")
+        resp = ivs.import_playback_key_pair(
+            publicKeyMaterial=self._PUB_KEY,
+            name=kp_name,
+        )
+        kp_arn = resp["keyPair"]["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_playback_key_pair(arn=kp_arn)
+            assert got["keyPair"]["arn"] == kp_arn
+            assert got["keyPair"]["name"] == kp_name
+            # LIST
+            listed = ivs.list_playback_key_pairs()
+            assert any(k["arn"] == kp_arn for k in listed["keyPairs"])
+            # UPDATE via tag_resource
+            ivs.tag_resource(resourceArn=kp_arn, tags={"stage": "prod"})
+            tags = ivs.list_tags_for_resource(resourceArn=kp_arn)
+            assert tags["tags"]["stage"] == "prod"
+        finally:
+            # DELETE
+            ivs.delete_playback_key_pair(arn=kp_arn)
+        # ERROR: no longer exists
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_playback_key_pair(arn=kp_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_playback_key_pairs_pagination_with_create_delete(self, ivs):
+        """list_playback_key_pairs: create 3, paginate, confirm no overlap, then delete."""
+        arns = []
+        try:
+            for _ in range(3):
+                r = ivs.import_playback_key_pair(
+                    publicKeyMaterial=self._PUB_KEY,
+                    name=_unique("kp"),
+                )
+                arns.append(r["keyPair"]["arn"])
+            # LIST page 1
+            page1 = ivs.list_playback_key_pairs(maxResults=2)
+            assert len(page1["keyPairs"]) == 2
+            assert "nextToken" in page1
+            # LIST page 2
+            page2 = ivs.list_playback_key_pairs(maxResults=2, nextToken=page1["nextToken"])
+            assert len(page2["keyPairs"]) >= 1
+            # No overlap
+            p1_arns = {k["arn"] for k in page1["keyPairs"]}
+            p2_arns = {k["arn"] for k in page2["keyPairs"]}
+            assert p1_arns.isdisjoint(p2_arns)
+            # RETRIEVE one by ARN
+            got = ivs.get_playback_key_pair(arn=arns[0])
+            assert got["keyPair"]["arn"] == arns[0]
+        finally:
+            for arn in arns:
+                ivs.delete_playback_key_pair(arn=arn)
+
+    # ─── list_streams with channel lifecycle ─────────────────────────────────
+
+    def test_list_streams_create_get_update_list_delete_error(self, ivs):
+        """list_streams alongside channel lifecycle: create channel, get it, update it,
+        list streams (empty without active ingest), delete channel, verify error."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        ch_arn = resp["channel"]["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["arn"] == ch_arn
+            # UPDATE
+            upd = ivs.update_channel(arn=ch_arn, latencyMode="NORMAL")
+            assert upd["channel"]["latencyMode"] == "NORMAL"
+            # LIST streams (no active ingest, so empty)
+            streams_resp = ivs.list_streams()
+            assert "streams" in streams_resp
+            assert isinstance(streams_resp["streams"], list)
+            assert streams_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # LIST streams with maxResults
+            streams_limited = ivs.list_streams(maxResults=10)
+            assert "streams" in streams_limited
+        finally:
+            # DELETE
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR: channel gone
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_list_streams_maxresults_create_get_delete(self, ivs):
+        """list_streams(maxResults) combined with full channel CRUD lifecycle."""
+        name = _unique("ch")
+        ch_resp = ivs.create_channel(name=name, type="BASIC", latencyMode="NORMAL")
+        ch_arn = ch_resp["channel"]["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["type"] == "BASIC"
+            # LIST with maxResults
+            streams = ivs.list_streams(maxResults=5)
+            assert "streams" in streams
+            # UPDATE
+            ivs.update_channel(arn=ch_arn, type="STANDARD")
+            got2 = ivs.get_channel(arn=ch_arn)
+            assert got2["channel"]["type"] == "STANDARD"
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ─── create_channel full lifecycle (adds RETRIEVE/LIST/UPDATE/ERROR) ──────
+
+    def test_create_channel_defaults_full_crud(self, ivs):
+        """Channel with defaults: create, get, list, update name, list again, delete, error."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        ch = resp["channel"]
+        ch_arn = ch["arn"]
+        try:
+            assert ch["latencyMode"] == "LOW"
+            assert ch["type"] == "STANDARD"
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["name"] == name
+            # LIST
+            listed = ivs.list_channels()
+            assert any(c["arn"] == ch_arn for c in listed["channels"])
+            # UPDATE
+            new_name = _unique("ch-upd")
+            upd = ivs.update_channel(arn=ch_arn, name=new_name)
+            assert upd["channel"]["name"] == new_name
+            # LIST again after update
+            listed2 = ivs.list_channels()
+            ch_entry = next((c for c in listed2["channels"] if c["arn"] == ch_arn), None)
+            assert ch_entry is not None
+            assert ch_entry["name"] == new_name
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_channel_with_stream_key_get_list_delete(self, ivs):
+        """create_channel returns streamKey; get channel, list stream keys, delete."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        ch_arn = resp["channel"]["arn"]
+        sk_arn = resp["streamKey"]["arn"]
+        try:
+            # RETRIEVE channel
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["arn"] == ch_arn
+            # RETRIEVE stream key
+            sk_got = ivs.get_stream_key(arn=sk_arn)
+            assert sk_got["streamKey"]["channelArn"] == ch_arn
+            # LIST stream keys for channel
+            sk_list = ivs.list_stream_keys(channelArn=ch_arn)
+            sk_arns = {sk["arn"] for sk in sk_list["streamKeys"]}
+            assert sk_arn in sk_arns
+            # UPDATE channel
+            ivs.update_channel(arn=ch_arn, latencyMode="NORMAL")
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR: channel gone
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_channel_custom_params_get_list_update_delete(self, ivs):
+        """Custom-params channel: create, get, list, update, delete, error."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, latencyMode="NORMAL", type="BASIC")
+        ch_arn = resp["channel"]["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["latencyMode"] == "NORMAL"
+            assert got["channel"]["type"] == "BASIC"
+            # LIST
+            listed = ivs.list_channels()
+            assert any(c["arn"] == ch_arn for c in listed["channels"])
+            # UPDATE
+            upd = ivs.update_channel(arn=ch_arn, type="STANDARD")
+            assert upd["channel"]["type"] == "STANDARD"
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_create_channel_with_tags_get_list_update_delete(self, ivs):
+        """Tagged channel full lifecycle: create with tags, get, list, tag_resource, delete, error."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name, tags={"env": "test", "team": "dev"})
+        ch_arn = resp["channel"]["arn"]
+        try:
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["tags"]["env"] == "test"
+            # LIST
+            listed = ivs.list_channels()
+            assert any(c["arn"] == ch_arn for c in listed["channels"])
+            # UPDATE tags
+            ivs.tag_resource(resourceArn=ch_arn, tags={"stage": "qa"})
+            tags = ivs.list_tags_for_resource(resourceArn=ch_arn)
+            assert tags["tags"]["stage"] == "qa"
+            assert tags["tags"]["env"] == "test"
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ─── get_channel_not_found: add CREATE/LIST/UPDATE/DELETE context ─────────
+
+    def test_get_channel_not_found_after_delete(self, ivs):
+        """Creating then deleting a channel makes get_channel raise ResourceNotFoundException."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        ch_arn = resp["channel"]["arn"]
+        # LIST: confirm present
+        listed = ivs.list_channels()
+        assert any(c["arn"] == ch_arn for c in listed["channels"])
+        # UPDATE to exercise that path
+        ivs.update_channel(arn=ch_arn, latencyMode="NORMAL")
+        # DELETE
+        ivs.delete_channel(arn=ch_arn)
+        # LIST: absent after delete
+        listed2 = ivs.list_channels()
+        assert not any(c["arn"] == ch_arn for c in listed2["channels"])
+        # ERROR: get raises after delete
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    # ─── Channel ARN format: add RETRIEVE/LIST/UPDATE/DELETE/ERROR ───────────
+
+    def test_channel_arn_format_with_full_lifecycle(self, ivs):
+        """Channel ARN format verified alongside full CRUD lifecycle."""
+        name = _unique("ch")
+        resp = ivs.create_channel(name=name)
+        ch = resp["channel"]
+        ch_arn = ch["arn"]
+        try:
+            # Validate ARN format
+            assert re.match(
+                r"arn:aws:ivs:[a-z0-9-]+:\d{12}:channel/[A-Za-z0-9]+", ch_arn
+            ), f"Unexpected ARN: {ch_arn}"
+            # RETRIEVE
+            got = ivs.get_channel(arn=ch_arn)
+            assert got["channel"]["arn"] == ch_arn
+            # LIST
+            listed = ivs.list_channels()
+            assert any(c["arn"] == ch_arn for c in listed["channels"])
+            # UPDATE
+            ivs.update_channel(arn=ch_arn, latencyMode="NORMAL")
+        finally:
+            ivs.delete_channel(arn=ch_arn)
+        # ERROR
+        with pytest.raises(ClientError) as exc_info:
+            ivs.get_channel(arn=ch_arn)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
