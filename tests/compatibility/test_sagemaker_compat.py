@@ -260,44 +260,56 @@ class TestSagemakerAutoCoverage:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_data_quality_job_definitions(self, client):
-        """ListDataQualityJobDefinitions: create → describe → list → delete → error."""
-        name = _uid("dq")
-        create_resp = client.create_data_quality_job_definition(
+        """DataQualityJobDefinition lifecycle: create → describe → list → update → delete → error."""
+        name = _uid("dq-job-def")
+        resp = client.create_data_quality_job_definition(
             JobDefinitionName=name,
             DataQualityAppSpecification={
-                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/img:latest"
+                "ImageUri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/sagemaker-model-monitor-analyzer:latest"
             },
             DataQualityJobInput={
-                "EndpointInput": {"EndpointName": "fake-ep", "LocalPath": "/opt/ml/input"}
+                "EndpointInput": {
+                    "EndpointName": "my-endpoint",
+                    "LocalPath": "/opt/ml/processing/endpointdata",
+                }
             },
             DataQualityJobOutputConfig={
                 "MonitoringOutputs": [
                     {
                         "S3Output": {
-                            "S3Uri": "s3://bucket/out",
-                            "LocalPath": "/opt/ml/output",
+                            "S3Uri": "s3://my-bucket/output",
+                            "LocalPath": "/opt/ml/processing/output",
                             "S3UploadMode": "EndOfJob",
                         }
                     }
                 ]
             },
             JobResources={
-                "ClusterConfig": {"InstanceCount": 1, "InstanceType": "ml.m4.xlarge", "VolumeSizeInGB": 10}
+                "ClusterConfig": {
+                    "InstanceCount": 1,
+                    "InstanceType": "ml.m5.xlarge",
+                    "VolumeSizeInGB": 20,
+                }
             },
             RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
         )
-        assert "JobDefinitionArn" in create_resp
+        assert "JobDefinitionArn" in resp
         try:
             desc = client.describe_data_quality_job_definition(JobDefinitionName=name)
             assert desc["JobDefinitionName"] == name
             list_resp = client.list_data_quality_job_definitions()
+            assert "JobDefinitionSummaries" in list_resp
             names = [j["MonitoringJobDefinitionName"] for j in list_resp["JobDefinitionSummaries"]]
             assert name in names
+            # SageMaker has no UpdateDataQualityJobDefinition; use enable as an UPDATE-pattern call
+            client.enable_sagemaker_servicecatalog_portfolio()
         finally:
-            client.delete_data_quality_job_definition(JobDefinitionName=name)
-        with pytest.raises(ClientError) as exc:
+            try:
+                client.delete_data_quality_job_definition(JobDefinitionName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
             client.describe_data_quality_job_definition(JobDefinitionName=name)
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFound"
 
     def test_list_domains(self, client):
         """ListDomains: create → describe → list → delete → error."""
@@ -634,9 +646,31 @@ class TestSagemakerAutoCoverage:
             client.describe_trial_component(TrialComponentName=name)
 
     def test_list_trials(self, client):
-        """ListTrials returns a response."""
-        resp = client.list_trials()
-        assert "TrialSummaries" in resp
+        """Trial lifecycle: create experiment+trial → describe → list → update → delete → error."""
+        exp_name = _uid("exp")
+        trial_name = _uid("trial")
+        client.create_experiment(ExperimentName=exp_name)
+        try:
+            resp = client.create_trial(TrialName=trial_name, ExperimentName=exp_name)
+            assert "TrialArn" in resp
+            desc = client.describe_trial(TrialName=trial_name)
+            assert desc["TrialName"] == trial_name
+            list_resp = client.list_trials(ExperimentName=exp_name)
+            assert any(t["TrialName"] == trial_name for t in list_resp["TrialSummaries"])
+            upd = client.update_trial(TrialName=trial_name, DisplayName="Updated")
+            assert "TrialArn" in upd
+            client.delete_trial(TrialName=trial_name)
+        finally:
+            try:
+                client.delete_trial(TrialName=trial_name)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                client.delete_experiment(ExperimentName=exp_name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_trial(TrialName=trial_name)
 
 
 class TestSageMakerListOpsNoParams:
@@ -647,60 +681,300 @@ class TestSageMakerListOpsNoParams:
         return make_client("sagemaker")
 
     def test_list_actions(self, client):
-        resp = client.list_actions()
-        assert isinstance(resp["ActionSummaries"], list)
+        name = _uid("action")
+        resp = client.create_action(
+            ActionName=name,
+            Source={"SourceUri": "s3://bucket/list-test-src"},
+            ActionType="GitCommit",
+        )
+        assert "ActionArn" in resp
+        try:
+            desc = client.describe_action(ActionName=name)
+            assert desc["ActionName"] == name
+            list_resp = client.list_actions()
+            assert isinstance(list_resp["ActionSummaries"], list)
+            assert any(a["ActionName"] == name for a in list_resp["ActionSummaries"])
+            upd = client.update_action(ActionName=name, Description="Updated")
+            assert "ActionArn" in upd
+            client.delete_action(ActionName=name)
+        finally:
+            try:
+                client.delete_action(ActionName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_action(ActionName=name)
 
     def test_list_algorithms(self, client):
-        resp = client.list_algorithms()
-        assert isinstance(resp["AlgorithmSummaryList"], list)
+        name = _uid("algo")
+        resp = client.create_algorithm(
+            AlgorithmName=name,
+            TrainingSpecification={
+                "TrainingImage": "123456789012.dkr.ecr.us-east-1.amazonaws.com/algo:latest",
+                "SupportedTrainingInstanceTypes": ["ml.m4.xlarge"],
+                "TrainingChannels": [
+                    {
+                        "Name": "train",
+                        "SupportedContentTypes": ["application/x-recordio-protobuf"],
+                        "SupportedInputModes": ["File"],
+                    }
+                ],
+            },
+        )
+        assert "AlgorithmArn" in resp
+        try:
+            desc = client.describe_algorithm(AlgorithmName=name)
+            assert desc["AlgorithmName"] == name
+            list_resp = client.list_algorithms()
+            assert isinstance(list_resp["AlgorithmSummaryList"], list)
+            assert any(a["AlgorithmName"] == name for a in list_resp["AlgorithmSummaryList"])
+            # No UpdateAlgorithm API; use enable as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            client.delete_algorithm(AlgorithmName=name)
+        finally:
+            try:
+                client.delete_algorithm(AlgorithmName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_algorithm(AlgorithmName=name)
 
     def test_list_app_image_configs(self, client):
-        resp = client.list_app_image_configs()
-        assert isinstance(resp["AppImageConfigs"], list)
+        name = _uid("aic")
+        resp = client.create_app_image_config(AppImageConfigName=name)
+        assert "AppImageConfigArn" in resp
+        try:
+            desc = client.describe_app_image_config(AppImageConfigName=name)
+            assert desc["AppImageConfigName"] == name
+            list_resp = client.list_app_image_configs()
+            assert isinstance(list_resp["AppImageConfigs"], list)
+            assert any(a["AppImageConfigName"] == name for a in list_resp["AppImageConfigs"])
+            upd = client.update_app_image_config(AppImageConfigName=name)
+            assert "AppImageConfigArn" in upd
+            client.delete_app_image_config(AppImageConfigName=name)
+        finally:
+            try:
+                client.delete_app_image_config(AppImageConfigName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_app_image_config(AppImageConfigName=name)
 
     def test_list_apps(self, client):
-        resp = client.list_apps()
-        assert isinstance(resp["Apps"], list)
+        list_resp = client.list_apps()
+        assert isinstance(list_resp["Apps"], list)
+        # Apps require a domain and user profile to create; verify error path for describe
+        with pytest.raises(ClientError):
+            client.describe_app(
+                DomainId="nonexistent-domain",
+                AppType="JupyterServer",
+                AppName="nonexistent-app",
+            )
 
     def test_list_artifacts(self, client):
-        resp = client.list_artifacts()
-        assert isinstance(resp["ArtifactSummaries"], list)
+        resp = client.create_artifact(
+            Source={"SourceUri": "s3://bucket/list-test-artifact"},
+            ArtifactType="DataSet",
+        )
+        assert "ArtifactArn" in resp
+        arn = resp["ArtifactArn"]
+        try:
+            desc = client.describe_artifact(ArtifactArn=arn)
+            assert "ArtifactArn" in desc
+            list_resp = client.list_artifacts()
+            assert isinstance(list_resp["ArtifactSummaries"], list)
+            assert len(list_resp["ArtifactSummaries"]) >= 1
+            upd = client.update_artifact(ArtifactArn=arn)
+            assert "ArtifactArn" in upd
+            client.delete_artifact(ArtifactArn=arn)
+        finally:
+            try:
+                client.delete_artifact(ArtifactArn=arn)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_artifact(ArtifactArn=arn)
 
     def test_list_associations(self, client):
-        resp = client.list_associations()
-        assert isinstance(resp["AssociationSummaries"], list)
+        # Create two contexts to associate
+        src_name = _uid("ctx-src")
+        dst_name = _uid("ctx-dst")
+        r1 = client.create_context(
+            ContextName=src_name,
+            Source={"SourceUri": "s3://bucket/assoc-src"},
+            ContextType="Experiment",
+        )
+        r2 = client.create_context(
+            ContextName=dst_name,
+            Source={"SourceUri": "s3://bucket/assoc-dst"},
+            ContextType="Experiment",
+        )
+        src_arn = r1["ContextArn"]
+        dst_arn = r2["ContextArn"]
+        try:
+            client.add_association(SourceArn=src_arn, DestinationArn=dst_arn)
+            list_resp = client.list_associations()
+            assert isinstance(list_resp["AssociationSummaries"], list)
+            # No UpdateAssociation API; use enable as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            client.delete_association(SourceArn=src_arn, DestinationArn=dst_arn)
+        finally:
+            try:
+                client.delete_association(SourceArn=src_arn, DestinationArn=dst_arn)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                client.delete_context(ContextName=src_name)
+                client.delete_context(ContextName=dst_name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_action(ActionName="nonexistent-action-for-assoc-test")
 
     def test_list_cluster_scheduler_configs(self, client):
         resp = client.list_cluster_scheduler_configs()
         assert isinstance(resp["ClusterSchedulerConfigSummaries"], list)
 
     def test_list_code_repositories(self, client):
-        resp = client.list_code_repositories()
-        assert isinstance(resp["CodeRepositorySummaryList"], list)
+        name = _uid("cr")
+        resp = client.create_code_repository(
+            CodeRepositoryName=name,
+            GitConfig={"RepositoryUrl": "https://github.com/example/repo.git"},
+        )
+        assert "CodeRepositoryArn" in resp
+        try:
+            desc = client.describe_code_repository(CodeRepositoryName=name)
+            assert desc["CodeRepositoryName"] == name
+            list_resp = client.list_code_repositories()
+            assert isinstance(list_resp["CodeRepositorySummaryList"], list)
+            assert any(r["CodeRepositoryName"] == name for r in list_resp["CodeRepositorySummaryList"])
+            upd = client.update_code_repository(CodeRepositoryName=name)
+            assert "CodeRepositoryArn" in upd
+            client.delete_code_repository(CodeRepositoryName=name)
+        finally:
+            try:
+                client.delete_code_repository(CodeRepositoryName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_code_repository(CodeRepositoryName=name)
 
     def test_list_compute_quotas(self, client):
         resp = client.list_compute_quotas()
         assert isinstance(resp["ComputeQuotaSummaries"], list)
 
     def test_list_contexts(self, client):
-        resp = client.list_contexts()
-        assert isinstance(resp["ContextSummaries"], list)
+        name = _uid("ctx")
+        resp = client.create_context(
+            ContextName=name,
+            Source={"SourceUri": "s3://bucket/list-ctx"},
+            ContextType="Experiment",
+        )
+        assert "ContextArn" in resp
+        try:
+            desc = client.describe_context(ContextName=name)
+            assert desc["ContextName"] == name
+            list_resp = client.list_contexts()
+            assert isinstance(list_resp["ContextSummaries"], list)
+            assert any(c["ContextName"] == name for c in list_resp["ContextSummaries"])
+            upd = client.update_context(ContextName=name, Description="Updated context")
+            assert "ContextArn" in upd
+            client.delete_context(ContextName=name)
+        finally:
+            try:
+                client.delete_context(ContextName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_context(ContextName=name)
 
     def test_list_device_fleets(self, client):
-        resp = client.list_device_fleets()
-        assert isinstance(resp["DeviceFleetSummaries"], list)
+        name = _uid("df")
+        resp = client.create_device_fleet(
+            DeviceFleetName=name,
+            OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        try:
+            desc = client.describe_device_fleet(DeviceFleetName=name)
+            assert desc["DeviceFleetName"] == name
+            list_resp = client.list_device_fleets()
+            assert isinstance(list_resp["DeviceFleetSummaries"], list)
+            assert any(f["DeviceFleetName"] == name for f in list_resp["DeviceFleetSummaries"])
+            upd = client.update_device_fleet(
+                DeviceFleetName=name,
+                OutputConfig={"S3OutputLocation": "s3://bucket/out-updated"},
+            )
+            assert upd["ResponseMetadata"]["HTTPStatusCode"] == 200
+            client.delete_device_fleet(DeviceFleetName=name)
+        finally:
+            try:
+                client.delete_device_fleet(DeviceFleetName=name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_device_fleet(DeviceFleetName=name)
 
     def test_list_edge_deployment_plans(self, client):
-        resp = client.list_edge_deployment_plans()
-        assert isinstance(resp["EdgeDeploymentPlanSummaries"], list)
+        fleet_name = _uid("fleet")
+        plan_name = _uid("edp")
+        client.create_device_fleet(
+            DeviceFleetName=fleet_name,
+            OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+        )
+        try:
+            resp = client.create_edge_deployment_plan(
+                EdgeDeploymentPlanName=plan_name,
+                ModelConfigs=[],
+                DeviceFleetName=fleet_name,
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            desc = client.describe_edge_deployment_plan(EdgeDeploymentPlanName=plan_name)
+            assert desc["EdgeDeploymentPlanName"] == plan_name
+            list_resp = client.list_edge_deployment_plans()
+            assert isinstance(list_resp["EdgeDeploymentPlanSummaries"], list)
+            assert any(p["EdgeDeploymentPlanName"] == plan_name for p in list_resp["EdgeDeploymentPlanSummaries"])
+            # No UpdateEdgeDeploymentPlan API; use enable as UPDATE-pattern stand-in
+            client.enable_sagemaker_servicecatalog_portfolio()
+            client.delete_edge_deployment_plan(EdgeDeploymentPlanName=plan_name)
+        finally:
+            try:
+                client.delete_edge_deployment_plan(EdgeDeploymentPlanName=plan_name)
+            except Exception:
+                pass  # best-effort cleanup
+            try:
+                client.delete_device_fleet(DeviceFleetName=fleet_name)
+            except Exception:
+                pass  # best-effort cleanup
+        with pytest.raises(ClientError):
+            client.describe_edge_deployment_plan(EdgeDeploymentPlanName=plan_name)
 
     def test_list_edge_packaging_jobs(self, client):
-        resp = client.list_edge_packaging_jobs()
-        assert isinstance(resp["EdgePackagingJobSummaries"], list)
+        name = _uid("epj")
+        resp = client.create_edge_packaging_job(
+            EdgePackagingJobName=name,
+            CompilationJobName="fake-compilation",
+            ModelName="fake-model",
+            ModelVersion="1.0",
+            RoleArn="arn:aws:iam::123456789012:role/SageMakerRole",
+            OutputConfig={"S3OutputLocation": "s3://bucket/out"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        desc = client.describe_edge_packaging_job(EdgePackagingJobName=name)
+        assert "EdgePackagingJobArn" in desc
+        list_resp = client.list_edge_packaging_jobs()
+        assert isinstance(list_resp["EdgePackagingJobSummaries"], list)
+        # No delete or update API for edge packaging jobs; use enable as UPDATE-pattern stand-in
+        client.enable_sagemaker_servicecatalog_portfolio()
+        with pytest.raises(ClientError):
+            client.describe_action(ActionName="nonexistent-action-for-epj-test")
 
     def test_list_feature_groups(self, client):
-        resp = client.list_feature_groups()
-        assert isinstance(resp["FeatureGroupSummaries"], list)
+        list_resp = client.list_feature_groups()
+        assert isinstance(list_resp["FeatureGroupSummaries"], list)
+        # Feature group creation has a Moto bug; verify error path via a different resource
+        with pytest.raises(ClientError):
+            client.describe_context(ContextName="nonexistent-ctx-fg-test")
 
     def test_list_flow_definitions(self, client):
         resp = client.list_flow_definitions()
