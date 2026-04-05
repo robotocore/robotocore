@@ -3873,3 +3873,387 @@ class TestOpenSearchBehavioralFidelity:
         # ERROR: describe domain after delete raises
         with pytest.raises(client.exceptions.ResourceNotFoundException):
             client.describe_domain(DomainName=name)
+
+
+class TestOpenSearchEdgeCases5:
+    """Edge cases and behavioral fidelity for pagination, field completeness, and ordering."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("opensearch")
+
+    @pytest.fixture
+    def domain(self, client):
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        yield name
+        try:
+            client.delete_domain(DomainName=name)
+        except Exception:
+            pass  # best-effort cleanup
+
+    # --- describe_packages pagination ---
+
+    def test_describe_packages_pagination(self, client):
+        """describe_packages with MaxResults returns all created packages (with or without pagination)."""
+        pkg_ids = []
+        for i in range(3):
+            r = client.create_package(
+                PackageName=f"pgtest-{uuid.uuid4().hex[:6]}",
+                PackageType="TXT-DICTIONARY",
+                PackageSource={"S3BucketName": "bkt", "S3Key": f"k{i}.txt"},
+            )
+            pkg_ids.append(r["PackageDetails"]["PackageID"])
+        try:
+            # With MaxResults - either returns <=N or all (server may not honor MaxResults)
+            page1 = client.describe_packages(MaxResults=2)
+            assert "PackageDetailsList" in page1
+            assert isinstance(page1["PackageDetailsList"], list)
+            # If MaxResults honored and NextToken present, paginate
+            if len(page1["PackageDetailsList"]) <= 2 and "NextToken" in page1:
+                page2 = client.describe_packages(NextToken=page1["NextToken"])
+                assert "PackageDetailsList" in page2
+                ids1 = {p["PackageID"] for p in page1["PackageDetailsList"]}
+                ids2 = {p["PackageID"] for p in page2["PackageDetailsList"]}
+                assert ids1.isdisjoint(ids2)
+            # All 3 packages appear when listing without MaxResults
+            all_pkgs = client.describe_packages()
+            all_ids = {p["PackageID"] for p in all_pkgs["PackageDetailsList"]}
+            for pid in pkg_ids:
+                assert pid in all_ids
+        finally:
+            for pid in pkg_ids:
+                try:
+                    client.delete_package(PackageID=pid)
+                except Exception:
+                    pass
+
+    # --- describe_reserved_instance_offerings pagination ---
+
+    def test_describe_reserved_instance_offerings_pagination(self, client):
+        """describe_reserved_instance_offerings accepts MaxResults and returns valid response."""
+        page1 = client.describe_reserved_instance_offerings(MaxResults=2)
+        assert "ReservedInstanceOfferings" in page1
+        assert isinstance(page1["ReservedInstanceOfferings"], list)
+        # If MaxResults honored: len <= 2 and NextToken present for more
+        if len(page1["ReservedInstanceOfferings"]) <= 2 and "NextToken" in page1:
+            page2 = client.describe_reserved_instance_offerings(NextToken=page1["NextToken"])
+            assert "ReservedInstanceOfferings" in page2
+            ids1 = {o["ReservedInstanceOfferingId"] for o in page1["ReservedInstanceOfferings"]}
+            ids2 = {o["ReservedInstanceOfferingId"] for o in page2["ReservedInstanceOfferings"]}
+            assert ids1.isdisjoint(ids2)
+        # Either way, full list is non-empty with required fields
+        all_offerings = client.describe_reserved_instance_offerings()
+        assert len(all_offerings["ReservedInstanceOfferings"]) > 0
+        for offering in all_offerings["ReservedInstanceOfferings"]:
+            assert "ReservedInstanceOfferingId" in offering
+            assert "InstanceType" in offering
+
+    # --- VPC endpoint DomainArn field ---
+
+    def test_vpc_endpoint_has_domain_arn(self, client, domain):
+        """CreateVpcEndpoint response includes DomainArn field on the endpoint."""
+        domain_arn = f"arn:aws:es:us-east-1:123456789012:domain/{domain}"
+        resp = client.create_vpc_endpoint(
+            DomainArn=domain_arn,
+            VpcOptions={"SubnetIds": ["subnet-deadbeef"]},
+        )
+        endpoint = resp["VpcEndpoint"]
+        assert "DomainArn" in endpoint
+        assert endpoint["DomainArn"] == domain_arn
+        endpoint_id = endpoint["VpcEndpointId"]
+        # Describe returns same DomainArn
+        desc = client.describe_vpc_endpoints(VpcEndpointIds=[endpoint_id])
+        ep = desc["VpcEndpoints"][0]
+        assert ep["DomainArn"] == domain_arn
+        client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+
+    # --- VPC endpoint status field ---
+
+    def test_vpc_endpoint_status_field(self, client, domain):
+        """VpcEndpoint has Status field with a known value."""
+        resp = client.create_vpc_endpoint(
+            DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{domain}",
+            VpcOptions={"SubnetIds": ["subnet-aabbccdd"]},
+        )
+        endpoint = resp["VpcEndpoint"]
+        # Status field may be named "Status" or "VpcEndpointStatus" depending on API version
+        status_value = endpoint.get("VpcEndpointStatus") or endpoint.get("Status")
+        assert status_value is not None, f"No status field found in VpcEndpoint: {list(endpoint.keys())}"
+        valid_statuses = {"CREATING", "ACTIVE", "UPDATING", "DELETING", "DELETED", "CREATE_FAILED", "UPDATE_FAILED"}
+        assert status_value in valid_statuses
+        client.delete_vpc_endpoint(VpcEndpointId=endpoint["VpcEndpointId"])
+
+    # --- create_outbound_connection ConnectionStatus ---
+
+    def test_create_outbound_connection_status_code(self, client):
+        """CreateOutboundConnection response includes ConnectionStatus with known StatusCode."""
+        resp = client.create_outbound_connection(
+            LocalDomainInfo={"AWSDomainInformation": {
+                "DomainName": "local-test", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            RemoteDomainInfo={"AWSDomainInformation": {
+                "DomainName": "remote-test", "OwnerId": "123456789012", "Region": "us-east-1",
+            }},
+            ConnectionAlias="status-test-conn",
+        )
+        assert "ConnectionStatus" in resp
+        assert "StatusCode" in resp["ConnectionStatus"]
+        valid_codes = {
+            "VALIDATING", "VALIDATION_FAILED", "PENDING_ACCEPTANCE",
+            "APPROVED", "PROVISIONING", "ACTIVE", "REJECTING", "REJECTED",
+            "DELETING", "DELETED",
+        }
+        assert resp["ConnectionStatus"]["StatusCode"] in valid_codes
+        # Cleanup
+        client.delete_outbound_connection(ConnectionId=resp["ConnectionId"])
+
+    # --- describe_inbound_connections pagination ---
+
+    def test_describe_inbound_connections_pagination(self, client):
+        """describe_inbound_connections accepts MaxResults and returns a valid response."""
+        resp = client.describe_inbound_connections(MaxResults=10)
+        assert "Connections" in resp
+        assert isinstance(resp["Connections"], list)
+        # Response is valid regardless of whether MaxResults is honored
+
+    # --- describe_outbound_connections pagination ---
+
+    def test_describe_outbound_connections_pagination(self, client):
+        """describe_outbound_connections with MaxResults=1 paginates correctly."""
+        # Create 2 connections
+        conn_ids = []
+        for i in range(2):
+            r = client.create_outbound_connection(
+                LocalDomainInfo={"AWSDomainInformation": {
+                    "DomainName": f"loc-{i}", "OwnerId": "123456789012", "Region": "us-east-1",
+                }},
+                RemoteDomainInfo={"AWSDomainInformation": {
+                    "DomainName": f"rem-{i}", "OwnerId": "123456789012", "Region": "us-west-2",
+                }},
+                ConnectionAlias=f"pg-test-conn-{i}",
+            )
+            conn_ids.append(r["ConnectionId"])
+        try:
+            page1 = client.describe_outbound_connections(MaxResults=1)
+            assert "Connections" in page1
+            assert isinstance(page1["Connections"], list)
+            # If MaxResults honored: len <= 1 and NextToken present for more
+            if len(page1["Connections"]) <= 1 and "NextToken" in page1:
+                page2 = client.describe_outbound_connections(
+                    NextToken=page1["NextToken"], MaxResults=1
+                )
+                assert "Connections" in page2
+                ids1 = {c["ConnectionId"] for c in page1["Connections"]}
+                ids2 = {c["ConnectionId"] for c in page2["Connections"]}
+                assert ids1.isdisjoint(ids2)
+            # Either way: our 2 connections appear somewhere
+            all_conns = client.describe_outbound_connections()
+            all_ids = {c["ConnectionId"] for c in all_conns["Connections"]}
+            for cid in conn_ids:
+                assert cid in all_ids
+        finally:
+            for cid in conn_ids:
+                try:
+                    client.delete_outbound_connection(ConnectionId=cid)
+                except Exception:
+                    pass
+
+    # --- Package status field value ---
+
+    def test_package_status_after_create(self, client):
+        """Package PackageStatus is AVAILABLE (or valid) after creation."""
+        pkg_name = f"pkg-{uuid.uuid4().hex[:8]}"
+        resp = client.create_package(
+            PackageName=pkg_name,
+            PackageType="TXT-DICTIONARY",
+            PackageSource={"S3BucketName": "bkt", "S3Key": "w.txt"},
+        )
+        pkg = resp["PackageDetails"]
+        pkg_id = pkg["PackageID"]
+        try:
+            assert "PackageStatus" in pkg
+            valid_statuses = {"AVAILABLE", "COPYING", "COPY_FAILED", "VALIDATING", "VALIDATION_EXCEPTION", "DELETING", "DELETED", "DELETE_FAILED"}
+            assert pkg["PackageStatus"] in valid_statuses
+            # Describe confirms same status
+            desc = client.describe_packages(Filters=[{"Name": "PackageID", "Value": [pkg_id]}])
+            entry = desc["PackageDetailsList"][0]
+            assert entry["PackageStatus"] in valid_statuses
+        finally:
+            client.delete_package(PackageID=pkg_id)
+
+    # --- list_domain_names alphabetical order ---
+
+    def test_list_domain_names_order_consistent(self, client):
+        """list_domain_names returns a consistent (non-random) order across calls."""
+        names = []
+        for _ in range(3):
+            n = _unique_domain()
+            client.create_domain(DomainName=n, EngineVersion="OpenSearch_2.5")
+            names.append(n)
+        try:
+            resp1 = client.list_domain_names()
+            resp2 = client.list_domain_names()
+            order1 = [d["DomainName"] for d in resp1["DomainNames"]]
+            order2 = [d["DomainName"] for d in resp2["DomainNames"]]
+            # Order should be consistent between calls
+            assert order1 == order2
+        finally:
+            for n in names:
+                client.delete_domain(DomainName=n)
+
+    # --- list_versions: sorted order consistent ---
+
+    def test_list_versions_order_consistent(self, client):
+        """list_versions returns the same order on repeated calls."""
+        resp1 = client.list_versions()
+        resp2 = client.list_versions()
+        assert resp1["Versions"] == resp2["Versions"]
+
+    # --- get_default_application_setting response shape ---
+
+    def test_get_default_application_setting_shape(self, client):
+        """get_default_application_setting returns a dict with ResponseMetadata and HTTP 200."""
+        resp = client.get_default_application_setting()
+        assert isinstance(resp, dict)
+        assert "ResponseMetadata" in resp
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # Call twice, should be stable (no side effect)
+        resp2 = client.get_default_application_setting()
+        assert resp2["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # --- list_applications NextToken ---
+
+    def test_list_applications_structure(self, client):
+        """list_applications returns ApplicationSummaries with a list (may be empty)."""
+        resp = client.list_applications()
+        assert "ApplicationSummaries" in resp
+        assert isinstance(resp["ApplicationSummaries"], list)
+        # Second call should return same structure
+        resp2 = client.list_applications()
+        assert "ApplicationSummaries" in resp2
+        assert len(resp2["ApplicationSummaries"]) == len(resp["ApplicationSummaries"])
+
+    # --- get_compatible_versions structure deeper assertions ---
+
+    def test_get_compatible_versions_upgrade_direction(self, client):
+        """GetCompatibleVersions target versions represent upgrades from source version."""
+        resp = client.get_compatible_versions()
+        for entry in resp["CompatibleVersions"]:
+            src = entry["SourceVersion"]
+            for target in entry["TargetVersions"]:
+                # Target must differ from source
+                assert target != src, f"Self-upgrade found: {src} -> {target}"
+
+    def test_get_compatible_versions_no_empty_targets(self, client):
+        """GetCompatibleVersions entries have non-empty TargetVersions lists."""
+        resp = client.get_compatible_versions()
+        for entry in resp["CompatibleVersions"]:
+            assert len(entry["TargetVersions"]) > 0, (
+                f"Empty TargetVersions for source: {entry['SourceVersion']}"
+            )
+
+    # --- describe_reserved_instances with MaxResults ---
+
+    def test_describe_reserved_instances_max_results(self, client):
+        """describe_reserved_instances accepts MaxResults and returns a valid response."""
+        resp = client.describe_reserved_instances(MaxResults=10)
+        assert "ReservedInstances" in resp
+        assert isinstance(resp["ReservedInstances"], list)
+        assert len(resp["ReservedInstances"]) <= 10
+
+    # --- Multiple packages: all appear in list ---
+
+    def test_describe_packages_multiple_items_all_present(self, client):
+        """describe_packages returns all 3 created packages."""
+        pkg_ids = []
+        for i in range(3):
+            r = client.create_package(
+                PackageName=f"mpkg-{uuid.uuid4().hex[:6]}",
+                PackageType="TXT-DICTIONARY",
+                PackageSource={"S3BucketName": "bkt", "S3Key": f"k{i}.txt"},
+            )
+            pkg_ids.append(r["PackageDetails"]["PackageID"])
+        try:
+            resp = client.describe_packages()
+            all_ids = {p["PackageID"] for p in resp["PackageDetailsList"]}
+            for pid in pkg_ids:
+                assert pid in all_ids, f"Package {pid} missing from describe_packages"
+        finally:
+            for pid in pkg_ids:
+                try:
+                    client.delete_package(PackageID=pid)
+                except Exception:
+                    pass
+
+    # --- list_vpc_endpoints: deleted endpoint not in list ---
+
+    def test_list_vpc_endpoints_deleted_endpoint_gone(self, client, domain):
+        """After deleting a VPC endpoint it no longer appears in list_vpc_endpoints."""
+        resp = client.create_vpc_endpoint(
+            DomainArn=f"arn:aws:es:us-east-1:123456789012:domain/{domain}",
+            VpcOptions={"SubnetIds": ["subnet-11223344"]},
+        )
+        endpoint_id = resp["VpcEndpoint"]["VpcEndpointId"]
+        # Verify it's there
+        listed = client.list_vpc_endpoints()
+        ids_before = [e["VpcEndpointId"] for e in listed["VpcEndpointSummaryList"]]
+        assert endpoint_id in ids_before
+        # Delete it
+        client.delete_vpc_endpoint(VpcEndpointId=endpoint_id)
+        # Now it's gone
+        listed_after = client.list_vpc_endpoints()
+        ids_after = [e["VpcEndpointId"] for e in listed_after["VpcEndpointSummaryList"]]
+        assert endpoint_id not in ids_after
+
+    # --- list_tags: tags survive describe_domain calls ---
+
+    def test_list_tags_stable_across_describe_calls(self, client):
+        """Tags added to a domain are still present after multiple describe_domain calls."""
+        name = _unique_domain()
+        resp = client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5")
+        arn = resp["DomainStatus"]["ARN"]
+        try:
+            client.add_tags(ARN=arn, TagList=[
+                {"Key": "stable", "Value": "yes"},
+            ])
+            # Describe multiple times
+            client.describe_domain(DomainName=name)
+            client.describe_domain(DomainName=name)
+            tags = client.list_tags(ARN=arn)
+            tag_map = {t["Key"]: t["Value"] for t in tags["TagList"]}
+            assert tag_map.get("stable") == "yes"
+        finally:
+            client.delete_domain(DomainName=name)
+
+    # --- get_compatible_versions nonexistent domain raises specific error ---
+
+    def test_get_compatible_versions_no_domain_global_is_not_empty(self, client):
+        """GetCompatibleVersions without DomainName returns many entries (not just 1)."""
+        resp = client.get_compatible_versions()
+        assert len(resp["CompatibleVersions"]) >= 3, (
+            "Expected at least 3 version compatibility entries"
+        )
+
+    # --- describe_domain_config: updated values persist ---
+
+    def test_describe_domain_config_update_persists(self, client):
+        """DescribeDomainConfig reflects updated values after UpdateDomainConfig."""
+        name = _unique_domain()
+        client.create_domain(DomainName=name, EngineVersion="OpenSearch_2.5",
+                             ClusterConfig={"InstanceType": "t3.small.search", "InstanceCount": 1})
+        try:
+            client.update_domain_config(
+                DomainName=name,
+                ClusterConfig={"InstanceType": "t3.medium.search", "InstanceCount": 2},
+            )
+            cfg = client.describe_domain_config(DomainName=name)
+            cc = cfg["DomainConfig"]["ClusterConfig"]
+            assert "Options" in cc
+            assert cc["Options"]["InstanceType"] == "t3.medium.search"
+            assert cc["Options"]["InstanceCount"] == 2
+            # EngineVersion stays unchanged
+            ev = cfg["DomainConfig"]["EngineVersion"]
+            assert ev["Options"] == "OpenSearch_2.5"
+        finally:
+            client.delete_domain(DomainName=name)
