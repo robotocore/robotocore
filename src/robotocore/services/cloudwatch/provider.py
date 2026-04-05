@@ -958,8 +958,44 @@ def _handle_disable_alarm_actions(params: dict, region: str, account_id: str) ->
 
 
 def _handle_describe_alarm_history(params: dict, region: str, account_id: str) -> dict:
-    """Return alarm history (stub — returns empty list)."""
-    return {"AlarmHistoryItems": []}
+    """Return alarm history by reading from Moto's in-memory alarm history."""
+    alarm_name = params.get("AlarmName")
+    history_type_filter = params.get("HistoryItemType")
+
+    from moto.backends import get_backend  # noqa: I001
+
+    backend = get_backend("cloudwatch")[account_id][region]
+
+    alarms_to_check = []
+    if alarm_name:
+        alarm = backend.alarms.get(alarm_name)
+        if alarm:
+            alarms_to_check.append((alarm_name, alarm))
+    else:
+        alarms_to_check = list(backend.alarms.items())
+
+    items = []
+    for name, alarm in alarms_to_check:
+        for entry in alarm.history:
+            # Each entry is (history_type, state_reason, state_reason_data, state_value, timestamp)
+            h_type, reason, reason_data, state_value, ts = entry
+            if history_type_filter and h_type != history_type_filter:
+                continue
+            summary = f"Alarm updated from {state_value} to {alarm.state_value}"
+            items.append(
+                {
+                    "AlarmName": name,
+                    "AlarmType": "MetricAlarm",
+                    "Timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                    "HistoryItemType": h_type,
+                    "HistorySummary": summary,
+                    "HistoryData": reason_data or "{}",
+                }
+            )
+
+    # Sort by timestamp descending (most recent first)
+    items.sort(key=lambda x: x["Timestamp"], reverse=True)
+    return {"AlarmHistoryItems": items}
 
 
 # ---------------------------------------------------------------------------
