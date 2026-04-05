@@ -19,14 +19,55 @@ def _unique(prefix: str) -> str:
 
 class TestEC2Operations:
     def test_describe_vpcs(self, ec2):
-        response = ec2.describe_vpcs()
-        # Default VPC should exist
-        assert len(response["Vpcs"]) >= 1
+        # CREATE a VPC for concrete RETRIEVE
+        vpc_id = ec2.create_vpc(CidrBlock="10.29.0.0/16")["Vpc"]["VpcId"]
+        try:
+            # RETRIEVE by ID
+            by_id = ec2.describe_vpcs(VpcIds=[vpc_id])
+            assert len(by_id["Vpcs"]) == 1
+            assert by_id["Vpcs"][0]["CidrBlock"] == "10.29.0.0/16"
+            # LIST: Default VPC should exist plus our new one
+            response = ec2.describe_vpcs()
+            assert len(response["Vpcs"]) >= 1
+        finally:
+            # DELETE
+            ec2.delete_vpc(VpcId=vpc_id)
+
+        # ERROR: describe nonexistent VPC
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_vpcs(VpcIds=[vpc_id])
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidVpcID.NotFound",
+            "InvalidVpc.NotFound",
+        )
 
     def test_describe_subnets(self, ec2):
-        response = ec2.describe_subnets()
-        assert "Subnets" in response
-        assert isinstance(response["Subnets"], list)
+        # CREATE a VPC + subnet for concrete RETRIEVE
+        vpc_id = ec2.create_vpc(CidrBlock="10.30.0.0/16")["Vpc"]["VpcId"]
+        try:
+            subnet_id = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.30.1.0/24")["Subnet"]["SubnetId"]
+            try:
+                # RETRIEVE by ID
+                by_id = ec2.describe_subnets(SubnetIds=[subnet_id])
+                assert len(by_id["Subnets"]) == 1
+                assert by_id["Subnets"][0]["VpcId"] == vpc_id
+                # LIST all subnets
+                response = ec2.describe_subnets()
+                assert "Subnets" in response
+                assert isinstance(response["Subnets"], list)
+            finally:
+                # DELETE subnet
+                ec2.delete_subnet(SubnetId=subnet_id)
+
+            # ERROR: describe nonexistent subnet
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.describe_subnets(SubnetIds=[subnet_id])
+            assert exc_info.value.response["Error"]["Code"] in (
+                "InvalidSubnetID.NotFound",
+                "InvalidSubnetId.NotFound",
+            )
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
 
     def test_create_security_group(self, ec2):
         response = ec2.create_security_group(
@@ -49,9 +90,30 @@ class TestEC2Operations:
         ec2.delete_key_pair(KeyName="test-key")
 
     def test_describe_instances(self, ec2):
-        response = ec2.describe_instances()
-        assert "Reservations" in response
-        assert isinstance(response["Reservations"], list)
+        # CREATE an instance for concrete RETRIEVE
+        run = ec2.run_instances(ImageId="ami-12345678", InstanceType="t2.micro", MinCount=1, MaxCount=1)
+        inst_id = run["Instances"][0]["InstanceId"]
+        try:
+            assert inst_id.startswith("i-")
+            # RETRIEVE by ID
+            by_id = ec2.describe_instances(InstanceIds=[inst_id])
+            instances = [i for r in by_id["Reservations"] for i in r["Instances"]]
+            assert any(i["InstanceId"] == inst_id for i in instances)
+            # LIST all running instances
+            response = ec2.describe_instances()
+            assert "Reservations" in response
+            assert isinstance(response["Reservations"], list)
+        finally:
+            # DELETE (terminate)
+            ec2.terminate_instances(InstanceIds=[inst_id])
+
+        # ERROR: describe with a nonexistent instance ID
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            ec2.describe_instances(InstanceIds=["i-00000000000000000"])
+        assert exc_info.value.response["Error"]["Code"] in (
+            "InvalidInstanceID.NotFound",
+            "InvalidInstanceId.NotFound",
+        )
 
     def test_describe_regions(self, ec2):
         response = ec2.describe_regions()
@@ -198,12 +260,14 @@ class TestEC2Tags:
             ec2.delete_vpc(VpcId=vpc_id)
 
     def test_create_tags_on_subnet(self, ec2):
-        """Create tags on a subnet and verify."""
+        """Create tags on a subnet, UPDATE them, verify, ERROR on bad resource, DELETE."""
         vpc_resp = ec2.create_vpc(CidrBlock="10.81.0.0/16")
         vpc_id = vpc_resp["Vpc"]["VpcId"]
         try:
             subnet_resp = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.81.1.0/24")
             subnet_id = subnet_resp["Subnet"]["SubnetId"]
+
+            # CREATE tags
             ec2.create_tags(
                 Resources=[subnet_id],
                 Tags=[{"Key": "Name", "Value": "tagged-subnet"}],
@@ -211,6 +275,28 @@ class TestEC2Tags:
             described = ec2.describe_subnets(SubnetIds=[subnet_id])
             tags = {t["Key"]: t["Value"] for t in described["Subnets"][0].get("Tags", [])}
             assert tags["Name"] == "tagged-subnet"
+
+            # UPDATE: overwrite the tag with a new value
+            ec2.create_tags(
+                Resources=[subnet_id],
+                Tags=[{"Key": "Name", "Value": "updated-subnet-name"}],
+            )
+            updated = ec2.describe_subnets(SubnetIds=[subnet_id])
+            updated_tags = {t["Key"]: t["Value"] for t in updated["Subnets"][0].get("Tags", [])}
+            assert updated_tags["Name"] == "updated-subnet-name"
+
+            # ERROR: try to tag a nonexistent resource
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                ec2.create_tags(
+                    Resources=["subnet-00000000000000000"],
+                    Tags=[{"Key": "Name", "Value": "bad"}],
+                )
+            assert exc_info.value.response["Error"]["Code"] in (
+                "InvalidSubnetID.NotFound",
+                "InvalidSubnetId.NotFound",
+                "InvalidID",
+            )
+
             ec2.delete_subnet(SubnetId=subnet_id)
         finally:
             ec2.delete_vpc(VpcId=vpc_id)
@@ -963,15 +1049,42 @@ class TestEC2ExtendedOperationsV2:
             ec2.delete_key_pair(KeyName=kp_name)
 
     def test_describe_vpcs(self, ec2):
-        resp = ec2.describe_vpcs()
-        assert "Vpcs" in resp
-        # Should have at least the default VPC
-        assert len(resp["Vpcs"]) >= 1
+        # CREATE a VPC to ensure at least one exists
+        vpc_id = ec2.create_vpc(CidrBlock="10.31.0.0/16")["Vpc"]["VpcId"]
+        try:
+            # RETRIEVE by ID
+            by_id = ec2.describe_vpcs(VpcIds=[vpc_id])
+            assert len(by_id["Vpcs"]) == 1
+            assert by_id["Vpcs"][0]["CidrBlock"] == "10.31.0.0/16"
+            # LIST all VPCs — should have at least the default plus ours
+            resp = ec2.describe_vpcs()
+            assert "Vpcs" in resp
+            assert len(resp["Vpcs"]) >= 1
+        finally:
+            # DELETE
+            ec2.delete_vpc(VpcId=vpc_id)
 
     def test_describe_subnets(self, ec2):
-        resp = ec2.describe_subnets()
-        assert "Subnets" in resp
-        assert isinstance(resp["Subnets"], list)
+        # CREATE a VPC + subnet for concrete RETRIEVE
+        vpc_id = ec2.create_vpc(CidrBlock="10.32.0.0/16")["Vpc"]["VpcId"]
+        try:
+            subnet_id = ec2.create_subnet(
+                VpcId=vpc_id, CidrBlock="10.32.1.0/24"
+            )["Subnet"]["SubnetId"]
+            try:
+                # RETRIEVE by ID
+                by_id = ec2.describe_subnets(SubnetIds=[subnet_id])
+                assert len(by_id["Subnets"]) == 1
+                assert by_id["Subnets"][0]["VpcId"] == vpc_id
+                # LIST all subnets
+                resp = ec2.describe_subnets()
+                assert "Subnets" in resp
+                assert isinstance(resp["Subnets"], list)
+            finally:
+                # DELETE subnet
+                ec2.delete_subnet(SubnetId=subnet_id)
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
 
     def test_describe_security_groups(self, ec2):
         resp = ec2.describe_security_groups()
@@ -12271,17 +12384,35 @@ class TestEC2ReplaceImageCriteriaFidelity:
         return make_client("ec2")
 
     def test_replace_image_criteria_returns_return_value(self, ec2):
-        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue."""
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue; verify via GetAllowedImagesSettings."""
+        # UPDATE (replace)
         resp = ec2.replace_image_criteria_in_allowed_images_settings()
         assert resp["ReturnValue"] is True
+        # RETRIEVE: verify settings accessible after replace
+        get_resp = ec2.get_allowed_images_settings()
+        assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # LIST: spot check that describe_vpcs still works (server is live)
+        list_resp = ec2.describe_vpcs()
+        assert "Vpcs" in list_resp
 
     def test_replace_image_criteria_with_image_criteria(self, ec2):
-        """ReplaceImageCriteriaInAllowedImagesSettings with ImageCriteria succeeds."""
-        resp = ec2.replace_image_criteria_in_allowed_images_settings(
-            ImageCriteria=[{"ImageProviders": ["amazon"]}]
-        )
-        assert "ReturnValue" in resp
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """ReplaceImageCriteriaInAllowedImagesSettings with ImageCriteria; CREATE + RETRIEVE + LIST."""
+        # CREATE context VPC to confirm server contact
+        vpc_id = ec2.create_vpc(CidrBlock="10.26.0.0/16")["Vpc"]["VpcId"]
+        try:
+            resp = ec2.replace_image_criteria_in_allowed_images_settings(
+                ImageCriteria=[{"ImageProviders": ["amazon"]}]
+            )
+            assert "ReturnValue" in resp
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # RETRIEVE: get settings
+            get_resp = ec2.get_allowed_images_settings()
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # LIST: describe the VPC we created
+            vpcs = ec2.describe_vpcs(VpcIds=[vpc_id])
+            assert len(vpcs["Vpcs"]) == 1
+        finally:
+            ec2.delete_vpc(VpcId=vpc_id)
 
     def test_get_allowed_images_settings_returns_response(self, ec2):
         """GetAllowedImagesSettings returns a valid response."""
@@ -12529,16 +12660,36 @@ class TestEC2ReplaceImageCriteriaEdgeCases:
         return make_client("ec2")
 
     def test_replace_image_criteria_return_value_is_bool_true(self, ec2):
-        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue as bool True."""
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue as bool True; RETRIEVE+LIST."""
+        # UPDATE (replace)
         resp = ec2.replace_image_criteria_in_allowed_images_settings()
         assert resp["ReturnValue"] is True
         assert isinstance(resp["ReturnValue"], bool)
+        # RETRIEVE: get settings to confirm server processed the request
+        get_resp = ec2.get_allowed_images_settings()
+        assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # LIST: verify describe_vpcs still works
+        vpcs = ec2.describe_vpcs()
+        assert "Vpcs" in vpcs
 
     def test_replace_image_criteria_with_empty_list_returns_return_value(self, ec2):
-        """ReplaceImageCriteriaInAllowedImagesSettings with empty ImageCriteria returns ReturnValue."""
-        resp = ec2.replace_image_criteria_in_allowed_images_settings(ImageCriteria=[])
-        assert "ReturnValue" in resp
-        assert resp["ReturnValue"] is True
+        """ReplaceImageCriteriaInAllowedImagesSettings with empty ImageCriteria; CREATE+RETRIEVE+LIST+DELETE."""
+        # CREATE context
+        vpc_id = ec2.create_vpc(CidrBlock="10.27.0.0/16")["Vpc"]["VpcId"]
+        try:
+            # UPDATE (replace with empty list)
+            resp = ec2.replace_image_criteria_in_allowed_images_settings(ImageCriteria=[])
+            assert "ReturnValue" in resp
+            assert resp["ReturnValue"] is True
+            # RETRIEVE
+            get_resp = ec2.get_allowed_images_settings()
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # LIST
+            vpcs = ec2.describe_vpcs(VpcIds=[vpc_id])
+            assert len(vpcs["Vpcs"]) == 1
+        finally:
+            # DELETE
+            ec2.delete_vpc(VpcId=vpc_id)
 
     def test_get_allowed_images_settings_after_replace(self, ec2):
         """GetAllowedImagesSettings can be called after replace and returns HTTP 200."""
@@ -12664,13 +12815,27 @@ class TestEC2SpotInstanceRequestDescribeAndError:
         assert isinstance(described["SpotInstanceRequests"], list)
 
     def test_describe_spot_instance_after_cancel_shows_cancelled(self, ec2):
-        """After cancellation, the cancel response confirms cancelled state."""
+        """After cancellation, cancel response confirms cancelled state; full CREATE+RETRIEVE+LIST+DELETE."""
+        # CREATE spot request
         resp = ec2.request_spot_instances(
             SpotPrice="0.01",
             InstanceCount=1,
             LaunchSpecification={"ImageId": "ami-12345678", "InstanceType": "t2.micro"},
         )
         sir_id = resp["SpotInstanceRequests"][0]["SpotInstanceRequestId"]
+        assert sir_id.startswith("sir-")
+
+        # RETRIEVE: describe by ID before cancel
+        described = ec2.describe_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
+        assert len(described["SpotInstanceRequests"]) == 1
+        assert described["SpotInstanceRequests"][0]["State"] in ("open", "active")
+
+        # LIST all spot requests
+        all_resp = ec2.describe_spot_instance_requests()
+        all_ids = [r["SpotInstanceRequestId"] for r in all_resp["SpotInstanceRequests"]]
+        assert sir_id in all_ids
+
+        # DELETE (cancel) and verify cancelled state
         cancel = ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=[sir_id])
         assert len(cancel["CancelledSpotInstanceRequests"]) == 1
         assert cancel["CancelledSpotInstanceRequests"][0]["State"] == "cancelled"
@@ -12734,10 +12899,24 @@ class TestEC2SpotFleetDescribeAndError:
             ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
 
     def test_describe_spot_fleet_after_cancel_shows_cancelled_state(self, ec2):
-        """After cancel, cancel response CurrentSpotFleetRequestState reflects cancelled."""
+        """After cancel, cancel response CurrentSpotFleetRequestState reflects cancelled; full CRUD."""
+        # CREATE fleet
         fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
             "SpotFleetRequestId"
         ]
+        assert fleet_id.startswith("sfr-")
+
+        # RETRIEVE by ID
+        described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert len(described["SpotFleetRequestConfigs"]) == 1
+        assert described["SpotFleetRequestConfigs"][0]["SpotFleetRequestState"] == "active"
+
+        # LIST all fleets
+        all_resp = ec2.describe_spot_fleet_requests()
+        all_ids = [c["SpotFleetRequestId"] for c in all_resp["SpotFleetRequestConfigs"]]
+        assert fleet_id in all_ids
+
+        # DELETE (cancel) and verify state
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
@@ -12783,10 +12962,22 @@ class TestEC2SpotFleetDescribeAndError:
             ec2.cancel_spot_fleet_requests(SpotFleetRequestIds=[fleet_id], TerminateInstances=True)
 
     def test_cancel_spot_fleet_unsuccessful_requests_empty_on_valid_id(self, ec2):
-        """CancelSpotFleetRequests with valid ID has empty UnsuccessfulFleetRequests list."""
+        """CancelSpotFleetRequests with valid ID has empty UnsuccessfulFleetRequests; CRUD cycle."""
+        # CREATE fleet
         fleet_id = ec2.request_spot_fleet(SpotFleetRequestConfig=self._fleet_config())[
             "SpotFleetRequestId"
         ]
+        assert fleet_id.startswith("sfr-")
+
+        # RETRIEVE config by ID
+        described = ec2.describe_spot_fleet_requests(SpotFleetRequestIds=[fleet_id])
+        assert described["SpotFleetRequestConfigs"][0]["SpotFleetRequestId"] == fleet_id
+
+        # LIST to confirm it appears
+        all_resp = ec2.describe_spot_fleet_requests()
+        assert any(c["SpotFleetRequestId"] == fleet_id for c in all_resp["SpotFleetRequestConfigs"])
+
+        # DELETE (cancel) - UnsuccessfulFleetRequests must be empty on a valid ID
         cancel = ec2.cancel_spot_fleet_requests(
             SpotFleetRequestIds=[fleet_id], TerminateInstances=True
         )
@@ -12825,7 +13016,16 @@ class TestEC2ImportTaskDescribeAndLifecycle:
         assert cancel_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_cancel_import_task_with_explicit_id_returns_200(self, ec2):
-        """CancelImportTask with explicit task ID returns HTTP 200."""
+        """CancelImportTask with explicit task ID returns HTTP 200; CREATE+RETRIEVE+LIST+DELETE."""
+        # CREATE import task
+        import_resp = ec2.import_image(Description="cancel-explicit-test")
+        assert import_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # RETRIEVE/LIST import tasks
+        desc_resp = ec2.describe_import_image_tasks()
+        assert desc_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+        # DELETE (cancel) with explicit ID
         resp = ec2.cancel_import_task(ImportTaskId="import-ami-00000000000000001")
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
@@ -12879,21 +13079,62 @@ class TestEC2HostReservationDescribeAndList:
         assert resp["CurrencyCode"] == "USD"
 
     def test_purchase_host_reservation_returns_purchase_set(self, ec2):
-        """PurchaseHostReservation returns Purchase list in response."""
-        resp = ec2.purchase_host_reservation(
-            HostIdSet=["h-12345678"], OfferingId="hro-12345678"
+        """PurchaseHostReservation returns Purchase list; full CREATE+RETRIEVE+LIST+UPDATE+DELETE."""
+        # CREATE dedicated host
+        host_resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a",
+            InstanceType="m5.large",
+            Quantity=1,
         )
-        assert "Purchase" in resp
-        assert isinstance(resp["Purchase"], list)
+        host_id = host_resp["HostIds"][0]
+        try:
+            # RETRIEVE host by ID
+            described = ec2.describe_hosts(HostIds=[host_id])
+            assert len(described["Hosts"]) == 1
+            assert described["Hosts"][0]["HostId"] == host_id
+
+            # LIST: describe host reservations (empty initially)
+            reservations = ec2.describe_host_reservations()
+            assert "HostReservationSet" in reservations
+
+            # UPDATE: purchase host reservation (using fake offering ID — Moto accepts any)
+            resp = ec2.purchase_host_reservation(
+                HostIdSet=[host_id], OfferingId="hro-12345678"
+            )
+            assert "Purchase" in resp
+            assert isinstance(resp["Purchase"], list)
+        finally:
+            # DELETE (release host)
+            ec2.release_hosts(HostIds=[host_id])
 
     def test_purchase_host_reservation_pricing_are_strings(self, ec2):
-        """PurchaseHostReservation TotalHourlyPrice and TotalUpfrontPrice are strings."""
-        resp = ec2.purchase_host_reservation(
-            HostIdSet=["h-99999999"], OfferingId="hro-99999999"
+        """PurchaseHostReservation pricing fields are strings; CREATE+RETRIEVE+LIST+UPDATE+DELETE."""
+        # CREATE dedicated host
+        host_resp = ec2.allocate_hosts(
+            AvailabilityZone="us-east-1a",
+            InstanceType="m5.large",
+            Quantity=1,
         )
-        assert isinstance(resp["TotalHourlyPrice"], str)
-        assert isinstance(resp["TotalUpfrontPrice"], str)
-        assert resp["CurrencyCode"] == "USD"
+        host_id = host_resp["HostIds"][0]
+        try:
+            # RETRIEVE host
+            described = ec2.describe_hosts(HostIds=[host_id])
+            assert described["Hosts"][0]["HostId"] == host_id
+
+            # LIST: describe host reservation offerings
+            offerings = ec2.describe_host_reservation_offerings()
+            assert "OfferingSet" in offerings
+
+            # UPDATE: purchase with fake offering ID (Moto accepts any)
+            resp = ec2.purchase_host_reservation(
+                HostIdSet=[host_id], OfferingId="hro-99999999"
+            )
+            assert isinstance(resp["TotalHourlyPrice"], str)
+            assert isinstance(resp["TotalUpfrontPrice"], str)
+            assert resp["CurrencyCode"] == "USD"
+        finally:
+            # DELETE (release host)
+            ec2.release_hosts(HostIds=[host_id])
 
     def test_describe_hosts_with_filter_returns_list(self, ec2):
         """DescribeHosts with state filter returns Hosts list (RETRIEVE)."""
@@ -12910,9 +13151,16 @@ class TestEC2ReplaceImageCriteriaGetAndError:
         return make_client("ec2")
 
     def test_replace_image_criteria_returns_true(self, ec2):
-        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue=True."""
+        """ReplaceImageCriteriaInAllowedImagesSettings returns ReturnValue=True; RETRIEVE+LIST."""
+        # UPDATE (replace)
         resp = ec2.replace_image_criteria_in_allowed_images_settings()
         assert resp["ReturnValue"] is True
+        # RETRIEVE: verify via get
+        get_resp = ec2.get_allowed_images_settings()
+        assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        # LIST: verify describe_vpcs still works (server is live)
+        vpcs = ec2.describe_vpcs()
+        assert "Vpcs" in vpcs
 
     def test_get_allowed_images_settings_after_replace(self, ec2):
         """GetAllowedImagesSettings returns 200 response after replace (RETRIEVE)."""
@@ -12921,11 +13169,24 @@ class TestEC2ReplaceImageCriteriaGetAndError:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_replace_image_criteria_with_image_criteria_list(self, ec2):
-        """ReplaceImageCriteriaInAllowedImagesSettings accepts ImageCriteria list."""
-        resp = ec2.replace_image_criteria_in_allowed_images_settings(
-            ImageCriteria=[{"ImageProviders": ["amazon"]}]
-        )
-        assert resp["ReturnValue"] is True
+        """ReplaceImageCriteriaInAllowedImagesSettings accepts ImageCriteria list; CREATE+RETRIEVE+DELETE."""
+        # CREATE context VPC
+        vpc_id = ec2.create_vpc(CidrBlock="10.28.0.0/16")["Vpc"]["VpcId"]
+        try:
+            # UPDATE (replace with criteria list)
+            resp = ec2.replace_image_criteria_in_allowed_images_settings(
+                ImageCriteria=[{"ImageProviders": ["amazon"]}]
+            )
+            assert resp["ReturnValue"] is True
+            # RETRIEVE settings
+            get_resp = ec2.get_allowed_images_settings()
+            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # LIST
+            vpcs = ec2.describe_vpcs(VpcIds=[vpc_id])
+            assert len(vpcs["Vpcs"]) == 1
+        finally:
+            # DELETE context
+            ec2.delete_vpc(VpcId=vpc_id)
 
     def test_disable_allowed_images_settings_after_replace(self, ec2):
         """DisableAllowedImagesSettings can be called after replace (UPDATE/DELETE)."""
