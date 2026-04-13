@@ -284,7 +284,7 @@ jobs:
     needs: [full-iac, full-parity, full-coverage, full-shape-validation, test-timing]
     steps:
       - name: Create failure issue
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
