@@ -199,6 +199,34 @@ class TestCodeCommitRepositoryOperations:
         finally:
             codecommit.delete_repository(repositoryName=name)
 
+    def test_list_repositories_contains_repo_id(self, codecommit):
+        """ListRepositories entries contain both repositoryName and repositoryId."""
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.list_repositories()
+            entry = next(r for r in resp["repositories"] if r["repositoryName"] == name)
+            assert "repositoryId" in entry
+            assert len(entry["repositoryId"]) > 0
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_list_repositories_sort_by_name(self, codecommit):
+        """ListRepositories can sort by repositoryName in ascending order."""
+        names = sorted([_unique("repo") for _ in range(3)])
+        try:
+            # Create in reverse order
+            for n in reversed(names):
+                codecommit.create_repository(repositoryName=n)
+            resp = codecommit.list_repositories(sortBy="repositoryName", order="ascending")
+            returned = [r["repositoryName"] for r in resp["repositories"]]
+            # Filter to our test repos
+            our_repos = [r for r in returned if r in names]
+            assert our_repos == sorted(our_repos)
+        finally:
+            for n in names:
+                codecommit.delete_repository(repositoryName=n)
+
     def test_batch_get_repositories(self, codecommit):
         """BatchGetRepositories returns metadata for requested repos."""
         name1 = _unique("repo")
@@ -218,9 +246,59 @@ class TestCodeCommitRepositoryOperations:
 
     def test_batch_get_repositories_not_found(self, codecommit):
         """BatchGetRepositories returns repositoriesNotFound for missing repos."""
-        resp = codecommit.batch_get_repositories(repositoryNames=[_unique("nonexistent")])
+        missing = _unique("nonexistent")
+        resp = codecommit.batch_get_repositories(repositoryNames=[missing])
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert len(resp["repositoriesNotFound"]) == 1
+        assert missing in resp["repositoriesNotFound"]
+        assert resp["repositories"] == []
+
+    def test_batch_get_repositories_mixed(self, codecommit):
+        """BatchGetRepositories returns found repos and lists missing ones separately."""
+        name = _unique("repo")
+        missing = _unique("nonexistent")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.batch_get_repositories(repositoryNames=[name, missing])
+            assert len(resp["repositories"]) == 1
+            assert resp["repositories"][0]["repositoryName"] == name
+            assert "Arn" in resp["repositories"][0]
+            assert missing in resp["repositoriesNotFound"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_delete_nonexistent_repository_is_idempotent(self, codecommit):
+        """Deleting a nonexistent repo succeeds without error (idempotent)."""
+        resp = codecommit.delete_repository(repositoryName=_unique("nonexistent"))
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_repository_timestamps(self, codecommit):
+        """creationDate and lastModifiedDate are present and are datetime objects."""
+        from datetime import datetime
+
+        name = _unique("repo")
+        try:
+            resp = codecommit.create_repository(repositoryName=name)
+            meta = resp["repositoryMetadata"]
+            assert isinstance(meta["creationDate"], datetime)
+            assert isinstance(meta["lastModifiedDate"], datetime)
+            # lastModifiedDate should be >= creationDate
+            assert meta["lastModifiedDate"] >= meta["creationDate"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_create_repository_with_unicode_description(self, codecommit):
+        """Creating a repo with unicode description preserves the text."""
+        name = _unique("repo")
+        desc = "Ünïcödé description \u2603 \u2764"
+        try:
+            resp = codecommit.create_repository(repositoryName=name, repositoryDescription=desc)
+            assert resp["repositoryMetadata"]["repositoryDescription"] == desc
+            # Verify via get
+            get_resp = codecommit.get_repository(repositoryName=name)
+            assert get_resp["repositoryMetadata"]["repositoryDescription"] == desc
+        finally:
+            codecommit.delete_repository(repositoryName=name)
 
     def test_update_repository_description(self, codecommit):
         """UpdateRepositoryDescription changes the description."""
@@ -629,6 +707,58 @@ class TestCodeCommitApprovalRuleTemplates:
         resp = codecommit.list_approval_rule_templates()
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         assert "approvalRuleTemplateNames" in resp
+        assert isinstance(resp["approvalRuleTemplateNames"], list)
+
+    def test_create_duplicate_approval_rule_template(self, codecommit):
+        """Creating a template with duplicate name raises error."""
+        template_name = _unique("template")
+        try:
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                codecommit.create_approval_rule_template(
+                    approvalRuleTemplateName=template_name,
+                    approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+                )
+            assert "ApprovalRuleTemplateNameAlreadyExistsException" in str(exc_info.value)
+        finally:
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+
+    def test_get_nonexistent_approval_rule_template(self, codecommit):
+        """Getting a nonexistent template raises error."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            codecommit.get_approval_rule_template(approvalRuleTemplateName=_unique("missing"))
+        assert "ApprovalRuleTemplateDoesNotExistException" in str(exc_info.value)
+
+    def test_delete_approval_rule_template_then_list(self, codecommit):
+        """After deleting a template, it no longer appears in list."""
+        template_name = _unique("template")
+        codecommit.create_approval_rule_template(
+            approvalRuleTemplateName=template_name,
+            approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+        )
+        codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
+        resp = codecommit.list_approval_rule_templates()
+        assert template_name not in resp["approvalRuleTemplateNames"]
+
+    def test_approval_rule_template_timestamps(self, codecommit):
+        """Approval rule templates have creationDate and lastModifiedDate."""
+        from datetime import datetime
+
+        template_name = _unique("template")
+        try:
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.get_approval_rule_template(approvalRuleTemplateName=template_name)
+            tpl = resp["approvalRuleTemplate"]
+            assert isinstance(tpl["creationDate"], datetime)
+            assert isinstance(tpl["lastModifiedDate"], datetime)
+        finally:
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
 
     def test_create_and_get_approval_rule_template(self, codecommit):
         """Create and retrieve an approval rule template."""
@@ -905,6 +1035,32 @@ class TestCodeCommitTagWriteOperations:
         finally:
             codecommit.delete_repository(repositoryName=name)
 
+    def test_tag_resource_overwrite(self, codecommit):
+        """TagResource overwrites existing tag values."""
+        name = _unique("repo")
+        try:
+            create_resp = codecommit.create_repository(repositoryName=name, tags={"env": "dev"})
+            arn = create_resp["repositoryMetadata"]["Arn"]
+            codecommit.tag_resource(resourceArn=arn, tags={"env": "prod"})
+            tags = codecommit.list_tags_for_resource(resourceArn=arn)
+            assert tags["tags"]["env"] == "prod"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_untag_nonexistent_key(self, codecommit):
+        """UntagResource with a key that doesn't exist succeeds without error."""
+        name = _unique("repo")
+        try:
+            create_resp = codecommit.create_repository(repositoryName=name, tags={"env": "test"})
+            arn = create_resp["repositoryMetadata"]["Arn"]
+            resp = codecommit.untag_resource(resourceArn=arn, tagKeys=["nonexistent"])
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Existing tags should be unchanged
+            tags = codecommit.list_tags_for_resource(resourceArn=arn)
+            assert tags["tags"]["env"] == "test"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
     def test_untag_resource(self, codecommit):
         """UntagResource removes tags from a repo."""
         name = _unique("repo")
@@ -949,7 +1105,7 @@ class TestCodeCommitTriggerWriteOperations:
             codecommit.delete_repository(repositoryName=name)
 
     def test_test_repository_triggers(self, codecommit):
-        """TestRepositoryTriggers validates trigger config."""
+        """TestRepositoryTriggers validates trigger config and returns execution details."""
         name, _ = _create_repo_with_commit(codecommit)
         try:
             resp = codecommit.test_repository_triggers(
@@ -965,6 +1121,41 @@ class TestCodeCommitTriggerWriteOperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "successfulExecutions" in resp
             assert "failedExecutions" in resp
+            assert isinstance(resp["successfulExecutions"], list)
+            assert isinstance(resp["failedExecutions"], list)
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_put_triggers_then_replace(self, codecommit):
+        """PutRepositoryTriggers replaces all triggers when called again."""
+        name, _ = _create_repo_with_commit(codecommit)
+        try:
+            # Set first trigger
+            codecommit.put_repository_triggers(
+                repositoryName=name,
+                triggers=[
+                    {
+                        "name": "trigger-1",
+                        "destinationArn": "arn:aws:sns:us-east-1:123456789012:topic1",
+                        "events": ["all"],
+                    }
+                ],
+            )
+            # Replace with different trigger
+            codecommit.put_repository_triggers(
+                repositoryName=name,
+                triggers=[
+                    {
+                        "name": "trigger-2",
+                        "destinationArn": "arn:aws:sns:us-east-1:123456789012:topic2",
+                        "events": ["createReference"],
+                    }
+                ],
+            )
+            get_resp = codecommit.get_repository_triggers(repositoryName=name)
+            assert len(get_resp["triggers"]) == 1
+            assert get_resp["triggers"][0]["name"] == "trigger-2"
+            assert get_resp["triggers"][0]["events"] == ["createReference"]
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1141,7 +1332,7 @@ class TestCodeCommitCommentMutations:
             codecommit.delete_repository(repositoryName=name)
 
     def test_delete_comment_content(self, codecommit):
-        """DeleteCommentContent removes comment content."""
+        """DeleteCommentContent removes comment content and marks it deleted."""
         name, commit_id = _create_repo_with_commit(codecommit)
         try:
             comment_resp = codecommit.post_comment_for_compared_commit(
@@ -1154,6 +1345,9 @@ class TestCodeCommitCommentMutations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert resp["comment"]["commentId"] == comment_id
             assert resp["comment"]["deleted"] is True
+            # Verify via GetComment that the comment is still retrievable but marked deleted
+            get_resp = codecommit.get_comment(commentId=comment_id)
+            assert get_resp["comment"]["deleted"] is True
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1173,7 +1367,7 @@ class TestCodeCommitCommentMutations:
             codecommit.delete_repository(repositoryName=name)
 
     def test_post_comment_reply(self, codecommit):
-        """PostCommentReply adds a reply to a comment."""
+        """PostCommentReply adds a reply to a comment with correct fields."""
         name, commit_id = _create_repo_with_commit(codecommit)
         try:
             comment_resp = codecommit.post_comment_for_compared_commit(
@@ -1181,11 +1375,17 @@ class TestCodeCommitCommentMutations:
                 afterCommitId=commit_id,
                 content="parent comment",
             )
-            comment_id = comment_resp["comment"]["commentId"]
-            resp = codecommit.post_comment_reply(inReplyTo=comment_id, content="reply comment")
+            parent_id = comment_resp["comment"]["commentId"]
+            resp = codecommit.post_comment_reply(inReplyTo=parent_id, content="reply comment")
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert resp["comment"]["content"] == "reply comment"
-            assert "commentId" in resp["comment"]
+            reply_id = resp["comment"]["commentId"]
+            assert reply_id != parent_id
+            assert "authorArn" in resp["comment"]
+            assert "creationDate" in resp["comment"]
+            # Verify reply is retrievable
+            get_resp = codecommit.get_comment(commentId=reply_id)
+            assert get_resp["comment"]["content"] == "reply comment"
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1194,7 +1394,7 @@ class TestCodeCommitPRCommentOperations:
     """Tests for PR comment and reaction operations."""
 
     def test_post_comment_for_pull_request(self, codecommit):
-        """PostCommentForPullRequest adds a comment to a PR."""
+        """PostCommentForPullRequest adds a comment to a PR and it's retrievable."""
         name, pr_id, rev_id, main_commit, feature_commit = _create_pr(codecommit)
         try:
             resp = codecommit.post_comment_for_pull_request(
@@ -1206,7 +1406,16 @@ class TestCodeCommitPRCommentOperations:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert resp["comment"]["content"] == "PR comment"
-            assert "commentId" in resp["comment"]
+            comment_id = resp["comment"]["commentId"]
+            assert "authorArn" in resp["comment"]
+            assert "creationDate" in resp["comment"]
+            # Verify comment appears in PR comments
+            comments_resp = codecommit.get_comments_for_pull_request(pullRequestId=pr_id)
+            all_comments = []
+            for data in comments_resp["commentsForPullRequestData"]:
+                all_comments.extend(data.get("comments", []))
+            comment_ids = [c["commentId"] for c in all_comments]
+            assert comment_id in comment_ids
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1313,6 +1522,10 @@ class TestCodeCommitPRApprovalRules:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "evaluation" in resp
             assert "approved" in resp["evaluation"]
+            assert isinstance(resp["evaluation"]["approved"], bool)
+            assert "overridden" in resp["evaluation"]
+            assert "approvalRulesSatisfied" in resp["evaluation"]
+            assert "approvalRulesNotSatisfied" in resp["evaluation"]
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1328,13 +1541,18 @@ class TestCodeCommitPRApprovalRules:
             codecommit.delete_repository(repositoryName=name)
 
     def test_override_pull_request_approval_rules(self, codecommit):
-        """OverridePullRequestApprovalRules overrides approval requirements."""
+        """OverridePullRequestApprovalRules overrides and is visible in override state."""
         name, pr_id, rev_id, *_ = _create_pr(codecommit)
         try:
             resp = codecommit.override_pull_request_approval_rules(
                 pullRequestId=pr_id, revisionId=rev_id, overrideStatus="OVERRIDE"
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            # Verify override state
+            state = codecommit.get_pull_request_override_state(
+                pullRequestId=pr_id, revisionId=rev_id
+            )
+            assert state["overridden"] is True
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1356,6 +1574,26 @@ class TestCodeCommitBatchGetCommits:
             commit_ids = {c["commitId"] for c in resp["commits"]}
             assert main_commit in commit_ids
             assert feature_commit in commit_ids
+            # Verify commit fields
+            for commit in resp["commits"]:
+                assert "author" in commit
+                assert "committer" in commit
+                assert "treeId" in commit
+                assert "message" in commit
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_batch_get_commits_single(self, codecommit):
+        """BatchGetCommits works with a single commit ID."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.batch_get_commits(
+                commitIds=[commit_id],
+                repositoryName=name,
+            )
+            assert len(resp["commits"]) == 1
+            assert resp["commits"][0]["commitId"] == commit_id
+            assert resp["commits"][0]["message"] == "Initial commit"
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1364,7 +1602,7 @@ class TestCodeCommitMergeWriteOperations:
     """Tests for merge operations that modify branches."""
 
     def test_merge_branches_by_fast_forward(self, codecommit):
-        """MergeBranchesByFastForward merges feature into main via FF."""
+        """MergeBranchesByFastForward merges feature into main via FF and updates branch."""
         name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
         try:
             resp = codecommit.merge_branches_by_fast_forward(
@@ -1374,11 +1612,15 @@ class TestCodeCommitMergeWriteOperations:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "commitId" in resp
+            assert len(resp["commitId"]) > 0
+            # The returned treeId (if present) should be a non-empty hash
+            if "treeId" in resp:
+                assert len(resp["treeId"]) > 0
         finally:
             codecommit.delete_repository(repositoryName=name)
 
     def test_merge_branches_by_squash(self, codecommit):
-        """MergeBranchesBySquash squash-merges branches."""
+        """MergeBranchesBySquash squash-merges branches and updates destination."""
         name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
         try:
             resp = codecommit.merge_branches_by_squash(
@@ -1391,11 +1633,15 @@ class TestCodeCommitMergeWriteOperations:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "commitId" in resp
+            # Verify the squash commit is retrievable
+            commit_resp = codecommit.get_commit(repositoryName=name, commitId=resp["commitId"])
+            assert commit_resp["commit"]["commitId"] == resp["commitId"]
+            assert "treeId" in commit_resp["commit"]
         finally:
             codecommit.delete_repository(repositoryName=name)
 
     def test_merge_branches_by_three_way(self, codecommit):
-        """MergeBranchesByThreeWay three-way-merges branches."""
+        """MergeBranchesByThreeWay three-way-merges branches and updates destination."""
         name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
         try:
             resp = codecommit.merge_branches_by_three_way(
@@ -1408,6 +1654,10 @@ class TestCodeCommitMergeWriteOperations:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "commitId" in resp
+            # After merge, main should have the feature file
+            folder = codecommit.get_folder(repositoryName=name, folderPath="/")
+            file_names = [f["absolutePath"] for f in folder["files"]]
+            assert "feature.txt" in file_names
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1443,6 +1693,9 @@ class TestCodeCommitMergeWriteOperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "conflicts" in resp
             assert isinstance(resp["conflicts"], list)
+            assert "sourceCommitId" in resp
+            assert "destinationCommitId" in resp
+            assert "baseCommitId" in resp
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1451,7 +1704,7 @@ class TestCodeCommitMergePROperations:
     """Tests for merging pull requests."""
 
     def test_merge_pull_request_by_fast_forward(self, codecommit):
-        """MergePullRequestByFastForward merges a PR via FF."""
+        """MergePullRequestByFastForward merges a PR via FF and closes it."""
         name, pr_id, *_ = _create_pr(codecommit)
         try:
             resp = codecommit.merge_pull_request_by_fast_forward(
@@ -1461,11 +1714,15 @@ class TestCodeCommitMergePROperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "pullRequest" in resp
             assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+            assert resp["pullRequest"]["pullRequestId"] == pr_id
+            # Verify the PR is closed when retrieved again
+            get_resp = codecommit.get_pull_request(pullRequestId=pr_id)
+            assert get_resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
         finally:
             codecommit.delete_repository(repositoryName=name)
 
     def test_merge_pull_request_by_squash(self, codecommit):
-        """MergePullRequestBySquash squash-merges a PR."""
+        """MergePullRequestBySquash squash-merges a PR and it no longer appears as open."""
         name, pr_id, *_ = _create_pr(codecommit)
         try:
             resp = codecommit.merge_pull_request_by_squash(
@@ -1478,6 +1735,9 @@ class TestCodeCommitMergePROperations:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert "pullRequest" in resp
             assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+            # Verify PR is no longer in the OPEN list
+            open_prs = codecommit.list_pull_requests(repositoryName=name, pullRequestStatus="OPEN")
+            assert pr_id not in open_prs["pullRequestIds"]
         finally:
             codecommit.delete_repository(repositoryName=name)
 
@@ -1497,3 +1757,342 @@ class TestCodeCommitMergePROperations:
             assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
         finally:
             codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitRepositoryPagination:
+    """Tests for pagination in list operations."""
+
+    def test_list_repositories_multiple_repos(self, codecommit):
+        """ListRepositories returns all created repos in a single response."""
+        names = [_unique("repo") for _ in range(3)]
+        try:
+            for n in names:
+                codecommit.create_repository(repositoryName=n)
+            resp = codecommit.list_repositories()
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            returned = [r["repositoryName"] for r in resp["repositories"]]
+            for n in names:
+                assert n in returned
+        finally:
+            for n in names:
+                codecommit.delete_repository(repositoryName=n)
+
+    def test_list_approval_rule_templates_pagination(self, codecommit):
+        """ListApprovalRuleTemplates returns all templates across pages."""
+        template_names = [_unique("tmpl") for _ in range(3)]
+        try:
+            for t in template_names:
+                codecommit.create_approval_rule_template(
+                    approvalRuleTemplateName=t,
+                    approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+                )
+            resp = codecommit.list_approval_rule_templates()
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            for t in template_names:
+                assert t in resp["approvalRuleTemplateNames"]
+        finally:
+            for t in template_names:
+                codecommit.delete_approval_rule_template(approvalRuleTemplateName=t)
+
+    def test_list_branches_pagination(self, codecommit):
+        """ListBranches returns all branches when multiple exist."""
+        name, commit_id = _create_repo_with_commit(codecommit)
+        try:
+            branch_names = [f"branch-{i}" for i in range(3)]
+            for b in branch_names:
+                codecommit.create_branch(repositoryName=name, branchName=b, commitId=commit_id)
+            resp = codecommit.list_branches(repositoryName=name)
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            for b in branch_names:
+                assert b in resp["branches"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+
+class TestCodeCommitEdgeCases:
+    """Edge case and behavioral fidelity tests."""
+
+    def test_batch_get_repositories_all_missing(self, codecommit):
+        """BatchGetRepositories with all missing repos returns empty repositories list."""
+        names = [_unique("miss") for _ in range(3)]
+        resp = codecommit.batch_get_repositories(repositoryNames=names)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert resp["repositories"] == []
+        assert len(resp["repositoriesNotFound"]) == 3
+        for n in names:
+            assert n in resp["repositoriesNotFound"]
+
+    def test_batch_get_repositories_fields_complete(self, codecommit):
+        """BatchGetRepositories returns full metadata including ARN and clone URLs."""
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.batch_get_repositories(repositoryNames=[name])
+            assert len(resp["repositories"]) == 1
+            meta = resp["repositories"][0]
+            assert "Arn" in meta
+            assert "cloneUrlHttp" in meta
+            assert "cloneUrlSsh" in meta
+            assert "repositoryId" in meta
+            assert meta["repositoryName"] == name
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_delete_nonexistent_returns_200(self, codecommit):
+        """Deleting a nonexistent repo returns 200 (idempotent operation)."""
+        resp = codecommit.delete_repository(repositoryName=_unique("ghost"))
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_create_repository_unicode_name_rejected(self, codecommit):
+        """Repo names with invalid characters raise InvalidRepositoryNameException."""
+        with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+            codecommit.create_repository(repositoryName="repo with spaces")
+        err = exc_info.value.response["Error"]["Code"]
+        assert err in ("InvalidRepositoryNameException", "ValidationException")
+
+    def test_create_repository_max_description_length(self, codecommit):
+        """Creating a repo with a very long description (1000 chars) works."""
+        name = _unique("repo")
+        long_desc = "x" * 1000
+        try:
+            resp = codecommit.create_repository(
+                repositoryName=name, repositoryDescription=long_desc
+            )
+            assert resp["repositoryMetadata"]["repositoryDescription"] == long_desc
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_get_repository_clone_url_http_format(self, codecommit):
+        """Clone HTTP URL matches expected pattern."""
+        import re
+
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.get_repository(repositoryName=name)
+            url = resp["repositoryMetadata"]["cloneUrlHttp"]
+            assert re.match(r"https://git-codecommit\..+\.amazonaws\.com/v1/repos/.+", url), (
+                f"Unexpected HTTP clone URL: {url}"
+            )
+            assert name in url
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_get_repository_clone_url_ssh_format(self, codecommit):
+        """Clone SSH URL matches expected pattern."""
+        import re
+
+        name = _unique("repo")
+        try:
+            codecommit.create_repository(repositoryName=name)
+            resp = codecommit.get_repository(repositoryName=name)
+            url = resp["repositoryMetadata"]["cloneUrlSsh"]
+            assert re.match(r"ssh://git-codecommit\..+\.amazonaws\.com/v1/repos/.+", url), (
+                f"Unexpected SSH clone URL: {url}"
+            )
+            assert name in url
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_delete_repository_returns_repository_id(self, codecommit):
+        """DeleteRepository returns the repositoryId of the deleted repo."""
+        name = _unique("repo")
+        create_resp = codecommit.create_repository(repositoryName=name)
+        expected_id = create_resp["repositoryMetadata"]["repositoryId"]
+        del_resp = codecommit.delete_repository(repositoryName=name)
+        assert del_resp["repositoryId"] == expected_id
+
+    def test_create_repository_account_id_in_metadata(self, codecommit):
+        """Create repository response includes accountId = '123456789012'."""
+        name = _unique("repo")
+        try:
+            resp = codecommit.create_repository(repositoryName=name)
+            assert resp["repositoryMetadata"]["accountId"] == "123456789012"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_list_approval_rule_templates_empty_returns_list_type(self, codecommit):
+        """ListApprovalRuleTemplates always returns a list (never null)."""
+        resp = codecommit.list_approval_rule_templates()
+        assert isinstance(resp["approvalRuleTemplateNames"], list)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_test_repository_triggers_result_fields(self, codecommit):
+        """TestRepositoryTriggers result includes trigger name in success or fail list."""
+        name, _ = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.test_repository_triggers(
+                repositoryName=name,
+                triggers=[
+                    {
+                        "name": "verify-trigger",
+                        "destinationArn": "arn:aws:sns:us-east-1:123456789012:my-topic",
+                        "events": ["all"],
+                    }
+                ],
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            success_names = [e for e in resp["successfulExecutions"]]
+            fail_names = [f["trigger"] for f in resp["failedExecutions"]]
+            all_names = success_names + fail_names
+            assert "verify-trigger" in all_names
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_batch_describe_merge_conflicts_no_conflict_files(self, codecommit):
+        """BatchDescribeMergeConflicts returns empty conflicts for non-overlapping branches."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            resp = codecommit.batch_describe_merge_conflicts(
+                repositoryName=name,
+                sourceCommitSpecifier=feature_commit,
+                destinationCommitSpecifier=main_commit,
+                mergeOption="THREE_WAY_MERGE",
+            )
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+            assert resp["conflicts"] == []
+            assert "sourceCommitId" in resp
+            assert "destinationCommitId" in resp
+            assert "baseCommitId" in resp
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_merge_pull_request_by_three_way_commit_retrievable(self, codecommit):
+        """After 3-way PR merge, the merge commit is retrievable from the repo."""
+        name, pr_id, *_ = _create_pr(codecommit)
+        try:
+            resp = codecommit.merge_pull_request_by_three_way(
+                pullRequestId=pr_id,
+                repositoryName=name,
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Three-way merge PR",
+            )
+            assert resp["pullRequest"]["pullRequestStatus"] == "CLOSED"
+            # The merge should have updated main — get_branch should return a commit
+            branch = codecommit.get_branch(repositoryName=name, branchName="main")
+            merge_commit_id = branch["branch"]["commitId"]
+            commit_resp = codecommit.get_commit(repositoryName=name, commitId=merge_commit_id)
+            assert "treeId" in commit_resp["commit"]
+            assert "author" in commit_resp["commit"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_list_pull_requests_filter_by_status(self, codecommit):
+        """ListPullRequests can filter by OPEN/CLOSED status."""
+        name, main_commit, feature_commit = _create_repo_with_feature_branch(codecommit)
+        try:
+            create_resp = codecommit.create_pull_request(
+                title="Filterable PR",
+                targets=[
+                    {
+                        "repositoryName": name,
+                        "sourceReference": "feature",
+                        "destinationReference": "main",
+                    }
+                ],
+            )
+            pr_id = create_resp["pullRequest"]["pullRequestId"]
+            # Should appear in OPEN
+            open_resp = codecommit.list_pull_requests(
+                repositoryName=name, pullRequestStatus="OPEN"
+            )
+            assert pr_id in open_resp["pullRequestIds"]
+            # Close it
+            codecommit.update_pull_request_status(
+                pullRequestId=pr_id, pullRequestStatus="CLOSED"
+            )
+            # Should no longer appear in OPEN
+            open_resp2 = codecommit.list_pull_requests(
+                repositoryName=name, pullRequestStatus="OPEN"
+            )
+            assert pr_id not in open_resp2["pullRequestIds"]
+            # Should appear in CLOSED
+            closed_resp = codecommit.list_pull_requests(
+                repositoryName=name, pullRequestStatus="CLOSED"
+            )
+            assert pr_id in closed_resp["pullRequestIds"]
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_get_repository_after_update_name(self, codecommit):
+        """After UpdateRepositoryName, old name is gone and new name has same ID."""
+        old = _unique("repo")
+        new = _unique("repo-new")
+        try:
+            create_resp = codecommit.create_repository(repositoryName=old)
+            original_id = create_resp["repositoryMetadata"]["repositoryId"]
+            codecommit.update_repository_name(oldName=old, newName=new)
+            # Old name should raise
+            with pytest.raises(botocore.exceptions.ClientError) as exc_info:
+                codecommit.get_repository(repositoryName=old)
+            assert "RepositoryDoesNotExistException" in str(exc_info.value)
+            # New name should work with same ID
+            new_resp = codecommit.get_repository(repositoryName=new)
+            assert new_resp["repositoryMetadata"]["repositoryId"] == original_id
+        finally:
+            codecommit.delete_repository(repositoryName=new)
+
+    def test_create_commit_and_verify_parent(self, codecommit):
+        """Second commit has the first commit as its parent."""
+        name, first_commit = _create_repo_with_commit(codecommit)
+        try:
+            resp = codecommit.create_commit(
+                repositoryName=name,
+                branchName="main",
+                putFiles=[{"filePath": "second.txt", "fileContent": b"second"}],
+                authorName="test",
+                email="test@test.com",
+                commitMessage="Second commit",
+                parentCommitId=first_commit,
+            )
+            second_commit = resp["commitId"]
+            commit_resp = codecommit.get_commit(repositoryName=name, commitId=second_commit)
+            parents = commit_resp["commit"]["parents"]
+            assert first_commit in parents
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_tag_resource_unicode_values(self, codecommit):
+        """TagResource accepts unicode tag values."""
+        name = _unique("repo")
+        try:
+            create_resp = codecommit.create_repository(repositoryName=name)
+            arn = create_resp["repositoryMetadata"]["Arn"]
+            codecommit.tag_resource(resourceArn=arn, tags={"desc": "Ünïcödé \u2603"})
+            tags = codecommit.list_tags_for_resource(resourceArn=arn)
+            assert tags["tags"]["desc"] == "Ünïcödé \u2603"
+        finally:
+            codecommit.delete_repository(repositoryName=name)
+
+    def test_list_repositories_sort_descending(self, codecommit):
+        """ListRepositories can sort by repositoryName in descending order."""
+        names = sorted([_unique("repo") for _ in range(3)])
+        try:
+            for n in names:
+                codecommit.create_repository(repositoryName=n)
+            resp = codecommit.list_repositories(sortBy="repositoryName", order="descending")
+            returned = [r["repositoryName"] for r in resp["repositories"]]
+            our_repos = [r for r in returned if r in names]
+            assert our_repos == sorted(our_repos, reverse=True)
+        finally:
+            for n in names:
+                codecommit.delete_repository(repositoryName=n)
+
+    def test_create_approval_rule_template_arn_format(self, codecommit):
+        """Approval rule template has an approvalRuleTemplateId (UUID)."""
+        template_name = _unique("tmpl")
+        try:
+            codecommit.create_approval_rule_template(
+                approvalRuleTemplateName=template_name,
+                approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
+            )
+            resp = codecommit.get_approval_rule_template(
+                approvalRuleTemplateName=template_name
+            )
+            tpl_id = resp["approvalRuleTemplate"]["approvalRuleTemplateId"]
+            # Should be a non-empty string (UUID format)
+            assert len(tpl_id) > 0
+            assert "-" in tpl_id
+        finally:
+            codecommit.delete_approval_rule_template(approvalRuleTemplateName=template_name)
