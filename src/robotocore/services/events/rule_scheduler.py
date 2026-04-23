@@ -76,11 +76,7 @@ class EventBridgeRuleScheduler:
         now = time.monotonic()
 
         for store_key, store in list(_stores.items()):
-            # Parse account_id and region from store key "account_id:region"
-            parts = store_key.split(":", 1)
-            if len(parts) != 2:
-                continue
-            account_id, region = parts
+            account_id, region = store_key
 
             for bus in list(store.buses.values()):
                 for rule in list(bus.rules.values()):

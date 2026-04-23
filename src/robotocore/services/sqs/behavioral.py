@@ -71,6 +71,17 @@ class PurgeTracker:
         with self._lock:
             self._purge_times.pop(queue_name, None)
 
+    def snapshot_state(self) -> dict[str, float]:
+        """Return a serializable copy of purge cooldown state."""
+        with self._lock:
+            return dict(self._purge_times)
+
+    def restore_state(self, state: dict[str, float] | None) -> None:
+        """Replace purge cooldown state from a snapshot."""
+        with self._lock:
+            self._purge_times.clear()
+            self._purge_times.update(state or {})
+
 
 class QueueDeletedTracker:
     """Tracks recently-deleted queue names with timestamps. Thread-safe."""
@@ -97,6 +108,17 @@ class QueueDeletedTracker:
                 raise QueueDeletedRecentlyError(queue_name)
             # Clean up expired entry
             self._deletion_times.pop(queue_name, None)
+
+    def snapshot_state(self) -> dict[str, float]:
+        """Return a serializable copy of recent deletion state."""
+        with self._lock:
+            return dict(self._deletion_times)
+
+    def restore_state(self, state: dict[str, float] | None) -> None:
+        """Replace recent deletion state from a snapshot."""
+        with self._lock:
+            self._deletion_times.clear()
+            self._deletion_times.update(state or {})
 
 
 class RetentionScanner:

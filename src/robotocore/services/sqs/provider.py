@@ -32,6 +32,7 @@ _stores: dict[tuple[str, str], SqsStore] = {}
 _store_lock = threading.Lock()
 _worker_started = False
 _worker_lock = threading.Lock()
+_default_state_handler_registered = False
 
 # Behavioral fidelity singletons
 _purge_tracker = PurgeTracker()
@@ -42,7 +43,25 @@ _retention_scanner = RetentionScanner()
 logger = logging.getLogger(__name__)
 
 
+def register_state_handler(manager=None) -> None:
+    """Register SQS native state save/load hooks with a state manager."""
+    global _default_state_handler_registered
+
+    is_default_manager = manager is None
+    if manager is None:
+        if _default_state_handler_registered:
+            return
+        from robotocore.state.manager import get_state_manager
+
+        manager = get_state_manager()
+
+    manager.register_native_handler("sqs", export_state, load_state)
+    if is_default_manager:
+        _default_state_handler_registered = True
+
+
 def _get_store(region: str = "us-east-1", account_id: str = DEFAULT_ACCOUNT_ID) -> SqsStore:
+    register_state_handler()
     key = (account_id, region)
     with _store_lock:
         if key not in _stores:
@@ -906,3 +925,60 @@ _ACTION_MAP: dict[str, Callable] = {
     "CancelMessageMoveTask": _cancel_message_move_task,
     "ListMessageMoveTasks": _list_message_move_tasks,
 }
+
+
+def export_state() -> dict:
+    """Export all SQS store state as JSON-serializable data."""
+    with _store_lock:
+        items = sorted(_stores.items())
+
+    stores: dict[str, dict[str, dict]] = {}
+    for (account_id, region), store in items:
+        stores.setdefault(account_id, {})[region] = store.snapshot_state()
+
+    return {
+        "schema_version": 1,
+        "stores": stores,
+        "behavioral": {
+            "purge_times": _purge_tracker.snapshot_state(),
+            "deletion_times": _delete_tracker.snapshot_state(),
+        },
+    }
+
+
+def load_state(data: dict) -> None:
+    """Replace in-memory SQS state from a previously exported snapshot."""
+    data = data or {}
+    version = data.get("schema_version")
+    if version is not None and version != 1:
+        logger.warning(
+            "sqs snapshot schema_version=%s; expected 1. "
+            "Loading with v1 logic; fields may be dropped or misinterpreted.",
+            version,
+        )
+    stores_data = data.get("stores", {})
+    behavioral = data.get("behavioral", {})
+
+    with _store_lock:
+        _stores.clear()
+        for account_id, regions in stores_data.items():
+            for region, store_data in regions.items():
+                _stores[(account_id, region)] = SqsStore.from_snapshot(
+                    store_data,
+                    region=region,
+                    account_id=account_id,
+                )
+
+    _purge_tracker.restore_state(behavioral.get("purge_times"))
+    _delete_tracker.restore_state(behavioral.get("deletion_times"))
+
+
+def _reset_for_tests() -> None:
+    """Reset SQS provider globals without going through persistence code."""
+    global _default_state_handler_registered
+
+    with _store_lock:
+        _stores.clear()
+    _purge_tracker.restore_state({})
+    _delete_tracker.restore_state({})
+    _default_state_handler_registered = False

@@ -365,7 +365,7 @@ services:
 
 ### State management
 
-Robotocore state is in-memory. On container restart, all queues and messages are lost. To preserve state across restarts:
+Robotocore SQS state is in-memory by default. If no snapshot or persistence settings are enabled, container restart resets queues and messages. To preserve SQS state across restarts or between test phases:
 
 ```bash
 # Save state
@@ -380,6 +380,8 @@ curl -X POST http://localhost:4566/_robotocore/state/load \
 curl -X POST http://localhost:4566/_robotocore/state/save \
   -d '{"name": "sqs-only", "services": ["sqs"]}'
 ```
+
+You can also configure persistent startup/shutdown save behavior with `ROBOTOCORE_STATE_DIR` and persistence env vars. Native SQS queues, messages, receipts, and FIFO ordering state participate in that existing state-manager flow.
 
 ---
 

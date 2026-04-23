@@ -142,7 +142,7 @@ make status                            # Check if server is running
 1. **Gateway on port 4566**: Standard AWS emulator port so existing `aws --endpoint-url` configs work unchanged
 2. **Moto as the service layer**: Don't reimplement what Moto already does well. Wrap it, extend it, fix its gaps.
 3. **Protocol handling via botocore specs**: Use botocore's own service JSON specs to parse/serialize requests
-4. **In-memory state by default**: No persistence layer needed for dev/test use. Optional persistence can come later.
+4. **In-memory state by default**: Runtime state stays in memory unless snapshot/persistence features are enabled for local dev or test workflows.
 5. **Plugin system**: `RobotocorePlugin` base class with entry point, env var, and directory discovery.
 6. **ASGI with uvicorn**: Modern async-capable HTTP server
 

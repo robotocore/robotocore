@@ -1,5 +1,7 @@
 """In-memory SQS data models: messages, queues, and lifecycle management."""
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import heapq
@@ -8,7 +10,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from queue import Empty, Queue
 
 
@@ -69,6 +71,51 @@ class SqsMessage:
     def __lt__(self, other):
         return self.priority < other.priority
 
+    def snapshot_state(self) -> dict:
+        """Return a serializable snapshot of this message."""
+        return {
+            "message_id": self.message_id,
+            "body": self.body,
+            "md5_of_body": self.md5_of_body,
+            "attributes": dict(self.attributes),
+            "message_attributes": dict(self.message_attributes),
+            "system_attributes": dict(self.system_attributes),
+            "created": self.created,
+            "delay_seconds": self.delay_seconds,
+            "receive_count": self.receive_count,
+            "first_received": self.first_received,
+            "last_received": self.last_received,
+            "visibility_deadline": self.visibility_deadline,
+            "deleted": self.deleted,
+            "receipt_handles": sorted(self.receipt_handles),
+            "message_group_id": self.message_group_id,
+            "message_deduplication_id": self.message_deduplication_id,
+            "sequence_number": self.sequence_number,
+        }
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> SqsMessage:
+        """Rebuild a message from snapshot data."""
+        return cls(
+            message_id=data["message_id"],
+            body=data["body"],
+            md5_of_body=data["md5_of_body"],
+            attributes=dict(data.get("attributes", {})),
+            message_attributes=dict(data.get("message_attributes", {})),
+            system_attributes=dict(data.get("system_attributes", {})),
+            created=data.get("created", time.time()),
+            delay_seconds=data.get("delay_seconds", 0),
+            receive_count=data.get("receive_count", 0),
+            first_received=data.get("first_received"),
+            last_received=data.get("last_received"),
+            visibility_deadline=data.get("visibility_deadline"),
+            deleted=data.get("deleted", False),
+            receipt_handles=set(data.get("receipt_handles", [])),
+            message_group_id=data.get("message_group_id"),
+            message_deduplication_id=data.get("message_deduplication_id"),
+            sequence_number=data.get("sequence_number"),
+        )
+
 
 @dataclass
 class MessageMoveTask:
@@ -83,6 +130,16 @@ class MessageMoveTask:
     approximate_number_of_messages_to_move: int = 0
     started_timestamp: float = field(default_factory=time.time)
     failure_reason: str | None = None
+
+    def snapshot_state(self) -> dict:
+        """Return a serializable snapshot of this move task."""
+        return asdict(self)
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> MessageMoveTask:
+        """Rebuild a move task from snapshot data."""
+        allowed = {field.name for field in fields(cls)}
+        return cls(**{key: value for key, value in data.items() if key in allowed})
 
 
 class StandardQueue:
@@ -389,6 +446,77 @@ class StandardQueue:
         raw = f"{_new_id()} {self.arn} {message.message_id} {message.last_received}"
         return base64.b64encode(raw.encode()).decode()
 
+    def _snapshot_locked(self) -> dict:
+        """Build queue snapshot while caller holds self.mutex."""
+        all_messages = {
+            msg_id: message.snapshot_state() for msg_id, message in self._all_messages.items()
+        }
+        return {
+            "queue_type": "fifo" if self.is_fifo else "standard",
+            "created": self.created,
+            "attributes": dict(self.attributes),
+            "tags": dict(self.tags),
+            "last_purged_at": self.last_purged_at,
+            "visible_ids": [msg.message_id for msg in list(self._visible.queue)],
+            "inflight_ids": list(self._inflight.keys()),
+            "delayed_ids": list(self._delayed.keys()),
+            "messages": all_messages,
+            "receipts": {
+                receipt: message.message_id for receipt, message in self._receipts.items()
+            },
+        }
+
+    def snapshot_state(self) -> dict:
+        """Return a serializable snapshot of this queue."""
+        with self.mutex:
+            return self._snapshot_locked()
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        data: dict,
+        *,
+        region: str,
+        account_id: str,
+        name: str,
+    ) -> StandardQueue:
+        """Rebuild a queue from snapshot data."""
+        queue_class = FifoQueue if data.get("queue_type") == "fifo" else StandardQueue
+        queue = queue_class(name, region, account_id, dict(data.get("attributes", {})))
+        messages = {
+            msg_id: SqsMessage.from_snapshot(msg_data)
+            for msg_id, msg_data in data.get("messages", {}).items()
+        }
+        queue.restore_state(data, messages)
+        return queue
+
+    def restore_state(self, data: dict, messages: dict[str, SqsMessage]) -> None:
+        """Replace queue internals from snapshot data."""
+        self.created = data.get("created", time.time())
+        self.tags = dict(data.get("tags", {}))
+        self.last_purged_at = data.get("last_purged_at")
+        self._all_messages = messages
+
+        visible_queue = Queue()
+        for msg_id in data.get("visible_ids", []):
+            if msg_id in messages:
+                visible_queue.put(messages[msg_id])
+        self._visible = visible_queue
+
+        self._inflight = OrderedDict(
+            (msg_id, messages[msg_id])
+            for msg_id in data.get("inflight_ids", [])
+            if msg_id in messages
+        )
+        self._delayed = {
+            msg_id: messages[msg_id] for msg_id in data.get("delayed_ids", []) if msg_id in messages
+        }
+        self._receipts = {
+            receipt: messages[msg_id]
+            for receipt, msg_id in data.get("receipts", {}).items()
+            if msg_id in messages
+        }
+
 
 class FifoQueue(StandardQueue):
     """FIFO SQS queue with message group ordering and deduplication."""
@@ -555,6 +683,51 @@ class FifoQueue(StandardQueue):
         for k in expired:
             del self._dedup_cache[k]
 
+    def snapshot_state(self) -> dict:
+        """Return a serializable snapshot of this FIFO queue."""
+        with self.mutex:
+            queue_data = self._snapshot_locked()
+            queue_data.update(
+                {
+                    "dedup_cache": {
+                        dedup_id: {"message_id": msg.message_id, "timestamp": ts}
+                        for dedup_id, (msg, ts) in self._dedup_cache.items()
+                    },
+                    "message_groups": {
+                        group_id: [msg.message_id for msg in messages]
+                        for group_id, messages in self._message_groups.items()
+                    },
+                    "inflight_groups": sorted(self._inflight_groups),
+                    "queued_groups": sorted(self._queued_groups),
+                    "group_queue": list(self._group_queue.queue),
+                    "sequence_counter": self._sequence_counter,
+                }
+            )
+        return queue_data
+
+    def restore_state(self, data: dict, messages: dict[str, SqsMessage]) -> None:
+        """Replace FIFO internals from snapshot data."""
+        super().restore_state(data, messages)
+
+        self._dedup_cache = {
+            dedup_id: (messages[msg["message_id"]], msg["timestamp"])
+            for dedup_id, msg in data.get("dedup_cache", {}).items()
+            if msg["message_id"] in messages
+        }
+        self._message_groups = {
+            group_id: [messages[msg_id] for msg_id in msg_ids if msg_id in messages]
+            for group_id, msg_ids in data.get("message_groups", {}).items()
+        }
+        for group_messages in self._message_groups.values():
+            heapq.heapify(group_messages)
+        self._inflight_groups = set(data.get("inflight_groups", []))
+        self._queued_groups = set(data.get("queued_groups", []))
+        group_queue = Queue()
+        for group_id in data.get("group_queue", []):
+            group_queue.put(group_id)
+        self._group_queue = group_queue
+        self._sequence_counter = data.get("sequence_counter", 0)
+
 
 class SqsStore:
     """Per-region SQS store managing all queues."""
@@ -701,3 +874,47 @@ class SqsStore:
         if task and task.status == "RUNNING":
             task.status = "CANCELLED"
         return task
+
+    def snapshot_state(self) -> dict:
+        """Return a serializable snapshot of this store."""
+        with self.mutex:
+            queues = {name: queue.snapshot_state() for name, queue in self.queues.items()}
+            move_tasks = {
+                handle: task.snapshot_state() for handle, task in self._move_tasks.items()
+            }
+            recently_deleted = dict(self._recently_deleted)
+
+        return {
+            "queues": queues,
+            "move_tasks": move_tasks,
+            "recently_deleted": recently_deleted,
+        }
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        data: dict,
+        *,
+        region: str,
+        account_id: str,
+    ) -> SqsStore:
+        """Rebuild a store from snapshot data."""
+        store = cls()
+        queues_data = data.get("queues", {})
+        for name, queue_data in queues_data.items():
+            queue = StandardQueue.from_snapshot(
+                queue_data,
+                region=region,
+                account_id=account_id,
+                name=name,
+            )
+            queue._store = store
+            store.queues[name] = queue
+
+        store._move_tasks = {
+            handle: MessageMoveTask.from_snapshot(task_data)
+            for handle, task_data in data.get("move_tasks", {}).items()
+        }
+        store._recently_deleted = dict(data.get("recently_deleted", {}))
+        store.requeue_all()
+        return store

@@ -20,8 +20,9 @@ from robotocore.services.events.models import EventsStore
 
 logger = logging.getLogger(__name__)
 
-_stores: dict[str, EventsStore] = {}
+_stores: dict[tuple[str, str], EventsStore] = {}
 _store_lock = threading.Lock()
+_default_state_handler_registered = False
 
 # Invocation log for cross-service target dispatch (useful for testing)
 _invocation_log: list[dict] = []
@@ -56,9 +57,27 @@ def _log_invocation(
         )
 
 
+def register_state_handler(manager=None) -> None:
+    """Register EventBridge native state save/load hooks with state manager."""
+    global _default_state_handler_registered
+
+    is_default_manager = manager is None
+    if manager is None:
+        if _default_state_handler_registered:
+            return
+        from robotocore.state.manager import get_state_manager
+
+        manager = get_state_manager()
+
+    manager.register_native_handler("events", export_state, load_state)
+    if is_default_manager:
+        _default_state_handler_registered = True
+
+
 def _get_store(region: str = "us-east-1", account_id: str = "123456789012") -> EventsStore:
+    register_state_handler()
     with _store_lock:
-        key = f"{account_id}:{region}"
+        key = (account_id, region)
         if key not in _stores:
             _stores[key] = EventsStore()
         store = _stores[key]
@@ -1438,3 +1457,72 @@ _ACTION_MAP = {
     "DeleteEndpoint": _delete_endpoint,
     "UpdateEndpoint": _update_endpoint,
 }
+
+
+def export_state() -> dict:
+    """Export EventBridge state as JSON-serializable data."""
+    with _store_lock:
+        items = sorted(_stores.items())
+
+    stores: dict[str, dict[str, dict]] = {}
+    for (account_id, region), store in items:
+        stores.setdefault(account_id, {})[region] = store.snapshot_state()
+
+    return {
+        "schema_version": 1,
+        "stores": stores,
+        "connections": {name: dict(conn) for name, conn in _connections.items()},
+        "api_destinations": {
+            name: dict(destination) for name, destination in _api_destinations.items()
+        },
+        "endpoints": {name: dict(endpoint) for name, endpoint in _endpoints.items()},
+    }
+
+
+def load_state(data: dict) -> None:
+    """Replace in-memory EventBridge state from exported snapshot."""
+    data = data or {}
+    version = data.get("schema_version")
+    if version is not None and version != 1:
+        logger.warning(
+            "events snapshot schema_version=%s; expected 1. "
+            "Loading with v1 logic; fields may be dropped or misinterpreted.",
+            version,
+        )
+    stores_data = data.get("stores", {})
+
+    with _store_lock:
+        _stores.clear()
+        for account_id, regions in stores_data.items():
+            for region, store_data in regions.items():
+                _stores[(account_id, region)] = EventsStore.from_snapshot(
+                    store_data,
+                    region=region,
+                    account_id=account_id,
+                )
+
+    _connections.clear()
+    _connections.update({name: dict(conn) for name, conn in data.get("connections", {}).items()})
+    _api_destinations.clear()
+    _api_destinations.update(
+        {name: dict(destination) for name, destination in data.get("api_destinations", {}).items()}
+    )
+    _endpoints.clear()
+    _endpoints.update(
+        {name: dict(endpoint) for name, endpoint in data.get("endpoints", {}).items()}
+    )
+    # Invocation log is ephemeral debug state; restored service state should start clean.
+    clear_invocation_log()
+
+
+def _reset_for_tests() -> None:
+    """Reset EventBridge provider globals without going through persistence code."""
+    global _default_state_handler_registered
+
+    with _store_lock:
+        _stores.clear()
+    _connections.clear()
+    _api_destinations.clear()
+    _endpoints.clear()
+    clear_invocation_log()
+    _default_state_handler_registered = False

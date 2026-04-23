@@ -63,9 +63,17 @@ def state_component() -> ServiceComponent:
     def start() -> None:
         nonlocal _ready
         if os.environ.get("ROBOTOCORE_STATE_DIR"):
+            from robotocore.services.events.provider import (
+                register_state_handler as register_events_state,
+            )
+            from robotocore.services.sqs.provider import (
+                register_state_handler as register_sqs_state,
+            )
             from robotocore.state.manager import get_state_manager
 
             manager = get_state_manager()
+            register_events_state(manager)
+            register_sqs_state(manager)
             if not manager.restore_on_startup():
                 manager.load()
         _ready = True

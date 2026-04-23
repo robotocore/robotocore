@@ -6,11 +6,9 @@ import pytest
 
 from robotocore.services.events.provider import (
     EventsError,
-    _api_destinations,
-    _connections,
     _error,
     _json,
-    _stores,
+    _reset_for_tests,
     clear_invocation_log,
     get_invocation_log,
     handle_events_request,
@@ -44,15 +42,9 @@ def _make_request(operation: str, body: dict):
 @pytest.fixture(autouse=True)
 def _clear_stores():
     """Reset global stores between tests."""
-    _stores.clear()
-    _connections.clear()
-    _api_destinations.clear()
-    clear_invocation_log()
+    _reset_for_tests()
     yield
-    _stores.clear()
-    _connections.clear()
-    _api_destinations.clear()
-    clear_invocation_log()
+    _reset_for_tests()
 
 
 # ---------------------------------------------------------------------------

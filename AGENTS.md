@@ -341,11 +341,13 @@ for svc, status in sorted(h.get('services', {}).items()):
 
 ---
 
-## State is in-memory
+## State is in-memory by default
 
-All state is lost when the container stops. This is intentional — robotocore is for development and testing, not production.
+Runtime state lives in memory and is isolated per account and region. By default, restarting container resets that state.
 
-Reset all state by restarting:
+Optional persistence and snapshots exist when you configure `ROBOTOCORE_STATE_DIR` or use `/_robotocore/state/save` and `/_robotocore/state/load`. Native SQS and EventBridge state now participate in that save/load path too.
+
+Reset all in-memory state by restarting:
 
 ```bash
 docker restart robotocore

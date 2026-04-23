@@ -1,8 +1,9 @@
 """EventBridge in-memory models: event buses, rules, targets, and archives."""
 
+import copy
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 
 @dataclass
@@ -14,6 +15,14 @@ class EventTarget:
     input_path: str | None = None
     input_transformer: dict | None = None
     dead_letter_config: dict | None = None
+
+    def snapshot_state(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> "EventTarget":
+        allowed = {field.name for field in fields(cls)}
+        return cls(**{key: value for key, value in dict(data).items() if key in allowed})
 
 
 @dataclass
@@ -48,6 +57,25 @@ class EventRule:
             return False
         return _match_pattern(self.event_pattern, event)
 
+    def snapshot_state(self) -> dict:
+        data = asdict(self)
+        data["targets"] = {
+            target_id: target.snapshot_state() for target_id, target in self.targets.items()
+        }
+        return data
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> "EventRule":
+        snapshot = dict(data)
+        targets = {
+            target_id: EventTarget.from_snapshot(target_data)
+            for target_id, target_data in snapshot.pop("targets", {}).items()
+        }
+        allowed = {field.name for field in fields(cls)}
+        rule = cls(**{key: value for key, value in snapshot.items() if key in allowed})
+        rule.targets = targets
+        return rule
+
 
 @dataclass
 class EventArchive:
@@ -68,6 +96,18 @@ class EventArchive:
     def arn(self) -> str:
         return f"arn:aws:events:{self.region}:{self.account_id}:archive/{self.name}"
 
+    def snapshot_state(self) -> dict:
+        data = asdict(self)
+        data["events"] = copy.deepcopy(self.events)
+        return data
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> "EventArchive":
+        snapshot = dict(data)
+        snapshot["events"] = copy.deepcopy(snapshot.get("events", []))
+        allowed = {field.name for field in fields(cls)}
+        return cls(**{key: value for key, value in snapshot.items() if key in allowed})
+
 
 @dataclass
 class EventReplay:
@@ -86,6 +126,14 @@ class EventReplay:
     def arn(self) -> str:
         return f"arn:aws:events:{self.region}:{self.account_id}:replay/{self.name}"
 
+    def snapshot_state(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> "EventReplay":
+        allowed = {field.name for field in fields(cls)}
+        return cls(**{key: value for key, value in dict(data).items() if key in allowed})
+
 
 @dataclass
 class EventBus:
@@ -97,6 +145,28 @@ class EventBus:
     @property
     def arn(self) -> str:
         return f"arn:aws:events:{self.region}:{self.account_id}:event-bus/{self.name}"
+
+    def snapshot_state(self) -> dict:
+        return {
+            "name": self.name,
+            "region": self.region,
+            "account_id": self.account_id,
+            "rules": {rule_name: rule.snapshot_state() for rule_name, rule in self.rules.items()},
+        }
+
+    @classmethod
+    def from_snapshot(cls, data: dict) -> "EventBus":
+        snapshot = dict(data)
+        bus = cls(
+            name=snapshot["name"],
+            region=snapshot["region"],
+            account_id=snapshot["account_id"],
+        )
+        bus.rules = {
+            rule_name: EventRule.from_snapshot(rule_data)
+            for rule_name, rule_data in snapshot.get("rules", {}).items()
+        }
+        return bus
 
 
 class EventsStore:
@@ -357,6 +427,54 @@ class EventsStore:
 
     def get_replay(self, name: str) -> EventReplay | None:
         return self.replays.get(name)
+
+    def snapshot_state(self) -> dict:
+        with self.mutex:
+            return {
+                "buses": {bus_name: bus.snapshot_state() for bus_name, bus in self.buses.items()},
+                "archives": {
+                    archive_name: archive.snapshot_state()
+                    for archive_name, archive in self.archives.items()
+                },
+                "replays": {
+                    replay_name: replay.snapshot_state()
+                    for replay_name, replay in self.replays.items()
+                },
+                "tags": copy.deepcopy(self.tags),
+            }
+
+    @classmethod
+    def from_snapshot(cls, data: dict, *, region: str, account_id: str) -> "EventsStore":
+        snapshot = data or {}
+        store = cls()
+        with store.mutex:
+            store.buses = {
+                bus_name: EventBus.from_snapshot(bus_data)
+                for bus_name, bus_data in snapshot.get("buses", {}).items()
+            }
+            store.archives = {
+                archive_name: EventArchive.from_snapshot(archive_data)
+                for archive_name, archive_data in snapshot.get("archives", {}).items()
+            }
+            store.replays = {
+                replay_name: EventReplay.from_snapshot(replay_data)
+                for replay_name, replay_data in snapshot.get("replays", {}).items()
+            }
+            store.tags = copy.deepcopy(snapshot.get("tags", {}))
+            if "default" not in store.buses:
+                store.buses["default"] = EventBus(
+                    name="default",
+                    region=region,
+                    account_id=account_id,
+                )
+            else:
+                default_bus = store.buses["default"]
+                if default_bus.region != region or default_bus.account_id != account_id:
+                    raise ValueError(
+                        f"default bus identity {default_bus.account_id}/{default_bus.region} "
+                        f"does not match store key {account_id}/{region}"
+                    )
+        return store
 
     # -- Tag operations --
 

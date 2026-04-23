@@ -91,7 +91,7 @@ class TestEventBridgeRuleScheduler:
         # Patch _stores to include our test store
         with patch(
             "robotocore.services.events.provider._stores",
-            {"123456789012:us-east-1": store},
+            {("123456789012", "us-east-1"): store},
         ):
             scheduler._check_all_rules()
 
@@ -114,7 +114,7 @@ class TestEventBridgeRuleScheduler:
         scheduler = EventBridgeRuleScheduler()
         with patch(
             "robotocore.services.events.provider._stores",
-            {"123456789012:us-east-1": store},
+            {("123456789012", "us-east-1"): store},
         ):
             scheduler._check_all_rules()
 
@@ -131,7 +131,7 @@ class TestEventBridgeRuleScheduler:
         scheduler = EventBridgeRuleScheduler()
         with patch(
             "robotocore.services.events.provider._stores",
-            {"123456789012:us-east-1": store},
+            {("123456789012", "us-east-1"): store},
         ):
             scheduler._check_all_rules()
 
@@ -143,7 +143,7 @@ class TestEventBridgeRuleScheduler:
         store = self._make_store_with_scheduled_rule(schedule_expr="rate(1 minute)")
 
         scheduler = EventBridgeRuleScheduler()
-        stores_dict = {"123456789012:us-east-1": store}
+        stores_dict = {("123456789012", "us-east-1"): store}
 
         with patch("robotocore.services.events.provider._stores", stores_dict):
             # First check — should fire
@@ -160,14 +160,14 @@ class TestEventBridgeRuleScheduler:
         store = self._make_store_with_scheduled_rule(schedule_expr="rate(1 minute)")
 
         scheduler = EventBridgeRuleScheduler()
-        stores_dict = {"123456789012:us-east-1": store}
+        stores_dict = {("123456789012", "us-east-1"): store}
 
         with patch("robotocore.services.events.provider._stores", stores_dict):
             scheduler._check_all_rules()
             assert mock_dispatch.call_count == 1
 
             # Manually set last-fired to >60s ago
-            key = ("123456789012:us-east-1", "default", "test-rule")
+            key = (("123456789012", "us-east-1"), "default", "test-rule")
             scheduler._last_fired[key] = time.monotonic() - 61
 
             scheduler._check_all_rules()
@@ -181,7 +181,7 @@ class TestEventBridgeRuleScheduler:
         scheduler = EventBridgeRuleScheduler()
         with patch(
             "robotocore.services.events.provider._stores",
-            {"123456789012:us-east-1": store},
+            {("123456789012", "us-east-1"): store},
         ):
             scheduler._check_all_rules()
 
@@ -206,7 +206,7 @@ class TestEventBridgeRuleScheduler:
         scheduler = EventBridgeRuleScheduler()
         with patch(
             "robotocore.services.events.provider._stores",
-            {"123456789012:us-east-1": store},
+            {("123456789012", "us-east-1"): store},
         ):
             scheduler._check_all_rules()
 
