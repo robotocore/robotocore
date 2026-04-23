@@ -231,8 +231,8 @@ class TestStateEndpoints:
             content=b"not json",
             headers={"content-type": "application/json"},
         )
-        # TODO: state/import also needs json.loads error handling
-        assert resp.status_code in (400, 422, 500)
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["error"]
 
 
 class TestHealthEndpoint:

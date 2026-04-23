@@ -543,7 +543,10 @@ async def import_state(request: Request) -> JSONResponse:
         return JSONResponse({"status": "imported", "name": imported_name})
 
     # Default: JSON import
-    data = json.loads(body)
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as e:
+        return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
     await asyncio.to_thread(manager.import_json, data)
     return JSONResponse({"status": "imported"})
 
