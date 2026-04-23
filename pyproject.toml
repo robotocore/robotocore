@@ -48,7 +48,7 @@ dev = [
     "mypy>=1.10",
     "bandit>=1.7",
     "coverage>=7.5",
-    "pre-commit>=3.7",
+    "pre-commit>=4.5.1",
 ]
 
 [project.scripts]
