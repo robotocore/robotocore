@@ -1994,14 +1994,10 @@ class TestCodeCommitEdgeCases:
             )
             pr_id = create_resp["pullRequest"]["pullRequestId"]
             # Should appear in OPEN
-            open_resp = codecommit.list_pull_requests(
-                repositoryName=name, pullRequestStatus="OPEN"
-            )
+            open_resp = codecommit.list_pull_requests(repositoryName=name, pullRequestStatus="OPEN")
             assert pr_id in open_resp["pullRequestIds"]
             # Close it
-            codecommit.update_pull_request_status(
-                pullRequestId=pr_id, pullRequestStatus="CLOSED"
-            )
+            codecommit.update_pull_request_status(pullRequestId=pr_id, pullRequestStatus="CLOSED")
             # Should no longer appear in OPEN
             open_resp2 = codecommit.list_pull_requests(
                 repositoryName=name, pullRequestStatus="OPEN"
@@ -2087,9 +2083,7 @@ class TestCodeCommitEdgeCases:
                 approvalRuleTemplateName=template_name,
                 approvalRuleTemplateContent=APPROVAL_RULE_CONTENT,
             )
-            resp = codecommit.get_approval_rule_template(
-                approvalRuleTemplateName=template_name
-            )
+            resp = codecommit.get_approval_rule_template(approvalRuleTemplateName=template_name)
             tpl_id = resp["approvalRuleTemplate"]["approvalRuleTemplateId"]
             # Should be a non-empty string (UUID format)
             assert len(tpl_id) > 0
