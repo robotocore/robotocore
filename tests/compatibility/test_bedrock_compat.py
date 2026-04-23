@@ -1073,12 +1073,19 @@ class TestBedrockEnforcedGuardrailConfigOps:
 
     def test_put_enforced_guardrail_configuration(self, bedrock):
         """PutEnforcedGuardrailConfiguration returns configId."""
-        r = bedrock.put_enforced_guardrail_configuration(
-            guardrailInferenceConfig={
-                "guardrailIdentifier": "test-guardrail-id",
-                "guardrailVersion": "1",
-            },
-        )
+        import botocore.session
+
+        svc = botocore.session.get_session().get_service_model("bedrock")
+        op = svc.operation_model("PutEnforcedGuardrailConfiguration")
+        gic_shape = op.input_shape.members["guardrailInferenceConfig"]
+        required = getattr(gic_shape, "required_members", [])
+        config: dict = {
+            "guardrailIdentifier": "test-guardrail-id",
+            "guardrailVersion": "1",
+        }
+        if "inputTags" in required:
+            config["inputTags"] = '{"source": "user"}'
+        r = bedrock.put_enforced_guardrail_configuration(guardrailInferenceConfig=config)
         assert "configId" in r
         assert r["ResponseMetadata"]["HTTPStatusCode"] == 200
 
