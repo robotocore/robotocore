@@ -1077,7 +1077,6 @@ class TestBedrockEnforcedGuardrailConfigOps:
             guardrailInferenceConfig={
                 "guardrailIdentifier": "test-guardrail-id",
                 "guardrailVersion": "1",
-                "inputTags": '{"source": "user"}',
             },
         )
         assert "configId" in r

@@ -5,7 +5,7 @@ the full request/response cycle for config management.
 """
 
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from starlette.testclient import TestClient
@@ -15,7 +15,6 @@ from starlette.testclient import TestClient
 def client_enabled():
     """Create a test client with config updates enabled."""
     with patch.dict(os.environ, {"ENABLE_CONFIG_UPDATES": "1"}):
-        # Reset the singleton so it picks up the env var
         import robotocore.config.runtime as rt_mod
 
         old = rt_mod._runtime_config
@@ -23,11 +22,12 @@ def client_enabled():
         try:
             from robotocore.gateway.app import app
 
-            # Clear startup/shutdown hooks to prevent SMTP port binding in tests
-            app.router.on_startup.clear()
-            app.router.on_shutdown.clear()
-            with TestClient(app, raise_server_exceptions=False) as client:
-                yield client
+            with (
+                patch("robotocore.gateway.app._start_background_engines", AsyncMock()),
+                patch("robotocore.gateway.app._shutdown", AsyncMock()),
+            ):
+                with TestClient(app, raise_server_exceptions=False) as client:
+                    yield client
         finally:
             rt_mod._runtime_config = old
 
@@ -44,11 +44,12 @@ def client_disabled():
         try:
             from robotocore.gateway.app import app
 
-            # Clear startup/shutdown hooks to prevent SMTP port binding in tests
-            app.router.on_startup.clear()
-            app.router.on_shutdown.clear()
-            with TestClient(app, raise_server_exceptions=False) as client:
-                yield client
+            with (
+                patch("robotocore.gateway.app._start_background_engines", AsyncMock()),
+                patch("robotocore.gateway.app._shutdown", AsyncMock()),
+            ):
+                with TestClient(app, raise_server_exceptions=False) as client:
+                    yield client
         finally:
             rt_mod._runtime_config = old
 
