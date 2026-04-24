@@ -217,9 +217,27 @@ class TestStateEndpoints:
         # Should succeed with default path or return 400 if no dir configured
         assert resp.status_code in (200, 400)
 
+    def test_save_state_invalid_json(self, client):
+        resp = client.post(
+            "/_robotocore/state/save",
+            content=b"not json",
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["error"]
+
     def test_load_state_no_body(self, client):
         resp = client.post("/_robotocore/state/load")
         assert resp.status_code in (200, 400)
+
+    def test_load_state_invalid_json(self, client):
+        resp = client.post(
+            "/_robotocore/state/load",
+            content=b"not json",
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["error"]
 
     def test_import_state_empty_body(self, client):
         resp = client.post("/_robotocore/state/import")
@@ -231,8 +249,8 @@ class TestStateEndpoints:
             content=b"not json",
             headers={"content-type": "application/json"},
         )
-        # TODO: state/import also needs json.loads error handling
-        assert resp.status_code in (400, 422, 500)
+        assert resp.status_code == 400
+        assert "Invalid JSON" in resp.json()["error"]
 
 
 class TestHealthEndpoint:

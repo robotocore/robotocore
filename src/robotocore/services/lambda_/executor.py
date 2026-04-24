@@ -702,9 +702,12 @@ def execute_python_handler(
         _invocation_output.buffer = logs_output
         try:
             # Reuse cached module when hot_reload is off (matches real Lambda behavior:
-            # modules persist across invocations within the same execution environment)
-            if not hot_reload and modules_key in sys.modules:
-                module = sys.modules[modules_key]
+            # modules persist across invocations within the same execution environment).
+            # Also verify the cached module came from the current tmpdir — a new code
+            # deployment produces a new tmpdir, and we must not reuse the stale module.
+            cached = sys.modules.get(modules_key) if not hot_reload else None
+            if cached is not None and (getattr(cached, "__file__", "") or "").startswith(tmpdir):
+                module = cached
             else:
                 spec = importlib.util.spec_from_file_location(module_path, module_file)
                 module = importlib.util.module_from_spec(spec)
