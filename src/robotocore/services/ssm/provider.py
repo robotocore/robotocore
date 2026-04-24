@@ -29,7 +29,9 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
             _parsed = json.loads(body)
         except json.JSONDecodeError as e:
             return Response(
-                content=json.dumps({"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}),
+                content=json.dumps(
+                    {"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}
+                ),
                 status_code=400,
                 media_type="application/x-amz-json-1.1",
             )

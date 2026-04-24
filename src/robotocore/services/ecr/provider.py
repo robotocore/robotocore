@@ -25,7 +25,9 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
             params = json.loads(body) if body else {}
         except json.JSONDecodeError as e:
             return Response(
-                content=json.dumps({"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}),
+                content=json.dumps(
+                    {"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}
+                ),
                 status_code=400,
                 media_type="application/x-amz-json-1.1",
             )
@@ -53,7 +55,9 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
             params = json.loads(body) if body else {}
         except json.JSONDecodeError as e:
             return Response(
-                content=json.dumps({"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}),
+                content=json.dumps(
+                    {"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}
+                ),
                 status_code=400,
                 media_type="application/x-amz-json-1.1",
             )

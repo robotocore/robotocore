@@ -509,9 +509,9 @@ class ScheduleExecutor:
 
     @staticmethod
     def _invoke_lambda(target_arn: str, payload: str, account_id: str, region: str) -> None:
-        from robotocore.services.lambda_.invoke import invoke_lambda_async
-
         import json as _json
+
+        from robotocore.services.lambda_.invoke import invoke_lambda_async
 
         try:
             event = _json.loads(payload) if payload else {}
