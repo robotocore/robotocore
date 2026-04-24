@@ -406,7 +406,10 @@ async def save_state(request: Request) -> JSONResponse:
     body = await request.body()
     params = {}
     if body:
-        params = json.loads(body)
+        try:
+            params = json.loads(body)
+        except json.JSONDecodeError as e:
+            return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
 
     manager = get_state_manager()
     path = params.get("path") or manager.state_dir
@@ -434,7 +437,10 @@ async def load_state(request: Request) -> JSONResponse:
     body = await request.body()
     params = {}
     if body:
-        params = json.loads(body)
+        try:
+            params = json.loads(body)
+        except json.JSONDecodeError as e:
+            return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
 
     manager = get_state_manager()
     path = params.get("path") or manager.state_dir
@@ -977,7 +983,10 @@ async def pods_save(request: Request) -> JSONResponse:
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
-    params = json.loads(body) if body else {}
+    try:
+        params = json.loads(body) if body else {}
+    except json.JSONDecodeError as e:
+        return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
 
     try:
         mgr = get_cloud_pods_manager()
@@ -997,7 +1006,10 @@ async def pods_load(request: Request) -> JSONResponse:
     from robotocore.state.manager import get_state_manager
 
     body = await request.body()
-    params = json.loads(body) if body else {}
+    try:
+        params = json.loads(body) if body else {}
+    except json.JSONDecodeError as e:
+        return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
 
     name = params.get("name")
     if not name:
