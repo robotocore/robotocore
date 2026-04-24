@@ -39,14 +39,24 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
         if method == "GET":
             return _get_email_template(template_name, region)
         elif method == "PUT":
-            body = json.loads(await request.body())
+            try:
+                body = json.loads(await request.body())
+            except json.JSONDecodeError as e:
+                from starlette.responses import JSONResponse
+
+                return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
             return _update_email_template(template_name, body, region)
         elif method == "DELETE":
             return _delete_email_template(template_name, region)
 
     if _TEMPLATE_PATH.match(path):
         if method == "POST":
-            body = json.loads(await request.body())
+            try:
+                body = json.loads(await request.body())
+            except json.JSONDecodeError as e:
+                from starlette.responses import JSONResponse
+
+                return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
             return _create_email_template(body, region)
         elif method == "GET":
             return _list_email_templates(region)

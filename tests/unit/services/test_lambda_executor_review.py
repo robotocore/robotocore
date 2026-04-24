@@ -162,14 +162,6 @@ class TestEnvVarIsolation:
 
 
 class TestSysPathConcurrency:
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "Known race condition: sys.path.remove() can strip a pre-existing entry "
-            "on Python 3.12 under high concurrency. Tracked as a known bug; "
-            "fix requires a thread-local path strategy in the executor."
-        ),
-    )
     def test_concurrent_invocations_dont_corrupt_sys_path(self):
         """After 10 concurrent invocations complete, sys.path should be
         identical to what it was before any of them started."""

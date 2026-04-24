@@ -21,7 +21,14 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
     body = await request.body()
 
     if action == "BatchCheckLayerAvailability":
-        params = json.loads(body) if body else {}
+        try:
+            params = json.loads(body) if body else {}
+        except json.JSONDecodeError as e:
+            return Response(
+                content=json.dumps({"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}),
+                status_code=400,
+                media_type="application/x-amz-json-1.1",
+            )
         digests = params.get("layerDigests", [])
         repo_name = params.get("repositoryName", "")
         registry_id = params.get("registryId", account_id)
@@ -42,7 +49,14 @@ async def handle_ecr_request(request: Request, region: str, account_id: str) -> 
         )
 
     if action == "DescribeRepositories":
-        params = json.loads(body) if body else {}
+        try:
+            params = json.loads(body) if body else {}
+        except json.JSONDecodeError as e:
+            return Response(
+                content=json.dumps({"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}),
+                status_code=400,
+                media_type="application/x-amz-json-1.1",
+            )
         max_results = params.get("maxResults")
         if max_results:
             # Forward to Moto, then truncate results

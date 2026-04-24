@@ -641,7 +641,10 @@ async def audit_log(request: Request) -> JSONResponse:
     """Return recent API requests."""
     from robotocore.audit.log import get_audit_log
 
-    limit = int(request.query_params.get("limit", "100"))
+    try:
+        limit = int(request.query_params.get("limit", "100"))
+    except ValueError:
+        return JSONResponse({"error": "limit must be an integer"}, status_code=400)
     entries = get_audit_log().recent(limit)
     return JSONResponse({"entries": entries, "count": len(entries)})
 
@@ -783,7 +786,10 @@ async def ses_messages_list(request: Request) -> JSONResponse:
     """List emails received via the SMTP server."""
     from robotocore.services.ses.email_store import get_email_store
 
-    limit = int(request.query_params.get("limit", "100"))
+    try:
+        limit = int(request.query_params.get("limit", "100"))
+    except ValueError:
+        return JSONResponse({"error": "limit must be an integer"}, status_code=400)
     messages = get_email_store().get_messages(limit)
     return JSONResponse({"messages": messages, "count": len(messages)})
 
@@ -937,7 +943,10 @@ async def iam_policy_stream_list(request: Request) -> JSONResponse:
         )
 
     stream = get_policy_stream()
-    limit = int(request.query_params.get("limit", "100"))
+    try:
+        limit = int(request.query_params.get("limit", "100"))
+    except ValueError:
+        return JSONResponse({"error": "limit must be an integer"}, status_code=400)
     principal = request.query_params.get("principal")
     action = request.query_params.get("action")
     decision = request.query_params.get("decision")

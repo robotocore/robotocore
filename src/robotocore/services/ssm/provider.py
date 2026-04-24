@@ -24,8 +24,20 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
     target = request.headers.get("x-amz-target", "")
     action = target.split(".")[-1] if "." in target else ""
 
+    if action in ("SendCommand", "ListCommands", "ListCommandInvocations") and body:
+        try:
+            _parsed = json.loads(body)
+        except json.JSONDecodeError as e:
+            return Response(
+                content=json.dumps({"__type": "InvalidParameterException", "message": f"Invalid JSON: {e}"}),
+                status_code=400,
+                media_type="application/x-amz-json-1.1",
+            )
+    else:
+        _parsed = {}
+
     if action == "SendCommand":
-        params = json.loads(body) if body else {}
+        params = _parsed
         targets = params.get("Targets", [])
         # Check if any target uses the problematic 'instanceids' key
         has_instanceids = any(t.get("Key", "").lower() == "instanceids" for t in targets)
@@ -33,7 +45,7 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
             return _send_command_native(params, region, account_id)
 
     if action == "ListCommands":
-        params = json.loads(body) if body else {}
+        params = _parsed
         command_id = params.get("CommandId")
         store_key = f"{account_id}:{region}"
         if command_id and command_id in _commands.get(store_key, {}):
@@ -45,7 +57,7 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
             )
 
     if action == "ListCommandInvocations":
-        params = json.loads(body) if body else {}
+        params = _parsed
         command_id = params.get("CommandId")
         store_key = f"{account_id}:{region}"
         if command_id and command_id in _commands.get(store_key, {}):

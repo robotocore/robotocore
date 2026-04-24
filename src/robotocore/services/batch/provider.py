@@ -502,7 +502,7 @@ def _cancel_job(store: BatchStore, params: dict, region: str, account_id: str) -
                 "ClientException",
                 "Cannot cancel a job that is already STARTING or RUNNING.",
             )
-        job["status"] = "FAILED"
+        job["status"] = "CANCELLED"
         job["statusReason"] = reason
         job["stoppedAt"] = int(time.time() * 1000)
 
