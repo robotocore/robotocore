@@ -65,7 +65,10 @@ async def handle_kinesis_request(request: Request, region: str, account_id: str)
         return _error("InvalidAction", "Missing X-Amz-Target", 400)
 
     action = target.split(".")[-1]
-    params = json.loads(body) if body else {}
+    try:
+        params = json.loads(body) if body else {}
+    except json.JSONDecodeError as e:
+        return _error("InvalidArgumentException", f"Invalid JSON: {e}", 400)
 
     handler = _ACTION_MAP.get(action)
     if handler is None:

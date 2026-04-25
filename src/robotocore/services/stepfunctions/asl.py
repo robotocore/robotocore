@@ -396,7 +396,7 @@ class ASLExecutor:
         # Wait for callback with heartbeat checking
         if heartbeat_seconds and heartbeat_seconds > 0:
             effective_timeout = min(heartbeat_seconds, timeout)
-            deadline = time.time() + min(timeout, 30)
+            deadline = time.time() + timeout
             while time.time() < deadline:
                 got_signal = token_info["event"].wait(timeout=min(effective_timeout, 1))
                 if got_signal:
@@ -411,7 +411,7 @@ class ASLExecutor:
                         "Heartbeat timeout exceeded",
                     )
         else:
-            got_signal = token_info["event"].wait(timeout=min(timeout, 30))
+            got_signal = token_info["event"].wait(timeout=timeout)
 
         with _token_lock:
             _task_tokens.pop(task_token, None)

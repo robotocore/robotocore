@@ -625,7 +625,7 @@ class TestCancelJob:
         }
         result = _cancel_job(store, {"jobId": "j1", "reason": "no longer needed"}, REGION, ACCOUNT)
         assert result == {}
-        assert store.jobs["j1"]["status"] == "FAILED"
+        assert store.jobs["j1"]["status"] == "CANCELLED"
         assert store.jobs["j1"]["statusReason"] == "no longer needed"
 
     def test_cancel_running_job_raises(self, store):

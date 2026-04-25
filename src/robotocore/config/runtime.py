@@ -57,8 +57,7 @@ class RuntimeConfig:
 
     def __init__(self) -> None:
         self._overrides: dict[str, str] = {}
-        self._history: list[dict[str, Any]] = {}  # type: ignore[assignment]
-        self._history = []
+        self._history: list[dict[str, Any]] = []
         self.updates_enabled: bool = os.environ.get("ENABLE_CONFIG_UPDATES", "0") == "1"
 
     # ------------------------------------------------------------------
