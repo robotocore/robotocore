@@ -529,6 +529,67 @@ jobs:
           assert msgs and msgs[0]['Body'] == 'hello', f'Expected message, got: {msgs}'
           print('SQS smoke test passed')
           "
+          # Python Lambda invocation
+          python -c "
+          import boto3, io, json, time, uuid, zipfile
+
+          endpoint = 'http://localhost:4566'
+          region = 'us-east-1'
+          creds = dict(aws_access_key_id='test', aws_secret_access_key='test')
+
+          iam = boto3.client('iam', endpoint_url=endpoint, region_name=region, **creds)
+          lam = boto3.client('lambda', endpoint_url=endpoint, region_name=region, **creds)
+
+          trust = json.dumps({'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Principal': {'Service': 'lambda.amazonaws.com'}, 'Action': 'sts:AssumeRole'}]})
+          role_name = 'smoke-lambda-role-' + uuid.uuid4().hex[:8]
+          iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+          role_arn = f'arn:aws:iam::123456789012:role/{role_name}'
+
+          buf = io.BytesIO()
+          with zipfile.ZipFile(buf, 'w') as zf:
+              zf.writestr('lambda_function.py', 'def handler(event, context): return {\"ok\": True, \"echo\": event.get(\"msg\")}')
+          fname = 'smoke-python-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fname, Runtime='python3.12', Role=role_arn, Handler='lambda_function.handler', Code={'ZipFile': buf.getvalue()})
+
+          resp = lam.invoke(FunctionName=fname, Payload=json.dumps({'msg': 'hello-python'}))
+          payload = json.loads(resp['Payload'].read())
+          assert payload['ok'] is True, f'Python Lambda failed: {payload}'
+          assert payload['echo'] == 'hello-python', f'Python Lambda echo wrong: {payload}'
+          print('Python Lambda smoke test passed')
+          lam.delete_function(FunctionName=fname)
+          iam.delete_role(RoleName=role_name)
+          "
+          # Node.js Lambda invocation — verifies node binary is present in the Docker image
+          python -c "
+          import boto3, io, json, time, uuid, zipfile
+
+          endpoint = 'http://localhost:4566'
+          region = 'us-east-1'
+          creds = dict(aws_access_key_id='test', aws_secret_access_key='test')
+
+          iam = boto3.client('iam', endpoint_url=endpoint, region_name=region, **creds)
+          lam = boto3.client('lambda', endpoint_url=endpoint, region_name=region, **creds)
+
+          trust = json.dumps({'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Principal': {'Service': 'lambda.amazonaws.com'}, 'Action': 'sts:AssumeRole'}]})
+          role_name = 'smoke-node-role-' + uuid.uuid4().hex[:8]
+          iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+          role_arn = f'arn:aws:iam::123456789012:role/{role_name}'
+
+          buf = io.BytesIO()
+          with zipfile.ZipFile(buf, 'w') as zf:
+              zf.writestr('index.js', 'exports.handler = async (event) => ({ ok: true, echo: event.msg });')
+          fname = 'smoke-node-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fname, Runtime='nodejs20.x', Role=role_arn, Handler='index.handler', Code={'ZipFile': buf.getvalue()})
+
+          resp = lam.invoke(FunctionName=fname, Payload=json.dumps({'msg': 'hello-node'}))
+          assert resp.get('FunctionError') is None, f'Node Lambda returned FunctionError: {json.loads(resp[\"Payload\"].read())}'
+          payload = json.loads(resp['Payload'].read())
+          assert payload['ok'] is True, f'Node Lambda failed: {payload}'
+          assert payload['echo'] == 'hello-node', f'Node Lambda echo wrong: {payload}'
+          print('Node.js Lambda smoke test passed')
+          lam.delete_function(FunctionName=fname)
+          iam.delete_role(RoleName=role_name)
+          "
           echo "All smoke tests passed"
       - name: Check image size
         run: |
