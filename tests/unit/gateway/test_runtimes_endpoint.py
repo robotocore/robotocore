@@ -8,12 +8,13 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 import robotocore.gateway.app as _app
-from robotocore.gateway.app import _ALL_RUNTIME_FAMILIES, runtimes_endpoint
 
 
 @pytest.fixture(scope="module")
 def client():
-    app = Starlette(routes=[Route("/_robotocore/runtimes", runtimes_endpoint, methods=["GET"])])
+    app = Starlette(
+        routes=[Route("/_robotocore/runtimes", _app.runtimes_endpoint, methods=["GET"])]
+    )
     return TestClient(app, raise_server_exceptions=True)
 
 
@@ -41,7 +42,7 @@ class TestRuntimesEndpoint:
 
     def test_all_matches_canonical_constant(self, client):
         data = client.get("/_robotocore/runtimes").json()
-        assert set(data["all"]) == set(_ALL_RUNTIME_FAMILIES)
+        assert set(data["all"]) == set(_app._ALL_RUNTIME_FAMILIES)
 
     def test_python_always_available(self, client):
         data = client.get("/_robotocore/runtimes").json()
