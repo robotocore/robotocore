@@ -672,6 +672,28 @@ jobs:
           JAVAEOF
           javac /tmp/java-smoke/Handler.java -d /tmp/java-smoke
 
+          # Compile a minimal .NET handler on the CI runner (dotnet is pre-installed on ubuntu-latest)
+          # Passing a pre-compiled DLL (same pattern as Java) avoids server-side source compilation
+          # and is more representative of real-world .NET Lambda usage.
+          mkdir -p /tmp/dotnet-smoke
+          cat > /tmp/dotnet-smoke/Handler.cs << 'CSEOF'
+          public class Handler {
+              public string HandleRequest(string eventJson, object context) {
+                  return "{\"ok\":true,\"echo\":\"hello-dotnet\"}";
+              }
+          }
+          CSEOF
+          cat > /tmp/dotnet-smoke/SmokeTest.csproj << 'PROJEOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net8.0</TargetFramework>
+              <AssemblyName>SmokeTest</AssemblyName>
+              <ImplicitUsings>enable</ImplicitUsings>
+            </PropertyGroup>
+          </Project>
+          PROJEOF
+          dotnet build /tmp/dotnet-smoke/SmokeTest.csproj -c Release -o /tmp/dotnet-smoke/out --nologo -v q
+
           python -c "
           import boto3, io, json, uuid, zipfile
 
@@ -693,8 +715,9 @@ jobs:
 
           def invoke(lam, fname, payload='{}'):
               resp = lam.invoke(FunctionName=fname, Payload=payload)
-              assert resp.get('FunctionError') is None, f'{fname}: FunctionError={json.loads(resp[\"Payload\"].read())}'
-              return json.loads(resp['Payload'].read())
+              payload_bytes = resp['Payload'].read()
+              assert resp.get('FunctionError') is None, f'{fname}: FunctionError set, payload={payload_bytes.decode()}'
+              return json.loads(payload_bytes)
 
           role = 'smoke-full-role-' + uuid.uuid4().hex[:8]
           iam.create_role(RoleName=role, AssumeRolePolicyDocument=trust)
@@ -711,17 +734,12 @@ jobs:
           lam.delete_function(FunctionName=fn)
           print('Java Lambda smoke test passed')
 
-          # .NET — pass C# source; server compiles it inside the container
-          cs_src = '''
-          public class Handler {
-              public string HandleRequest(string eventJson, object context) {
-                  return \"{\\\"ok\\\":true,\\\"echo\\\":\\\"hello-dotnet\\\"}\";
-              }
-          }
-          '''
+          # .NET — use pre-compiled DLL (compiled locally above, same pattern as Java)
+          with open('/tmp/dotnet-smoke/out/SmokeTest.dll', 'rb') as f:
+              dotnet_dll = f.read()
           fn = 'smoke-dotnet-' + uuid.uuid4().hex[:8]
           lam.create_function(FunctionName=fn, Runtime='dotnet8', Role=arn, Handler='SmokeTest::Handler::HandleRequest',
-              Code={'ZipFile': make_zip({'Handler.cs': cs_src})}, Timeout=60)
+              Code={'ZipFile': make_zip({'SmokeTest.dll': dotnet_dll})}, Timeout=60)
           p = invoke(lam, fn)
           assert p.get('ok') is True and p.get('echo') == 'hello-dotnet', f'.NET: {p}'
           lam.delete_function(FunctionName=fn)
