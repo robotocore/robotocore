@@ -71,7 +71,7 @@ async def handle_ses_request(request: Request, region: str, account_id: str) -> 
         try:
             _capture_send(action, params)
         except Exception:  # noqa: BLE001
-            logger.debug("SES email capture failed for %s (non-fatal)", action)
+            logger.debug("SES email capture failed for %s (non-fatal)", action, exc_info=True)
 
     return response
 
@@ -596,8 +596,8 @@ def _capture_send_raw_email(params: dict, store) -> None:  # type: ignore[type-a
             if not sender:
                 sender = msg.get("From", "") or ""
             if not recipients:
-                to_header = (msg.get("To", "") or "").split(",")
-                recipients = [a.strip() for a in to_header if a.strip()]
+                raw_to = msg.get("To", "") or ""
+                recipients = [addr for _, addr in _email.utils.getaddresses([raw_to]) if addr]
             if msg.is_multipart():
                 for part in msg.walk():
                     if part.get_content_type() == "text/plain":
@@ -608,7 +608,7 @@ def _capture_send_raw_email(params: dict, store) -> None:  # type: ignore[type-a
                 payload = msg.get_payload(decode=True)
                 body = payload.decode("utf-8", errors="replace") if payload else ""
         except Exception:  # noqa: BLE001
-            logger.debug("SES raw email parse failed (non-fatal)")
+            logger.debug("SES raw email parse failed (non-fatal)", exc_info=True)
 
     store.add_message(
         sender=sender,
@@ -622,11 +622,30 @@ def _capture_send_raw_email(params: dict, store) -> None:  # type: ignore[type-a
 
 def _capture_send_templated_email(params: dict, store) -> None:  # type: ignore[type-arg]
     sender = params.get("Source", "")
+    template = params.get("Template", "")
+
+    # SendTemplatedEmail uses Destination.ToAddresses.member.N
+    # SendBulkTemplatedEmail uses Destinations.member.N.Destination.ToAddresses.member.N
     to = _collect_indexed_params(params, "Destination.ToAddresses")
     cc = _collect_indexed_params(params, "Destination.CcAddresses")
     bcc = _collect_indexed_params(params, "Destination.BccAddresses")
+
+    if not to and not cc and not bcc:
+        # Bulk form: collect recipients from all Destinations entries
+        i = 1
+        while True:
+            prefix = f"Destinations.member.{i}.Destination"
+            dest_to = _collect_indexed_params(params, f"{prefix}.ToAddresses")
+            dest_cc = _collect_indexed_params(params, f"{prefix}.CcAddresses")
+            dest_bcc = _collect_indexed_params(params, f"{prefix}.BccAddresses")
+            if not dest_to and not dest_cc and not dest_bcc:
+                break
+            to += dest_to
+            cc += dest_cc
+            bcc += dest_bcc
+            i += 1
+
     recipients = to + cc + bcc
-    template = params.get("Template", "")
     store.add_message(
         sender=sender,
         recipients=recipients,

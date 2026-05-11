@@ -86,9 +86,6 @@ class TestSesV1Capture:
     def setup_method(self):
         self.store = EmailStore()
 
-    def _patch_store(self):
-        return patch("robotocore.services.ses.provider.get_email_store", return_value=self.store)
-
     def test_capture_send_email(self):
         from robotocore.services.ses.provider import _capture_send_email
 

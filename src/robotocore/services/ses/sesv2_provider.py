@@ -78,7 +78,7 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
             try:
                 _capture_sesv2_send_email(json.loads(body_bytes))
             except Exception:  # noqa: BLE001
-                logger.debug("SES v2 email capture failed (non-fatal)")
+                logger.debug("SES v2 email capture failed (non-fatal)", exc_info=True)
         return response
 
     # Everything else → Moto
