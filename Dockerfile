@@ -49,7 +49,7 @@ RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
 # ---- Runtime stage: slim image with Python + Node.js + Ruby ----
 FROM python:3.12-slim AS standard
 
-# curl: health checks; ruby: Lambda ruby runtime support
+# curl: health checks; ruby: Lambda Ruby runtime support
 # Node.js is installed via versioned COPY below, not apt.
 RUN apt-get update && apt-get install -y --no-install-recommends curl ruby \
     && rm -rf /var/lib/apt/lists/*
@@ -120,8 +120,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certifi
     && apt-get remove -y wget && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /root/.dotnet /tmp/NuGetScratch
 
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1
 
 USER robotocore
+
+# ---- Default build target: standard image ----
+# Placing this last ensures `docker build .` (without --target) produces the
+# standard slim image, not the heavier java-and-dotnet stage.
+FROM standard

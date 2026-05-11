@@ -19,7 +19,7 @@ import pytest
 
 from tests.compatibility.conftest import make_client, skip_if_runtime_unavailable
 
-pytestmark = skip_if_runtime_unavailable("dotnet")
+pytestmark = skip_if_runtime_unavailable("dotnet", also_requires="dotnet")
 
 
 def _detect_tfm() -> str:

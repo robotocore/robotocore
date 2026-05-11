@@ -17,7 +17,7 @@ import pytest
 
 from tests.compatibility.conftest import make_client, skip_if_runtime_unavailable
 
-pytestmark = skip_if_runtime_unavailable("java")
+pytestmark = skip_if_runtime_unavailable("java", also_requires="javac")
 
 
 def _compile_and_zip(java_sources: dict[str, str]) -> bytes:
