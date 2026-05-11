@@ -7,13 +7,22 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from robotocore.gateway.app import runtimes_endpoint
+import robotocore.gateway.app as _app
+from robotocore.gateway.app import _ALL_RUNTIME_FAMILIES, runtimes_endpoint
 
 
 @pytest.fixture(scope="module")
 def client():
     app = Starlette(routes=[Route("/_robotocore/runtimes", runtimes_endpoint, methods=["GET"])])
     return TestClient(app, raise_server_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def _reset_java_cache():
+    """Reset the Java functional probe cache between tests so mocks take effect."""
+    _app._java_functional = None
+    yield
+    _app._java_functional = None
 
 
 class TestRuntimesEndpoint:
@@ -29,6 +38,10 @@ class TestRuntimesEndpoint:
     def test_all_contains_expected_families(self, client):
         data = client.get("/_robotocore/runtimes").json()
         assert set(data["all"]) == {"python", "nodejs", "ruby", "java", "dotnet", "custom"}
+
+    def test_all_matches_canonical_constant(self, client):
+        data = client.get("/_robotocore/runtimes").json()
+        assert set(data["all"]) == set(_ALL_RUNTIME_FAMILIES)
 
     def test_python_always_available(self, client):
         data = client.get("/_robotocore/runtimes").json()
@@ -68,19 +81,13 @@ class TestRuntimesEndpoint:
             resp = client.get("/_robotocore/runtimes")
         assert "ruby" not in resp.json()["available"]
 
-    def test_java_requires_both_java_and_javac(self, client):
-        def _which_java_only(name):
-            return "/usr/bin/java" if name == "java" else None
-
-        with patch("robotocore.gateway.app.shutil.which", side_effect=_which_java_only):
+    def test_java_absent_when_binaries_missing(self, client):
+        with patch("robotocore.gateway.app._is_java_functional", return_value=False):
             resp = client.get("/_robotocore/runtimes")
         assert "java" not in resp.json()["available"]
 
-    def test_java_present_when_both_binaries_present(self, client):
-        def _which_full(name):
-            return f"/usr/bin/{name}" if name in ("java", "javac") else None
-
-        with patch("robotocore.gateway.app.shutil.which", side_effect=_which_full):
+    def test_java_present_when_functional(self, client):
+        with patch("robotocore.gateway.app._is_java_functional", return_value=True):
             resp = client.get("/_robotocore/runtimes")
         assert "java" in resp.json()["available"]
 
