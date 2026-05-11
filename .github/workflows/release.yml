@@ -99,10 +99,12 @@ jobs:
         run: |
           git tag "v${{ steps.version.outputs.VERSION }}"
 
-      - name: Build and push Docker image
+      # Standard image: Python + Node.js + Ruby
+      - name: Build and push standard Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
+          target: standard
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
@@ -112,6 +114,24 @@ jobs:
             robotocore/robotocore:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
             ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # java-and-dotnet image: standard + OpenJDK 21 + .NET SDK 8
+      - name: Build and push java-and-dotnet Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: java-and-dotnet
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            SETUPTOOLS_SCM_PRETEND_VERSION=${{ steps.version.outputs.VERSION }}
+          tags: |
+            robotocore/robotocore:${{ steps.version.outputs.VERSION }}-java-and-dotnet
+            robotocore/robotocore:java-and-dotnet
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-java-and-dotnet
+            ghcr.io/${{ github.repository }}:java-and-dotnet
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

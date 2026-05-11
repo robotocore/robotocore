@@ -1,7 +1,7 @@
 """Lambda Java runtime compatibility tests.
 
 Tests create Java Lambda functions, invoke them, and assert results.
-All tests skip if javac/java are not available on PATH.
+Tests skip when the server reports java is unavailable.
 """
 
 import io
@@ -15,29 +15,9 @@ import zipfile
 
 import pytest
 
-from tests.compatibility.conftest import make_client
+from tests.compatibility.conftest import make_client, skip_if_runtime_unavailable
 
-
-# Skip entire module if Java tools are not available or non-functional
-# macOS has stub binaries at /usr/bin/javac that exist but fail without a JDK
-def _java_available() -> bool:
-    """Check if javac and java are actually functional (not just stubs)."""
-    javac = shutil.which("javac")
-    java = shutil.which("java")
-    if not javac or not java:
-        return False
-    try:
-        result = subprocess.run([javac, "-version"], capture_output=True, text=True, timeout=10)
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-
-
-_JAVA_OK = _java_available()
-pytestmark = pytest.mark.skipif(
-    not _JAVA_OK,
-    reason="javac and java must be functional on PATH for Java Lambda tests",
-)
+pytestmark = skip_if_runtime_unavailable("java")
 
 
 def _compile_and_zip(java_sources: dict[str, str]) -> bytes:

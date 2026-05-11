@@ -46,10 +46,12 @@ RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
     /app/.venv/lib/python3.12/site-packages/setuptools \
     /app/.venv/lib/python3.12/site-packages/setuptools*.dist-info
 
-# ---- Runtime stage: slim image with just python + venv ----
-FROM python:3.12-slim
+# ---- Runtime stage: slim image with Python + Node.js + Ruby ----
+FROM python:3.12-slim AS standard
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# curl: health checks; ruby: Lambda ruby runtime support
+# Node.js is installed via versioned COPY below, not apt.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ruby \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js runtimes — copy official versioned binaries so each nodejs* Lambda
@@ -95,3 +97,31 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:4566/_localstack/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
+
+# ---- java-and-dotnet stage: standard + JDK + .NET SDK ----
+# Build with: docker build --target java-and-dotnet -t robotocore:java-and-dotnet .
+FROM standard AS java-and-dotnet
+
+USER root
+
+# openjdk-21-jdk-headless: javac (bootstrap compilation) + java (Lambda execution)
+# dotnet-sdk-8.0: dotnet CLI for bootstrap compilation + Lambda execution
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-21-jdk-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install .NET SDK via Microsoft's official script (apt repo has outdated versions on slim)
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+    && rm /tmp/dotnet-install.sh \
+    && apt-get remove -y wget && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /root/.dotnet /tmp/NuGetScratch
+
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_NOLOGO=1
+
+USER robotocore

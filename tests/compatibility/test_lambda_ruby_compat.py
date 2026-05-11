@@ -2,19 +2,14 @@
 
 import io
 import json
-import shutil
 import uuid
 import zipfile
 
 import pytest
 
-from tests.compatibility.conftest import make_client
+from tests.compatibility.conftest import make_client, skip_if_runtime_unavailable
 
-# Skip entire module if ruby binary is not available
-pytestmark = pytest.mark.skipif(
-    shutil.which("ruby") is None,
-    reason="Ruby binary not found on PATH",
-)
+pytestmark = skip_if_runtime_unavailable("ruby")
 
 
 def _make_ruby_zip(code: str, filename: str = "lambda_function.rb") -> bytes:
