@@ -15,7 +15,7 @@ import time
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.providers.moto_bridge import forward_to_moto, forward_to_moto_with_body
 from robotocore.services.ses.email_store import get_email_store
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,9 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
     # Intercept SendEmail to capture it in the email store
     if _OUTBOUND_EMAILS_PATH.match(path) and method == "POST":
         body_bytes = await request.body()
-        response = await forward_to_moto(request, "sesv2", account_id=account_id)
+        response = await forward_to_moto_with_body(
+            request, "sesv2", body_bytes, account_id=account_id
+        )
         if response.status_code == 200:
             try:
                 _capture_sesv2_send_email(json.loads(body_bytes))
