@@ -51,6 +51,7 @@ class TestStoredEmail:
         assert d["subject"] == "Hello"
         assert d["body"] == "Hi Bob"
         assert d["timestamp"] == 1234567890.0
+        assert d["source"] == "smtp"  # default source
 
     def test_to_dict_excludes_raw(self):
         """The raw field should NOT appear in the dict (it's large and not needed in API)."""
