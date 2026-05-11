@@ -32,7 +32,8 @@
 ## Quick Start
 
 ```bash
-docker run -d -p 4566:4566 ghcr.io/robotocore/robotocore:latest
+docker run -d -p 4566:4566 robotocore/robotocore:latest
+# also available: ghcr.io/robotocore/robotocore:latest
 ```
 
 Verify it's running:
