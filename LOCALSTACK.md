@@ -55,7 +55,7 @@ Be honest with yourself about what LocalStack does well that Robotocore doesn't 
 docker run -p 4566:4566 localstack/localstack
 
 # After
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 That's it. Same port, same endpoint, same credentials.
@@ -86,7 +86,7 @@ services:
 
   # After
   aws:
-    image: robotocore/robotocore
+    image: ghcr.io/robotocore/robotocore:latest
     ports:
       - "4566:4566"
 

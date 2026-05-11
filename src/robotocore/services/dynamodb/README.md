@@ -13,7 +13,7 @@ Migration guide for teams moving from **dynalite** or **DynamoDB Local** to Robo
 docker run -p 4567:4567 kpavlov/dynalite
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 Change your endpoint from `http://localhost:4567` to `http://localhost:4566`.
@@ -25,7 +25,7 @@ Change your endpoint from `http://localhost:4567` to `http://localhost:4566`.
 docker run -p 8000:8000 amazon/dynamodb-local
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 Change your endpoint from `http://localhost:8000` to `http://localhost:4566`.
@@ -33,7 +33,7 @@ Change your endpoint from `http://localhost:8000` to `http://localhost:4566`.
 If you want to keep using port 8000 during migration:
 
 ```bash
-docker run -p 8000:4566 robotocore/robotocore
+docker run -p 8000:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 ---
@@ -304,19 +304,19 @@ export AWS_DEFAULT_REGION=us-east-1
 ### Basic (drop-in replacement)
 
 ```bash
-docker run -d --name robotocore -p 4566:4566 robotocore/robotocore
+docker run -d --name robotocore -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 ### Keep existing dynalite port
 
 ```bash
-docker run -d --name robotocore -p 4567:4566 robotocore/robotocore
+docker run -d --name robotocore -p 4567:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 ### Keep existing DynamoDB Local port
 
 ```bash
-docker run -d --name robotocore -p 8000:4566 robotocore/robotocore
+docker run -d --name robotocore -p 8000:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 ### With docker-compose
@@ -324,7 +324,7 @@ docker run -d --name robotocore -p 8000:4566 robotocore/robotocore
 ```yaml
 services:
   robotocore:
-    image: robotocore/robotocore
+    image: ghcr.io/robotocore/robotocore:latest
     ports:
       - "4566:4566"
     environment:

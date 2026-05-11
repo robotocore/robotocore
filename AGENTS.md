@@ -31,7 +31,7 @@ curl -sf http://localhost:4566/_robotocore/health > /dev/null && echo "already r
 
 ```bash
 docker rm -f robotocore 2>/dev/null || true
-docker run -d -p 4566:4566 --name robotocore robotocore/robotocore:latest
+docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
 ```
 
 Also available from GHCR:
@@ -382,7 +382,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       robotocore:
-        image: robotocore/robotocore:latest
+        image: ghcr.io/robotocore/robotocore:latest
         ports:
           - 4566:4566
         options: >-
@@ -404,7 +404,7 @@ jobs:
 # docker-compose
 services:
   aws:
-    image: robotocore/robotocore:latest
+    image: ghcr.io/robotocore/robotocore:latest
     ports:
       - "4566:4566"
     healthcheck:

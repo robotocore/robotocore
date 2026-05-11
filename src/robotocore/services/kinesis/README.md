@@ -9,7 +9,7 @@ Robotocore's Kinesis provider is a native implementation with 28 natively-handle
 docker run -p 4567:4567 dlsteuer/kinesalite
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 ```
 
 Update your SDK/CLI endpoint from `http://localhost:4567` to `http://localhost:4566`. That's it.
@@ -176,14 +176,14 @@ Additionally, Robotocore runs 146 other AWS services on the same endpoint. If yo
 
 ```bash
 # Basic (matches kinesalite's default behavior)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
 
 # Custom host port (if you need 4567 for backward compatibility)
-docker run -p 4567:4566 robotocore/robotocore
+docker run -p 4567:4566 ghcr.io/robotocore/robotocore:latest
 
 # With debug logging
-docker run -p 4566:4566 -e ROBOTOCORE_LOG_LEVEL=DEBUG robotocore/robotocore
+docker run -p 4566:4566 -e ROBOTOCORE_LOG_LEVEL=DEBUG ghcr.io/robotocore/robotocore:latest
 
 # With audit logging (track all API calls)
-docker run -p 4566:4566 -e AUDIT_LOG_SIZE=1000 robotocore/robotocore
+docker run -p 4566:4566 -e AUDIT_LOG_SIZE=1000 ghcr.io/robotocore/robotocore:latest
 ```

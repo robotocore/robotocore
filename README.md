@@ -80,7 +80,7 @@ aws dynamodb list-tables
 ```yaml
 services:
   aws:
-    image: robotocore/robotocore:latest
+    image: ghcr.io/robotocore/robotocore:latest
     ports:
       - "4566:4566"
 
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       robotocore:
-        image: robotocore/robotocore:latest
+        image: ghcr.io/robotocore/robotocore:latest
         ports:
           - 4566:4566
         options: >-
