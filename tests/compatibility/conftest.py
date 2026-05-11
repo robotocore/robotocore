@@ -90,4 +90,6 @@ def _clear_chaos_rules_at_session_end():
                 resp.json()["count"],
             )
     except Exception:
-        pass  # server may already be stopped
+        logger.debug(
+            "Could not clear chaos rules at session end (server may be stopped)", exc_info=True
+        )
