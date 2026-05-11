@@ -1,5 +1,6 @@
 """Shared fixtures for compatibility tests."""
 
+import functools
 import logging
 import os
 
@@ -11,6 +12,30 @@ from botocore.config import Config
 logger = logging.getLogger(__name__)
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
+
+
+@functools.lru_cache(maxsize=1)
+def _server_available_runtimes() -> frozenset[str]:
+    """Fetch available runtime families from the server (cached per process)."""
+    try:
+        resp = requests.get(f"{ENDPOINT_URL}/_robotocore/runtimes", timeout=5)
+        if resp.ok:
+            return frozenset(resp.json().get("available", []))
+    except Exception:
+        pass  # server unreachable or not yet started
+    return frozenset()
+
+
+def skip_if_runtime_unavailable(family: str) -> pytest.MarkDecorator:
+    """Return a pytest skip mark when *family* is absent from the running server.
+
+    Use as a module-level pytestmark so tests are skipped (not errored) when
+    the server does not have the required runtime binary installed.
+    """
+    available = _server_available_runtimes()
+    if family not in available:
+        return pytest.mark.skip(reason=f"Runtime '{family}' not available in server")
+    return pytest.mark.usefixtures()  # no-op mark
 
 
 def make_client(service_name: str, **kwargs):

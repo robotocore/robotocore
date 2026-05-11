@@ -484,18 +484,44 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - name: Build Docker image
-        run: docker build -t robotocore:test .
-      - name: Smoke test
+
+      - name: Install boto3
+        run: pip install --upgrade boto3 --quiet
+
+      # -----------------------------------------------------------------------
+      # Standard image: Python + Node.js + Ruby
+      # -----------------------------------------------------------------------
+      - name: Build standard Docker image
+        run: docker build --target standard -t robotocore:standard .
+
+      - name: Start standard container
         run: |
-          docker run -d -p 4566:4566 --name robotocore-test robotocore:test
+          docker run -d -p 4566:4566 --name robotocore-standard robotocore:standard
           for i in $(seq 1 30); do
             curl -sf http://localhost:4566/_robotocore/health && break
             sleep 1
           done
           curl -f http://localhost:4566/_robotocore/health
-          # Basic S3 operations
-          pip install --upgrade boto3 --quiet
+
+      - name: Verify standard runtimes endpoint
+        run: |
+          RUNTIMES=$(curl -sf http://localhost:4566/_robotocore/runtimes)
+          echo "Reported runtimes: $RUNTIMES"
+          echo "$RUNTIMES" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          available = set(data['available'])
+          required = {'python', 'nodejs', 'ruby', 'custom'}
+          missing = required - available
+          assert not missing, f'Standard image missing runtimes: {missing}'
+          excluded = {'java', 'dotnet'}
+          present = excluded & available
+          assert not present, f'Standard image should not include heavy runtimes: {present}'
+          print('Runtimes endpoint OK:', sorted(available))
+          "
+
+      - name: Standard image S3 + SQS smoke tests
+        run: |
           python -c "
           import boto3
           s3 = boto3.client('s3', endpoint_url='http://localhost:4566',
@@ -507,7 +533,6 @@ jobs:
           assert obj['Body'].read() == b'hello'
           print('S3 smoke test passed')
           "
-          # Basic SQS
           python -c "
           import boto3, time
           sqs = boto3.client('sqs', endpoint_url='http://localhost:4566',
@@ -515,100 +540,214 @@ jobs:
               region_name='us-east-1')
           q = sqs.create_queue(QueueName='test-queue')
           url = q['QueueUrl']
-          print('Queue URL:', url)
           sqs.send_message(QueueUrl=url, MessageBody='hello')
-          time.sleep(1)
           msgs = []
           for i in range(10):
               resp = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10, VisibilityTimeout=0)
               msgs = resp.get('Messages', [])
-              print(f'Attempt {i+1}: got {len(msgs)} messages')
-              if msgs:
-                  break
+              if msgs: break
               time.sleep(1)
-          assert msgs and msgs[0]['Body'] == 'hello', f'Expected message, got: {msgs}'
+          assert msgs and msgs[0]['Body'] == 'hello', f'SQS: expected message, got {msgs}'
           print('SQS smoke test passed')
           "
-          # Python Lambda invocation
-          python -c "
-          import boto3, io, json, time, uuid, zipfile
 
-          endpoint = 'http://localhost:4566'
-          region = 'us-east-1'
-          creds = dict(aws_access_key_id='test', aws_secret_access_key='test')
-
-          iam = boto3.client('iam', endpoint_url=endpoint, region_name=region, **creds)
-          lam = boto3.client('lambda', endpoint_url=endpoint, region_name=region, **creds)
-
-          trust = json.dumps({'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Principal': {'Service': 'lambda.amazonaws.com'}, 'Action': 'sts:AssumeRole'}]})
-          role_name = 'smoke-lambda-role-' + uuid.uuid4().hex[:8]
-          iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
-          role_arn = f'arn:aws:iam::123456789012:role/{role_name}'
-
-          buf = io.BytesIO()
-          with zipfile.ZipFile(buf, 'w') as zf:
-              zf.writestr('lambda_function.py', 'def handler(event, context): return {\"ok\": True, \"echo\": event.get(\"msg\")}')
-          fname = 'smoke-python-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fname, Runtime='python3.12', Role=role_arn, Handler='lambda_function.handler', Code={'ZipFile': buf.getvalue()})
-
-          resp = lam.invoke(FunctionName=fname, Payload=json.dumps({'msg': 'hello-python'}))
-          payload = json.loads(resp['Payload'].read())
-          assert payload['ok'] is True, f'Python Lambda failed: {payload}'
-          assert payload['echo'] == 'hello-python', f'Python Lambda echo wrong: {payload}'
-          print('Python Lambda smoke test passed')
-          lam.delete_function(FunctionName=fname)
-          iam.delete_role(RoleName=role_name)
-          "
-          # Node.js Lambda invocation — verifies node binary is present in the Docker image
-          python -c "
-          import boto3, io, json, time, uuid, zipfile
-
-          endpoint = 'http://localhost:4566'
-          region = 'us-east-1'
-          creds = dict(aws_access_key_id='test', aws_secret_access_key='test')
-
-          iam = boto3.client('iam', endpoint_url=endpoint, region_name=region, **creds)
-          lam = boto3.client('lambda', endpoint_url=endpoint, region_name=region, **creds)
-
-          trust = json.dumps({'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Principal': {'Service': 'lambda.amazonaws.com'}, 'Action': 'sts:AssumeRole'}]})
-          role_name = 'smoke-node-role-' + uuid.uuid4().hex[:8]
-          iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
-          role_arn = f'arn:aws:iam::123456789012:role/{role_name}'
-
-          buf = io.BytesIO()
-          with zipfile.ZipFile(buf, 'w') as zf:
-              zf.writestr('index.js', 'exports.handler = async (event) => ({ ok: true, echo: event.msg });')
-          fname = 'smoke-node-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fname, Runtime='nodejs20.x', Role=role_arn, Handler='index.handler', Code={'ZipFile': buf.getvalue()})
-
-          resp = lam.invoke(FunctionName=fname, Payload=json.dumps({'msg': 'hello-node'}))
-          assert resp.get('FunctionError') is None, f'Node Lambda returned FunctionError: {json.loads(resp[\"Payload\"].read())}'
-          payload = json.loads(resp['Payload'].read())
-          assert payload['ok'] is True, f'Node Lambda failed: {payload}'
-          assert payload['echo'] == 'hello-node', f'Node Lambda echo wrong: {payload}'
-          print('Node.js Lambda smoke test passed')
-          lam.delete_function(FunctionName=fname)
-          iam.delete_role(RoleName=role_name)
-          "
-          echo "All smoke tests passed"
-      - name: Check image size
+      - name: Standard image Lambda smoke tests (Python + Node.js + Ruby)
         run: |
-          SIZE=$(docker image inspect robotocore:test --format='{{.Size}}')
+          python -c "
+          import boto3, io, json, uuid, zipfile
+
+          ep = 'http://localhost:4566'
+          creds = dict(aws_access_key_id='test', aws_secret_access_key='test', region_name='us-east-1')
+          iam = boto3.client('iam', endpoint_url=ep, **creds)
+          lam = boto3.client('lambda', endpoint_url=ep, **creds)
+          trust = json.dumps({'Version':'2012-10-17','Statement':[{'Effect':'Allow','Principal':{'Service':'lambda.amazonaws.com'},'Action':'sts:AssumeRole'}]})
+
+          def make_zip(files):
+              buf = io.BytesIO()
+              with zipfile.ZipFile(buf, 'w') as zf:
+                  for name, content in files.items():
+                      zf.writestr(name, content)
+              return buf.getvalue()
+
+          def invoke(lam, fname, payload='{}'):
+              resp = lam.invoke(FunctionName=fname, Payload=payload)
+              assert resp.get('FunctionError') is None, f'{fname}: FunctionError={json.loads(resp[\"Payload\"].read())}'
+              return json.loads(resp['Payload'].read())
+
+          role = 'smoke-role-' + uuid.uuid4().hex[:8]
+          iam.create_role(RoleName=role, AssumeRolePolicyDocument=trust)
+          arn = f'arn:aws:iam::123456789012:role/{role}'
+
+          # Python
+          fn = 'smoke-py-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fn, Runtime='python3.12', Role=arn, Handler='lambda_function.handler',
+              Code={'ZipFile': make_zip({'lambda_function.py': 'def handler(e,c): return {\"ok\":True,\"echo\":e[\"msg\"]}'})})
+          p = invoke(lam, fn, json.dumps({'msg':'hello-python'}))
+          assert p['ok'] and p['echo'] == 'hello-python', f'Python: {p}'
+          lam.delete_function(FunctionName=fn)
+          print('Python Lambda smoke test passed')
+
+          # Node.js
+          fn = 'smoke-node-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fn, Runtime='nodejs20.x', Role=arn, Handler='index.handler',
+              Code={'ZipFile': make_zip({'index.js': 'exports.handler = async (e) => ({ok:true, echo:e.msg});'})})
+          p = invoke(lam, fn, json.dumps({'msg':'hello-node'}))
+          assert p['ok'] and p['echo'] == 'hello-node', f'Node: {p}'
+          lam.delete_function(FunctionName=fn)
+          print('Node.js Lambda smoke test passed')
+
+          # Ruby
+          fn = 'smoke-ruby-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fn, Runtime='ruby3.3', Role=arn, Handler='lambda_function.handler',
+              Code={'ZipFile': make_zip({'lambda_function.rb': 'def handler(event:, context:)\n  { ok: true, echo: event[\"msg\"] }\nend'})})
+          p = invoke(lam, fn, json.dumps({'msg':'hello-ruby'}))
+          assert p['ok'] and p['echo'] == 'hello-ruby', f'Ruby: {p}'
+          lam.delete_function(FunctionName=fn)
+          print('Ruby Lambda smoke test passed')
+
+          iam.delete_role(RoleName=role)
+          print('All standard Lambda smoke tests passed')
+          "
+
+      - name: Standard image size check
+        run: |
+          SIZE=$(docker image inspect robotocore:standard --format='{{.Size}}')
           SIZE_MB=$((SIZE / 1024 / 1024))
-          echo "Image size: ${SIZE_MB}MB"
+          echo "Standard image size: ${SIZE_MB}MB"
           if [ "$SIZE_MB" -gt 500 ]; then
-            echo "WARNING: Image exceeds 500MB target (${SIZE_MB}MB)"
+            echo "WARNING: Standard image exceeds 500MB target (${SIZE_MB}MB)"
           fi
-      - name: Container security scan (Trivy)
+
+      - name: Stop standard container
+        if: always()
+        run: docker rm -f robotocore-standard || true
+
+      - name: Container security scan — standard
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: robotocore:test
+          image-ref: robotocore:standard
           format: table
-          exit-code: 0  # Non-blocking
+          exit-code: 0
           severity: CRITICAL,HIGH
-      - name: Stop container
+
+      # -----------------------------------------------------------------------
+      # java-and-dotnet image: standard + OpenJDK 21 + .NET SDK 8
+      # -----------------------------------------------------------------------
+      - name: Build java-and-dotnet Docker image
+        run: docker build --target java-and-dotnet -t robotocore:java-and-dotnet .
+
+      - name: Start java-and-dotnet container
+        run: |
+          docker run -d -p 4566:4566 --name robotocore-full robotocore:java-and-dotnet
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_robotocore/health && break
+            sleep 1
+          done
+          curl -f http://localhost:4566/_robotocore/health
+
+      - name: Verify java-and-dotnet runtimes endpoint
+        run: |
+          RUNTIMES=$(curl -sf http://localhost:4566/_robotocore/runtimes)
+          echo "Reported runtimes: $RUNTIMES"
+          echo "$RUNTIMES" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          available = set(data['available'])
+          required = {'python', 'nodejs', 'ruby', 'java', 'dotnet', 'custom'}
+          missing = required - available
+          assert not missing, f'java-and-dotnet image missing runtimes: {missing}'
+          print('Runtimes endpoint OK:', sorted(available))
+          "
+
+      - name: java-and-dotnet image Lambda smoke tests
+        run: |
+          # Compile a minimal Java handler on the CI runner (Java is pre-installed on ubuntu-latest)
+          mkdir -p /tmp/java-smoke
+          cat > /tmp/java-smoke/Handler.java << 'JAVAEOF'
+          public class Handler {
+              public String handleRequest(String event, Object context) {
+                  return "{\"ok\":true,\"echo\":\"hello-java\"}";
+              }
+          }
+          JAVAEOF
+          javac /tmp/java-smoke/Handler.java -d /tmp/java-smoke
+
+          python -c "
+          import boto3, io, json, uuid, zipfile
+
+          ep = 'http://localhost:4566'
+          creds = dict(aws_access_key_id='test', aws_secret_access_key='test', region_name='us-east-1')
+          iam = boto3.client('iam', endpoint_url=ep, **creds)
+          lam = boto3.client('lambda', endpoint_url=ep, **creds)
+          trust = json.dumps({'Version':'2012-10-17','Statement':[{'Effect':'Allow','Principal':{'Service':'lambda.amazonaws.com'},'Action':'sts:AssumeRole'}]})
+
+          def make_zip(files):
+              buf = io.BytesIO()
+              with zipfile.ZipFile(buf, 'w') as zf:
+                  for name, content in files.items():
+                      if isinstance(content, bytes):
+                          zf.writestr(name, content)
+                      else:
+                          zf.writestr(name, content)
+              return buf.getvalue()
+
+          def invoke(lam, fname, payload='{}'):
+              resp = lam.invoke(FunctionName=fname, Payload=payload)
+              assert resp.get('FunctionError') is None, f'{fname}: FunctionError={json.loads(resp[\"Payload\"].read())}'
+              return json.loads(resp['Payload'].read())
+
+          role = 'smoke-full-role-' + uuid.uuid4().hex[:8]
+          iam.create_role(RoleName=role, AssumeRolePolicyDocument=trust)
+          arn = f'arn:aws:iam::123456789012:role/{role}'
+
+          # Java — use pre-compiled Handler.class
+          with open('/tmp/java-smoke/Handler.class', 'rb') as f:
+              handler_class = f.read()
+          fn = 'smoke-java-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fn, Runtime='java21', Role=arn, Handler='Handler::handleRequest',
+              Code={'ZipFile': make_zip({'Handler.class': handler_class})}, Timeout=30)
+          p = invoke(lam, fn)
+          assert p.get('ok') is True and p.get('echo') == 'hello-java', f'Java: {p}'
+          lam.delete_function(FunctionName=fn)
+          print('Java Lambda smoke test passed')
+
+          # .NET — pass C# source; server compiles it inside the container
+          cs_src = '''
+          public class Handler {
+              public string HandleRequest(string eventJson, object context) {
+                  return \"{\\\"ok\\\":true,\\\"echo\\\":\\\"hello-dotnet\\\"}\";
+              }
+          }
+          '''
+          fn = 'smoke-dotnet-' + uuid.uuid4().hex[:8]
+          lam.create_function(FunctionName=fn, Runtime='dotnet8', Role=arn, Handler='SmokeTest::Handler::HandleRequest',
+              Code={'ZipFile': make_zip({'Handler.cs': cs_src})}, Timeout=60)
+          p = invoke(lam, fn)
+          assert p.get('ok') is True and p.get('echo') == 'hello-dotnet', f'.NET: {p}'
+          lam.delete_function(FunctionName=fn)
+          print('.NET Lambda smoke test passed')
+
+          iam.delete_role(RoleName=role)
+          print('All java-and-dotnet Lambda smoke tests passed')
+          "
+
+      - name: java-and-dotnet image size check
+        run: |
+          SIZE=$(docker image inspect robotocore:java-and-dotnet --format='{{.Size}}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "java-and-dotnet image size: ${SIZE_MB}MB"
+
+      - name: Stop java-and-dotnet container
         if: always()
-        run: docker rm -f robotocore-test || true
+        run: docker rm -f robotocore-full || true
+
+      - name: Container security scan — java-and-dotnet
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: robotocore:java-and-dotnet
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH
 
   parity-report:
     runs-on: ubuntu-latest

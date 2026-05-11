@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -333,6 +334,34 @@ async def services_endpoint(request: Request) -> JSONResponse:
     for name in sorted(SERVICE_REGISTRY.keys()):
         services.append(get_service_info_with_status(name))
     return JSONResponse({"services": services})
+
+
+async def runtimes_endpoint(request: Request) -> JSONResponse:
+    """Report which Lambda runtime families are available in this environment.
+
+    Returns two lists:
+    - available: families whose binary is present and executable
+    - all: every family robotocore knows how to run
+
+    Clients (compat tests, UIs) can use this to skip gracefully when a runtime
+    is absent from the current image rather than checking the local machine PATH.
+    """
+    available: list[str] = ["python", "custom"]  # python in-process, custom uses /bin/sh
+    if shutil.which("node"):
+        available.append("nodejs")
+    if shutil.which("ruby"):
+        available.append("ruby")
+    if shutil.which("java") and shutil.which("javac"):
+        available.append("java")
+    if shutil.which("dotnet"):
+        available.append("dotnet")
+
+    return JSONResponse(
+        {
+            "available": sorted(available),
+            "all": ["custom", "dotnet", "java", "nodejs", "python", "ruby"],
+        }
+    )
 
 
 async def config_endpoint(request: Request) -> JSONResponse:
@@ -1287,6 +1316,7 @@ management_routes = [
     Route("/_localstack/init/{stage}", localstack_init_stage, methods=["GET"]),
     Route("/_localstack/plugins", localstack_plugins, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
+    Route("/_robotocore/runtimes", runtimes_endpoint, methods=["GET"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
     Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
