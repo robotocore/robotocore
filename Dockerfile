@@ -49,7 +49,8 @@ RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
 # ---- Runtime stage: slim image with just python + venv ----
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# curl: health checks; nodejs: Lambda Node.js runtime support
+RUN apt-get update && apt-get install -y --no-install-recommends curl nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore

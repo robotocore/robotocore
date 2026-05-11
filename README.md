@@ -166,7 +166,7 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 | Firehose | Buffered delivery to S3 |
 | IAM | Full policy engine, permission boundaries, resource policies |
 | Kinesis | Streams and shard management |
-| Lambda | Versions, aliases, layers, function URLs, ESM, destinations |
+| Lambda | Python (3.8–3.13), Node.js (18.x–22.x), versions, aliases, layers, function URLs, destinations |
 | OpenSearch | Domain management |
 | Rekognition | Image analysis stubs |
 | Resource Groups | Group management |
@@ -359,13 +359,13 @@ topic = sns.create_topic(Name="notifications")
 sns.subscribe(TopicArn=topic["TopicArn"], Protocol="sqs", Endpoint=queue_arn)
 sns.publish(TopicArn=topic["TopicArn"], Message="hello")
 
-# Lambda invocation
+# Lambda invocation — Python
 import json, zipfile, io
 
-def make_zip(code: str) -> bytes:
+def make_zip(code: str, filename: str = "index.py") -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
-        z.writestr("index.py", code)
+        z.writestr(filename, code)
     return buf.getvalue()
 
 lam.create_function(
@@ -377,6 +377,20 @@ lam.create_function(
 )
 result = lam.invoke(FunctionName="my-fn", Payload=json.dumps({"key": "val"}))
 print(json.loads(result["Payload"].read()))  # {"status": "ok"}
+
+# Lambda invocation — Node.js (nodejs18.x, nodejs20.x, nodejs22.x all supported)
+lam.create_function(
+    FunctionName="my-node-fn",
+    Runtime="nodejs20.x",
+    Role="arn:aws:iam::123456789012:role/lambda-role",
+    Handler="index.handler",
+    Code={"ZipFile": make_zip(
+        'exports.handler = async (event) => ({ statusCode: 200, body: "hello from node" });',
+        filename="index.js",
+    )},
+)
+result = lam.invoke(FunctionName="my-node-fn", Payload=json.dumps({}))
+print(json.loads(result["Payload"].read()))  # {"statusCode": 200, "body": "hello from node"}
 ```
 
 ---
