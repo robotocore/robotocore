@@ -1,19 +1,21 @@
-"""In-memory store for emails sent via the SMTP server."""
+"""In-memory store for emails sent via SMTP or the SES API."""
 
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Literal
 
 
 @dataclass
 class StoredEmail:
-    """A single email stored from SMTP delivery."""
+    """A single captured email, from SMTP or the SES API."""
 
     sender: str
     recipients: list[str]
     subject: str
     body: str
     raw: str
+    source: Literal["smtp", "api"] = "smtp"
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -22,12 +24,13 @@ class StoredEmail:
             "recipients": self.recipients,
             "subject": self.subject,
             "body": self.body,
+            "source": self.source,
             "timestamp": self.timestamp,
         }
 
 
 class EmailStore:
-    """Thread-safe singleton store for SMTP-delivered emails."""
+    """Thread-safe singleton store for all sent emails."""
 
     def __init__(self) -> None:
         self._messages: list[StoredEmail] = []
@@ -40,6 +43,7 @@ class EmailStore:
         subject: str,
         body: str,
         raw: str,
+        source: Literal["smtp", "api"] = "smtp",
     ) -> None:
         """Store a new email message."""
         msg = StoredEmail(
@@ -48,6 +52,7 @@ class EmailStore:
             subject=subject,
             body=body,
             raw=raw,
+            source=source,
         )
         with self._lock:
             self._messages.append(msg)

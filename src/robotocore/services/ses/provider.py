@@ -6,10 +6,16 @@ Intercepts operations that Moto doesn't support or handles incorrectly:
 - DeleteReceiptRule (not in Moto, only DeleteReceiptRuleSet exists)
 - CreateReceiptRule cleanup support
 
+Also captures all outbound email API calls (SendEmail, SendRawEmail,
+SendTemplatedEmail, SendBulkTemplatedEmail) into the EmailStore so they
+appear at /_robotocore/ses/messages alongside SMTP-delivered emails.
+
 Delegates everything else to Moto via forward_to_moto.
 Uses query protocol (Action parameter).
 """
 
+import base64
+import email as _email
 import logging
 from urllib.parse import parse_qs
 
@@ -17,8 +23,13 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.services.ses.email_store import get_email_store
 
 logger = logging.getLogger(__name__)
+
+_SEND_ACTIONS = frozenset(
+    {"SendEmail", "SendRawEmail", "SendTemplatedEmail", "SendBulkTemplatedEmail"}
+)
 
 
 def _get_ses_backend(account_id: str, region: str):
@@ -53,7 +64,16 @@ async def handle_ses_request(request: Request, region: str, account_id: str) -> 
             return _error_response("InternalError", str(e), 500)
 
     # Fall back to Moto
-    return await forward_to_moto(request, "ses", account_id=account_id)
+    response = await forward_to_moto(request, "ses", account_id=account_id)
+
+    # Capture successful send operations in the email store
+    if response.status_code == 200 and action in _SEND_ACTIONS:
+        try:
+            _capture_send(action, params)
+        except Exception:  # noqa: BLE001
+            logger.debug("SES email capture failed for %s (non-fatal)", action, exc_info=True)
+
+    return response
 
 
 class SesError(Exception):
@@ -508,6 +528,136 @@ def _send_bounce(params: dict, region: str, account_id: str) -> str:
     # We don't need to actually process the bounce; just return a message ID
     message_id = _uuid.uuid4().hex
     return f"<MessageId>{message_id}</MessageId>"
+
+
+# ---------------------------------------------------------------------------
+# Email capture helpers (for /_robotocore/ses/messages)
+# ---------------------------------------------------------------------------
+
+
+def _capture_send(action: str, params: dict) -> None:
+    """Capture a successful SES API send into the shared EmailStore."""
+    store = get_email_store()
+    if action == "SendEmail":
+        _capture_send_email(params, store)
+    elif action == "SendRawEmail":
+        _capture_send_raw_email(params, store)
+    elif action in ("SendTemplatedEmail", "SendBulkTemplatedEmail"):
+        _capture_send_templated_email(params, store)
+
+
+def _collect_indexed_params(params: dict, prefix: str) -> list[str]:
+    """Extract Param.member.1, Param.member.2, ... values in order."""
+    result = []
+    i = 1
+    while True:
+        val = params.get(f"{prefix}.member.{i}")
+        if val is None:
+            break
+        result.append(val)
+        i += 1
+    return result
+
+
+def _capture_send_email(params: dict, store) -> None:  # type: ignore[type-arg]
+    sender = params.get("Source", "")
+    to = _collect_indexed_params(params, "Destination.ToAddresses")
+    cc = _collect_indexed_params(params, "Destination.CcAddresses")
+    bcc = _collect_indexed_params(params, "Destination.BccAddresses")
+    recipients = to + cc + bcc
+    subject = params.get("Message.Subject.Data", "")
+    body = params.get("Message.Body.Text.Data", "") or params.get("Message.Body.Html.Data", "")
+    store.add_message(
+        sender=sender,
+        recipients=recipients,
+        subject=subject,
+        body=body,
+        raw="",
+        source="api",
+    )
+
+
+def _capture_send_raw_email(params: dict, store) -> None:  # type: ignore[type-arg]
+    raw_b64 = params.get("RawMessage.Data", "")
+    raw_bytes = b""
+    try:
+        raw_bytes = base64.b64decode(raw_b64)
+    except Exception:  # noqa: BLE001
+        logger.debug("SES raw email base64 decode failed (non-fatal)", exc_info=True)
+
+    sender = params.get("Source", "")
+    recipients = _collect_indexed_params(params, "Destinations")
+
+    subject = ""
+    body = ""
+    if raw_bytes:
+        try:
+            # Parse from bytes so the email library handles charset detection
+            # before we decode headers — avoids mangling non-UTF8 content.
+            msg = _email.message_from_bytes(raw_bytes)
+            subject = msg.get("Subject", "") or ""
+            if not sender:
+                # parseaddr strips display names: "Jane Doe <j@x.com>" → "j@x.com"
+                _, sender = _email.utils.parseaddr(msg.get("From", "") or "")
+            if not recipients:
+                raw_to = msg.get("To", "") or ""
+                recipients = [addr for _, addr in _email.utils.getaddresses([raw_to]) if addr]
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/plain":
+                        payload = part.get_payload(decode=True)
+                        body = payload.decode("utf-8", errors="replace") if payload else ""
+                        break
+            else:
+                payload = msg.get_payload(decode=True)
+                body = payload.decode("utf-8", errors="replace") if payload else ""
+        except Exception:  # noqa: BLE001
+            logger.debug("SES raw email parse failed (non-fatal)", exc_info=True)
+
+    store.add_message(
+        sender=sender,
+        recipients=recipients,
+        subject=subject,
+        body=body,
+        raw=raw_bytes.decode("utf-8", errors="replace"),
+        source="api",
+    )
+
+
+def _capture_send_templated_email(params: dict, store) -> None:  # type: ignore[type-arg]
+    sender = params.get("Source", "")
+    template = params.get("Template", "")
+
+    # SendTemplatedEmail uses Destination.ToAddresses.member.N
+    # SendBulkTemplatedEmail uses Destinations.member.N.Destination.ToAddresses.member.N
+    to = _collect_indexed_params(params, "Destination.ToAddresses")
+    cc = _collect_indexed_params(params, "Destination.CcAddresses")
+    bcc = _collect_indexed_params(params, "Destination.BccAddresses")
+
+    if not to and not cc and not bcc:
+        # Bulk form: collect recipients from all Destinations entries
+        i = 1
+        while True:
+            prefix = f"Destinations.member.{i}.Destination"
+            dest_to = _collect_indexed_params(params, f"{prefix}.ToAddresses")
+            dest_cc = _collect_indexed_params(params, f"{prefix}.CcAddresses")
+            dest_bcc = _collect_indexed_params(params, f"{prefix}.BccAddresses")
+            if not dest_to and not dest_cc and not dest_bcc:
+                break
+            to += dest_to
+            cc += dest_cc
+            bcc += dest_bcc
+            i += 1
+
+    recipients = to + cc + bcc
+    store.add_message(
+        sender=sender,
+        recipients=recipients,
+        subject=f"[template: {template}]",
+        body="",
+        raw="",
+        source="api",
+    )
 
 
 _ACTION_MAP = {
