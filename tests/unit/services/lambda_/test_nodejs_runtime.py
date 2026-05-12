@@ -304,3 +304,14 @@ class TestNodejsVersionRouting:
                 assert executor._resolve_binary() == f"/usr/bin/{expected_bin}", (
                     f"Failed for {runtime}"
                 )
+
+    def test_unknown_runtime_logs_warning_and_falls_back(self):
+        import robotocore.services.lambda_.runtimes.node as node_mod
+
+        executor = NodejsExecutor(runtime="nodejs16.x")
+        with patch("shutil.which", return_value="/usr/bin/node"):
+            with patch.object(node_mod.logger, "warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/node"
+        mock_warn.assert_called_once()
+        assert "nodejs16.x" in mock_warn.call_args.args[1]

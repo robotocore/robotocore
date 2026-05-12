@@ -1,5 +1,6 @@
 """Node.js runtime executor — runs handler via subprocess."""
 
+import logging
 import os
 import shutil
 
@@ -11,8 +12,12 @@ from robotocore.services.lambda_.runtimes.base import (
 
 BOOTSTRAP_JS = os.path.join(os.path.dirname(__file__), "bootstraps", "bootstrap.js")
 
+logger = logging.getLogger(__name__)
+
 # Maps Lambda runtime identifiers to the versioned node binary name in the image.
 # The Dockerfile installs node18, node20, node22 alongside a default "node" (→ 20).
+# Runtimes absent from this map (e.g. nodejs16.x) fall back to plain "node" with
+# a warning so divergence from the requested version is visible in logs.
 _RUNTIME_BINARY: dict[str, str] = {
     "nodejs18.x": "node18",
     "nodejs20.x": "node20",
@@ -67,4 +72,10 @@ class NodejsExecutor:
             path = shutil.which(versioned)
             if path:
                 return path
+        if self._runtime and self._runtime not in _RUNTIME_BINARY:
+            logger.warning(
+                "No versioned node binary for runtime %r — falling back to 'node'. Supported: %s",
+                self._runtime,
+                ", ".join(sorted(_RUNTIME_BINARY)),
+            )
         return shutil.which("node")
