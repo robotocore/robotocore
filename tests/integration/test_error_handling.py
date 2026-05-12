@@ -13,7 +13,8 @@ class TestUnknownServiceErrors:
     """Requests that cannot be routed to any AWS service."""
 
     async def test_get_unknown_path_returns_400(self, client):
-        resp = await client.get("/some/unknown/path")
+        # Uppercase letters are not valid S3 bucket name chars — truly unroutable
+        resp = await client.get("/UNKNOWN_SERVICE/path")
         assert resp.status_code == 400
         body = resp.json()
         assert "error" in body
