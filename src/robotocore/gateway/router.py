@@ -131,6 +131,9 @@ PATH_PATTERNS: list[tuple[re.Pattern, str]] = [
 # Service name extracted from credential scope in Authorization header
 AUTH_SERVICE_RE = re.compile(r"Credential=[^/]+/\d{8}/[^/]+/([^/]+)/aws4_request")
 
+# Valid S3 bucket name: 3-63 chars, lowercase letters/digits/hyphens/dots
+_S3_BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9\-\.]{1,61}[a-z0-9]$")
+
 # AWS credential scope service names that differ from Moto backend names
 SERVICE_NAME_ALIASES: dict[str, str] = {
     "monitoring": "cloudwatch",
@@ -288,6 +291,14 @@ def route_to_service(request: Request) -> str | None:
     host = request.headers.get("host", "")
     if ".s3." in host or host.startswith("s3.") or host.startswith("s3-"):
         return "s3"
+    # Virtual-hosted style with a plain localhost endpoint: mybucket.localhost:4566
+    # Only match when the rest of the host is exactly "localhost" (not subdomains like
+    # queue.localhost.robotocore.cloud which have their own service checks below).
+    # SigV4-signed requests are already caught by step 3; this covers unsigned access.
+    host_no_port = host.split(":")[0]
+    host_subdomain, _, host_rest = host_no_port.partition(".")
+    if host_rest == "localhost" and _S3_BUCKET_RE.match(host_subdomain):
+        return "s3"
     # SQS endpoint strategy host patterns (robotocore.cloud primary, localstack.cloud alias)
     if (
         ".queue.localhost.robotocore.cloud" in host
@@ -319,5 +330,13 @@ def route_to_service(request: Request) -> str | None:
     content_type = request.headers.get("content-type", "")
     if "x-www-form-urlencoded" in content_type and not auth:
         return "sts"
+
+    # 8. Path-style S3 fallback for unsigned/anonymous requests.
+    # Handles: GET http://localhost:4566/bucket/key.json (public bucket access)
+    # Must come last — all other service patterns are more specific.
+    if path != "/" and not path.startswith("/_"):
+        bucket_candidate = path.lstrip("/").split("/")[0]
+        if _S3_BUCKET_RE.match(bucket_candidate):
+            return "s3"
 
     return None

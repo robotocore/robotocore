@@ -61,5 +61,6 @@ class TestHandlerChainIntegration:
         assert "GetCallerIdentityResult" in response.text
 
     def test_unknown_service_returns_400(self, client):
-        response = client.get("/unknown-path")
+        # Uppercase letters are not valid S3 bucket name chars — truly unroutable
+        response = client.get("/UNKNOWN_SERVICE")
         assert response.status_code == 400

@@ -98,6 +98,51 @@ class TestRouteFromHost:
         assert route_to_service(req) == "s3"
 
 
+class TestS3PathStyleFallback:
+    """Anonymous path-style S3 requests (no auth header, no service hints)."""
+
+    def test_bucket_and_key(self):
+        req = _make_request(path="/mybucket/myfile.json")
+        assert route_to_service(req) == "s3"
+
+    def test_bucket_only(self):
+        req = _make_request(path="/mybucket")
+        assert route_to_service(req) == "s3"
+
+    def test_bucket_with_nested_key(self):
+        req = _make_request(path="/mybucket/prefix/subdir/file.txt")
+        assert route_to_service(req) == "s3"
+
+    def test_internal_path_not_s3(self):
+        req = _make_request(path="/_robotocore/health")
+        assert route_to_service(req) != "s3"
+
+    def test_root_path_not_s3(self):
+        req = _make_request(path="/")
+        assert route_to_service(req) is None
+
+
+class TestS3VirtualHostedFallback:
+    """Anonymous virtual-hosted style S3 requests via localhost endpoint."""
+
+    def test_bucket_subdomain_localhost(self):
+        req = _make_request(headers={"host": "mybucket.localhost:4566"})
+        assert route_to_service(req) == "s3"
+
+    def test_bucket_subdomain_localhost_no_port(self):
+        req = _make_request(headers={"host": "mybucket.localhost"})
+        assert route_to_service(req) == "s3"
+
+    def test_standard_s3_host_still_works(self):
+        req = _make_request(headers={"host": "mybucket.s3.us-east-1.amazonaws.com"})
+        assert route_to_service(req) == "s3"
+
+    def test_sqs_queue_host_not_s3(self):
+        # SQS endpoint strategy uses account-id.queue.localhost.robotocore.cloud
+        req = _make_request(headers={"host": "123456789012.queue.localhost.robotocore.cloud"})
+        assert route_to_service(req) == "sqs"
+
+
 class TestV1PathDisambiguation:
     """Bug: /v1/tags and other /v1/ Batch patterns are too greedy.
 
@@ -383,5 +428,6 @@ class TestServiceNameAliases:
 
 class TestUnknownService:
     def test_returns_none(self):
-        req = _make_request(path="/unknown")
+        # Uppercase/underscores are not valid S3 bucket name chars — truly unroutable
+        req = _make_request(path="/UNKNOWN_SERVICE")
         assert route_to_service(req) is None
