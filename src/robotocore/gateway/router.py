@@ -294,10 +294,11 @@ def route_to_service(request: Request) -> str | None:
     # Virtual-hosted style with a plain localhost endpoint: mybucket.localhost:4566
     # Only match when the rest of the host is exactly "localhost" (not subdomains like
     # queue.localhost.robotocore.cloud which have their own service checks below).
-    # SigV4-signed requests are already caught by step 3; this covers unsigned access.
+    # Requires no Authorization header — signed requests are caught by step 3, and
+    # a non-SigV4 auth header (e.g. Bearer) should not silently route to S3.
     host_no_port = host.split(":")[0]
     host_subdomain, _, host_rest = host_no_port.partition(".")
-    if host_rest == "localhost" and _S3_BUCKET_RE.match(host_subdomain):
+    if not auth and host_rest == "localhost" and _S3_BUCKET_RE.match(host_subdomain):
         return "s3"
     # SQS endpoint strategy host patterns (robotocore.cloud primary, localstack.cloud alias)
     if (
@@ -331,10 +332,12 @@ def route_to_service(request: Request) -> str | None:
     if "x-www-form-urlencoded" in content_type and not auth:
         return "sts"
 
-    # 8. Path-style S3 fallback for unsigned/anonymous requests.
+    # 8. Path-style S3 fallback for unsigned/anonymous GET/HEAD requests.
     # Handles: GET http://localhost:4566/bucket/key.json (public bucket access)
+    # Restricted to GET/HEAD (the actual public-access shape) and no auth header
+    # so that genuine typos and non-S3 services still get a clean 400.
     # Must come last — all other service patterns are more specific.
-    if path != "/" and not path.startswith("/_"):
+    if not auth and request.method in ("GET", "HEAD") and path != "/" and not path.startswith("/_"):
         bucket_candidate = path.lstrip("/").split("/")[0]
         if _S3_BUCKET_RE.match(bucket_candidate):
             return "s3"

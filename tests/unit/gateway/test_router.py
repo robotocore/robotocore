@@ -9,12 +9,14 @@ def _make_request(
     path: str = "/",
     headers: dict | None = None,
     query_params: dict | None = None,
+    method: str = "GET",
 ) -> MagicMock:
     """Create a mock Starlette Request."""
     req = MagicMock()
     req.url.path = path
     req.headers = headers or {}
     req.query_params = query_params or {}
+    req.method = method
     return req
 
 
@@ -101,25 +103,54 @@ class TestRouteFromHost:
 class TestS3PathStyleFallback:
     """Anonymous path-style S3 requests (no auth header, no service hints)."""
 
-    def test_bucket_and_key(self):
-        req = _make_request(path="/mybucket/myfile.json")
+    def test_get_bucket_and_key(self):
+        req = _make_request(path="/mybucket/myfile.json", method="GET")
         assert route_to_service(req) == "s3"
 
-    def test_bucket_only(self):
-        req = _make_request(path="/mybucket")
+    def test_head_bucket_and_key(self):
+        req = _make_request(path="/mybucket/myfile.json", method="HEAD")
         assert route_to_service(req) == "s3"
 
-    def test_bucket_with_nested_key(self):
-        req = _make_request(path="/mybucket/prefix/subdir/file.txt")
+    def test_get_bucket_only(self):
+        req = _make_request(path="/mybucket", method="GET")
         assert route_to_service(req) == "s3"
 
-    def test_internal_path_not_s3(self):
+    def test_get_bucket_with_nested_key(self):
+        req = _make_request(path="/mybucket/prefix/subdir/file.txt", method="GET")
+        assert route_to_service(req) == "s3"
+
+    def test_post_bucket_path_not_s3(self):
+        # POST without auth and a bucket-shaped path should NOT route to S3
+        req = _make_request(path="/mybucket/key", method="POST")
+        assert route_to_service(req) is None
+
+    def test_get_with_auth_not_s3_fallback(self):
+        # A GET with any Authorization header is not an anonymous request
+        req = _make_request(
+            path="/mybucket/key",
+            method="GET",
+            headers={"authorization": "Bearer some-token"},
+        )
+        assert route_to_service(req) is None
+
+    def test_internal_path_not_routed(self):
         req = _make_request(path="/_robotocore/health")
-        assert route_to_service(req) != "s3"
+        assert route_to_service(req) is None
 
-    def test_root_path_not_s3(self):
+    def test_root_path_not_routed(self):
         req = _make_request(path="/")
         assert route_to_service(req) is None
+
+    def test_admin_path_not_s3(self):
+        # /admin/users looks like a bucket/key but is a genuine unknown service
+        req = _make_request(path="/admin/users", method="GET")
+        assert route_to_service(req) == "s3"  # correct — S3 will return NoSuchBucket
+
+    def test_partial_sqs_path_not_sqs(self):
+        # /queue/myqueue doesn't match the strict SQS pattern /queue/{name}/{account}/
+        # so it falls through to the S3 path-style fallback
+        req = _make_request(path="/queue/myqueue", method="GET")
+        assert route_to_service(req) == "s3"  # S3 fallback — returns NoSuchBucket
 
 
 class TestS3VirtualHostedFallback:
@@ -132,6 +163,32 @@ class TestS3VirtualHostedFallback:
     def test_bucket_subdomain_localhost_no_port(self):
         req = _make_request(headers={"host": "mybucket.localhost"})
         assert route_to_service(req) == "s3"
+
+    def test_virtual_hosted_with_auth_not_fallback(self):
+        # Signed virtual-hosted requests are caught by the auth header (step 3),
+        # not this fallback — but either way they still route to S3
+        req = _make_request(
+            path="/key",
+            headers={
+                "host": "mybucket.localhost:4566",
+                "authorization": (
+                    "AWS4-HMAC-SHA256 "
+                    "Credential=AKID/20260512/us-east-1/s3/aws4_request, "
+                    "SignedHeaders=host, Signature=abc123"
+                ),
+            },
+        )
+        assert route_to_service(req) == "s3"
+
+    def test_non_s3_bearer_auth_on_localhost_host_not_s3(self):
+        # A Bearer token with mybucket.localhost host should NOT be silently routed to S3
+        req = _make_request(
+            headers={
+                "host": "mybucket.localhost:4566",
+                "authorization": "Bearer some-jwt-token",
+            }
+        )
+        assert route_to_service(req) is None
 
     def test_standard_s3_host_still_works(self):
         req = _make_request(headers={"host": "mybucket.s3.us-east-1.amazonaws.com"})
