@@ -637,9 +637,9 @@ jobs:
         run: docker build --target java-and-dotnet -t robotocore:java-and-dotnet .
 
       - name: Verify dotnet CLI is functional in java-and-dotnet image
-        # Catches missing ICU / globalization setup before the container even starts.
-        # This fails fast if DOTNET_SYSTEM_GLOBALIZATION_INVARIANT is missing or the
-        # .NET install is broken (e.g. wrong architecture, missing shared libs).
+        # Fails fast if the runtime toolchain is broken (missing ICU/globalization
+        # setup, wrong architecture, missing shared libs) before starting the
+        # long-running robotocore-full service container.
         run: |
           docker run --rm robotocore:java-and-dotnet dotnet --version
           docker run --rm robotocore:java-and-dotnet java -version

@@ -31,6 +31,24 @@ logger = logging.getLogger(__name__)
 _cached_tfm: str | None = None
 
 
+def _dotnet_compile_env() -> dict[str, str]:
+    """Environment for dotnet CLI subprocess calls (compile and introspection).
+
+    Starts from the current process environment so PATH, HOME, NUGET_PACKAGES,
+    etc. are inherited, then force-sets the vars needed for reliable operation
+    on minimal Docker images that don't ship libicu.
+    """
+    env = os.environ.copy()
+    env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
+    env["DOTNET_NOLOGO"] = "1"
+    env["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+    # Required on slim Debian images: libicu package name changes between
+    # releases (libicu72 → libicu74) making it fragile to install.
+    # Invariant mode is sufficient for Lambda runtimes.
+    env["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
+    return env
+
+
 def _detect_tfm() -> str:
     """Detect the best available .NET target framework moniker (e.g., 'net9.0').
 
@@ -47,6 +65,7 @@ def _detect_tfm() -> str:
             capture_output=True,
             text=True,
             timeout=10,
+            env=_dotnet_compile_env(),
         )
         if proc.returncode == 0:
             # Parse lines like: Microsoft.NETCore.App 9.0.12 [/path]
@@ -204,6 +223,9 @@ class DotnetExecutor:
 
         tmpdir = extract_code(code_zip, layer_zips, code_dir=code_dir, function_name=function_name)
         env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
+        # Required for dotnet exec on slim images that lack libicu.
+        # Set after build_env so it always wins over any user-provided env var.
+        env["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
 
         # Parse handler: "Assembly::Type::Method"
         parts = handler.split("::")
@@ -277,15 +299,9 @@ class DotnetExecutor:
         with open(proj_path, "w") as f:
             f.write(proj_content)
 
-        # Build a clean env for dotnet that inherits system essentials.
-        # The Lambda env may override HOME/DOTNET_ROOT etc. in ways that
-        # break dotnet CLI tooling, so we merge carefully.
-        compile_env = os.environ.copy()
-        # Suppress .NET CLI telemetry and first-run experience which can
-        # hang or write to unexpected locations in CI.
-        compile_env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
-        compile_env["DOTNET_NOLOGO"] = "1"
-        compile_env["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+        # Use a clean dotnet env so Lambda env vars (HOME, DOTNET_ROOT, etc.)
+        # don't interfere with compilation tooling.
+        compile_env = _dotnet_compile_env()
 
         try:
             proc = subprocess.run(
@@ -342,10 +358,7 @@ class DotnetExecutor:
 
             # Build the bootstrap using a clean env (not the Lambda env)
             # to avoid issues with DOTNET_ROOT, HOME, etc.
-            compile_env = os.environ.copy()
-            compile_env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
-            compile_env["DOTNET_NOLOGO"] = "1"
-            compile_env["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+            compile_env = _dotnet_compile_env()
             try:
                 build_proc = subprocess.run(
                     [

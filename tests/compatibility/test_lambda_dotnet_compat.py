@@ -24,12 +24,15 @@ pytestmark = skip_if_runtime_unavailable("dotnet", also_requires="dotnet")
 
 def _detect_tfm() -> str:
     """Detect the highest .NET runtime version available."""
+    env = os.environ.copy()
+    env["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
     try:
         proc = subprocess.run(
             ["dotnet", "--list-runtimes"],
             capture_output=True,
             text=True,
             timeout=10,
+            env=env,
         )
         versions = []
         for line in proc.stdout.splitlines():
@@ -76,12 +79,15 @@ def _compile_cs_to_zip(
 
         # Compile
         out_dir = os.path.join(tmpdir, "out")
+        build_env = os.environ.copy()
+        build_env["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1"
         proc = subprocess.run(
             ["dotnet", "build", "-c", "Release", "-o", out_dir, "--nologo", "-v", "quiet"],
             capture_output=True,
             text=True,
             timeout=60,
             cwd=tmpdir,
+            env=build_env,
         )
         if proc.returncode != 0:
             raise RuntimeError(f"dotnet build failed:\n{proc.stderr}\n{proc.stdout}")
