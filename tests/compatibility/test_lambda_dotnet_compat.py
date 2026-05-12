@@ -2,10 +2,7 @@
 
 Tests create Lambda functions with C# code compiled to .NET assemblies,
 invoke them via the Robotocore server on port 4566, and assert on results.
-
-Requires:
-- `dotnet` CLI on PATH (tests skip if unavailable)
-- Server running on port 4566
+Tests skip when the server reports dotnet is unavailable.
 """
 
 import io
@@ -20,13 +17,9 @@ import zipfile
 
 import pytest
 
-from tests.compatibility.conftest import make_client
+from tests.compatibility.conftest import make_client, skip_if_runtime_unavailable
 
-# Skip entire module if dotnet is not available
-pytestmark = pytest.mark.skipif(
-    shutil.which("dotnet") is None,
-    reason="dotnet CLI not found on PATH",
-)
+pytestmark = skip_if_runtime_unavailable("dotnet", also_requires="dotnet")
 
 
 def _detect_tfm() -> str:

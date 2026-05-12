@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 
 import boto3
 import pytest
@@ -11,6 +12,48 @@ from botocore.config import Config
 logger = logging.getLogger(__name__)
 
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
+
+# Cached result of the runtimes probe — set only on a successful HTTP 200 response
+# so a transient "server not ready" during module collection won't permanently cache
+# an empty set and cause entire test modules to skip incorrectly.
+_runtimes_cache: frozenset[str] | None = None
+
+
+def _server_available_runtimes() -> frozenset[str]:
+    """Fetch available runtime families from the server, caching only on success."""
+    global _runtimes_cache
+    if _runtimes_cache is not None:
+        return _runtimes_cache
+    try:
+        resp = requests.get(f"{ENDPOINT_URL}/_robotocore/runtimes", timeout=5)
+        if resp.ok:
+            _runtimes_cache = frozenset(resp.json().get("available", []))
+            return _runtimes_cache
+    except Exception:
+        logger.debug("Could not reach /_robotocore/runtimes (server may not be up)", exc_info=True)
+    return frozenset()
+
+
+def skip_if_runtime_unavailable(
+    family: str, *, also_requires: str | None = None
+) -> pytest.MarkDecorator:
+    """Return a pytest skip mark when *family* is absent from the running server.
+
+    Use as a module-level pytestmark so tests are skipped (not errored) when
+    the server does not have the required runtime binary installed.
+
+    also_requires: optional local binary name (e.g. "javac") that the tests need
+    on the test-runner host itself (e.g. for local compilation). If absent locally,
+    the module is skipped even when the server supports the runtime.
+    """
+    available = _server_available_runtimes()
+    if family not in available:
+        return pytest.mark.skip(reason=f"Runtime '{family}' not available in server")
+    if also_requires is not None and shutil.which(also_requires) is None:
+        return pytest.mark.skip(
+            reason=f"Local '{also_requires}' not found on PATH (required for test compilation)"
+        )
+    return pytest.mark.skipif(False, reason=f"Runtime '{family}' available")
 
 
 def make_client(service_name: str, **kwargs):
@@ -47,4 +90,6 @@ def _clear_chaos_rules_at_session_end():
                 resp.json()["count"],
             )
     except Exception:
-        pass  # server may already be stopped
+        logger.debug(
+            "Could not clear chaos rules at session end (server may be stopped)", exc_info=True
+        )

@@ -4,6 +4,8 @@ import asyncio
 import json
 import os
 import re
+import shutil
+import subprocess
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -333,6 +335,64 @@ async def services_endpoint(request: Request) -> JSONResponse:
     for name in sorted(SERVICE_REGISTRY.keys()):
         services.append(get_service_info_with_status(name))
     return JSONResponse({"services": services})
+
+
+# Canonical set of runtime families robotocore knows how to execute.
+# Unit tests assert against this tuple so a new family can't be added in one place and missed.
+_ALL_RUNTIME_FAMILIES: tuple[str, ...] = ("custom", "dotnet", "java", "nodejs", "python", "ruby")
+
+# Cache the result of the Java functional probe — running javac on every request is wasteful.
+_java_functional: bool | None = None
+
+
+def _is_java_functional() -> bool:
+    """Check once whether javac + java are present and actually executable.
+
+    On macOS, stub binaries at /usr/bin/javac exist but exit non-zero without a JDK.
+    This avoids reporting Java as available when only stubs are present.
+    """
+    global _java_functional
+    if _java_functional is not None:
+        return _java_functional
+    javac = shutil.which("javac")
+    java = shutil.which("java")
+    if not javac or not java:
+        _java_functional = False
+        return False
+    try:
+        result = subprocess.run([javac, "-version"], capture_output=True, timeout=5)
+        _java_functional = result.returncode == 0
+    except Exception:  # noqa: BLE001
+        _java_functional = False
+    return _java_functional
+
+
+async def runtimes_endpoint(request: Request) -> JSONResponse:
+    """Report which Lambda runtime families are available in this environment.
+
+    Returns two fields:
+    - available: families whose binary is present and executable right now
+    - all: every family robotocore knows how to run (see _ALL_RUNTIME_FAMILIES)
+
+    Clients (compat tests, UIs) can use this to skip gracefully when a runtime
+    is absent from the current image rather than checking the local machine PATH.
+    """
+    available: list[str] = ["python", "custom"]  # python is in-process; custom uses /bin/sh
+    if shutil.which("node"):
+        available.append("nodejs")
+    if shutil.which("ruby"):
+        available.append("ruby")
+    if _is_java_functional():
+        available.append("java")
+    if shutil.which("dotnet"):
+        available.append("dotnet")
+
+    return JSONResponse(
+        {
+            "available": sorted(available),
+            "all": list(_ALL_RUNTIME_FAMILIES),
+        }
+    )
 
 
 async def config_endpoint(request: Request) -> JSONResponse:
@@ -1287,6 +1347,7 @@ management_routes = [
     Route("/_localstack/init/{stage}", localstack_init_stage, methods=["GET"]),
     Route("/_localstack/plugins", localstack_plugins, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
+    Route("/_robotocore/runtimes", runtimes_endpoint, methods=["GET"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
     Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
