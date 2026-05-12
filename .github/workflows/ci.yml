@@ -559,7 +559,7 @@ jobs:
           lam.delete_function(FunctionName=fname)
           iam.delete_role(RoleName=role_name)
           "
-          # Node.js Lambda invocation — verifies node binary is present in the Docker image
+          # Node.js Lambda invocation — all three runtime versions (18.x, 20.x, 22.x)
           python -c "
           import boto3, io, json, time, uuid, zipfile
 
@@ -571,24 +571,35 @@ jobs:
           lam = boto3.client('lambda', endpoint_url=endpoint, region_name=region, **creds)
 
           trust = json.dumps({'Version': '2012-10-17', 'Statement': [{'Effect': 'Allow', 'Principal': {'Service': 'lambda.amazonaws.com'}, 'Action': 'sts:AssumeRole'}]})
-          role_name = 'smoke-node-role-' + uuid.uuid4().hex[:8]
-          iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
-          role_arn = f'arn:aws:iam::123456789012:role/{role_name}'
 
+          handler_js = 'exports.handler = async (event) => ({ ok: true, echo: event.msg, nodeVersion: process.version });'
           buf = io.BytesIO()
           with zipfile.ZipFile(buf, 'w') as zf:
-              zf.writestr('index.js', 'exports.handler = async (event) => ({ ok: true, echo: event.msg });')
-          fname = 'smoke-node-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fname, Runtime='nodejs20.x', Role=role_arn, Handler='index.handler', Code={'ZipFile': buf.getvalue()})
+              zf.writestr('index.js', handler_js)
+          code = buf.getvalue()
 
-          resp = lam.invoke(FunctionName=fname, Payload=json.dumps({'msg': 'hello-node'}))
-          assert resp.get('FunctionError') is None, f'Node Lambda returned FunctionError: {json.loads(resp[\"Payload\"].read())}'
-          payload = json.loads(resp['Payload'].read())
-          assert payload['ok'] is True, f'Node Lambda failed: {payload}'
-          assert payload['echo'] == 'hello-node', f'Node Lambda echo wrong: {payload}'
-          print('Node.js Lambda smoke test passed')
-          lam.delete_function(FunctionName=fname)
-          iam.delete_role(RoleName=role_name)
+          for node_runtime in ('nodejs18.x', 'nodejs20.x', 'nodejs22.x'):
+              role_name = 'smoke-node-role-' + uuid.uuid4().hex[:8]
+              fname = 'smoke-node-' + uuid.uuid4().hex[:8]
+              iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=trust)
+              role_arn = f'arn:aws:iam::123456789012:role/{role_name}'
+              try:
+                  lam.create_function(FunctionName=fname, Runtime=node_runtime, Role=role_arn,
+                                      Handler='index.handler', Code={'ZipFile': code})
+                  resp = lam.invoke(FunctionName=fname, Payload=json.dumps({'msg': 'hello-node'}))
+                  payload = json.loads(resp['Payload'].read())
+                  assert resp.get('FunctionError') is None, f'{node_runtime} FunctionError: {payload}'
+                  assert payload['ok'] is True, f'{node_runtime} Lambda failed: {payload}'
+                  assert payload['echo'] == 'hello-node', f'{node_runtime} echo wrong: {payload}'
+                  major = int(payload['nodeVersion'].lstrip('v').split('.')[0])
+                  expected = int(node_runtime.replace('nodejs', '').replace('.x', ''))
+                  assert major == expected, f'{node_runtime} got Node {payload[\"nodeVersion\"]}, want v{expected}.x'
+                  print(f'{node_runtime} smoke test passed (Node {payload[\"nodeVersion\"]})')
+              finally:
+                  try: lam.delete_function(FunctionName=fname)
+                  except Exception: pass
+                  try: iam.delete_role(RoleName=role_name)
+                  except Exception: pass
           "
           echo "All smoke tests passed"
       - name: Check image size

@@ -1,10 +1,12 @@
 """Tests for the Node.js runtime executor."""
 
 import shutil
+from unittest.mock import patch
 
 import pytest
 
-from robotocore.services.lambda_.runtimes.node import NodejsExecutor
+from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
+from robotocore.services.lambda_.runtimes.node import _RUNTIME_BINARY, NodejsExecutor
 from tests.unit.services.lambda_.helpers import make_zip
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="Node.js not installed")
@@ -239,3 +241,66 @@ class TestNodejsExecutor:
         )
         assert error_type is None
         assert result["msg"] == "Hello World"
+
+
+class TestNodejsVersionRouting:
+    """Verify that each runtime identifier resolves to the correct binary."""
+
+    def test_runtime_binary_map_covers_known_versions(self):
+        assert "nodejs18.x" in _RUNTIME_BINARY
+        assert "nodejs20.x" in _RUNTIME_BINARY
+        assert "nodejs22.x" in _RUNTIME_BINARY
+
+    def test_versioned_binary_preferred_when_present(self):
+        executor = NodejsExecutor(runtime="nodejs20.x")
+
+        def _which(name):
+            return f"/usr/bin/{name}" if name in ("node20", "node") else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/node20"
+
+    def test_falls_back_to_node_when_versioned_binary_missing(self):
+        executor = NodejsExecutor(runtime="nodejs20.x")
+
+        def _which(name):
+            return "/usr/bin/node" if name == "node" else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/node"
+
+    def test_returns_none_when_no_node_at_all(self):
+        executor = NodejsExecutor(runtime="nodejs20.x")
+        with patch("shutil.which", return_value=None):
+            assert executor._resolve_binary() is None
+
+    def test_executor_with_no_node_returns_invalid_runtime(self):
+        executor = NodejsExecutor(runtime="nodejs20.x")
+        with patch.object(executor, "_resolve_binary", return_value=None):
+            result, error_type, _ = executor.execute(
+                code_zip=b"", handler="index.handler", event={}, function_name="fn"
+            )
+        assert error_type == "Runtime.InvalidRuntime"
+
+    def test_get_executor_for_runtime_returns_versioned_instance(self):
+        clear_executor_cache()
+        ex18 = get_executor_for_runtime("nodejs18.x")
+        ex20 = get_executor_for_runtime("nodejs20.x")
+        ex22 = get_executor_for_runtime("nodejs22.x")
+        assert isinstance(ex18, NodejsExecutor)
+        assert ex18 is not ex20
+        assert ex20 is not ex22
+        # Same runtime reuses the cached singleton
+        assert get_executor_for_runtime("nodejs20.x") is ex20
+
+    def test_each_version_routes_to_distinct_binary_name(self):
+        for runtime, expected_bin in _RUNTIME_BINARY.items():
+            executor = NodejsExecutor(runtime=runtime)
+
+            def _which(name, b=expected_bin):
+                return f"/usr/bin/{name}" if name == b else None
+
+            with patch("shutil.which", side_effect=_which):
+                assert executor._resolve_binary() == f"/usr/bin/{expected_bin}", (
+                    f"Failed for {runtime}"
+                )

@@ -107,6 +107,14 @@ def runtime_to_family(runtime: str) -> str:
 def get_executor_for_runtime(runtime: str) -> RuntimeExecutor:
     """Get the executor for a given AWS runtime string."""
     family = runtime_to_family(runtime)
+    if family == "nodejs":
+        # Node.js executors are keyed by full runtime string so each version gets
+        # its own binary (node18/node20/node22 → matching NodejsExecutor).
+        if runtime not in _executors:
+            from robotocore.services.lambda_.runtimes.node import NodejsExecutor
+
+            _executors[runtime] = NodejsExecutor(runtime=runtime)
+        return _executors[runtime]
     return _get_executor(family)
 
 

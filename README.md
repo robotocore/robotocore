@@ -166,7 +166,7 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 | Firehose | Buffered delivery to S3 |
 | IAM | Full policy engine, permission boundaries, resource policies |
 | Kinesis | Streams and shard management |
-| Lambda | Python (3.8–3.13), Node.js (18.x–22.x), versions, aliases, layers, function URLs, destinations |
+| Lambda | Python (3.8–3.13), Node.js 18.x/20.x/22.x (each on its own binary), versions, aliases, layers, function URLs, destinations |
 | OpenSearch | Domain management |
 | Rekognition | Image analysis stubs |
 | Resource Groups | Group management |
@@ -378,7 +378,8 @@ lam.create_function(
 result = lam.invoke(FunctionName="my-fn", Payload=json.dumps({"key": "val"}))
 print(json.loads(result["Payload"].read()))  # {"status": "ok"}
 
-# Lambda invocation — Node.js (nodejs18.x, nodejs20.x, nodejs22.x all supported)
+# Lambda invocation — Node.js
+# Each runtime identifier routes to its matching Node.js binary (18, 20, or 22).
 lam.create_function(
     FunctionName="my-node-fn",
     Runtime="nodejs20.x",
