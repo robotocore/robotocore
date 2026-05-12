@@ -123,6 +123,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certifi
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1
 ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+# Invariant globalization: avoids the libicu dependency on slim Debian images.
+# AWS Lambda's own .NET runtime uses this setting; locale-sensitive operations
+# (e.g. culture-specific string comparison) fall back to ordinal behavior.
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 # Shared NuGet package cache writable by all users (primed during build)
 ENV NUGET_PACKAGES=/opt/nuget-packages
 
