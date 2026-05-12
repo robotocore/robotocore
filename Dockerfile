@@ -127,16 +127,14 @@ ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 ENV NUGET_PACKAGES=/opt/nuget-packages
 
 # Pre-warm the NuGet package cache so dotnet build works offline at runtime.
-# The bootstrap console app (used for .NET Lambda handler invocation) needs to
-# compile at invocation time; pre-warming ensures the SDK reference packs are
-# already resolved and the first build doesn't hit the network.
+# dotnet restore (not build) is sufficient: it downloads SDK reference packs
+# and NuGet dependencies without invoking the compiler, using far less memory.
 RUN mkdir -p /opt/nuget-packages \
     && mkdir -p /tmp/dotnet-prewarm \
     && printf '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' \
        > /tmp/dotnet-prewarm/prewarm.csproj \
-    && printf 'Console.WriteLine("ok");' > /tmp/dotnet-prewarm/Program.cs \
-    && dotnet build /tmp/dotnet-prewarm/prewarm.csproj --nologo -v q -o /tmp/dotnet-out \
-    && rm -rf /tmp/dotnet-prewarm /tmp/dotnet-out \
+    && dotnet restore /tmp/dotnet-prewarm/prewarm.csproj --nologo \
+    && rm -rf /tmp/dotnet-prewarm \
     && chmod -R a+rX /opt/nuget-packages
 
 USER robotocore
