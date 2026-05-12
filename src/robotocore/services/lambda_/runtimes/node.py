@@ -1,5 +1,6 @@
 """Node.js runtime executor — runs handler via subprocess."""
 
+import logging
 import os
 import shutil
 
@@ -11,8 +12,23 @@ from robotocore.services.lambda_.runtimes.base import (
 
 BOOTSTRAP_JS = os.path.join(os.path.dirname(__file__), "bootstraps", "bootstrap.js")
 
+logger = logging.getLogger(__name__)
+
+# Maps Lambda runtime identifiers to the versioned node binary name in the image.
+# The Dockerfile installs node18, node20, node22 alongside a default "node" (→ 20).
+# Runtimes absent from this map (e.g. nodejs16.x) fall back to plain "node" with
+# a warning so divergence from the requested version is visible in logs.
+_RUNTIME_BINARY: dict[str, str] = {
+    "nodejs18.x": "node18",
+    "nodejs20.x": "node20",
+    "nodejs22.x": "node22",
+}
+
 
 class NodejsExecutor:
+    def __init__(self, runtime: str = "") -> None:
+        self._runtime = runtime
+
     def execute(
         self,
         code_zip: bytes,
@@ -28,18 +44,16 @@ class NodejsExecutor:
         code_dir: str | None = None,
         hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
-        node_bin = shutil.which("node")
+        node_bin = self._resolve_binary()
         if not node_bin:
             return None, "Runtime.InvalidRuntime", "Node.js not installed"
 
         tmpdir = extract_code(code_zip, layer_zips, code_dir=code_dir, function_name=function_name)
         env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
-        # Add node_modules from the extracted code to NODE_PATH
         node_modules = os.path.join(tmpdir, "node_modules")
         node_path_parts = [tmpdir]
         if os.path.isdir(node_modules):
             node_path_parts.append(node_modules)
-        # Layers may put Node modules in nodejs/node_modules
         nodejs_dir = os.path.join(tmpdir, "nodejs")
         if os.path.isdir(nodejs_dir):
             node_path_parts.append(nodejs_dir)
@@ -50,3 +64,18 @@ class NodejsExecutor:
 
         cmd = [node_bin, BOOTSTRAP_JS, handler]
         return run_subprocess(cmd, event, tmpdir, env, timeout)
+
+    def _resolve_binary(self) -> str | None:
+        """Return the node binary path, preferring the version-specific one."""
+        versioned = _RUNTIME_BINARY.get(self._runtime)
+        if versioned:
+            path = shutil.which(versioned)
+            if path:
+                return path
+        if self._runtime and self._runtime not in _RUNTIME_BINARY:
+            logger.warning(
+                "No versioned node binary for runtime %r — falling back to 'node'. Supported: %s",
+                self._runtime,
+                ", ".join(sorted(_RUNTIME_BINARY)),
+            )
+        return shutil.which("node")

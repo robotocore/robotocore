@@ -8,19 +8,12 @@ console.log capture, and built-in module usage.
 
 import io
 import json
-import shutil
 import uuid
 import zipfile
 
 import pytest
 
 from tests.compatibility.conftest import make_client
-
-# Skip the entire module if node binary is not available
-pytestmark = pytest.mark.skipif(
-    shutil.which("node") is None,
-    reason="node binary not found on PATH",
-)
 
 
 def _make_node_zip(code: str, filename: str = "index.js") -> bytes:

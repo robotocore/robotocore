@@ -52,6 +52,14 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js runtimes — copy official versioned binaries so each nodejs* Lambda
+# identifier runs on the matching Node.js version, matching AWS behavior.
+# Node 20 (current LTS) is also the default "node" binary.
+COPY --from=node:18-slim /usr/local/bin/node /usr/local/bin/node18
+COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node20
+COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node22
+COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
+
 RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
 
 WORKDIR /app
