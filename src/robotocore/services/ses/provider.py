@@ -579,22 +579,26 @@ def _capture_send_email(params: dict, store) -> None:  # type: ignore[type-arg]
 
 def _capture_send_raw_email(params: dict, store) -> None:  # type: ignore[type-arg]
     raw_b64 = params.get("RawMessage.Data", "")
+    raw_bytes = b""
     try:
-        raw = base64.b64decode(raw_b64).decode("utf-8", errors="replace")
+        raw_bytes = base64.b64decode(raw_b64)
     except Exception:  # noqa: BLE001
-        raw = ""
+        logger.debug("SES raw email base64 decode failed (non-fatal)", exc_info=True)
 
     sender = params.get("Source", "")
     recipients = _collect_indexed_params(params, "Destinations")
 
     subject = ""
     body = ""
-    if raw:
+    if raw_bytes:
         try:
-            msg = _email.message_from_string(raw)
+            # Parse from bytes so the email library handles charset detection
+            # before we decode headers — avoids mangling non-UTF8 content.
+            msg = _email.message_from_bytes(raw_bytes)
             subject = msg.get("Subject", "") or ""
             if not sender:
-                sender = msg.get("From", "") or ""
+                # parseaddr strips display names: "Jane Doe <j@x.com>" → "j@x.com"
+                _, sender = _email.utils.parseaddr(msg.get("From", "") or "")
             if not recipients:
                 raw_to = msg.get("To", "") or ""
                 recipients = [addr for _, addr in _email.utils.getaddresses([raw_to]) if addr]
@@ -615,7 +619,7 @@ def _capture_send_raw_email(params: dict, store) -> None:  # type: ignore[type-a
         recipients=recipients,
         subject=subject,
         body=body,
-        raw=raw,
+        raw=raw_bytes.decode("utf-8", errors="replace"),
         source="api",
     )
 

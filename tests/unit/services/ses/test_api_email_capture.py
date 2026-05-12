@@ -159,6 +159,68 @@ class TestSesV1Capture:
         assert msgs[0]["sender"] == "auto@x.com"
         assert "dest@y.com" in msgs[0]["recipients"]
 
+    def test_capture_send_raw_email_strips_display_names(self):
+        """Display names in From/To headers should not bleed into sender/recipients."""
+        from robotocore.services.ses.provider import _capture_send_raw_email
+
+        raw = (
+            'From: "Jane Doe" <jane@x.com>\r\n'
+            'To: "Bob Smith" <bob@y.com>, carol@z.com\r\n'
+            "Subject: Display names\r\n\r\n"
+            "Hello"
+        )
+        encoded = base64.b64encode(raw.encode()).decode()
+        params = {"RawMessage.Data": encoded}
+        _capture_send_raw_email(params, self.store)
+
+        msgs = self.store.get_messages()
+        assert msgs[0]["sender"] == "jane@x.com"
+        assert "bob@y.com" in msgs[0]["recipients"]
+        assert "carol@z.com" in msgs[0]["recipients"]
+        # Display names must not appear in recipient list
+        assert not any("Bob Smith" in r or "carol" == r for r in msgs[0]["recipients"])
+
+    def test_capture_send_raw_email_multipart_body(self):
+        """Multipart MIME: extract text/plain part, ignore html part."""
+        from robotocore.services.ses.provider import _capture_send_raw_email
+
+        raw = (
+            "From: s@x.com\r\nTo: r@y.com\r\nSubject: Multipart\r\n"
+            'MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary="bound"\r\n\r\n'
+            "--bound\r\nContent-Type: text/plain\r\n\r\nPlain text part\r\n"
+            "--bound\r\nContent-Type: text/html\r\n\r\n<p>HTML part</p>\r\n"
+            "--bound--"
+        )
+        encoded = base64.b64encode(raw.encode()).decode()
+        params = {"Source": "s@x.com", "RawMessage.Data": encoded}
+        _capture_send_raw_email(params, self.store)
+
+        msgs = self.store.get_messages()
+        assert "Plain text part" in msgs[0]["body"]
+        assert "<p>" not in msgs[0]["body"]
+
+    def test_capture_bulk_templated_email(self):
+        """SendBulkTemplatedEmail: collect recipients from all Destinations entries."""
+        from robotocore.services.ses.provider import _capture_send_templated_email
+
+        params = {
+            "Source": "bulk@x.com",
+            "Template": "BulkTemplate",
+            "Destinations.member.1.Destination.ToAddresses.member.1": "a@y.com",
+            "Destinations.member.1.Destination.ToAddresses.member.2": "b@y.com",
+            "Destinations.member.2.Destination.ToAddresses.member.1": "c@y.com",
+        }
+        _capture_send_templated_email(params, self.store)
+
+        msgs = self.store.get_messages()
+        assert len(msgs) == 1
+        m = msgs[0]
+        assert m["sender"] == "bulk@x.com"
+        assert m["subject"] == "[template: BulkTemplate]"
+        assert "a@y.com" in m["recipients"]
+        assert "b@y.com" in m["recipients"]
+        assert "c@y.com" in m["recipients"]
+
     def test_capture_templated_email(self):
         from robotocore.services.ses.provider import _capture_send_templated_email
 
