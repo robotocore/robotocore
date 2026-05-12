@@ -116,6 +116,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certifi
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1
 ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+# Use invariant globalization mode: avoids a hard dependency on libicu (whose
+# package name changes between Debian releases, e.g. libicu72 → libicu74).
+# Lambda runtimes don't need locale-sensitive string operations, so invariant
+# mode is fine and matches what Microsoft recommends for Alpine/slim images.
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 # Shared NuGet package cache writable by all users (primed during build)
 ENV NUGET_PACKAGES=/opt/nuget-packages
 
