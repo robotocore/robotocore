@@ -251,6 +251,15 @@ When we discover a Moto bug or missing feature:
 - **Never stop to summarize** — if the plan has more steps, keep executing. A summary is only appropriate when the plan is fully complete.
 - **Prompt log**: Every commit includes a prompt log entry in `prompts/`. Follow the format in `prompts/PROMPTLOG.md` (the spec lives in this repo). One file per session phase, named `prompts/{timestamp}-{slug}.md` with YAML frontmatter. Include both human prompts and assistant reasoning for non-obvious decisions.
 
+### Changelog discipline (CRITICAL)
+Robotocore uses CalVer (`YYYY.M.D[.N]`) and every push to `main` is a release, but the `CHANGELOG.md` is the durable record of what shipped — read by users deciding when to upgrade and by reviewers verifying scope. The auto-release workflow does NOT generate changelog entries. **You must.**
+- **Update `CHANGELOG.md` in the same PR** as any user-visible change. "User-visible" = new feature/endpoint/env var, behaviour change anyone could notice, breaking change, bug fix that resolves a user-reported issue, image-size/perf shift of >10%, or new runtime/service support. Pure internal refactors and test-only PRs don't need an entry.
+- **Add a top-level `## YYYY.M.D` section** at the top of the file (Keep a Changelog format — newest first). If today's date already has a section (multiple PRs landed the same day), append your subsections to it; the daily-rollup version (`.1`, `.2`, etc.) is what CalVer will tag, but one section per date is fine for readability.
+- **Use the standard subsections** as they apply: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`. For a major feature, lead with a brief paragraph explaining *what* and *why* before the subsections.
+- **Be specific**: name the endpoint, env var, runtime ID, image size delta. "Improved performance" without a number is noise; "image dropped from 987 MB to 463 MB" is information.
+- **Migration note**: if behaviour changed at all (even non-breaking), add a `#### Migration` block describing what existing users will notice. Especially: anything that *used to silently work the wrong way* and now works correctly is a behaviour change to call out.
+- **CI gate**: when reviewing PRs that touch `src/` or add new endpoints, verify `CHANGELOG.md` was updated; if not, ask the author whether the omission is intentional before approving. (Future: enforce via a CI check; for now, a review-time rule.)
+
 ### Test expansion rules (IMPORTANT — learned from experience)
 - **Never write tests for unverified operations**. Before writing compat tests for a service, verify what actually works by running the operations against the live server. Use `scripts/probe_service.py` as a starting point.
 - **No speculative xfails**. If an operation doesn't work, fix the server first, then write the test. An xfail is a TODO you'll forget about.
