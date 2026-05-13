@@ -1,19 +1,37 @@
-"""Python runtime executor — runs handler in-process for speed.
+"""Python runtime executor.
 
-Lambda Python handlers are dispatched in-process for performance: there's no
-subprocess overhead per invocation. The trade-off is that we cannot swap
-interpreter versions per function — the host's Python is what runs the code.
+Two execution paths:
 
-We still accept the AWS runtime identifier (e.g. ``python3.12``) so we can
-warn when there's a major-version mismatch between what the function declared
-and what the host can offer. Handlers that rely on version-specific syntax or
-stdlib behavior will see the warning rather than a silent mismatch.
+* **In-process** (fast path): when the function's requested runtime matches
+  the host Python (e.g. ``runtime="python3.12"`` on a host running 3.12),
+  the handler is dispatched in-process via ``execute_python_handler``. This
+  preserves robotocore's existing layer handling, hot reload, code caching,
+  and ~zero per-invocation overhead.
+
+* **Subprocess** (faithful per-version): when the requested runtime differs
+  from the host (e.g. ``runtime="python3.10"`` on a 3.12 host), we exec the
+  matching versioned binary (``/usr/local/bin/python3.10``) with
+  ``bootstraps/bootstrap.py``. The handler runs under the requested Python's
+  exact interpreter, syntax, and stdlib — at the cost of subprocess startup.
+
+The Dockerfile installs python3.10, python3.11, and python3.13 alongside the
+image's base python3.12. If the requested binary isn't on $PATH we fall back
+to in-process with a warning rather than failing the invocation outright.
 """
 
 import logging
+import os
+import shutil
 import sys
 
 from robotocore.services.lambda_.executor import execute_python_handler
+from robotocore.services.lambda_.runtimes.base import (
+    build_env,
+    extract_code,
+    run_subprocess,
+)
+
+BOOTSTRAP_PY = os.path.join(os.path.dirname(__file__), "bootstraps", "bootstrap.py")
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +67,27 @@ class PythonExecutor:
         code_dir: str | None = None,
         hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
-        self._check_version_match()
+        # Subprocess path for cross-version requests (e.g. python3.10 on a
+        # python3.12 host) when the versioned binary is installed.
+        sub_bin = self._resolve_subprocess_binary()
+        if sub_bin is not None:
+            return self._execute_via_subprocess(
+                sub_bin,
+                code_zip=code_zip,
+                handler=handler,
+                event=event,
+                function_name=function_name,
+                timeout=timeout,
+                memory_size=memory_size,
+                env_vars=env_vars,
+                region=region,
+                account_id=account_id,
+                layer_zips=layer_zips,
+                code_dir=code_dir,
+            )
+
+        # In-process path: host Python matches OR no versioned binary available.
+        self._warn_if_mismatch()
         return execute_python_handler(
             code_zip=code_zip,
             handler=handler,
@@ -65,8 +103,58 @@ class PythonExecutor:
             hot_reload=hot_reload,
         )
 
-    def _check_version_match(self) -> None:
-        """Warn once per executor instance if the host Python doesn't match."""
+    def _resolve_subprocess_binary(self) -> str | None:
+        """Return the path to a versioned python binary when one is required.
+
+        Returns ``None`` when we should fall through to in-process — either
+        because the runtime matches the host Python, or no runtime was
+        specified, or the versioned binary isn't installed.
+        """
+        if not self._runtime:
+            return None
+        expected = _RUNTIME_BINARY.get(self._runtime)
+        if expected is None:
+            return None  # Unknown runtime — in-process with warning.
+        host = (sys.version_info.major, sys.version_info.minor)
+        if expected == host:
+            return None  # Matching version — keep the in-process fast path.
+        # The runtime ID doubles as the binary name (python3.10 → python3.10).
+        return shutil.which(self._runtime)
+
+    def _execute_via_subprocess(
+        self,
+        python_bin: str,
+        *,
+        code_zip: bytes,
+        handler: str,
+        event: dict,
+        function_name: str,
+        timeout: int,
+        memory_size: int,
+        env_vars: dict | None,
+        region: str,
+        account_id: str,
+        layer_zips: list[bytes] | None,
+        code_dir: str | None,
+    ) -> tuple[dict | str | list | None, str | None, str]:
+        tmpdir = extract_code(code_zip, layer_zips, code_dir=code_dir, function_name=function_name)
+        env = build_env(function_name, region, account_id, timeout, memory_size, handler, env_vars)
+        # Make the user code + any layer paths importable from bootstrap.py.
+        python_path_parts = [tmpdir]
+        # Layers convention: `python/` at the layer root contains modules.
+        py_layer_dir = os.path.join(tmpdir, "python")
+        if os.path.isdir(py_layer_dir):
+            python_path_parts.append(py_layer_dir)
+        env["PYTHONPATH"] = os.pathsep.join(python_path_parts)
+        # Surface a millisecond deadline so context.get_remaining_time_in_millis
+        # is meaningful (the in-process path computes this differently).
+        env["AWS_LAMBDA_TIMEOUT_MS"] = str(timeout * 1000)
+
+        cmd = [python_bin, BOOTSTRAP_PY]
+        return run_subprocess(cmd, event, tmpdir, env, timeout)
+
+    def _warn_if_mismatch(self) -> None:
+        """Warn once if the in-process Python doesn't match the requested runtime."""
         if self._mismatch_warned or not self._runtime:
             return
         expected = _RUNTIME_BINARY.get(self._runtime)
@@ -81,10 +169,15 @@ class PythonExecutor:
             )
         elif expected != host:
             logger.warning(
-                "Python runtime %r requested but host is Python %d.%d — "
-                "handler will run in-process under the host interpreter.",
+                "Python runtime %r requested but neither host Python %d.%d nor "
+                "versioned binary %r is available — falling back to in-process "
+                "(handler may see wrong stdlib/syntax).",
                 self._runtime,
                 host[0],
                 host[1],
+                self._runtime,
             )
         self._mismatch_warned = True
+
+    # Backwards-compatible alias used by existing tests.
+    _check_version_match = _warn_if_mismatch

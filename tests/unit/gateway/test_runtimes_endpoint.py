@@ -150,24 +150,57 @@ class TestRuntimesEndpointVersions:
         data = client.get("/_robotocore/runtimes").json()
         assert data["versions"]["custom"] == []
 
-    def test_python_versions_reports_host_match(self, client):
-        # The endpoint should report whichever pythonX.Y matches the host.
+    def test_python_versions_reports_host_match_when_no_versioned_binaries(self):
+        # No versioned python binaries on PATH → only the host's version
+        # appears under versions["python"].
         import sys
 
-        host = (sys.version_info.major, sys.version_info.minor)
-        data = client.get("/_robotocore/runtimes").json()
-        # The host version may or may not be in our map (e.g. python3.12);
-        # whatever's reported must match that map.
         from robotocore.services.lambda_.runtimes.python import _RUNTIME_BINARY as PY_MAP
 
+        host = (sys.version_info.major, sys.version_info.minor)
+
+        def _which(name):
+            # Pretend "dotnet" / "node" / "ruby" / "java" / "javac" are unavailable
+            # so other branches don't add noise; also no python3.X versioned binaries.
+            return None
+
+        app = Starlette(
+            routes=[Route("/_robotocore/runtimes", _app.runtimes_endpoint, methods=["GET"])]
+        )
+        with patch("robotocore.gateway.app.shutil.which", side_effect=_which):
+            data = TestClient(app).get("/_robotocore/runtimes").json()
         expected = [rt for rt, ver in PY_MAP.items() if ver == host]
         assert data["versions"]["python"] == sorted(expected)
 
-    def test_dotnet_versions_only_reports_host_max(self):
-        # On a {6, 8, 9} host, we can only faithfully execute dotnet9 (our
-        # _detect_tfm() always builds at host max). The endpoint must report
-        # only dotnet9 — reporting dotnet6/dotnet8 too would advertise
-        # version fidelity we don't deliver.
+    def test_python_versions_includes_versioned_binaries_when_present(self):
+        # When python3.10 / python3.11 / python3.13 are on PATH, the endpoint
+        # advertises them too — PythonExecutor will subprocess-dispatch.
+        import sys
+
+        from robotocore.services.lambda_.runtimes.python import _RUNTIME_BINARY as PY_MAP
+
+        host = (sys.version_info.major, sys.version_info.minor)
+        installed = {"python3.10", "python3.11", "python3.13"}
+
+        def _which(name):
+            if name in installed:
+                return f"/usr/local/bin/{name}"
+            return None
+
+        app = Starlette(
+            routes=[Route("/_robotocore/runtimes", _app.runtimes_endpoint, methods=["GET"])]
+        )
+        with patch("robotocore.gateway.app.shutil.which", side_effect=_which):
+            data = TestClient(app).get("/_robotocore/runtimes").json()
+        # All four (host's version via in-process + three versioned binaries)
+        # should appear, deduped and sorted.
+        host_rt = next((rt for rt, ver in PY_MAP.items() if ver == host), None)
+        expected = installed | ({host_rt} if host_rt else set())
+        assert set(data["versions"]["python"]) == expected
+
+    def test_dotnet_versions_reports_each_installed_sdk(self):
+        # With SDKs for net6/net8/net9 all installed, every Lambda dotnet
+        # runtime is faithfully executable (per-TFM dispatch).
         from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
 
         app = Starlette(
@@ -176,9 +209,10 @@ class TestRuntimesEndpointVersions:
         with patch("robotocore.gateway.app.shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
             with patch.object(dotnet_mod, "_installed_majors", {6, 8, 9}):
                 data = TestClient(app).get("/_robotocore/runtimes").json()
-        assert data["versions"]["dotnet"] == ["dotnet9"]
+        assert set(data["versions"]["dotnet"]) == {"dotnet6", "dotnet8", "dotnet9"}
 
-    def test_dotnet_versions_when_only_one_major_installed(self):
+    def test_dotnet_versions_only_advertises_installed_sdks(self):
+        # Only SDK 8 installed → only dotnet8 is faithfully executable.
         from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
 
         app = Starlette(

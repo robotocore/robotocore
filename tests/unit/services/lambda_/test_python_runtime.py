@@ -114,3 +114,49 @@ class TestPythonVersionRouting:
             executor._check_version_match()
         mock_warn.assert_called_once()
         assert "python2.7" in mock_warn.call_args.args[1]
+
+
+class TestPythonSubprocessDispatch:
+    """Verify routing between in-process and versioned-subprocess paths."""
+
+    def test_no_runtime_uses_in_process(self):
+        executor = PythonExecutor(runtime="")
+        assert executor._resolve_subprocess_binary() is None
+
+    def test_unknown_runtime_uses_in_process(self):
+        executor = PythonExecutor(runtime="python2.7")
+        assert executor._resolve_subprocess_binary() is None
+
+    def test_matching_runtime_uses_in_process(self):
+        # Host Python matches → stay in-process (no subprocess overhead).
+        host = (sys.version_info.major, sys.version_info.minor)
+        matching = next(
+            (rt for rt, ver in _RUNTIME_BINARY.items() if ver == host),
+            None,
+        )
+        if matching is None:
+            return  # host python not in our map; nothing to assert
+        executor = PythonExecutor(runtime=matching)
+        with patch("shutil.which", return_value=f"/usr/bin/{matching}"):
+            assert executor._resolve_subprocess_binary() is None
+
+    def test_non_matching_runtime_with_binary_dispatches_subprocess(self):
+        # Pick a runtime that does NOT match the host and pretend its binary
+        # is installed; PythonExecutor should return its path so execute()
+        # takes the subprocess branch.
+        host = (sys.version_info.major, sys.version_info.minor)
+        other = next(rt for rt, ver in _RUNTIME_BINARY.items() if ver != host)
+        executor = PythonExecutor(runtime=other)
+        with patch(
+            "shutil.which", side_effect=lambda x: f"/usr/local/bin/{x}" if x == other else None
+        ):
+            assert executor._resolve_subprocess_binary() == f"/usr/local/bin/{other}"
+
+    def test_non_matching_runtime_without_binary_falls_back_to_in_process(self):
+        # No versioned binary → in-process with mismatch warning (covered by
+        # TestPythonVersionRouting). _resolve_subprocess_binary returns None.
+        host = (sys.version_info.major, sys.version_info.minor)
+        other = next(rt for rt, ver in _RUNTIME_BINARY.items() if ver != host)
+        executor = PythonExecutor(runtime=other)
+        with patch("shutil.which", return_value=None):
+            assert executor._resolve_subprocess_binary() is None

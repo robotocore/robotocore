@@ -393,11 +393,14 @@ async def runtimes_endpoint(request: Request) -> JSONResponse:
 
     versions: dict[str, list[str]] = {family: [] for family in _ALL_RUNTIME_FAMILIES}
 
-    # Python: in-process — we expose whichever Lambda runtime matches the host's
-    # (major, minor). Other entries are not "available" because we can't satisfy them.
+    # Python: report every runtime we can faithfully execute. The host's own
+    # (major, minor) is satisfied in-process; other versions require a
+    # versioned ``pythonX.Y`` binary on $PATH (the image installs python3.10,
+    # python3.11, python3.13 alongside the base 3.12) and route to the
+    # subprocess path in PythonExecutor.
     host_py = (sys.version_info.major, sys.version_info.minor)
     for rt, ver in PY_RUNTIMES.items():
-        if ver == host_py:
+        if ver == host_py or shutil.which(rt):
             versions["python"].append(rt)
 
     for rt, binary in NODE_RUNTIME_BIN.items():
@@ -411,22 +414,19 @@ async def runtimes_endpoint(request: Request) -> JSONResponse:
             if shutil.which(binary):
                 versions["java"].append(rt)
     if shutil.which("dotnet"):
-        # .NET ships a single shared host. Our _detect_tfm() always builds at
-        # the host's max-installed major (see its docstring — going lower
-        # produces silent Type-not-found at handler load). So we only honestly
-        # "support" the runtime whose major equals host max. Reporting the
-        # others as available would advertise version fidelity we don't
-        # actually deliver (a dotnet6 function would silently run on net9.0).
+        # Every Lambda dotnet runtime whose SDK is installed gets reported —
+        # _detect_tfm(runtime) faithfully picks the matching TFM per request
+        # (now that the image installs SDKs for 6.0/8.0/9.0 side by side).
+        # Runtimes whose SDK is missing are NOT advertised; the executor
+        # would fall back to host max and warn.
         installed_majors = _list_installed_majors()
-        host_max = max(installed_majors) if installed_majors else None
-        if host_max is not None:
-            for rt, tfm in DOTNET_RUNTIME_TFMS.items():
-                try:
-                    major = int(tfm.removeprefix("net").split(".", 1)[0])
-                except ValueError:
-                    continue
-                if major == host_max:
-                    versions["dotnet"].append(rt)
+        for rt, tfm in DOTNET_RUNTIME_TFMS.items():
+            try:
+                major = int(tfm.removeprefix("net").split(".", 1)[0])
+            except ValueError:
+                continue
+            if major in installed_majors:
+                versions["dotnet"].append(rt)
 
     # custom (provided.*) — no concept of versions; the bare name is always supported.
     versions["custom"] = []

@@ -8,7 +8,6 @@ Tests skip when the server reports dotnet is unavailable.
 import io
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -22,39 +21,31 @@ from tests.compatibility.conftest import make_client, skip_if_runtime_unavailabl
 pytestmark = skip_if_runtime_unavailable("dotnet", also_requires="dotnet")
 
 
-def _detect_tfm() -> str:
-    """Detect the highest .NET runtime version available."""
-    try:
-        proc = subprocess.run(
-            ["dotnet", "--list-runtimes"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        versions = []
-        for line in proc.stdout.splitlines():
-            if "Microsoft.NETCore.App" in line:
-                m = re.search(r"(\d+)\.\d+\.\d+", line)
-                if m:
-                    versions.append(int(m.group(1)))
-        if versions:
-            return f"net{max(versions)}.0"
-    except Exception:
-        pass  # intentionally ignored
-    return "net8.0"
-
-
-_TFM = _detect_tfm()
+# Map each Lambda dotnet runtime ID to the TFM the test should compile at.
+# Tests use Runtime="dotnet8" by default, so the compat-test fixture compiles
+# user code at net8.0 — matching the TFM the server-side bootstrap will pick
+# (DotnetExecutor._detect_tfm("dotnet8") → "net8.0"). Cross-TFM references
+# between bootstrap and user DLL produce silent "Type not found" failures, so
+# the two TFMs must agree.
+_RUNTIME_TO_TFM = {
+    "dotnet6": "net6.0",
+    "dotnet8": "net8.0",
+    "dotnet9": "net9.0",
+}
 
 
 def _compile_cs_to_zip(
     cs_code: str,
     assembly_name: str = "MyLambda",
+    runtime: str = "dotnet8",
 ) -> bytes:
     """Compile C# source code into a .NET class library and return a zip of the DLL.
 
     The zip contains just the compiled DLL file, suitable for Lambda deployment.
+    The TFM is derived from ``runtime`` so that the user DLL and the
+    server-side bootstrap (built at the same TFM via DotnetExecutor) agree.
     """
+    tfm = _RUNTIME_TO_TFM.get(runtime, "net8.0")
     tmpdir = tempfile.mkdtemp(prefix="dotnet_test_compile_")
     try:
         # Write source file
@@ -65,7 +56,7 @@ def _compile_cs_to_zip(
         csproj = f"""\
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>{_TFM}</TargetFramework>
+    <TargetFramework>{tfm}</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>{assembly_name}</AssemblyName>
   </PropertyGroup>

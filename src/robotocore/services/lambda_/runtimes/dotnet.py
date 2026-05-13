@@ -73,50 +73,42 @@ def _detect_tfm(runtime: str = "") -> str:
     """Pick the TFM to build robotocore's bootstrap (and source-compiled user
     handlers) against.
 
-    Always returns the **maximum installed Microsoft.NETCore.App major** —
-    never lower than the host's latest. The reason is structural: a user
-    DLL shipped to robotocore was almost certainly compiled at the host's
-    max TFM (see ``tests/compatibility/test_lambda_dotnet_compat.py`` for
-    the typical pattern). Our bootstrap takes a compile-time
-    ``<Reference Include="MyLambda">`` on that DLL — building the bootstrap
-    at a lower TFM than the user assembly produces silent runtime
-    ``Type not found`` errors when the host loads the bootstrap and tries
-    to resolve types in the user DLL.
+    With multiple SDKs installed side-by-side, prefer the TFM that matches the
+    requested Lambda runtime — dotnet6 → net6.0, dotnet8 → net8.0,
+    dotnet9 → net9.0. This is faithful per-version dispatch: the dotnet host
+    actually targets net6.0 reference packs, behaves like .NET 6, etc.
 
-    The ``runtime`` argument (``dotnet6``/``dotnet8``/``dotnet9``) is still
-    threaded through for two reasons:
-      * **Warnings**: if the requested runtime's major isn't installed,
-        the user sees a divergence message in the logs.
-      * **Endpoint reporting**: ``/_robotocore/runtimes`` consults
-        ``_list_installed_majors()`` to advertise per-version availability.
-    But it does **not** lower the bootstrap TFM below the installed max,
-    because doing so reintroduces the cross-TFM reference bug.
+    Falls back to the host's max-installed major when:
+      * the caller didn't specify a runtime (legacy callers, bootstrap builds
+        with no runtime context), or
+      * the requested runtime's SDK isn't present (e.g. someone built the
+        slim image without channel 6.0 — we warn and downgrade).
 
-    Falls back to ``net8.0`` if detection fails entirely.
+    Always falls back to ``net8.0`` if detection fails entirely.
     """
     global _cached_tfm
 
     majors = _list_installed_majors()
-    host_max = max(majors) if majors else None
-
-    # If the caller named a specific runtime, log whenever the requested major
-    # doesn't equal the host's max — that's the case where the executed TFM
-    # diverges from the function's declared runtime. This covers both
-    # "requested major absent" AND "requested major present but not max"
-    # (e.g. dotnet6 requested on a {6,8,9} host still builds at net9.0).
     requested = _RUNTIME_BINARY.get(runtime)
-    if requested and host_max is not None:
+
+    if requested:
         m = re.match(r"net(\d+)\.0", requested)
-        if m and int(m.group(1)) != host_max:
-            logger.warning(
-                "Requested .NET runtime %r (%s) will execute at host-max TFM "
-                "net%s.0 — single shared dotnet host can't isolate per-version. "
-                "Installed majors: %s",
-                runtime,
-                requested,
-                host_max,
-                sorted(majors),
-            )
+        if m:
+            requested_major = int(m.group(1))
+            if requested_major in majors:
+                # Real per-version dispatch — the bootstrap and any source
+                # compilation will use the SDK matching the function's
+                # declared runtime, not the host max.
+                return requested
+            if majors:
+                logger.warning(
+                    "Requested .NET runtime %r (%s) SDK not installed — "
+                    "falling back to host max net%s.0. Installed majors: %s",
+                    runtime,
+                    requested,
+                    max(majors),
+                    sorted(majors),
+                )
     elif runtime and runtime not in _RUNTIME_BINARY:
         logger.warning(
             "Unknown .NET runtime %r — falling back to host max TFM. Supported: %s",
@@ -127,8 +119,8 @@ def _detect_tfm(runtime: str = "") -> str:
     if _cached_tfm is not None:
         return _cached_tfm
 
-    if host_max is not None:
-        _cached_tfm = f"net{host_max}.0"
+    if majors:
+        _cached_tfm = f"net{max(majors)}.0"
         logger.debug("Detected .NET TFM: %s", _cached_tfm)
         return _cached_tfm
 
