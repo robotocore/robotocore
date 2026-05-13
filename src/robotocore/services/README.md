@@ -38,7 +38,7 @@ Robotocore is MIT-licensed, requires no registration or auth tokens, and will re
 docker run -p 4566:4566 localstack/localstack
 
 # After (Robotocore) -- same port, drop-in replacement
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 No client-side changes needed. Your `--endpoint-url http://localhost:4566` configuration works as-is.
@@ -50,10 +50,10 @@ No client-side changes needed. Your `--endpoint-url http://localhost:4566` confi
 docker run -p 5000:5000 motoserver/moto
 
 # After (Robotocore on port 4566, or map to 5000 if you prefer)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 
 # Or, to keep your existing port:
-docker run -p 5000:4566 robotocore/robotocore
+docker run -p 5000:4566 jackdanger/robotocore
 ```
 
 Update your `--endpoint-url` from `http://localhost:5000` to `http://localhost:4566` (or use the port mapping above to avoid changing clients).
@@ -136,7 +136,7 @@ Beyond the 46 native providers listed above, Robotocore registers 101 additional
 
 | moto server | Robotocore | Notes |
 |---|---|---|
-| `moto_server -p 5000` | `docker run -p 4566:4566 robotocore/robotocore` | Port is configurable via Docker mapping |
+| `moto_server -p 5000` | `docker run -p 4566:4566 jackdanger/robotocore` | Port is configurable via Docker mapping |
 | `moto_server -H 0.0.0.0` | Default binds to `0.0.0.0` inside container | |
 | `POST /moto-api/reset` | `POST /_robotocore/state/reset` | State reset endpoint |
 | `POST /moto-api/state-manager` | `POST /_robotocore/state/save` | Snapshot save |
@@ -252,7 +252,7 @@ curl -X POST http://localhost:4566/_robotocore/state/reset
 # docker-compose.yml
 services:
   robotocore:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "4566:4566"
     environment:
@@ -264,7 +264,7 @@ services:
 ```yaml
 services:
   robotocore:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "4566:4566"
     environment:
@@ -278,7 +278,7 @@ services:
 ```yaml
 services:
   robotocore:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "5000:4566"
 ```

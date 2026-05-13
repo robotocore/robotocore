@@ -8,6 +8,27 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ## 2026.5.13 (2026-05-13)
 
+### Breaking: Docker Hub image renamed to `jackdanger/robotocore`
+
+The `robotocore/robotocore` organisation on Docker Hub costs $15/month
+for a new org; we've moved Docker Hub publishing to the personal
+namespace `jackdanger/robotocore` instead. **All Docker Hub image
+references must update.** The GHCR image at
+`ghcr.io/robotocore/robotocore:*` is **unchanged** and remains the
+canonical pull location for users who prefer GitHub Container Registry.
+
+```diff
+- docker run -p 4566:4566 robotocore/robotocore:latest
++ docker run -p 4566:4566 jackdanger/robotocore:latest
+
+# GHCR alternative (unchanged):
+  docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
+```
+
+Migrated references include the release workflow, all README/AGENTS/
+LOCALSTACK docs, every per-service README, the docker extension,
+``robotocore.cli.DEFAULT_IMAGE``, and the in-test skill docs.
+
 ### Major: real per-version dispatch for every Lambda runtime
 
 Robotocore previously ran every Lambda function on whatever single

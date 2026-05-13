@@ -21,7 +21,7 @@ from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
 
-ROBOTOCORE_IMAGE = os.environ.get("ROBOTOCORE_IMAGE", "robotocore/robotocore:latest")
+ROBOTOCORE_IMAGE = os.environ.get("ROBOTOCORE_IMAGE", "jackdanger/robotocore:latest")
 ROBOTOCORE_CONTAINER = os.environ.get("ROBOTOCORE_CONTAINER", "robotocore")
 ROBOTOCORE_PORT = int(os.environ.get("ROBOTOCORE_PORT", "4566"))
 DOCKER_SOCKET = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
@@ -78,8 +78,8 @@ async def start_endpoint(request: Request) -> JSONResponse:
     body: dict[str, Any] = {}
     try:
         body = await request.json()
-    except Exception:
-        logger.debug("No JSON body in start request, using default config")
+    except Exception as exc:  # noqa: BLE001 — any parse error → use defaults
+        logger.debug("No JSON body in start request, using default config: %s", exc)
 
     # Build environment variable flags
     env_flags: list[str] = []
@@ -174,7 +174,7 @@ async def proxy_endpoint(request: Request) -> JSONResponse:
                 {"error": "Cannot connect to robotocore. Is it running?"},
                 status_code=502,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — proxy: surface any backend error as 500
             return JSONResponse(
                 {"error": str(exc)},
                 status_code=500,

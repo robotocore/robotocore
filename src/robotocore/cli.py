@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 
 DEFAULT_CONTAINER_NAME = "robotocore-main"
-DEFAULT_IMAGE = "robotocore/robotocore:latest"
+DEFAULT_IMAGE = "jackdanger/robotocore:latest"
 DEFAULT_PORT = 4566
 DEFAULT_WAIT_TIMEOUT = 30
 

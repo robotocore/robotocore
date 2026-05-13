@@ -11,7 +11,7 @@ Replace your existing emulator container with Robotocore. No SDK code changes be
 docker run -p 9324:9324 softwaremill/elasticmq-native
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 Update your endpoint:
@@ -27,7 +27,7 @@ http://localhost:4566
 If you cannot change the port in your application, map it:
 
 ```bash
-docker run -p 9324:4566 robotocore/robotocore
+docker run -p 9324:4566 jackdanger/robotocore
 ```
 
 ### From goaws
@@ -37,7 +37,7 @@ docker run -p 9324:4566 robotocore/robotocore
 docker run -p 4100:4100 admiralpiett/goaws
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 Update your endpoint:
@@ -50,7 +50,7 @@ http://localhost:4100
 http://localhost:4566
 ```
 
-Or map the port: `docker run -p 4100:4566 robotocore/robotocore`
+Or map the port: `docker run -p 4100:4566 jackdanger/robotocore`
 
 ---
 
@@ -275,7 +275,7 @@ aws sqs create-queue --queue-name events.fifo \
 ```yaml
 services:
   robotocore:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "4566:4566"
     healthcheck:
@@ -390,7 +390,7 @@ You can also configure persistent startup/shutdown save behavior with `ROBOTOCOR
 ### Minimal
 
 ```bash
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 ### With environment variables
@@ -399,19 +399,19 @@ docker run -p 4566:4566 robotocore/robotocore
 docker run -p 4566:4566 \
   -e ROBOTOCORE_PORT=4566 \
   -e AUDIT_LOG_SIZE=1000 \
-  robotocore/robotocore
+  jackdanger/robotocore
 ```
 
 ### Port-compatible with ElasticMQ
 
 ```bash
-docker run -p 9324:4566 robotocore/robotocore
+docker run -p 9324:4566 jackdanger/robotocore
 ```
 
 ### Port-compatible with goaws
 
 ```bash
-docker run -p 4100:4566 robotocore/robotocore
+docker run -p 4100:4566 jackdanger/robotocore
 ```
 
 ### Docker Compose (replacing ElasticMQ)
@@ -426,7 +426,7 @@ services:
 
   # With this:
   aws:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "9324:4566"
     healthcheck:
@@ -447,7 +447,7 @@ services:
 
   # With this:
   aws:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "4100:4566"
     healthcheck:
