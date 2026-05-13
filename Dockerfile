@@ -83,8 +83,10 @@ COPY --from=ruby:3.4-slim /usr/local /opt/ruby-3.4
 # CI and aarch64-linux on Mac arm64 — whichever exists is included.
 # Default `ruby` and `gem` point at 3.4 (latest stable) for paths without
 # runtime context (e.g. the bootstrap.rb host requirement check).
-RUN for v in 3.2 3.3 3.4; do \
-      cat > /usr/local/bin/ruby"$v" <<EOF && chmod 755 /usr/local/bin/ruby"$v"
+RUN <<'SHELL'
+set -e
+for v in 3.2 3.3 3.4; do
+  cat > /usr/local/bin/ruby$v <<WRAPPER
 #!/bin/sh
 PREFIX=/opt/ruby-$v
 VER=$v.0
@@ -96,10 +98,12 @@ done
 export RUBYLIB="\$RUBYLIB_ADD\${RUBYLIB:+:\$RUBYLIB}"
 export GEM_PATH="\$PREFIX/lib/ruby/gems/\$VER\${GEM_PATH:+:\$GEM_PATH}"
 exec "\$PREFIX/bin/ruby" "\$@"
-EOF
-    done && \
-    ln -sf /usr/local/bin/ruby3.4 /usr/local/bin/ruby && \
-    ln -sf /opt/ruby-3.4/bin/gem  /usr/local/bin/gem
+WRAPPER
+  chmod 755 /usr/local/bin/ruby$v
+done
+ln -sf /usr/local/bin/ruby3.4 /usr/local/bin/ruby
+ln -sf /opt/ruby-3.4/bin/gem  /usr/local/bin/gem
+SHELL
 
 # Python per-version installs. Same shape as Ruby: libpythonX.Y.so and the
 # stdlib live alongside the binary, so single-file COPY doesn't work. We pull
