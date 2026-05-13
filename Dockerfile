@@ -156,18 +156,23 @@ RUN printf '#!/bin/sh\nexec /opt/java/jdk-21/bin/java "$@"\n' > /usr/local/bin/j
     && ln -sf /opt/java/jdk-21/bin/java  /usr/local/bin/java \
     && ln -sf /opt/java/jdk-21/bin/javac /usr/local/bin/javac
 
-# Default .NET: just SDK 9.0 (latest GA) baked in. dotnet6 and dotnet8 fault
-# in via dotnet-install.sh under DOTNET_ROOT=/var/lib/robotocore/runtimes/dotnet.
-# All SDKs share one host once installed, so faulted-in SDKs are visible to
-# the same `dotnet` binary without further wiring.
+# Default .NET: SDK 9.0 (latest GA) baked into the SAME DOTNET_ROOT that
+# the fault-in installer (install_dotnet.py) writes to, so dotnet6 and
+# dotnet8 installs on first invocation are visible to the existing host
+# without any additional wiring. The dotnet host only walks ONE root for
+# SDKs/runtimes, so unifying the baked + fault-in location is critical;
+# splitting them (e.g. /usr/share/dotnet for baked, /var/lib/... for
+# fault-in) makes the faulted-in SDKs invisible to the host.
+ENV DOTNET_ROOT=/var/lib/robotocore/runtimes/dotnet
 RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
     && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
     && chmod +x /tmp/dotnet-install.sh \
-    && /tmp/dotnet-install.sh --channel 9.0 --install-dir /usr/share/dotnet \
-    && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+    && /tmp/dotnet-install.sh --channel 9.0 --install-dir "$DOTNET_ROOT" \
+    && ln -sf "$DOTNET_ROOT/dotnet" /usr/local/bin/dotnet \
     && rm /tmp/dotnet-install.sh \
     && apt-get remove -y wget && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* /root/.dotnet /tmp/NuGetScratch
+    && rm -rf /var/lib/apt/lists/* /root/.dotnet /tmp/NuGetScratch \
+    && chown -R robotocore:robotocore "$DOTNET_ROOT"
 
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1

@@ -3,26 +3,32 @@
 Source: Microsoft's official ``dotnet-install.sh`` (https://dot.net/v1/dotnet-install.sh),
 already used by the Dockerfile for the baked-in default SDK. We invoke
 the same script per-channel with ``--install-dir`` pointing at the
-fault-in cache prefix, so each version gets its own dotnet host root.
+SAME location the baked SDK uses.
 
-Unlike the other languages, .NET runtimes share a single ``dotnet``
-binary multiplexed via ``runtimeconfig.json`` and reference packs. Our
-``_detect_tfm()`` already routes per-runtime to ``netX.0`` once the
-matching SDK is present anywhere on $PATH — but with fault-in we
-install each into its own prefix and expose a single ``dotnet`` host
-script that points $DOTNET_ROOT at the union prefix. The simplest
-working pattern: install every channel into the SAME prefix (Microsoft
-designed dotnet-install.sh to handle this), and let ``dotnet --info``
-report all installed SDKs. So the wrapper here is a no-op; the install
-puts new SDK files under ``/var/lib/robotocore/runtimes/dotnet/`` and
-the existing ``dotnet`` binary picks them up via DOTNET_ROOT.
+Unified DOTNET_ROOT is the key correctness property:
+
+* The dotnet host (``dotnet`` binary) walks one root for SDKs and
+  runtimes. Splitting baked into ``/usr/share/dotnet`` and fault-in
+  into ``/var/lib/robotocore/runtimes/dotnet`` would make every
+  faulted-in SDK invisible to the existing ``/usr/local/bin/dotnet``.
+* The Dockerfile installs the baked SDK 9.0 directly into
+  ``/var/lib/robotocore/runtimes/dotnet`` (matching ``_DOTNET_ROOT``
+  below) and sets ``ENV DOTNET_ROOT=...`` so children inherit it.
+* Fault-in then layers additional SDKs (6.0, 8.0) under the same root.
+* No wrapper script is needed at ``WRAPPER_BIN_DIR`` because the
+  baked ``/usr/local/bin/dotnet`` symlink already resolves to the
+  unified root.
+
+After installing a new SDK we must invalidate the cached probe in
+``dotnet.py`` — otherwise ``_list_installed_majors()`` keeps returning
+the pre-install set and ``_detect_tfm("dotnet6")`` keeps falling back
+to host max.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -37,9 +43,8 @@ from robotocore.services.lambda_.runtimes.install import (
 
 logger = logging.getLogger(__name__)
 
-# All .NET SDKs share a single install root so the dotnet host can find
-# every SDK + runtime at once. Individual ``InstallPlan.prefix``es are
-# subdirs under this for the .installed marker only.
+# Must match the Dockerfile's ``ENV DOTNET_ROOT=`` so the baked SDK and
+# any fault-in SDKs share a single dotnet host root.
 _DOTNET_ROOT = CACHE_DIR / "dotnet"
 _INSTALL_SCRIPT_URL = "https://dot.net/v1/dotnet-install.sh"
 
@@ -79,14 +84,14 @@ class DotnetInstallPlan(InstallPlan):
             except OSError as exc:
                 logger.debug("dotnet-install script cleanup: %s", exc)
 
-        # Expose dotnet on $PATH if not already there. The dotnet host
-        # picks up every SDK/runtime under _DOTNET_ROOT automatically.
-        if not shutil.which("dotnet"):
-            self._write_wrapper(
-                f"#!/bin/sh\n"
-                f'export DOTNET_ROOT="{_DOTNET_ROOT}"\n'
-                f'exec "{_DOTNET_ROOT}/dotnet" "$@"\n'
-            )
+        # Invalidate the cached runtime/TFM probes in dotnet.py so the new SDK
+        # is visible to _list_installed_majors() and _detect_tfm() on the
+        # next call. Without this, an endpoint refresh or another invocation
+        # would still see only the pre-install set.
+        from robotocore.services.lambda_.runtimes import dotnet as _dotnet_mod
+
+        _dotnet_mod.invalidate_caches()
+
         self._mark_installed()
 
 

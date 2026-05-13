@@ -35,7 +35,14 @@ _RUNTIME_BINARY: dict[str, str] = {
 
 
 def _ensure_bootstrap_compiled() -> str | None:
-    """Compile Bootstrap.java once and cache the result. Returns dir with Bootstrap.class."""
+    """Compile Bootstrap.java once and cache the result. Returns dir with Bootstrap.class.
+
+    Compiles with ``--release 8`` so the resulting Bootstrap.class is loadable
+    on every JVM major from 8 onward. The baked-in JDK in the image is 21,
+    and faulted-in JREs may be 8/11/17 (see ``install_java.py``); without
+    --release the cached .class would have Java 21 bytecode and fail to
+    load on the older JREs with a ClassFormatError before the handler runs.
+    """
     global _bootstrap_compiled_dir
     if _bootstrap_compiled_dir and os.path.isdir(_bootstrap_compiled_dir):
         return _bootstrap_compiled_dir
@@ -49,7 +56,7 @@ def _ensure_bootstrap_compiled() -> str | None:
     outdir = tempfile.mkdtemp(prefix="lambda_java_bootstrap_")
     try:
         subprocess.run(
-            [javac, "-d", outdir, BOOTSTRAP_JAVA],
+            [javac, "--release", "8", "-d", outdir, BOOTSTRAP_JAVA],
             capture_output=True,
             timeout=30,
         )

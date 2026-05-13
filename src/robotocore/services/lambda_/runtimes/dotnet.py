@@ -44,6 +44,19 @@ _RUNTIME_BINARY: dict[str, str] = {
 }
 
 
+def invalidate_caches() -> None:
+    """Clear the cached host probe results.
+
+    Call this after a fault-in install adds a new SDK/runtime — without it,
+    ``_list_installed_majors()`` would keep returning the pre-install set
+    and ``_detect_tfm()`` would keep falling back to the pre-install max,
+    silently picking the wrong TFM for newly-installed runtimes.
+    """
+    global _installed_majors, _cached_tfm
+    _installed_majors = None
+    _cached_tfm = None
+
+
 def _list_installed_majors() -> set[int]:
     """Return the set of Microsoft.NETCore.App major versions installed."""
     global _installed_majors

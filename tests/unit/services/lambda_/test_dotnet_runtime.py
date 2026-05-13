@@ -110,3 +110,15 @@ class TestDotnetVersionRouting:
         with patch.object(dotnet_mod, "_installed_majors", {6, 8, 9}):
             with patch.object(dotnet_mod, "_cached_tfm", None):
                 assert dotnet_mod._detect_tfm() == "net9.0"
+
+    def test_invalidate_caches_clears_both(self):
+        # After a fault-in install adds a new SDK, the install plan calls
+        # invalidate_caches() so the next _list_installed_majors() re-probes
+        # `dotnet --list-runtimes` instead of returning the pre-install set.
+        from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
+
+        dotnet_mod._installed_majors = {8}
+        dotnet_mod._cached_tfm = "net8.0"
+        dotnet_mod.invalidate_caches()
+        assert dotnet_mod._installed_majors is None
+        assert dotnet_mod._cached_tfm is None
