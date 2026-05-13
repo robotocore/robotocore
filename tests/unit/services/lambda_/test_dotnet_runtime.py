@@ -66,23 +66,38 @@ class TestDotnetVersionRouting:
         executor = DotnetExecutor(runtime="dotnet8")
         assert executor._runtime == "dotnet8"
 
-    def test_detect_tfm_prefers_matching_runtime(self):
+    def test_detect_tfm_returns_host_max_even_when_runtime_specified(self):
+        # The bootstrap TFM follows the host's max installed major, never the
+        # requested runtime — building below the user DLL's TFM produces a
+        # silent "Type not found" at handler load. See _detect_tfm() docstring.
         from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
 
-        # Pretend net8 and net9 are both installed; runtime=dotnet8 should pick net8.0
+        # net8 and net9 both installed; runtime=dotnet8 must still pick net9.0
+        # because the user DLL is almost certainly compiled at host max.
         with patch.object(dotnet_mod, "_installed_majors", {8, 9}):
             with patch.object(dotnet_mod, "_cached_tfm", None):
                 tfm = dotnet_mod._detect_tfm("dotnet8")
-        assert tfm == "net8.0"
+        assert tfm == "net9.0"
 
     def test_detect_tfm_falls_back_when_requested_missing(self):
         from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
 
-        # Only net9 installed; requesting dotnet6 should fall back and warn.
+        # Only net9 installed; requesting dotnet6 still gives net9.0 and warns.
         with patch.object(dotnet_mod, "_installed_majors", {9}):
             with patch.object(dotnet_mod, "_cached_tfm", None):
                 with patch.object(dotnet_mod.logger, "warning") as mock_warn:
                     tfm = dotnet_mod._detect_tfm("dotnet6")
         assert tfm == "net9.0"
-        # At least one warning fired (the requested-not-installed path).
+        # The "requested-not-installed" warning fired.
         assert mock_warn.called
+
+    def test_detect_tfm_with_matching_runtime_no_warning(self):
+        # Requested runtime is installed → host max == requested, no warning.
+        from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
+
+        with patch.object(dotnet_mod, "_installed_majors", {8}):
+            with patch.object(dotnet_mod, "_cached_tfm", None):
+                with patch.object(dotnet_mod.logger, "warning") as mock_warn:
+                    tfm = dotnet_mod._detect_tfm("dotnet8")
+        assert tfm == "net8.0"
+        mock_warn.assert_not_called()

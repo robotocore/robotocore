@@ -70,45 +70,63 @@ def _list_installed_majors() -> set[int]:
 
 
 def _detect_tfm(runtime: str = "") -> str:
-    """Detect the best available .NET target framework moniker (e.g., 'net9.0').
+    """Pick the TFM to build robotocore's bootstrap (and source-compiled user
+    handlers) against.
 
-    If a Lambda runtime identifier is provided and the matching major version is
-    installed, return that TFM. Otherwise inspect installed runtimes via
-    `dotnet --list-runtimes` and pick the latest Microsoft.NETCore.App version
-    available. Falls back to 'net8.0' if detection fails.
+    Always returns the **maximum installed Microsoft.NETCore.App major** —
+    never lower than the host's latest. The reason is structural: a user
+    DLL shipped to robotocore was almost certainly compiled at the host's
+    max TFM (see ``tests/compatibility/test_lambda_dotnet_compat.py`` for
+    the typical pattern). Our bootstrap takes a compile-time
+    ``<Reference Include="MyLambda">`` on that DLL — building the bootstrap
+    at a lower TFM than the user assembly produces silent runtime
+    ``Type not found`` errors when the host loads the bootstrap and tries
+    to resolve types in the user DLL.
+
+    The ``runtime`` argument (``dotnet6``/``dotnet8``/``dotnet9``) is still
+    threaded through for two reasons:
+      * **Warnings**: if the requested runtime's major isn't installed,
+        the user sees a divergence message in the logs.
+      * **Endpoint reporting**: ``/_robotocore/runtimes`` consults
+        ``_list_installed_majors()`` to advertise per-version availability.
+    But it does **not** lower the bootstrap TFM below the installed max,
+    because doing so reintroduces the cross-TFM reference bug.
+
+    Falls back to ``net8.0`` if detection fails entirely.
     """
     global _cached_tfm
 
+    majors = _list_installed_majors()
+
+    # If the caller named a specific runtime, log when it's not installed so
+    # the divergence between requested and actual is visible — but still
+    # build against the host's max TFM, not the requested TFM.
     requested = _RUNTIME_BINARY.get(runtime)
-    if requested:
-        majors = _list_installed_majors()
-        # requested is like "net8.0" — pull the major.
+    if requested and majors:
         m = re.match(r"net(\d+)\.0", requested)
-        if m and int(m.group(1)) in majors:
-            return requested
-        if majors:
+        if m and int(m.group(1)) not in majors:
             logger.warning(
-                "Requested .NET runtime %r (%s) not installed — falling back. Installed majors: %s",
+                "Requested .NET runtime %r (%s) not installed — building at "
+                "host max (%s). Installed majors: %s",
                 runtime,
                 requested,
+                f"net{max(majors)}.0",
                 sorted(majors),
             )
+    elif runtime and runtime not in _RUNTIME_BINARY:
+        logger.warning(
+            "Unknown .NET runtime %r — falling back to host max TFM. Supported: %s",
+            runtime,
+            ", ".join(sorted(_RUNTIME_BINARY)),
+        )
 
     if _cached_tfm is not None:
         return _cached_tfm
 
-    majors = _list_installed_majors()
     if majors:
         _cached_tfm = f"net{max(majors)}.0"
         logger.debug("Detected .NET TFM: %s", _cached_tfm)
         return _cached_tfm
-
-    if runtime and runtime not in _RUNTIME_BINARY:
-        logger.warning(
-            "Unknown .NET runtime %r — falling back to net8.0. Supported: %s",
-            runtime,
-            ", ".join(sorted(_RUNTIME_BINARY)),
-        )
 
     _cached_tfm = "net8.0"
     return _cached_tfm
