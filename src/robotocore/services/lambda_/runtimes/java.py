@@ -20,9 +20,29 @@ _bootstrap_compiled_dir: str | None = None
 
 logger = logging.getLogger(__name__)
 
+# Maps Lambda runtime identifiers to the versioned java binary name in the image.
+# The Dockerfile installs JDKs (or symlinks) named java8, java11, java17, java21
+# alongside a default "java". JVM 21 can run java8/11/17 bytecode, so symlinks
+# pointing at a single JDK are an acceptable fallback in resource-constrained
+# images. Runtimes absent from this map fall back to plain "java" with a warning.
+_RUNTIME_BINARY: dict[str, str] = {
+    "java8": "java8",
+    "java8.al2": "java8",
+    "java11": "java11",
+    "java17": "java17",
+    "java21": "java21",
+}
+
 
 def _ensure_bootstrap_compiled() -> str | None:
-    """Compile Bootstrap.java once and cache the result. Returns dir with Bootstrap.class."""
+    """Compile Bootstrap.java once and cache the result. Returns dir with Bootstrap.class.
+
+    Compiles with ``--release 8`` so the resulting Bootstrap.class is loadable
+    on every JVM major from 8 onward. The baked-in JDK in the image is 21,
+    and faulted-in JREs may be 8/11/17 (see ``install_java.py``); without
+    --release the cached .class would have Java 21 bytecode and fail to
+    load on the older JREs with a ClassFormatError before the handler runs.
+    """
     global _bootstrap_compiled_dir
     if _bootstrap_compiled_dir and os.path.isdir(_bootstrap_compiled_dir):
         return _bootstrap_compiled_dir
@@ -36,7 +56,7 @@ def _ensure_bootstrap_compiled() -> str | None:
     outdir = tempfile.mkdtemp(prefix="lambda_java_bootstrap_")
     try:
         subprocess.run(
-            [javac, "-d", outdir, BOOTSTRAP_JAVA],
+            [javac, "--release", "8", "-d", outdir, BOOTSTRAP_JAVA],
             capture_output=True,
             timeout=30,
         )
@@ -49,6 +69,9 @@ def _ensure_bootstrap_compiled() -> str | None:
 
 
 class JavaExecutor:
+    def __init__(self, runtime: str = "") -> None:
+        self._runtime = runtime
+
     def execute(
         self,
         code_zip: bytes,
@@ -64,7 +87,7 @@ class JavaExecutor:
         code_dir: str | None = None,
         hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
-        java_bin = shutil.which("java")
+        java_bin = self._resolve_binary()
         if not java_bin:
             return None, "Runtime.InvalidRuntime", "Java not installed"
 
@@ -94,3 +117,37 @@ class JavaExecutor:
         classpath = os.pathsep.join(cp_parts)
         cmd = [java_bin, "-cp", classpath, f"-Xmx{memory_size}m", "Bootstrap"]
         return run_subprocess(cmd, event, tmpdir, env, timeout)
+
+    def _resolve_binary(self) -> str | None:
+        """Return the java binary path, preferring the version-specific one.
+
+        Attempts fault-in install when a known versioned binary is missing
+        (see ``runtimes/install.py``). Logs a warning when we fall back to
+        the default ``java`` so the JVM-version mismatch is never silent.
+        """
+        versioned = _RUNTIME_BINARY.get(self._runtime)
+        if versioned:
+            path = shutil.which(versioned)
+            if path:
+                return path
+            from robotocore.services.lambda_.runtimes import install as _install
+
+            if _install.ensure_installed(self._runtime):
+                path = shutil.which(versioned)
+                if path:
+                    return path
+            logger.warning(
+                "Versioned java binary %r for runtime %r not on $PATH and "
+                "fault-in install unavailable — falling back to default "
+                "'java' (the executed JVM will not match the function's "
+                "declared runtime).",
+                versioned,
+                self._runtime,
+            )
+        elif self._runtime:
+            logger.warning(
+                "No versioned java binary for runtime %r — falling back to 'java'. Supported: %s",
+                self._runtime,
+                ", ".join(sorted(_RUNTIME_BINARY)),
+            )
+        return shutil.which("java")

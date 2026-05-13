@@ -27,20 +27,42 @@ from robotocore.services.lambda_.runtimes.base import (
 
 logger = logging.getLogger(__name__)
 
-# Cache the detected target framework moniker
+# Cache the detected target framework moniker (default fallback)
 _cached_tfm: str | None = None
+# Cache the set of installed major versions reported by `dotnet --list-runtimes`
+_installed_majors: set[int] | None = None
+
+# Maps Lambda runtime identifiers to their target framework moniker.
+# Unlike java/node/ruby, .NET ships a single `dotnet` host that multiplexes
+# runtime versions via runtimeconfig.json — the dispatch is by TFM, not binary
+# name. We expose the map for parity with the other runtimes (so tests look
+# the same) and for callers that want to know which TFMs we support.
+_RUNTIME_BINARY: dict[str, str] = {
+    "dotnet6": "net6.0",
+    "dotnet8": "net8.0",
+    "dotnet9": "net9.0",
+}
 
 
-def _detect_tfm() -> str:
-    """Detect the best available .NET target framework moniker (e.g., 'net9.0').
+def invalidate_caches() -> None:
+    """Clear the cached host probe results.
 
-    Inspects installed runtimes via `dotnet --list-runtimes` and picks the latest
-    Microsoft.NETCore.App version available. Falls back to 'net8.0' if detection fails.
+    Call this after a fault-in install adds a new SDK/runtime — without it,
+    ``_list_installed_majors()`` would keep returning the pre-install set
+    and ``_detect_tfm()`` would keep falling back to the pre-install max,
+    silently picking the wrong TFM for newly-installed runtimes.
     """
-    global _cached_tfm
-    if _cached_tfm is not None:
-        return _cached_tfm
+    global _installed_majors, _cached_tfm
+    _installed_majors = None
+    _cached_tfm = None
 
+
+def _list_installed_majors() -> set[int]:
+    """Return the set of Microsoft.NETCore.App major versions installed."""
+    global _installed_majors
+    if _installed_majors is not None:
+        return _installed_majors
+    versions: set[int] = set()
     try:
         proc = subprocess.run(
             ["dotnet", "--list-runtimes"],
@@ -49,20 +71,71 @@ def _detect_tfm() -> str:
             timeout=10,
         )
         if proc.returncode == 0:
-            # Parse lines like: Microsoft.NETCore.App 9.0.12 [/path]
-            versions = []
             for line in proc.stdout.splitlines():
                 if "Microsoft.NETCore.App" in line:
                     m = re.search(r"(\d+)\.\d+\.\d+", line)
                     if m:
-                        versions.append(int(m.group(1)))
-            if versions:
-                major = max(versions)
-                _cached_tfm = f"net{major}.0"
-                logger.debug("Detected .NET TFM: %s", _cached_tfm)
-                return _cached_tfm
+                        versions.add(int(m.group(1)))
     except Exception as exc:  # noqa: BLE001
-        logger.debug("_detect_tfm: run failed (non-fatal): %s", exc)
+        logger.debug("_list_installed_majors: run failed (non-fatal): %s", exc)
+    _installed_majors = versions
+    return versions
+
+
+def _detect_tfm(runtime: str = "") -> str:
+    """Pick the TFM to build robotocore's bootstrap (and source-compiled user
+    handlers) against.
+
+    With multiple SDKs installed side-by-side, prefer the TFM that matches the
+    requested Lambda runtime — dotnet6 → net6.0, dotnet8 → net8.0,
+    dotnet9 → net9.0. This is faithful per-version dispatch: the dotnet host
+    actually targets net6.0 reference packs, behaves like .NET 6, etc.
+
+    Falls back to the host's max-installed major when:
+      * the caller didn't specify a runtime (legacy callers, bootstrap builds
+        with no runtime context), or
+      * the requested runtime's SDK isn't present (e.g. someone built the
+        slim image without channel 6.0 — we warn and downgrade).
+
+    Always falls back to ``net8.0`` if detection fails entirely.
+    """
+    global _cached_tfm
+
+    majors = _list_installed_majors()
+    requested = _RUNTIME_BINARY.get(runtime)
+
+    if requested:
+        m = re.match(r"net(\d+)\.0", requested)
+        if m:
+            requested_major = int(m.group(1))
+            if requested_major in majors:
+                # Real per-version dispatch — the bootstrap and any source
+                # compilation will use the SDK matching the function's
+                # declared runtime, not the host max.
+                return requested
+            if majors:
+                logger.warning(
+                    "Requested .NET runtime %r (%s) SDK not installed — "
+                    "falling back to host max net%s.0. Installed majors: %s",
+                    runtime,
+                    requested,
+                    max(majors),
+                    sorted(majors),
+                )
+    elif runtime and runtime not in _RUNTIME_BINARY:
+        logger.warning(
+            "Unknown .NET runtime %r — falling back to host max TFM. Supported: %s",
+            runtime,
+            ", ".join(sorted(_RUNTIME_BINARY)),
+        )
+
+    if _cached_tfm is not None:
+        return _cached_tfm
+
+    if majors:
+        _cached_tfm = f"net{max(majors)}.0"
+        logger.debug("Detected .NET TFM: %s", _cached_tfm)
+        return _cached_tfm
 
     _cached_tfm = "net8.0"
     return _cached_tfm
@@ -183,6 +256,9 @@ USER_LIB_CSPROJ = """\
 
 
 class DotnetExecutor:
+    def __init__(self, runtime: str = "") -> None:
+        self._runtime = runtime
+
     def execute(
         self,
         code_zip: bytes,
@@ -271,7 +347,7 @@ class DotnetExecutor:
     ) -> str | None:
         """Compile .cs source files into a class library DLL. Returns DLL path or None."""
         # Create a temporary project for compilation
-        tfm = _detect_tfm()
+        tfm = _detect_tfm(self._runtime)
         proj_content = USER_LIB_CSPROJ.format(assembly_name=assembly_name, tfm=tfm)
         proj_path = os.path.join(code_dir, f"{assembly_name}.csproj")
         with open(proj_path, "w") as f:
@@ -328,7 +404,7 @@ class DotnetExecutor:
         bootstrap_dir = tempfile.mkdtemp(prefix="dotnet_bootstrap_")
         try:
             # Write bootstrap project
-            tfm = _detect_tfm()
+            tfm = _detect_tfm(self._runtime)
             csproj = BOOTSTRAP_CSPROJ.format(
                 assembly_name=assembly_name,
                 dll_path=os.path.abspath(dll_path),

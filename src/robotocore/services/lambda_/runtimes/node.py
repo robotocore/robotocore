@@ -66,13 +66,32 @@ class NodejsExecutor:
         return run_subprocess(cmd, event, tmpdir, env, timeout)
 
     def _resolve_binary(self) -> str | None:
-        """Return the node binary path, preferring the version-specific one."""
+        """Return the node binary path, preferring the version-specific one.
+
+        Attempts fault-in install when a known versioned binary is missing
+        (see ``runtimes/install.py``). Logs a warning when we fall back to
+        the default ``node`` so the Node-version mismatch is never silent.
+        """
         versioned = _RUNTIME_BINARY.get(self._runtime)
         if versioned:
             path = shutil.which(versioned)
             if path:
                 return path
-        if self._runtime and self._runtime not in _RUNTIME_BINARY:
+            from robotocore.services.lambda_.runtimes import install as _install
+
+            if _install.ensure_installed(self._runtime):
+                path = shutil.which(versioned)
+                if path:
+                    return path
+            logger.warning(
+                "Versioned node binary %r for runtime %r not on $PATH and "
+                "fault-in install unavailable — falling back to default "
+                "'node' (the executed Node version will not match the "
+                "function's declared runtime).",
+                versioned,
+                self._runtime,
+            )
+        elif self._runtime:
             logger.warning(
                 "No versioned node binary for runtime %r — falling back to 'node'. Supported: %s",
                 self._runtime,

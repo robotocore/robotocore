@@ -1,5 +1,6 @@
 """Ruby runtime executor — runs handler via subprocess."""
 
+import logging
 import os
 import shutil
 
@@ -11,8 +12,23 @@ from robotocore.services.lambda_.runtimes.base import (
 
 BOOTSTRAP_RB = os.path.join(os.path.dirname(__file__), "bootstraps", "bootstrap.rb")
 
+logger = logging.getLogger(__name__)
+
+# Maps Lambda runtime identifiers to the versioned ruby binary name in the image.
+# The Dockerfile installs ruby3.2, ruby3.3, ruby3.4 alongside a default "ruby".
+# Runtimes absent from this map fall back to plain "ruby" with a warning so
+# divergence from the requested version is visible in logs.
+_RUNTIME_BINARY: dict[str, str] = {
+    "ruby3.2": "ruby3.2",
+    "ruby3.3": "ruby3.3",
+    "ruby3.4": "ruby3.4",
+}
+
 
 class RubyExecutor:
+    def __init__(self, runtime: str = "") -> None:
+        self._runtime = runtime
+
     def execute(
         self,
         code_zip: bytes,
@@ -28,7 +44,7 @@ class RubyExecutor:
         code_dir: str | None = None,
         hot_reload: bool = False,
     ) -> tuple[dict | str | list | None, str | None, str]:
-        ruby_bin = shutil.which("ruby")
+        ruby_bin = self._resolve_binary()
         if not ruby_bin:
             return None, "Runtime.InvalidRuntime", "Ruby not installed"
 
@@ -46,3 +62,38 @@ class RubyExecutor:
 
         cmd = [ruby_bin, BOOTSTRAP_RB]
         return run_subprocess(cmd, event, tmpdir, env, timeout)
+
+    def _resolve_binary(self) -> str | None:
+        """Return the ruby binary path, preferring the version-specific one.
+
+        Attempts fault-in install when a known versioned binary is missing
+        (see ``runtimes/install.py``). Logs a warning when we fall back to
+        the default ``ruby`` so the version mismatch is never silent.
+        """
+        versioned = _RUNTIME_BINARY.get(self._runtime)
+        if versioned:
+            path = shutil.which(versioned)
+            if path:
+                return path
+            # Versioned binary missing — try fault-in install before falling back.
+            from robotocore.services.lambda_.runtimes import install as _install
+
+            if _install.ensure_installed(self._runtime):
+                path = shutil.which(versioned)
+                if path:
+                    return path
+            logger.warning(
+                "Versioned ruby binary %r for runtime %r not on $PATH and "
+                "fault-in install unavailable — falling back to default "
+                "'ruby' (the executed Ruby version will not match the "
+                "function's declared runtime).",
+                versioned,
+                self._runtime,
+            )
+        elif self._runtime:
+            logger.warning(
+                "No versioned ruby binary for runtime %r — falling back to 'ruby'. Supported: %s",
+                self._runtime,
+                ", ".join(sorted(_RUNTIME_BINARY)),
+            )
+        return shutil.which("ruby")

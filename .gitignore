@@ -25,6 +25,7 @@ probe_stderr.log
 .robotocore-ports/
 logs/
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 # Generated files
 docs/quality/

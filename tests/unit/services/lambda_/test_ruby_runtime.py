@@ -1,11 +1,15 @@
 """Tests for the Ruby runtime executor."""
 
 import shutil
+from unittest.mock import patch
 
 import pytest
 
-from robotocore.services.lambda_.runtimes.ruby import RubyExecutor
+from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
+from robotocore.services.lambda_.runtimes.ruby import _RUNTIME_BINARY, RubyExecutor
 from tests.unit.services.lambda_.helpers import make_zip
+
+_RUBY_LOGGER = "robotocore.services.lambda_.runtimes.ruby.logger"
 
 pytestmark = pytest.mark.skipif(shutil.which("ruby") is None, reason="Ruby not installed")
 
@@ -157,3 +161,92 @@ class TestRubyExecutor:
         assert error_type is None
         assert result["custom"] == "ruby-custom"
         assert result["fn"] == "env-fn"
+
+
+class TestRubyVersionRouting:
+    """Verify that each runtime identifier resolves to the correct binary."""
+
+    def test_runtime_binary_map_covers_known_versions(self):
+        assert "ruby3.2" in _RUNTIME_BINARY
+        assert "ruby3.3" in _RUNTIME_BINARY
+        assert "ruby3.4" in _RUNTIME_BINARY
+
+    def test_versioned_binary_preferred_when_present(self):
+        executor = RubyExecutor(runtime="ruby3.3")
+
+        def _which(name):
+            return f"/usr/bin/{name}" if name in ("ruby3.3", "ruby") else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/ruby3.3"
+
+    def test_falls_back_to_ruby_when_versioned_binary_missing(self):
+        executor = RubyExecutor(runtime="ruby3.3")
+
+        def _which(name):
+            return "/usr/bin/ruby" if name == "ruby" else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/ruby"
+
+    def test_returns_none_when_no_ruby_at_all(self):
+        executor = RubyExecutor(runtime="ruby3.3")
+        with patch("shutil.which", return_value=None):
+            assert executor._resolve_binary() is None
+
+    def test_executor_with_no_ruby_returns_invalid_runtime(self):
+        executor = RubyExecutor(runtime="ruby3.3")
+        with patch.object(executor, "_resolve_binary", return_value=None):
+            result, error_type, _ = executor.execute(
+                code_zip=b"", handler="lambda_function.handler", event={}, function_name="fn"
+            )
+        assert error_type == "Runtime.InvalidRuntime"
+
+    def test_get_executor_for_runtime_returns_versioned_instance(self):
+        clear_executor_cache()
+        ex32 = get_executor_for_runtime("ruby3.2")
+        ex33 = get_executor_for_runtime("ruby3.3")
+        ex34 = get_executor_for_runtime("ruby3.4")
+        assert isinstance(ex32, RubyExecutor)
+        assert ex32 is not ex33
+        assert ex33 is not ex34
+        assert get_executor_for_runtime("ruby3.3") is ex33
+
+    def test_each_version_routes_to_distinct_binary_name(self):
+        for runtime, expected_bin in _RUNTIME_BINARY.items():
+            executor = RubyExecutor(runtime=runtime)
+
+            def _which(name, b=expected_bin):
+                return f"/usr/bin/{name}" if name == b else None
+
+            with patch("shutil.which", side_effect=_which):
+                assert executor._resolve_binary() == f"/usr/bin/{expected_bin}", (
+                    f"Failed for {runtime}"
+                )
+
+    def test_unknown_runtime_logs_warning_and_falls_back(self):
+        executor = RubyExecutor(runtime="ruby2.7")
+        with patch("shutil.which", return_value="/usr/bin/ruby"):
+            with patch(_RUBY_LOGGER + ".warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/ruby"
+        mock_warn.assert_called_once()
+        assert "ruby2.7" in mock_warn.call_args.args[1]
+
+    def test_known_runtime_with_missing_versioned_binary_warns(self):
+        # ruby3.3 is in _RUNTIME_BINARY, but ruby3.3 isn't on PATH; only the
+        # default `ruby` is. We must warn so the version divergence is visible.
+        executor = RubyExecutor(runtime="ruby3.3")
+
+        def _which(name):
+            return "/usr/bin/ruby" if name == "ruby" else None
+
+        with patch("shutil.which", side_effect=_which):
+            with patch(_RUBY_LOGGER + ".warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/ruby"
+        mock_warn.assert_called_once()
+        # The warning should mention both the runtime and the expected binary name.
+        warn_args = mock_warn.call_args.args
+        assert "ruby3.3" in warn_args
+        assert "ruby3.3" in warn_args  # versioned binary name == runtime id here

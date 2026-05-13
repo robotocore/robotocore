@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -368,15 +369,68 @@ def _is_java_functional() -> bool:
 
 
 async def runtimes_endpoint(request: Request) -> JSONResponse:
-    """Report which Lambda runtime families are available in this environment.
+    """Report which Lambda runtime families/versions are available in this environment.
 
-    Returns two fields:
+    Returns:
     - available: families whose binary is present and executable right now
     - all: every family robotocore knows how to run (see _ALL_RUNTIME_FAMILIES)
+    - versions: per-family list of AWS Lambda runtime identifiers whose
+      version-specific binary is present (e.g. ``nodejs20.x``, ``ruby3.3``).
+      The bare family name still appears in ``available`` whenever ANY
+      version-specific binary or the family default is present.
 
     Clients (compat tests, UIs) can use this to skip gracefully when a runtime
-    is absent from the current image rather than checking the local machine PATH.
+    or specific version is absent from the current image.
     """
+    from robotocore.services.lambda_.runtimes.dotnet import (
+        _RUNTIME_BINARY as DOTNET_RUNTIME_TFMS,
+    )
+    from robotocore.services.lambda_.runtimes.dotnet import _list_installed_majors
+    from robotocore.services.lambda_.runtimes.java import _RUNTIME_BINARY as JAVA_RUNTIME_BIN
+    from robotocore.services.lambda_.runtimes.node import _RUNTIME_BINARY as NODE_RUNTIME_BIN
+    from robotocore.services.lambda_.runtimes.python import _RUNTIME_BINARY as PY_RUNTIMES
+    from robotocore.services.lambda_.runtimes.ruby import _RUNTIME_BINARY as RUBY_RUNTIME_BIN
+
+    versions: dict[str, list[str]] = {family: [] for family in _ALL_RUNTIME_FAMILIES}
+
+    # Python: report every runtime we can faithfully execute. The host's own
+    # (major, minor) is satisfied in-process; other versions require a
+    # versioned ``pythonX.Y`` binary on $PATH (the image installs python3.10,
+    # python3.11, python3.13 alongside the base 3.12) and route to the
+    # subprocess path in PythonExecutor.
+    host_py = (sys.version_info.major, sys.version_info.minor)
+    for rt, ver in PY_RUNTIMES.items():
+        if ver == host_py or shutil.which(rt):
+            versions["python"].append(rt)
+
+    for rt, binary in NODE_RUNTIME_BIN.items():
+        if shutil.which(binary):
+            versions["nodejs"].append(rt)
+    for rt, binary in RUBY_RUNTIME_BIN.items():
+        if shutil.which(binary):
+            versions["ruby"].append(rt)
+    if _is_java_functional():
+        for rt, binary in JAVA_RUNTIME_BIN.items():
+            if shutil.which(binary):
+                versions["java"].append(rt)
+    if shutil.which("dotnet"):
+        # Every Lambda dotnet runtime whose SDK is installed gets reported —
+        # _detect_tfm(runtime) faithfully picks the matching TFM per request
+        # (now that the image installs SDKs for 6.0/8.0/9.0 side by side).
+        # Runtimes whose SDK is missing are NOT advertised; the executor
+        # would fall back to host max and warn.
+        installed_majors = _list_installed_majors()
+        for rt, tfm in DOTNET_RUNTIME_TFMS.items():
+            try:
+                major = int(tfm.removeprefix("net").split(".", 1)[0])
+            except ValueError:
+                continue
+            if major in installed_majors:
+                versions["dotnet"].append(rt)
+
+    # custom (provided.*) — no concept of versions; the bare name is always supported.
+    versions["custom"] = []
+
     available: list[str] = ["python", "custom"]  # python is in-process; custom uses /bin/sh
     if shutil.which("node"):
         available.append("nodejs")
@@ -387,12 +441,83 @@ async def runtimes_endpoint(request: Request) -> JSONResponse:
     if shutil.which("dotnet"):
         available.append("dotnet")
 
+    # Annotate each runtime ID with its fault-in install status so clients
+    # can pre-warm or decide between "installed", "available_to_install", or
+    # "unavailable". "installed" wins over "available_to_install" when the
+    # binary is already present (either baked-in or previously fault-installed).
+    from robotocore.services.lambda_.runtimes import install as _install_mod
+
+    all_runtimes: set[str] = set()
+    for rts in versions.values():
+        all_runtimes.update(rts)
+    fault_in_plans = _install_mod.list_plans()
+    all_runtimes.update(fault_in_plans.keys())
+
+    status: dict[str, str] = {}
+    for rt in all_runtimes:
+        if any(rt in v for v in versions.values()):
+            status[rt] = "installed"
+        elif rt in fault_in_plans:
+            status[rt] = (
+                "installed" if fault_in_plans[rt].is_installed() else "available_to_install"
+            )
+        else:
+            status[rt] = "unavailable"
+
     return JSONResponse(
         {
             "available": sorted(available),
             "all": list(_ALL_RUNTIME_FAMILIES),
+            "versions": {f: sorted(versions[f]) for f in _ALL_RUNTIME_FAMILIES},
+            "status": status,
+            "faultin_disabled": _install_mod.FAULTIN_DISABLED,
         }
     )
+
+
+async def runtimes_install_endpoint(request: Request) -> JSONResponse:
+    """Pre-warm one or more Lambda runtimes via fault-in install.
+
+    POST body: ``{"runtimes": ["java17", "dotnet6", ...]}``. Each runtime
+    is installed synchronously (in order) and the response reports
+    per-runtime success. Already-installed runtimes are no-ops.
+
+    Useful in CI setup steps so the first real Lambda invocation against
+    a non-default runtime doesn't pay the 30s–2min download cost.
+    """
+    from robotocore.services.lambda_.runtimes import install as _install_mod
+
+    if _install_mod.FAULTIN_DISABLED:
+        return JSONResponse(
+            {"error": "fault-in is disabled (ROBOTOCORE_RUNTIME_FAULTIN=disabled)"},
+            status_code=400,
+        )
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — JSON parse error or empty body
+        body = {}
+    requested = body.get("runtimes")
+    if not isinstance(requested, list) or not requested:
+        return JSONResponse(
+            {"error": 'POST body must be {"runtimes": [<runtime-id>, ...]}'},
+            status_code=400,
+        )
+
+    results: dict[str, str] = {}
+    for rt in requested:
+        if not isinstance(rt, str):
+            results[str(rt)] = "invalid"
+            continue
+        plan = _install_mod.get_plan(rt)
+        if plan is None:
+            results[rt] = "no_installer"
+            continue
+        if plan.is_installed():
+            results[rt] = "already_installed"
+            continue
+        results[rt] = "installed" if _install_mod.ensure_installed(rt) else "failed"
+    return JSONResponse({"results": results})
 
 
 async def config_endpoint(request: Request) -> JSONResponse:
@@ -1348,6 +1473,7 @@ management_routes = [
     Route("/_localstack/plugins", localstack_plugins, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
     Route("/_robotocore/runtimes", runtimes_endpoint, methods=["GET"]),
+    Route("/_robotocore/runtimes/install", runtimes_install_endpoint, methods=["POST"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
     Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
