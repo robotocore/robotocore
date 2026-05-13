@@ -76,12 +76,27 @@ COPY --from=ruby:3.3-slim /usr/local /opt/ruby-3.3
 COPY --from=ruby:3.4-slim /usr/local /opt/ruby-3.4
 
 # Wrapper scripts: ruby3.2/ruby3.3/ruby3.4 each exec their own interpreter
-# with its own shared-library and gem-path set. The default `ruby` and `gem`
-# point at 3.4 (latest stable) for paths that don't know the requested runtime
-# (e.g. the bootstrap.rb fallback).
+# with its own shared-library, stdlib, and gem-path set. The relocated
+# /opt/ruby-X.Y install can't find its own stdlib via the binary's compiled-in
+# rbconfig.rb paths (those point at /usr/local), so RUBYLIB explicitly adds
+# the stdlib + arch + site/vendor dirs. The glob covers x86_64-linux on amd64
+# CI and aarch64-linux on Mac arm64 — whichever exists is included.
+# Default `ruby` and `gem` point at 3.4 (latest stable) for paths without
+# runtime context (e.g. the bootstrap.rb host requirement check).
 RUN for v in 3.2 3.3 3.4; do \
-      printf '#!/bin/sh\nexport LD_LIBRARY_PATH="/opt/ruby-%s/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexport GEM_PATH="/opt/ruby-%s/lib/ruby/gems/%s.0${GEM_PATH:+:$GEM_PATH}"\nexec /opt/ruby-%s/bin/ruby "$@"\n' "$v" "$v" "$v" "$v" > /usr/local/bin/ruby"$v" && \
-      chmod 755 /usr/local/bin/ruby"$v"; \
+      cat > /usr/local/bin/ruby"$v" <<EOF && chmod 755 /usr/local/bin/ruby"$v"
+#!/bin/sh
+PREFIX=/opt/ruby-$v
+VER=$v.0
+export LD_LIBRARY_PATH="\$PREFIX/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+RUBYLIB_ADD="\$PREFIX/lib/ruby/\$VER:\$PREFIX/lib/ruby/site_ruby/\$VER:\$PREFIX/lib/ruby/vendor_ruby/\$VER"
+for arch_dir in "\$PREFIX/lib/ruby/\$VER"/*-linux*; do
+  [ -d "\$arch_dir" ] && RUBYLIB_ADD="\$RUBYLIB_ADD:\$arch_dir"
+done
+export RUBYLIB="\$RUBYLIB_ADD\${RUBYLIB:+:\$RUBYLIB}"
+export GEM_PATH="\$PREFIX/lib/ruby/gems/\$VER\${GEM_PATH:+:\$GEM_PATH}"
+exec "\$PREFIX/bin/ruby" "\$@"
+EOF
     done && \
     ln -sf /usr/local/bin/ruby3.4 /usr/local/bin/ruby && \
     ln -sf /opt/ruby-3.4/bin/gem  /usr/local/bin/gem
