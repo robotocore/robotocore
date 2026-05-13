@@ -5,10 +5,11 @@ from unittest.mock import patch
 
 import pytest
 
-import robotocore.services.lambda_.runtimes.ruby as ruby_mod
 from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
 from robotocore.services.lambda_.runtimes.ruby import _RUNTIME_BINARY, RubyExecutor
 from tests.unit.services.lambda_.helpers import make_zip
+
+_RUBY_LOGGER = "robotocore.services.lambda_.runtimes.ruby.logger"
 
 pytestmark = pytest.mark.skipif(shutil.which("ruby") is None, reason="Ruby not installed")
 
@@ -226,7 +227,7 @@ class TestRubyVersionRouting:
     def test_unknown_runtime_logs_warning_and_falls_back(self):
         executor = RubyExecutor(runtime="ruby2.7")
         with patch("shutil.which", return_value="/usr/bin/ruby"):
-            with patch.object(ruby_mod.logger, "warning") as mock_warn:
+            with patch(_RUBY_LOGGER + ".warning") as mock_warn:
                 result = executor._resolve_binary()
         assert result == "/usr/bin/ruby"
         mock_warn.assert_called_once()
@@ -241,7 +242,7 @@ class TestRubyVersionRouting:
             return "/usr/bin/ruby" if name == "ruby" else None
 
         with patch("shutil.which", side_effect=_which):
-            with patch.object(ruby_mod.logger, "warning") as mock_warn:
+            with patch(_RUBY_LOGGER + ".warning") as mock_warn:
                 result = executor._resolve_binary()
         assert result == "/usr/bin/ruby"
         mock_warn.assert_called_once()

@@ -9,6 +9,8 @@ from robotocore.services.lambda_.runtimes import clear_executor_cache, get_execu
 from robotocore.services.lambda_.runtimes.node import _RUNTIME_BINARY, NodejsExecutor
 from tests.unit.services.lambda_.helpers import make_zip
 
+_NODE_LOGGER = "robotocore.services.lambda_.runtimes.node.logger"
+
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="Node.js not installed")
 
 
@@ -306,11 +308,9 @@ class TestNodejsVersionRouting:
                 )
 
     def test_unknown_runtime_logs_warning_and_falls_back(self):
-        import robotocore.services.lambda_.runtimes.node as node_mod
-
         executor = NodejsExecutor(runtime="nodejs16.x")
         with patch("shutil.which", return_value="/usr/bin/node"):
-            with patch.object(node_mod.logger, "warning") as mock_warn:
+            with patch(_NODE_LOGGER + ".warning") as mock_warn:
                 result = executor._resolve_binary()
         assert result == "/usr/bin/node"
         mock_warn.assert_called_once()
@@ -319,15 +319,13 @@ class TestNodejsVersionRouting:
     def test_known_runtime_with_missing_versioned_binary_warns(self):
         # nodejs20.x is in _RUNTIME_BINARY, but node20 isn't on PATH; only the
         # default `node` is. We must warn so the Node version divergence is visible.
-        import robotocore.services.lambda_.runtimes.node as node_mod
-
         executor = NodejsExecutor(runtime="nodejs20.x")
 
         def _which(name):
             return "/usr/bin/node" if name == "node" else None
 
         with patch("shutil.which", side_effect=_which):
-            with patch.object(node_mod.logger, "warning") as mock_warn:
+            with patch(_NODE_LOGGER + ".warning") as mock_warn:
                 result = executor._resolve_binary()
         assert result == "/usr/bin/node"
         mock_warn.assert_called_once()

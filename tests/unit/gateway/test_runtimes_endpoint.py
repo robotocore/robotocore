@@ -162,3 +162,29 @@ class TestRuntimesEndpointVersions:
 
         expected = [rt for rt, ver in PY_MAP.items() if ver == host]
         assert data["versions"]["python"] == sorted(expected)
+
+    def test_dotnet_versions_only_reports_host_max(self):
+        # On a {6, 8, 9} host, we can only faithfully execute dotnet9 (our
+        # _detect_tfm() always builds at host max). The endpoint must report
+        # only dotnet9 — reporting dotnet6/dotnet8 too would advertise
+        # version fidelity we don't deliver.
+        from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
+
+        app = Starlette(
+            routes=[Route("/_robotocore/runtimes", _app.runtimes_endpoint, methods=["GET"])]
+        )
+        with patch("robotocore.gateway.app.shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
+            with patch.object(dotnet_mod, "_installed_majors", {6, 8, 9}):
+                data = TestClient(app).get("/_robotocore/runtimes").json()
+        assert data["versions"]["dotnet"] == ["dotnet9"]
+
+    def test_dotnet_versions_when_only_one_major_installed(self):
+        from robotocore.services.lambda_.runtimes import dotnet as dotnet_mod
+
+        app = Starlette(
+            routes=[Route("/_robotocore/runtimes", _app.runtimes_endpoint, methods=["GET"])]
+        )
+        with patch("robotocore.gateway.app.shutil.which", side_effect=lambda x: f"/usr/bin/{x}"):
+            with patch.object(dotnet_mod, "_installed_majors", {8}):
+                data = TestClient(app).get("/_robotocore/runtimes").json()
+        assert data["versions"]["dotnet"] == ["dotnet8"]

@@ -97,20 +97,24 @@ def _detect_tfm(runtime: str = "") -> str:
     global _cached_tfm
 
     majors = _list_installed_majors()
+    host_max = max(majors) if majors else None
 
-    # If the caller named a specific runtime, log when it's not installed so
-    # the divergence between requested and actual is visible — but still
-    # build against the host's max TFM, not the requested TFM.
+    # If the caller named a specific runtime, log whenever the requested major
+    # doesn't equal the host's max — that's the case where the executed TFM
+    # diverges from the function's declared runtime. This covers both
+    # "requested major absent" AND "requested major present but not max"
+    # (e.g. dotnet6 requested on a {6,8,9} host still builds at net9.0).
     requested = _RUNTIME_BINARY.get(runtime)
-    if requested and majors:
+    if requested and host_max is not None:
         m = re.match(r"net(\d+)\.0", requested)
-        if m and int(m.group(1)) not in majors:
+        if m and int(m.group(1)) != host_max:
             logger.warning(
-                "Requested .NET runtime %r (%s) not installed — building at "
-                "host max (%s). Installed majors: %s",
+                "Requested .NET runtime %r (%s) will execute at host-max TFM "
+                "net%s.0 — single shared dotnet host can't isolate per-version. "
+                "Installed majors: %s",
                 runtime,
                 requested,
-                f"net{max(majors)}.0",
+                host_max,
                 sorted(majors),
             )
     elif runtime and runtime not in _RUNTIME_BINARY:
@@ -123,8 +127,8 @@ def _detect_tfm(runtime: str = "") -> str:
     if _cached_tfm is not None:
         return _cached_tfm
 
-    if majors:
-        _cached_tfm = f"net{max(majors)}.0"
+    if host_max is not None:
+        _cached_tfm = f"net{host_max}.0"
         logger.debug("Detected .NET TFM: %s", _cached_tfm)
         return _cached_tfm
 

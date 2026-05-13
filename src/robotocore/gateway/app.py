@@ -411,15 +411,22 @@ async def runtimes_endpoint(request: Request) -> JSONResponse:
             if shutil.which(binary):
                 versions["java"].append(rt)
     if shutil.which("dotnet"):
+        # .NET ships a single shared host. Our _detect_tfm() always builds at
+        # the host's max-installed major (see its docstring — going lower
+        # produces silent Type-not-found at handler load). So we only honestly
+        # "support" the runtime whose major equals host max. Reporting the
+        # others as available would advertise version fidelity we don't
+        # actually deliver (a dotnet6 function would silently run on net9.0).
         installed_majors = _list_installed_majors()
-        for rt, tfm in DOTNET_RUNTIME_TFMS.items():
-            # tfm is "net8.0" → major 8
-            try:
-                major = int(tfm.removeprefix("net").split(".", 1)[0])
-            except ValueError:
-                continue
-            if major in installed_majors:
-                versions["dotnet"].append(rt)
+        host_max = max(installed_majors) if installed_majors else None
+        if host_max is not None:
+            for rt, tfm in DOTNET_RUNTIME_TFMS.items():
+                try:
+                    major = int(tfm.removeprefix("net").split(".", 1)[0])
+                except ValueError:
+                    continue
+                if major == host_max:
+                    versions["dotnet"].append(rt)
 
     # custom (provided.*) — no concept of versions; the bare name is always supported.
     versions["custom"] = []

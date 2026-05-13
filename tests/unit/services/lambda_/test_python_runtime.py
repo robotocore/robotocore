@@ -3,10 +3,11 @@
 import sys
 from unittest.mock import patch
 
-import robotocore.services.lambda_.runtimes.python as py_mod
 from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
 from robotocore.services.lambda_.runtimes.python import _RUNTIME_BINARY, PythonExecutor
 from tests.unit.services.lambda_.helpers import make_zip
+
+_PY_LOGGER = "robotocore.services.lambda_.runtimes.python.logger"
 
 
 class TestPythonExecutor:
@@ -89,7 +90,7 @@ class TestPythonVersionRouting:
         # Pick a runtime whose version does NOT match the host.
         other = next(rt for rt, ver in _RUNTIME_BINARY.items() if ver != host)
         executor = PythonExecutor(runtime=other)
-        with patch.object(py_mod.logger, "warning") as mock_warn:
+        with patch(_PY_LOGGER + ".warning") as mock_warn:
             executor._check_version_match()
             executor._check_version_match()  # should not log twice
         mock_warn.assert_called_once()
@@ -103,13 +104,13 @@ class TestPythonVersionRouting:
         if matching is None:
             return  # host python isn't in our map; nothing to assert
         executor = PythonExecutor(runtime=matching)
-        with patch.object(py_mod.logger, "warning") as mock_warn:
+        with patch(_PY_LOGGER + ".warning") as mock_warn:
             executor._check_version_match()
         mock_warn.assert_not_called()
 
     def test_unknown_runtime_warns(self):
         executor = PythonExecutor(runtime="python2.7")
-        with patch.object(py_mod.logger, "warning") as mock_warn:
+        with patch(_PY_LOGGER + ".warning") as mock_warn:
             executor._check_version_match()
         mock_warn.assert_called_once()
         assert "python2.7" in mock_warn.call_args.args[1]

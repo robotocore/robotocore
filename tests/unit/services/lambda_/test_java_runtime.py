@@ -10,10 +10,11 @@ from unittest.mock import patch
 
 import pytest
 
-import robotocore.services.lambda_.runtimes.java as java_mod
 from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
 from robotocore.services.lambda_.runtimes.java import _RUNTIME_BINARY, JavaExecutor
 from tests.unit.services.lambda_.helpers import make_zip
+
+_JAVA_LOGGER = "robotocore.services.lambda_.runtimes.java.logger"
 
 
 def _java_available() -> bool:
@@ -217,7 +218,7 @@ class TestJavaVersionRouting:
     def test_unknown_runtime_logs_warning_and_falls_back(self):
         executor = JavaExecutor(runtime="java42")
         with patch("shutil.which", return_value="/usr/bin/java"):
-            with patch.object(java_mod.logger, "warning") as mock_warn:
+            with patch(_JAVA_LOGGER + ".warning") as mock_warn:
                 result = executor._resolve_binary()
         assert result == "/usr/bin/java"
         mock_warn.assert_called_once()
@@ -232,7 +233,7 @@ class TestJavaVersionRouting:
             return "/usr/bin/java" if name == "java" else None
 
         with patch("shutil.which", side_effect=_which):
-            with patch.object(java_mod.logger, "warning") as mock_warn:
+            with patch(_JAVA_LOGGER + ".warning") as mock_warn:
                 result = executor._resolve_binary()
         assert result == "/usr/bin/java"
         mock_warn.assert_called_once()
