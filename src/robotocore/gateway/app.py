@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -368,15 +369,61 @@ def _is_java_functional() -> bool:
 
 
 async def runtimes_endpoint(request: Request) -> JSONResponse:
-    """Report which Lambda runtime families are available in this environment.
+    """Report which Lambda runtime families/versions are available in this environment.
 
-    Returns two fields:
+    Returns:
     - available: families whose binary is present and executable right now
     - all: every family robotocore knows how to run (see _ALL_RUNTIME_FAMILIES)
+    - versions: per-family list of AWS Lambda runtime identifiers whose
+      version-specific binary is present (e.g. ``nodejs20.x``, ``ruby3.3``).
+      The bare family name still appears in ``available`` whenever ANY
+      version-specific binary or the family default is present.
 
     Clients (compat tests, UIs) can use this to skip gracefully when a runtime
-    is absent from the current image rather than checking the local machine PATH.
+    or specific version is absent from the current image.
     """
+    from robotocore.services.lambda_.runtimes.dotnet import (
+        _RUNTIME_BINARY as DOTNET_RUNTIME_TFMS,
+    )
+    from robotocore.services.lambda_.runtimes.dotnet import _list_installed_majors
+    from robotocore.services.lambda_.runtimes.java import _RUNTIME_BINARY as JAVA_RUNTIME_BIN
+    from robotocore.services.lambda_.runtimes.node import _RUNTIME_BINARY as NODE_RUNTIME_BIN
+    from robotocore.services.lambda_.runtimes.python import _RUNTIME_BINARY as PY_RUNTIMES
+    from robotocore.services.lambda_.runtimes.ruby import _RUNTIME_BINARY as RUBY_RUNTIME_BIN
+
+    versions: dict[str, list[str]] = {family: [] for family in _ALL_RUNTIME_FAMILIES}
+
+    # Python: in-process — we expose whichever Lambda runtime matches the host's
+    # (major, minor). Other entries are not "available" because we can't satisfy them.
+    host_py = (sys.version_info.major, sys.version_info.minor)
+    for rt, ver in PY_RUNTIMES.items():
+        if ver == host_py:
+            versions["python"].append(rt)
+
+    for rt, binary in NODE_RUNTIME_BIN.items():
+        if shutil.which(binary):
+            versions["nodejs"].append(rt)
+    for rt, binary in RUBY_RUNTIME_BIN.items():
+        if shutil.which(binary):
+            versions["ruby"].append(rt)
+    if _is_java_functional():
+        for rt, binary in JAVA_RUNTIME_BIN.items():
+            if shutil.which(binary):
+                versions["java"].append(rt)
+    if shutil.which("dotnet"):
+        installed_majors = _list_installed_majors()
+        for rt, tfm in DOTNET_RUNTIME_TFMS.items():
+            # tfm is "net8.0" → major 8
+            try:
+                major = int(tfm.removeprefix("net").split(".", 1)[0])
+            except ValueError:
+                continue
+            if major in installed_majors:
+                versions["dotnet"].append(rt)
+
+    # custom (provided.*) — no concept of versions; the bare name is always supported.
+    versions["custom"] = []
+
     available: list[str] = ["python", "custom"]  # python is in-process; custom uses /bin/sh
     if shutil.which("node"):
         available.append("nodejs")
@@ -391,6 +438,7 @@ async def runtimes_endpoint(request: Request) -> JSONResponse:
         {
             "available": sorted(available),
             "all": list(_ALL_RUNTIME_FAMILIES),
+            "versions": {f: sorted(versions[f]) for f in _ALL_RUNTIME_FAMILIES},
         }
     )
 

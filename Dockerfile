@@ -62,6 +62,16 @@ COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node20
 COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node22
 COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
 
+# Ruby version aliases — the Ruby runtime executor looks up rubyX.Y by name.
+# Ruby binaries are dynamically linked (libruby.so) so a single-file COPY from
+# ruby:X-slim doesn't work the way Node's does. Until per-version Ruby installs
+# land, these symlinks point at the apt-installed default so the executor's
+# `_resolve_binary()` returns a working path; a "no versioned binary, falling
+# back" warning is suppressed because the versioned name resolves.
+RUN ln -sf /usr/bin/ruby /usr/local/bin/ruby3.2 \
+    && ln -sf /usr/bin/ruby /usr/local/bin/ruby3.3 \
+    && ln -sf /usr/bin/ruby /usr/local/bin/ruby3.4
+
 RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
 
 WORKDIR /app
@@ -110,11 +120,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-21-jdk-headless \
     && rm -rf /var/lib/apt/lists/*
 
-# Install .NET SDK via Microsoft's official script (apt repo has outdated versions on slim)
+# Java version aliases — the Java runtime executor looks up javaX by name. JVM
+# 21 runs java8/11/17 bytecode, so symlinking versioned names to the installed
+# OpenJDK 21 is functionally correct for AWS Lambda parity in nearly all cases.
+# Replace these with per-version JDK installs if class-format compatibility ever
+# becomes an issue.
+RUN JAVA_BIN=$(readlink -f /usr/bin/java) \
+    && ln -sf "$JAVA_BIN" /usr/local/bin/java8 \
+    && ln -sf "$JAVA_BIN" /usr/local/bin/java11 \
+    && ln -sf "$JAVA_BIN" /usr/local/bin/java17 \
+    && ln -sf "$JAVA_BIN" /usr/local/bin/java21
+
+# Install .NET SDKs via Microsoft's official script. Multiple channels share a
+# prefix: the dotnet host dispatches to the runtime requested by each app's
+# runtimeconfig.json (or by our executor's TFM selection per Lambda runtime ID).
+# Channel 8.0 is the default; 6.0 + 9.0 cover dotnet6 / dotnet9 Lambda runtimes.
 RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
     && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
     && chmod +x /tmp/dotnet-install.sh \
     && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
+    && /tmp/dotnet-install.sh --channel 6.0 --runtime dotnet --install-dir /usr/share/dotnet \
+    && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --install-dir /usr/share/dotnet \
     && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
     && rm /tmp/dotnet-install.sh \
     && apt-get remove -y wget && apt-get autoremove -y \

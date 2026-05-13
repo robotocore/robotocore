@@ -127,9 +127,28 @@ class TestGetExecutorForRuntime:
         e2 = get_executor_for_runtime("python3.12")
         assert e1 is e2
 
-    def test_different_versions_same_family_share_executor(self):
-        e1 = get_executor_for_runtime("python3.12")
-        e2 = get_executor_for_runtime("python3.11")
+    @pytest.mark.parametrize(
+        "rt_a,rt_b",
+        [
+            ("python3.12", "python3.11"),
+            ("nodejs20.x", "nodejs22.x"),
+            ("ruby3.2", "ruby3.3"),
+            ("java17", "java21"),
+            ("dotnet6", "dotnet8"),
+        ],
+    )
+    def test_different_versions_same_family_get_distinct_executors(self, rt_a, rt_b):
+        # Each version gets its own executor instance so that version-specific
+        # binary resolution (and per-runtime warnings) work correctly.
+        clear_executor_cache()
+        e1 = get_executor_for_runtime(rt_a)
+        e2 = get_executor_for_runtime(rt_b)
+        assert e1 is not e2
+
+    def test_custom_runtimes_share_executor(self):
+        # Custom (provided.*) runtimes still share — there's no version dispatch.
+        e1 = get_executor_for_runtime("provided.al2")
+        e2 = get_executor_for_runtime("provided.al2023")
         assert e1 is e2
 
     def test_clear_cache(self):

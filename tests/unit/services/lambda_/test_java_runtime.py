@@ -6,10 +6,12 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+from unittest.mock import patch
 
 import pytest
 
-from robotocore.services.lambda_.runtimes.java import JavaExecutor
+from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
+from robotocore.services.lambda_.runtimes.java import _RUNTIME_BINARY, JavaExecutor
 from tests.unit.services.lambda_.helpers import make_zip
 
 
@@ -147,3 +149,77 @@ public class EnvHandler {
         assert error_type is None
         assert result["custom"] == "java-custom"
         assert result["fn"] == "env-fn"
+
+
+class TestJavaVersionRouting:
+    """Verify that each runtime identifier resolves to the correct binary."""
+
+    def test_runtime_binary_map_covers_known_versions(self):
+        assert "java8" in _RUNTIME_BINARY
+        assert "java8.al2" in _RUNTIME_BINARY
+        assert "java11" in _RUNTIME_BINARY
+        assert "java17" in _RUNTIME_BINARY
+        assert "java21" in _RUNTIME_BINARY
+
+    def test_versioned_binary_preferred_when_present(self):
+        executor = JavaExecutor(runtime="java17")
+
+        def _which(name):
+            return f"/usr/bin/{name}" if name in ("java17", "java") else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/java17"
+
+    def test_falls_back_to_java_when_versioned_binary_missing(self):
+        executor = JavaExecutor(runtime="java17")
+
+        def _which(name):
+            return "/usr/bin/java" if name == "java" else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/java"
+
+    def test_returns_none_when_no_java_at_all(self):
+        executor = JavaExecutor(runtime="java17")
+        with patch("shutil.which", return_value=None):
+            assert executor._resolve_binary() is None
+
+    def test_executor_with_no_java_returns_invalid_runtime(self):
+        executor = JavaExecutor(runtime="java17")
+        with patch.object(executor, "_resolve_binary", return_value=None):
+            result, error_type, _ = executor.execute(
+                code_zip=b"", handler="Handler::handle", event={}, function_name="fn"
+            )
+        assert error_type == "Runtime.InvalidRuntime"
+
+    def test_get_executor_for_runtime_returns_versioned_instance(self):
+        clear_executor_cache()
+        ex8 = get_executor_for_runtime("java8")
+        ex11 = get_executor_for_runtime("java11")
+        ex17 = get_executor_for_runtime("java17")
+        ex21 = get_executor_for_runtime("java21")
+        assert isinstance(ex8, JavaExecutor)
+        assert ex8 is not ex11
+        assert ex11 is not ex17
+        assert ex17 is not ex21
+        assert get_executor_for_runtime("java17") is ex17
+
+    def test_java8_al2_routes_to_java8_binary(self):
+        executor = JavaExecutor(runtime="java8.al2")
+
+        def _which(name):
+            return f"/usr/bin/{name}" if name == "java8" else None
+
+        with patch("shutil.which", side_effect=_which):
+            assert executor._resolve_binary() == "/usr/bin/java8"
+
+    def test_unknown_runtime_logs_warning_and_falls_back(self):
+        import robotocore.services.lambda_.runtimes.java as java_mod
+
+        executor = JavaExecutor(runtime="java42")
+        with patch("shutil.which", return_value="/usr/bin/java"):
+            with patch.object(java_mod.logger, "warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/java"
+        mock_warn.assert_called_once()
+        assert "java42" in mock_warn.call_args.args[1]
