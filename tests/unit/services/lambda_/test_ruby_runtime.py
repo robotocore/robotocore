@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+import robotocore.services.lambda_.runtimes.ruby as ruby_mod
 from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
 from robotocore.services.lambda_.runtimes.ruby import _RUNTIME_BINARY, RubyExecutor
 from tests.unit.services.lambda_.helpers import make_zip
@@ -223,8 +224,6 @@ class TestRubyVersionRouting:
                 )
 
     def test_unknown_runtime_logs_warning_and_falls_back(self):
-        import robotocore.services.lambda_.runtimes.ruby as ruby_mod
-
         executor = RubyExecutor(runtime="ruby2.7")
         with patch("shutil.which", return_value="/usr/bin/ruby"):
             with patch.object(ruby_mod.logger, "warning") as mock_warn:
@@ -232,3 +231,21 @@ class TestRubyVersionRouting:
         assert result == "/usr/bin/ruby"
         mock_warn.assert_called_once()
         assert "ruby2.7" in mock_warn.call_args.args[1]
+
+    def test_known_runtime_with_missing_versioned_binary_warns(self):
+        # ruby3.3 is in _RUNTIME_BINARY, but ruby3.3 isn't on PATH; only the
+        # default `ruby` is. We must warn so the version divergence is visible.
+        executor = RubyExecutor(runtime="ruby3.3")
+
+        def _which(name):
+            return "/usr/bin/ruby" if name == "ruby" else None
+
+        with patch("shutil.which", side_effect=_which):
+            with patch.object(ruby_mod.logger, "warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/ruby"
+        mock_warn.assert_called_once()
+        # The warning should mention both the runtime and the expected binary name.
+        warn_args = mock_warn.call_args.args
+        assert "ruby3.3" in warn_args
+        assert "ruby3.3" in warn_args  # versioned binary name == runtime id here

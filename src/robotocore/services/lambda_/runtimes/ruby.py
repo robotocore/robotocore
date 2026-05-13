@@ -64,13 +64,27 @@ class RubyExecutor:
         return run_subprocess(cmd, event, tmpdir, env, timeout)
 
     def _resolve_binary(self) -> str | None:
-        """Return the ruby binary path, preferring the version-specific one."""
+        """Return the ruby binary path, preferring the version-specific one.
+
+        Logs a warning in two cases so a runtime mismatch is never silent:
+          (a) a known runtime asked for ``rubyX.Y`` but that binary isn't on
+              $PATH — we fall back to plain ``ruby`` (different Ruby version);
+          (b) an unknown runtime identifier (e.g. ``ruby2.7``) — we don't
+              recognize it at all and fall back to plain ``ruby``.
+        """
         versioned = _RUNTIME_BINARY.get(self._runtime)
         if versioned:
             path = shutil.which(versioned)
             if path:
                 return path
-        if self._runtime and self._runtime not in _RUNTIME_BINARY:
+            logger.warning(
+                "Versioned ruby binary %r for runtime %r not on $PATH — "
+                "falling back to default 'ruby' (the executed Ruby version "
+                "will not match the function's declared runtime).",
+                versioned,
+                self._runtime,
+            )
+        elif self._runtime:
             logger.warning(
                 "No versioned ruby binary for runtime %r — falling back to 'ruby'. Supported: %s",
                 self._runtime,

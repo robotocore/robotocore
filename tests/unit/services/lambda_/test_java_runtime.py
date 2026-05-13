@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+import robotocore.services.lambda_.runtimes.java as java_mod
 from robotocore.services.lambda_.runtimes import clear_executor_cache, get_executor_for_runtime
 from robotocore.services.lambda_.runtimes.java import _RUNTIME_BINARY, JavaExecutor
 from tests.unit.services.lambda_.helpers import make_zip
@@ -214,8 +215,6 @@ class TestJavaVersionRouting:
             assert executor._resolve_binary() == "/usr/bin/java8"
 
     def test_unknown_runtime_logs_warning_and_falls_back(self):
-        import robotocore.services.lambda_.runtimes.java as java_mod
-
         executor = JavaExecutor(runtime="java42")
         with patch("shutil.which", return_value="/usr/bin/java"):
             with patch.object(java_mod.logger, "warning") as mock_warn:
@@ -223,3 +222,19 @@ class TestJavaVersionRouting:
         assert result == "/usr/bin/java"
         mock_warn.assert_called_once()
         assert "java42" in mock_warn.call_args.args[1]
+
+    def test_known_runtime_with_missing_versioned_binary_warns(self):
+        # java17 is in _RUNTIME_BINARY, but java17 isn't on PATH; only the
+        # default `java` is. We must warn so the JVM divergence is visible.
+        executor = JavaExecutor(runtime="java17")
+
+        def _which(name):
+            return "/usr/bin/java" if name == "java" else None
+
+        with patch("shutil.which", side_effect=_which):
+            with patch.object(java_mod.logger, "warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/java"
+        mock_warn.assert_called_once()
+        warn_args = mock_warn.call_args.args
+        assert "java17" in warn_args

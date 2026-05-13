@@ -62,15 +62,15 @@ COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node20
 COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node22
 COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
 
-# Ruby version aliases — the Ruby runtime executor looks up rubyX.Y by name.
-# Ruby binaries are dynamically linked (libruby.so) so a single-file COPY from
-# ruby:X-slim doesn't work the way Node's does. Until per-version Ruby installs
-# land, these symlinks point at the apt-installed default so the executor's
-# `_resolve_binary()` returns a working path; a "no versioned binary, falling
-# back" warning is suppressed because the versioned name resolves.
-RUN ln -sf /usr/bin/ruby /usr/local/bin/ruby3.2 \
-    && ln -sf /usr/bin/ruby /usr/local/bin/ruby3.3 \
-    && ln -sf /usr/bin/ruby /usr/local/bin/ruby3.4
+# NOTE on Ruby version dispatch: Ruby binaries are dynamically linked
+# (libruby.so), so the single-file COPY trick that works for Node doesn't work
+# here. We deliberately do NOT symlink versioned names (ruby3.2/3.3/3.4) to
+# the apt-installed default — that would let `_resolve_binary()` return
+# successfully under the wrong Ruby and report fake per-version availability
+# via /_robotocore/runtimes. Until real per-version installs (rbenv, official
+# ruby:X-slim copies-with-libs, etc.) land here, the executor falls back to
+# the default `ruby` with a "versioned binary not found" warning, and the
+# runtimes endpoint reports an empty `versions["ruby"]`.
 
 RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
 
@@ -120,27 +120,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-21-jdk-headless \
     && rm -rf /var/lib/apt/lists/*
 
-# Java version aliases — the Java runtime executor looks up javaX by name. JVM
-# 21 runs java8/11/17 bytecode, so symlinking versioned names to the installed
-# OpenJDK 21 is functionally correct for AWS Lambda parity in nearly all cases.
-# Replace these with per-version JDK installs if class-format compatibility ever
-# becomes an issue.
-RUN JAVA_BIN=$(readlink -f /usr/bin/java) \
-    && ln -sf "$JAVA_BIN" /usr/local/bin/java8 \
-    && ln -sf "$JAVA_BIN" /usr/local/bin/java11 \
-    && ln -sf "$JAVA_BIN" /usr/local/bin/java17 \
-    && ln -sf "$JAVA_BIN" /usr/local/bin/java21
+# NOTE on Java version dispatch: same reasoning as Ruby. JVM 21 can run older
+# bytecode, but a function configured as `java8` should see Java 8 semantics
+# (class-format checks, removed APIs, etc.), not Java 21. We don't symlink
+# java8/11/17/21 → java21 because that would silently route every requested
+# version through JVM 21 while suppressing the executor's fallback warning and
+# making /_robotocore/runtimes advertise versions that aren't really there.
+# Real per-version JDK installs are a follow-up; until then `_resolve_binary()`
+# falls back to plain `java` with a warning.
 
-# Install .NET SDKs via Microsoft's official script. Multiple channels share a
-# prefix: the dotnet host dispatches to the runtime requested by each app's
-# runtimeconfig.json (or by our executor's TFM selection per Lambda runtime ID).
-# Channel 8.0 is the default; 6.0 + 9.0 cover dotnet6 / dotnet9 Lambda runtimes.
+# Install .NET SDK 8.0 via Microsoft's official script. We deliberately do NOT
+# install runtime-only channels 6.0/9.0 alongside: `_detect_tfm("")` consults
+# `dotnet --list-runtimes` to pick "the latest installed" for unknown runtimes,
+# and a runtime-only install bumps that to net9.0 without providing the SDK or
+# targeting packs needed to compile/build bootstraps against net9.0 — handlers
+# fail with "Type not found" at runtime. Per-runtime TFMs (dotnet6 → net6.0,
+# dotnet9 → net9.0) need the SDK or reference packs; until those land,
+# `_detect_tfm()` falls back to net8.0 with a warning.
 RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
     && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
     && chmod +x /tmp/dotnet-install.sh \
     && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
-    && /tmp/dotnet-install.sh --channel 6.0 --runtime dotnet --install-dir /usr/share/dotnet \
-    && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --install-dir /usr/share/dotnet \
     && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
     && rm /tmp/dotnet-install.sh \
     && apt-get remove -y wget && apt-get autoremove -y \

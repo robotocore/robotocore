@@ -112,13 +112,27 @@ class JavaExecutor:
         return run_subprocess(cmd, event, tmpdir, env, timeout)
 
     def _resolve_binary(self) -> str | None:
-        """Return the java binary path, preferring the version-specific one."""
+        """Return the java binary path, preferring the version-specific one.
+
+        Logs a warning in two cases so a runtime mismatch is never silent:
+          (a) a known runtime asked for ``javaX`` but that binary isn't on
+              $PATH — we fall back to plain ``java`` (different JVM version);
+          (b) an unknown runtime identifier — we don't recognize it at all
+              and fall back to plain ``java``.
+        """
         versioned = _RUNTIME_BINARY.get(self._runtime)
         if versioned:
             path = shutil.which(versioned)
             if path:
                 return path
-        if self._runtime and self._runtime not in _RUNTIME_BINARY:
+            logger.warning(
+                "Versioned java binary %r for runtime %r not on $PATH — "
+                "falling back to default 'java' (the executed JVM will not "
+                "match the function's declared runtime).",
+                versioned,
+                self._runtime,
+            )
+        elif self._runtime:
             logger.warning(
                 "No versioned java binary for runtime %r — falling back to 'java'. Supported: %s",
                 self._runtime,

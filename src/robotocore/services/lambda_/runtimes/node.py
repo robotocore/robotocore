@@ -66,13 +66,27 @@ class NodejsExecutor:
         return run_subprocess(cmd, event, tmpdir, env, timeout)
 
     def _resolve_binary(self) -> str | None:
-        """Return the node binary path, preferring the version-specific one."""
+        """Return the node binary path, preferring the version-specific one.
+
+        Logs a warning in two cases so a runtime mismatch is never silent:
+          (a) a known runtime asked for ``nodeNN`` but that binary isn't on
+              $PATH — we fall back to plain ``node`` (different Node version);
+          (b) an unknown runtime identifier (e.g. ``nodejs16.x``) — we don't
+              recognize it at all and fall back to plain ``node``.
+        """
         versioned = _RUNTIME_BINARY.get(self._runtime)
         if versioned:
             path = shutil.which(versioned)
             if path:
                 return path
-        if self._runtime and self._runtime not in _RUNTIME_BINARY:
+            logger.warning(
+                "Versioned node binary %r for runtime %r not on $PATH — "
+                "falling back to default 'node' (the executed Node version "
+                "will not match the function's declared runtime).",
+                versioned,
+                self._runtime,
+            )
+        elif self._runtime:
             logger.warning(
                 "No versioned node binary for runtime %r — falling back to 'node'. Supported: %s",
                 self._runtime,

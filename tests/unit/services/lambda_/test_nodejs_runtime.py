@@ -315,3 +315,22 @@ class TestNodejsVersionRouting:
         assert result == "/usr/bin/node"
         mock_warn.assert_called_once()
         assert "nodejs16.x" in mock_warn.call_args.args[1]
+
+    def test_known_runtime_with_missing_versioned_binary_warns(self):
+        # nodejs20.x is in _RUNTIME_BINARY, but node20 isn't on PATH; only the
+        # default `node` is. We must warn so the Node version divergence is visible.
+        import robotocore.services.lambda_.runtimes.node as node_mod
+
+        executor = NodejsExecutor(runtime="nodejs20.x")
+
+        def _which(name):
+            return "/usr/bin/node" if name == "node" else None
+
+        with patch("shutil.which", side_effect=_which):
+            with patch.object(node_mod.logger, "warning") as mock_warn:
+                result = executor._resolve_binary()
+        assert result == "/usr/bin/node"
+        mock_warn.assert_called_once()
+        warn_args = mock_warn.call_args.args
+        assert "node20" in warn_args
+        assert "nodejs20.x" in warn_args
