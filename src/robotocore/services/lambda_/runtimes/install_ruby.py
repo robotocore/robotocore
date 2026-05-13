@@ -106,7 +106,10 @@ def _stream_layer_extract(repo: str, digest: str, token: str, target: str) -> No
                 if not member.name:
                     continue
                 try:
-                    tar.extract(member, path=target, set_attrs=False)
+                    # ``set_attrs=True`` keeps the execute bit on /usr/local/bin/*
+                    # binaries (without it, the relocated ruby binary lands
+                    # without +x and exec fails with Permission denied).
+                    tar.extract(member, path=target, set_attrs=True)
                 except (PermissionError, OSError) as exc:
                     logger.debug("ruby layer extract skipped %r: %s", member.name, exc)
 

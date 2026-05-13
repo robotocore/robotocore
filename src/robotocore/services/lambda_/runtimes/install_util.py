@@ -73,7 +73,13 @@ def download_and_extract_tarball(
                     if not member.name or member.name.startswith(("/", "..")):
                         continue
                     try:
-                        tar.extract(member, path=str(target_dir), set_attrs=False)
+                        # ``set_attrs=True`` preserves the execute bit on
+                        # binaries (set_attrs=False would land /bin/node
+                        # without +x and exec would fail with Permission
+                        # denied). tarfile's chown call is a no-op for
+                        # non-root processes, so safe even when running
+                        # as the unprivileged robotocore user.
+                        tar.extract(member, path=str(target_dir), set_attrs=True)
                     except (PermissionError, OSError) as exc:
                         logger.debug("tar extract skipped %r: %s", member.name, exc)
         finally:
