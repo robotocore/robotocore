@@ -42,8 +42,13 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------ config
 
 _DEFAULT_CACHE_DIR = "/var/lib/robotocore/runtimes"
+_DEFAULT_BIN_DIR = "/var/lib/robotocore/bin"
 CACHE_DIR = Path(os.environ.get("ROBOTOCORE_RUNTIME_CACHE_DIR", _DEFAULT_CACHE_DIR))
-WRAPPER_BIN_DIR = Path(os.environ.get("ROBOTOCORE_RUNTIME_BIN_DIR", "/usr/local/bin"))
+# Wrappers go to a dedicated writable directory (not /usr/local/bin) so that
+# the non-root `robotocore` user inside the container can install runtimes
+# without needing root. The Dockerfile creates this dir, chowns it to
+# robotocore, and prepends it to $PATH so shutil.which() finds the wrappers.
+WRAPPER_BIN_DIR = Path(os.environ.get("ROBOTOCORE_RUNTIME_BIN_DIR", _DEFAULT_BIN_DIR))
 DOWNLOAD_TIMEOUT_S = int(os.environ.get("ROBOTOCORE_RUNTIME_DOWNLOAD_TIMEOUT", "300"))
 FAULTIN_DISABLED = os.environ.get("ROBOTOCORE_RUNTIME_FAULTIN", "").lower() in {
     "disabled",

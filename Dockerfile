@@ -49,80 +49,58 @@ RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
 # ---- Runtime stage: slim image with Python + Node.js + Ruby ----
 FROM python:3.12-slim AS standard
 
-# curl: health checks; libffi8/libyaml-0-2/libssl3/zlib1g: shared libs Ruby
-# binaries link against (the ruby:X-slim images we copy below were built for
-# the same Debian base, so these are the libraries their /usr/local/bin/ruby
-# expects to load via the dynamic linker).
+# curl: health checks; libffi8/libyaml-0-2/libssl3/zlib1g: shared libs the
+# fault-in Ruby installs link against (we ship just the *default* Ruby and
+# Node baked in; every other version is fetched on first use by the fault-in
+# installer — see runtimes/install.py and runtimes/install_ruby.py).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl libffi8 libyaml-0-2 libssl3 zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js runtimes — copy official versioned binaries so each nodejs* Lambda
-# identifier runs on the matching Node.js version, matching AWS behavior.
-# Node 20 (current LTS) is also the default "node" binary.
-COPY --from=node:18-slim /usr/local/bin/node /usr/local/bin/node18
+# Default Node.js: just Node 20 (current LTS) baked in as both `node` and
+# `node20`. Other Lambda Node runtimes (nodejs18.x, nodejs22.x) fault in on
+# first invocation via runtimes/install_node.py. The static Node binary is
+# tiny (~80MB) so we keep one baked for fast cold-start on the most common
+# runtime; users on 18 or 22 pay ~30s on their first invocation.
 COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node20
-COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node22
-COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
+RUN ln -sf /usr/local/bin/node20 /usr/local/bin/node
 
-# Ruby per-version installs. Unlike Node, Ruby binaries are dynamically linked
-# (libruby.so + native gem extensions live alongside the binary), so a
-# single-file COPY doesn't work — we copy the entire /usr/local prefix from
-# each official ruby:X-slim image into a versioned root, then ship a small
-# wrapper script per major.minor that sets LD_LIBRARY_PATH and GEM_PATH before
-# exec-ing the right binary.
-COPY --from=ruby:3.2-slim /usr/local /opt/ruby-3.2
-COPY --from=ruby:3.3-slim /usr/local /opt/ruby-3.3
+# Default Ruby: just 3.4 (latest stable) baked in. ruby3.2 and ruby3.3
+# fault in via the Docker Registry pull in runtimes/install_ruby.py. The
+# same wrapper shape (RUBYLIB-based stdlib relocation) is used for both
+# baked-in and fault-in installs.
 COPY --from=ruby:3.4-slim /usr/local /opt/ruby-3.4
-
-# Wrapper scripts: ruby3.2/ruby3.3/ruby3.4 each exec their own interpreter
-# with its own shared-library, stdlib, and gem-path set. The relocated
-# /opt/ruby-X.Y install can't find its own stdlib via the binary's compiled-in
-# rbconfig.rb paths (those point at /usr/local), so RUBYLIB explicitly adds
-# the stdlib + arch + site/vendor dirs. The glob covers x86_64-linux on amd64
-# CI and aarch64-linux on Mac arm64 — whichever exists is included.
-# Default `ruby` and `gem` point at 3.4 (latest stable) for paths without
-# runtime context (e.g. the bootstrap.rb host requirement check).
 RUN <<'SHELL'
 set -e
-for v in 3.2 3.3 3.4; do
-  cat > /usr/local/bin/ruby$v <<WRAPPER
+cat > /usr/local/bin/ruby3.4 <<'WRAPPER'
 #!/bin/sh
-PREFIX=/opt/ruby-$v
-VER=$v.0
-export LD_LIBRARY_PATH="\$PREFIX/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
-RUBYLIB_ADD="\$PREFIX/lib/ruby/\$VER:\$PREFIX/lib/ruby/site_ruby/\$VER:\$PREFIX/lib/ruby/vendor_ruby/\$VER"
-for arch_dir in "\$PREFIX/lib/ruby/\$VER"/*-linux*; do
-  [ -d "\$arch_dir" ] && RUBYLIB_ADD="\$RUBYLIB_ADD:\$arch_dir"
+PREFIX=/opt/ruby-3.4
+VER=3.4.0
+export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+RUBYLIB_ADD="$PREFIX/lib/ruby/$VER:$PREFIX/lib/ruby/site_ruby/$VER:$PREFIX/lib/ruby/vendor_ruby/$VER"
+for arch_dir in "$PREFIX/lib/ruby/$VER"/*-linux*; do
+  [ -d "$arch_dir" ] && RUBYLIB_ADD="$RUBYLIB_ADD:$arch_dir"
 done
-export RUBYLIB="\$RUBYLIB_ADD\${RUBYLIB:+:\$RUBYLIB}"
-export GEM_PATH="\$PREFIX/lib/ruby/gems/\$VER\${GEM_PATH:+:\$GEM_PATH}"
-exec "\$PREFIX/bin/ruby" "\$@"
+export RUBYLIB="$RUBYLIB_ADD${RUBYLIB:+:$RUBYLIB}"
+export GEM_PATH="$PREFIX/lib/ruby/gems/$VER${GEM_PATH:+:$GEM_PATH}"
+exec "$PREFIX/bin/ruby" "$@"
 WRAPPER
-  chmod 755 /usr/local/bin/ruby$v
-done
+chmod 755 /usr/local/bin/ruby3.4
 ln -sf /usr/local/bin/ruby3.4 /usr/local/bin/ruby
 ln -sf /opt/ruby-3.4/bin/gem  /usr/local/bin/gem
 SHELL
 
-# Python per-version installs. Same shape as Ruby: libpythonX.Y.so and the
-# stdlib live alongside the binary, so single-file COPY doesn't work. We pull
-# each python:X.Y-slim image's /usr/local into a versioned prefix and write
-# a wrapper that sets LD_LIBRARY_PATH before exec-ing. PythonExecutor uses
-# the matching wrapper when the requested runtime differs from the in-process
-# Python (so the in-process fast path stays available for the host version).
-#
-# 3.12 is intentionally NOT copied: it's the image's base Python (the builder
-# stage is python:3.12-slim) and providing the in-process path is the whole
-# point of "host Python is python3.12".
-COPY --from=python:3.10-slim /usr/local /opt/python-3.10
-COPY --from=python:3.11-slim /usr/local /opt/python-3.11
-COPY --from=python:3.13-slim /usr/local /opt/python-3.13
+# Python: the host image is already python:3.12-slim, so python3.12 is
+# satisfied in-process by PythonExecutor with zero subprocess cost.
+# python3.10/3.11/3.13 fault in on demand via python-build-standalone
+# (runtimes/install_python.py).
 
-RUN for v in 3.10 3.11 3.13; do \
-      printf '#!/bin/sh\nexport LD_LIBRARY_PATH="/opt/python-%s/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexec /opt/python-%s/bin/python%s "$@"\n' "$v" "$v" "$v" > /usr/local/bin/python"$v" && \
-      chmod 755 /usr/local/bin/python"$v"; \
-    done
+# Fault-in runtime cache + wrapper dir. Wrappers go on $PATH ahead of
+# /usr/local/bin so a fault-in `ruby3.3` shadows the default `ruby` for
+# that runtime ID's invocations. Owned by the unprivileged robotocore
+# user so installs don't need root.
+RUN mkdir -p /var/lib/robotocore/runtimes /var/lib/robotocore/bin
+ENV PATH="/var/lib/robotocore/bin:${PATH}"
 
 RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
 
@@ -143,7 +121,7 @@ RUN mkdir -p /etc/robotocore/init/boot.d \
     /etc/robotocore/extensions \
     /tmp/robotocore/state
 
-RUN chown -R robotocore:robotocore /app /tmp/robotocore /etc/robotocore
+RUN chown -R robotocore:robotocore /app /tmp/robotocore /etc/robotocore /var/lib/robotocore
 
 EXPOSE 4566
 
@@ -166,49 +144,25 @@ FROM standard AS java-and-dotnet
 
 USER root
 
-# Java per-version installs from Eclipse Temurin official Docker images.
-# Each Temurin image ships a self-contained JDK under /opt/java/openjdk;
-# COPY-ing the whole tree per major version gives us real isolation
-# (java8 sees Java 8 class-format rules, removed APIs, etc., rather than
-# silently running on JVM 21). Mirrors the Node pattern from `standard`.
-#
-# Disk cost: each Temurin JDK is ~250-350MB. Four of them sits at ~1.2GB
-# added to this stage; this is the "heavy runtimes" image, so the size is
-# the trade-off for true version fidelity.
-COPY --from=eclipse-temurin:8-jdk /opt/java/openjdk /opt/java/jdk-8
-COPY --from=eclipse-temurin:11-jdk /opt/java/openjdk /opt/java/jdk-11
-COPY --from=eclipse-temurin:17-jdk /opt/java/openjdk /opt/java/jdk-17
+# Default Java: just Temurin JDK 21 baked in. java8/8.al2/11/17 fault in via
+# Adoptium (runtimes/install_java.py). We keep the full JDK (not JRE) for 21
+# because robotocore's runtime bootstrap currently uses `javac` to compile
+# Bootstrap.java on first Lambda invoke; switching the bootstrap to a
+# pre-compiled .class file would let this be JRE-only (a ~170MB further
+# saving, follow-up).
 COPY --from=eclipse-temurin:21-jdk /opt/java/openjdk /opt/java/jdk-21
+RUN printf '#!/bin/sh\nexec /opt/java/jdk-21/bin/java "$@"\n' > /usr/local/bin/java21 \
+    && chmod 755 /usr/local/bin/java21 \
+    && ln -sf /opt/java/jdk-21/bin/java  /usr/local/bin/java \
+    && ln -sf /opt/java/jdk-21/bin/javac /usr/local/bin/javac
 
-# Per-version wrapper scripts. `_RUNTIME_BINARY` in java.py maps:
-#   java8     → java8        java11 → java11
-#   java8.al2 → java8        java17 → java17
-#                              java21 → java21
-# Default `java` and `javac` point at 21 (latest LTS) for the bootstrap
-# compilation path that doesn't know the user's requested runtime.
-RUN for v in 8 11 17 21; do \
-      printf '#!/bin/sh\nexec /opt/java/jdk-%s/bin/java "$@"\n' "$v" > /usr/local/bin/java"$v" && \
-      chmod 755 /usr/local/bin/java"$v"; \
-    done && \
-    ln -sf /opt/java/jdk-21/bin/java  /usr/local/bin/java && \
-    ln -sf /opt/java/jdk-21/bin/javac /usr/local/bin/javac
-
-# .NET SDKs for every Lambda-supported runtime version. dotnet-install.sh
-# accepts multiple --channel invocations that share an install prefix; the
-# single `dotnet` host then dispatches builds and runs to the requested TFM
-# (selectable via `<TargetFramework>` in the .csproj, which is exactly how
-# DotnetExecutor picks per-runtime via `_detect_tfm(runtime)`).
-#
-# Three SDKs (not runtimes) so `dotnet build -f netX.0` works offline for any
-# Lambda runtime ID: dotnet6 → net6.0, dotnet8 → net8.0, dotnet9 → net9.0.
-# Runtime-only installs (`--runtime dotnet`) were the wrong fix earlier —
-# they're enough to *run* an existing DLL but not to build a bootstrap that
-# references one, which is what _run_with_bootstrap() does.
+# Default .NET: just SDK 9.0 (latest GA) baked in. dotnet6 and dotnet8 fault
+# in via dotnet-install.sh under DOTNET_ROOT=/var/lib/robotocore/runtimes/dotnet.
+# All SDKs share one host once installed, so faulted-in SDKs are visible to
+# the same `dotnet` binary without further wiring.
 RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
     && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
     && chmod +x /tmp/dotnet-install.sh \
-    && /tmp/dotnet-install.sh --channel 6.0 --install-dir /usr/share/dotnet \
-    && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
     && /tmp/dotnet-install.sh --channel 9.0 --install-dir /usr/share/dotnet \
     && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
     && rm /tmp/dotnet-install.sh \
@@ -225,17 +179,13 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 # Shared NuGet package cache writable by all users (primed during build)
 ENV NUGET_PACKAGES=/opt/nuget-packages
 
-# Pre-warm the NuGet package cache for every supported TFM so the first
-# `dotnet build -f netX.0` invocation against a fresh container works offline.
-# dotnet restore (not build) is sufficient: it downloads SDK reference packs
-# and NuGet dependencies without invoking the compiler, using far less memory.
+# Pre-warm the NuGet package cache for the default TFM only (net9.0).
+# Fault-in dotnet6/dotnet8 installs do their own NuGet restore on first
+# Lambda build using the same shared cache dir.
 RUN mkdir -p /opt/nuget-packages /tmp/dotnet-prewarm \
-    && for tfm in net6.0 net8.0 net9.0; do \
-         mkdir -p /tmp/dotnet-prewarm/$tfm && \
-         printf '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>%s</TargetFramework></PropertyGroup></Project>' "$tfm" \
-           > /tmp/dotnet-prewarm/$tfm/prewarm.csproj && \
-         dotnet restore /tmp/dotnet-prewarm/$tfm/prewarm.csproj --nologo; \
-       done \
+    && printf '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>' \
+       > /tmp/dotnet-prewarm/prewarm.csproj \
+    && dotnet restore /tmp/dotnet-prewarm/prewarm.csproj --nologo \
     && rm -rf /tmp/dotnet-prewarm \
     && chmod -R a+rX /opt/nuget-packages
 
