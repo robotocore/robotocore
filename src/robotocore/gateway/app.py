@@ -441,13 +441,83 @@ async def runtimes_endpoint(request: Request) -> JSONResponse:
     if shutil.which("dotnet"):
         available.append("dotnet")
 
+    # Annotate each runtime ID with its fault-in install status so clients
+    # can pre-warm or decide between "installed", "available_to_install", or
+    # "unavailable". "installed" wins over "available_to_install" when the
+    # binary is already present (either baked-in or previously fault-installed).
+    from robotocore.services.lambda_.runtimes import install as _install_mod
+
+    all_runtimes: set[str] = set()
+    for rts in versions.values():
+        all_runtimes.update(rts)
+    fault_in_plans = _install_mod.list_plans()
+    all_runtimes.update(fault_in_plans.keys())
+
+    status: dict[str, str] = {}
+    for rt in all_runtimes:
+        if any(rt in v for v in versions.values()):
+            status[rt] = "installed"
+        elif rt in fault_in_plans:
+            status[rt] = (
+                "installed" if fault_in_plans[rt].is_installed() else "available_to_install"
+            )
+        else:
+            status[rt] = "unavailable"
+
     return JSONResponse(
         {
             "available": sorted(available),
             "all": list(_ALL_RUNTIME_FAMILIES),
             "versions": {f: sorted(versions[f]) for f in _ALL_RUNTIME_FAMILIES},
+            "status": status,
+            "faultin_disabled": _install_mod.FAULTIN_DISABLED,
         }
     )
+
+
+async def runtimes_install_endpoint(request: Request) -> JSONResponse:
+    """Pre-warm one or more Lambda runtimes via fault-in install.
+
+    POST body: ``{"runtimes": ["java17", "dotnet6", ...]}``. Each runtime
+    is installed synchronously (in order) and the response reports
+    per-runtime success. Already-installed runtimes are no-ops.
+
+    Useful in CI setup steps so the first real Lambda invocation against
+    a non-default runtime doesn't pay the 30s–2min download cost.
+    """
+    from robotocore.services.lambda_.runtimes import install as _install_mod
+
+    if _install_mod.FAULTIN_DISABLED:
+        return JSONResponse(
+            {"error": "fault-in is disabled (ROBOTOCORE_RUNTIME_FAULTIN=disabled)"},
+            status_code=400,
+        )
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — JSON parse error or empty body
+        body = {}
+    requested = body.get("runtimes")
+    if not isinstance(requested, list) or not requested:
+        return JSONResponse(
+            {"error": 'POST body must be {"runtimes": [<runtime-id>, ...]}'},
+            status_code=400,
+        )
+
+    results: dict[str, str] = {}
+    for rt in requested:
+        if not isinstance(rt, str):
+            results[str(rt)] = "invalid"
+            continue
+        plan = _install_mod.get_plan(rt)
+        if plan is None:
+            results[rt] = "no_installer"
+            continue
+        if plan.is_installed():
+            results[rt] = "already_installed"
+            continue
+        results[rt] = "installed" if _install_mod.ensure_installed(rt) else "failed"
+    return JSONResponse({"results": results})
 
 
 async def config_endpoint(request: Request) -> JSONResponse:
@@ -1403,6 +1473,7 @@ management_routes = [
     Route("/_localstack/plugins", localstack_plugins, methods=["GET"]),
     Route("/_robotocore/services", services_endpoint, methods=["GET"]),
     Route("/_robotocore/runtimes", runtimes_endpoint, methods=["GET"]),
+    Route("/_robotocore/runtimes/install", runtimes_install_endpoint, methods=["POST"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
     Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),

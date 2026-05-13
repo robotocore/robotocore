@@ -66,21 +66,27 @@ class RubyExecutor:
     def _resolve_binary(self) -> str | None:
         """Return the ruby binary path, preferring the version-specific one.
 
-        Logs a warning in two cases so a runtime mismatch is never silent:
-          (a) a known runtime asked for ``rubyX.Y`` but that binary isn't on
-              $PATH — we fall back to plain ``ruby`` (different Ruby version);
-          (b) an unknown runtime identifier (e.g. ``ruby2.7``) — we don't
-              recognize it at all and fall back to plain ``ruby``.
+        Attempts fault-in install when a known versioned binary is missing
+        (see ``runtimes/install.py``). Logs a warning when we fall back to
+        the default ``ruby`` so the version mismatch is never silent.
         """
         versioned = _RUNTIME_BINARY.get(self._runtime)
         if versioned:
             path = shutil.which(versioned)
             if path:
                 return path
+            # Versioned binary missing — try fault-in install before falling back.
+            from robotocore.services.lambda_.runtimes import install as _install
+
+            if _install.ensure_installed(self._runtime):
+                path = shutil.which(versioned)
+                if path:
+                    return path
             logger.warning(
-                "Versioned ruby binary %r for runtime %r not on $PATH — "
-                "falling back to default 'ruby' (the executed Ruby version "
-                "will not match the function's declared runtime).",
+                "Versioned ruby binary %r for runtime %r not on $PATH and "
+                "fault-in install unavailable — falling back to default "
+                "'ruby' (the executed Ruby version will not match the "
+                "function's declared runtime).",
                 versioned,
                 self._runtime,
             )

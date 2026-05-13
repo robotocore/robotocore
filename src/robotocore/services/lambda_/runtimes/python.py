@@ -108,7 +108,8 @@ class PythonExecutor:
 
         Returns ``None`` when we should fall through to in-process — either
         because the runtime matches the host Python, or no runtime was
-        specified, or the versioned binary isn't installed.
+        specified, or the versioned binary isn't installed (and fault-in
+        couldn't fetch it).
         """
         if not self._runtime:
             return None
@@ -119,7 +120,15 @@ class PythonExecutor:
         if expected == host:
             return None  # Matching version — keep the in-process fast path.
         # The runtime ID doubles as the binary name (python3.10 → python3.10).
-        return shutil.which(self._runtime)
+        path = shutil.which(self._runtime)
+        if path:
+            return path
+        # Versioned binary not present — try fault-in install.
+        from robotocore.services.lambda_.runtimes import install as _install
+
+        if _install.ensure_installed(self._runtime):
+            return shutil.which(self._runtime)
+        return None
 
     def _execute_via_subprocess(
         self,
