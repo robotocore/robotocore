@@ -13,7 +13,7 @@ Drop-in S3 emulator replacement for **s3rver** and **Adobe S3Mock**. One port, f
 docker run -p 4569:4569 jbergknoff/s3rver --directory /tmp/s3
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 Update your endpoint:
@@ -33,7 +33,7 @@ aws --endpoint-url http://localhost:4566 s3 ls
 docker run -p 9090:9090 -e initialBuckets=my-bucket adobe/s3mock
 
 # After (Robotocore)
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 Update your endpoint:
@@ -147,7 +147,7 @@ aws --endpoint-url http://localhost:4566 s3 ls
 | `retainFilesOnExit=true` | Snapshot save/load | `POST /_robotocore/state/save` before shutdown |
 | Port 9090 (HTTP) | Port 4566 | |
 | Port 9191 (HTTPS) | Not applicable | HTTP only (use a TLS proxy if needed) |
-| Testcontainers | `robotocore/robotocore` image | Works with any Testcontainers setup |
+| Testcontainers | `jackdanger/robotocore` image | Works with any Testcontainers setup |
 
 ---
 
@@ -261,18 +261,18 @@ s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 
 ```bash
 # Basic
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 
 # With a custom host port (drop-in for s3rver)
-docker run -p 4569:4566 robotocore/robotocore
+docker run -p 4569:4566 jackdanger/robotocore
 
 # With a custom host port (drop-in for S3Mock)
-docker run -p 9090:4566 robotocore/robotocore
+docker run -p 9090:4566 jackdanger/robotocore
 
 # Docker Compose
 # services:
 #   robotocore:
-#     image: robotocore/robotocore
+#     image: jackdanger/robotocore
 #     ports:
 #       - "4566:4566"
 ```

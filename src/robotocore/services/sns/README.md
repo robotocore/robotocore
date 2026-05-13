@@ -9,7 +9,7 @@ Drop-in migration guide for teams moving from [goaws](https://github.com/Admiral
 docker run -p 4100:4100 admiralpiett/goaws
 
 # With this:
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 ```
 
 Then update your endpoint:
@@ -100,7 +100,7 @@ Or use a docker-compose setup:
 ```yaml
 services:
   robotocore:
-    image: robotocore/robotocore
+    image: jackdanger/robotocore
     ports:
       - "4566:4566"
   init:
@@ -221,13 +221,13 @@ Features not available in goaws:
 
 ```bash
 # Basic
-docker run -p 4566:4566 robotocore/robotocore
+docker run -p 4566:4566 jackdanger/robotocore
 
 # With debug logging
-docker run -p 4566:4566 -e DEBUG=1 robotocore/robotocore
+docker run -p 4566:4566 -e DEBUG=1 jackdanger/robotocore
 
 # With persistent state directory
-docker run -p 4566:4566 -v robotocore-data:/data robotocore/robotocore
+docker run -p 4566:4566 -v robotocore-data:/data jackdanger/robotocore
 
 # Replacing goaws in docker-compose
 # Change image and port, remove goaws.yaml volume, add init script

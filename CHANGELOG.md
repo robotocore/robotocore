@@ -1,5 +1,143 @@
 # Changelog
 
+This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Robotocore releases use CalVer (`YYYY.M.D[.N]`) — every push to `main`
+auto-tags and publishes a versioned + `:latest` Docker image. Each release
+gets a top-level section here; the project source of truth for the
+maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
+
+## 2026.5.13 (2026-05-13)
+
+### Breaking: Docker Hub image renamed to `jackdanger/robotocore`
+
+The `robotocore/robotocore` organisation on Docker Hub costs $15/month
+for a new org; we've moved Docker Hub publishing to the personal
+namespace `jackdanger/robotocore` instead. **All Docker Hub image
+references must update.** The GHCR image at
+`ghcr.io/robotocore/robotocore:*` is **unchanged** and remains the
+canonical pull location for users who prefer GitHub Container Registry.
+
+```diff
+- docker run -p 4566:4566 robotocore/robotocore:latest
++ docker run -p 4566:4566 jackdanger/robotocore:latest
+
+# GHCR alternative (unchanged):
+  docker run -p 4566:4566 ghcr.io/robotocore/robotocore:latest
+```
+
+Migrated references include the release workflow, all README/AGENTS/
+LOCALSTACK docs, every per-service README, the docker extension,
+``robotocore.cli.DEFAULT_IMAGE``, and the in-test skill docs.
+
+### Major: real per-version dispatch for every Lambda runtime
+
+Robotocore previously ran every Lambda function on whatever single
+interpreter was baked into the image — a `python3.10` Lambda would
+silently execute under the host's Python 3.12. This release ships
+**faithful per-version execution** for all five multi-version Lambda
+runtime families: every Lambda runtime identifier AWS supports now
+either runs on the matching binary in the image, or installs the
+matching binary on first invocation.
+
+Supported Lambda runtime IDs and dispatch source:
+
+| Family   | Runtimes | Default (baked) | Fault-in source                    |
+| -------- | -------- | --------------- | ---------------------------------- |
+| Node.js  | `nodejs18.x`, `nodejs20.x`, `nodejs22.x` | Node 20 | nodejs.org official tarballs |
+| Python   | `python3.8`–`python3.13` | host Python 3.12 (in-process) | astral-sh/python-build-standalone |
+| Java     | `java8`, `java8.al2`, `java11`, `java17`, `java21` | Temurin JDK 21 | Adoptium API |
+| .NET     | `dotnet6`, `dotnet8`, `dotnet9` | SDK 9.0 | Microsoft's `dotnet-install.sh` |
+| Ruby     | `ruby3.2`, `ruby3.3`, `ruby3.4` | Ruby 3.4 | Docker Registry pull from `ruby:X-slim` |
+| Custom   | `provided.al2`, `provided.al2023` | n/a (user's bootstrap) | n/a |
+
+#### Added
+
+- **Per-runtime executor caching** — `get_executor_for_runtime("ruby3.3")`
+  and `get_executor_for_runtime("ruby3.4")` now return distinct cached
+  instances threaded with the requested runtime ID. Same for Node.js,
+  Java, .NET, Python. (`custom` still shares one instance — there's no
+  per-version concept for `provided.*`.)
+- **Versioned binary resolution** in `_resolve_binary()` across
+  Node/Ruby/Java with per-family `_RUNTIME_BINARY` maps. The .NET
+  executor uses `_detect_tfm(runtime)` to pick the matching target
+  framework moniker; Python's `PythonExecutor` adds a subprocess
+  dispatch path for runtimes that differ from the host Python.
+- **Fault-in install framework** (`src/robotocore/services/lambda_/runtimes/install.py`):
+  - `InstallPlan` dataclass + per-language plan modules
+    (`install_{java,node,python,dotnet,ruby}.py`).
+  - `ensure_installed(runtime)` — idempotent, `flock`-protected against
+    concurrent installs, blocks the triggering invocation, logs
+    progress.
+  - Stdlib-only Docker Registry HTTP client for Ruby's source layer pull
+    (no `docker` daemon or `skopeo` dependency).
+- **New endpoints**:
+  - `GET /_robotocore/runtimes` adds per-runtime `status`
+    (`installed` | `available_to_install` | `unavailable`) and a
+    `faultin_disabled` flag.
+  - `POST /_robotocore/runtimes/install` `{"runtimes": [...]}` — pre-warm
+    one or more runtimes synchronously. Useful in CI setup so the first
+    real Lambda invocation doesn't pay the download cost.
+- **Config env vars**:
+  - `ROBOTOCORE_RUNTIME_CACHE_DIR` (default: `/var/lib/robotocore/runtimes`)
+  - `ROBOTOCORE_RUNTIME_BIN_DIR` (default: `/var/lib/robotocore/bin`,
+    prepended to `$PATH` in the image)
+  - `ROBOTOCORE_RUNTIME_DOWNLOAD_TIMEOUT` seconds (default: 300)
+  - `ROBOTOCORE_RUNTIME_FAULTIN=disabled` to opt out (air-gapped CI).
+- **Honest reporting**: `versions[family]` in `/_robotocore/runtimes`
+  means "robotocore can faithfully execute this Lambda runtime" — not
+  "this binary is installed somewhere". Faulted-in runtimes appear
+  after install completes.
+- **Divergence warnings**: when a requested runtime resolves to a
+  different binary (default, or fault-in install failed), the executor
+  logs a warning naming both the requested and actual runtime so
+  version mismatch is never silent.
+
+#### Changed
+
+- **Docker images are smaller than pre-feature `main`** despite
+  shipping true per-version dispatch:
+  - `robotocore:latest` (standard): **722 MB → 463 MB**
+  - `robotocore:java-and-dotnet`: **1,578 MB → 1,320 MB**
+- The standard image is now well under the CI 500 MB target line that
+  had been warning for months.
+- `_detect_tfm()` in the .NET executor now picks the TFM matching the
+  requested runtime when its SDK is installed, falling back to host max
+  (with a warning) when missing. Module-level caches are invalidated
+  after fault-in installs so newly-installed SDKs are immediately
+  visible.
+- The runtimes endpoint no longer advertises versions whose execution
+  would silently downgrade — what's reported as `installed` is exactly
+  what can be executed faithfully.
+
+#### Fixed
+
+- `Bootstrap.java` is now compiled with `--release 8` so the cached
+  `Bootstrap.class` loads on any JVM major from 8 onward — fixes
+  `ClassFormatError` that would have broken faulted-in `java8`/`java11`/`java17`
+  JREs against the bytecode produced by the baked JDK 21 compiler.
+- Unified `DOTNET_ROOT` so the baked SDK 9.0 and faulted-in
+  6.0/8.0 SDKs all live under one dotnet host root — fixes the
+  cross-root invisibility that would have made faulted-in SDKs
+  unusable by the existing `/usr/local/bin/dotnet`.
+- Fault-in tar extraction preserves the execute bit on binaries
+  (was using `set_attrs=False` which stripped it — first invocation
+  of any faulted-in runtime would have exited with `Permission denied`).
+
+#### Migration
+
+No breaking changes. Existing Lambda functions that worked before keep
+working: the executor falls back to the host's default binary with a
+warning if the requested runtime can't be installed. Behaviour change
+to watch:
+
+- Functions that *relied* on the previous silent version mismatch
+  (e.g. a `python3.10` function that quietly ran on 3.12) will now
+  install Python 3.10 on first invocation and execute under it. Any
+  3.10-vs-3.12 stdlib or syntax differences will surface.
+- Air-gapped environments: set `ROBOTOCORE_RUNTIME_FAULTIN=disabled`
+  and pre-warm needed runtimes via `POST /_robotocore/runtimes/install`
+  during image build (or stay on baked defaults).
+
 ## 1.0.0 (2026-03-07)
 
 ### Overview

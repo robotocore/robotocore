@@ -54,6 +54,19 @@ If source files changed but no prompt log exists:
 
 **Exception**: If the PR only touches docs, CI config, or non-code files, the prompt log is not required.
 
+### 3a. Check for changelog (gate for user-visible changes)
+
+If the PR adds a new endpoint, env var, runtime, service, or otherwise changes user-visible behaviour, it must update `CHANGELOG.md`. Check:
+
+```bash
+gh pr diff $PR --name-only | grep -E '^(src/robotocore/gateway/|src/robotocore/services/.*/(provider|app)\.py|Dockerfile)' | head
+gh pr diff $PR --name-only | grep '^CHANGELOG\.md$'
+```
+
+If user-visible source files changed but `CHANGELOG.md` didn't:
+- Read the diff and decide whether the change is user-visible (see *Changelog discipline* in `CLAUDE.md` for the test). Pure internal refactor / test-only / dependency bumps are exempt.
+- If exempt: proceed. If not: request changes with a pointer to `.claude/skills/changelog.md` and a draft of what the entry should say so the contributor only has to drop it in.
+
 ### 4. Critical code review
 
 Review the diff from **all of these angles**, picking fresh specific concerns each time (don't repeat the same generic checklist):

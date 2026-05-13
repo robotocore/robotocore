@@ -32,7 +32,7 @@
 ## Quick Start
 
 ```bash
-docker run -d -p 4566:4566 robotocore/robotocore:latest
+docker run -d -p 4566:4566 jackdanger/robotocore:latest
 # also available: ghcr.io/robotocore/robotocore:latest
 ```
 
@@ -81,7 +81,7 @@ aws dynamodb list-tables
 ```yaml
 services:
   aws:
-    image: robotocore/robotocore:latest
+    image: jackdanger/robotocore:latest
     ports:
       - "4566:4566"
 
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       robotocore:
-        image: robotocore/robotocore:latest
+        image: jackdanger/robotocore:latest
         ports:
           - 4566:4566
         options: >-
