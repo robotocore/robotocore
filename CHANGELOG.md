@@ -69,6 +69,18 @@ after upgrading.
   pool's provisioned space (own or shared) instead of failing with "Value (None) for parameter
   cidrBlock is invalid", and records the allocation. `DescribeIpamScopes` honours `IpamScopeId.N`
   and `Filter.N`, and returns `IpamScopeArn`.
+### Fixed
+
+- **SNS query-protocol responses are XML-escaped.** Attribute values, list members and error
+  messages containing `&`, `<` or `>` (e.g. an HTTPS subscription endpoint with a query string)
+  produced malformed XML that SDKs could not parse.
+- **SNS `DisplayName` defaults to empty**, as in AWS, not to the topic name (Terraform showed a
+  perpetual `display_name` diff on every `aws_sns_topic`).
+
+#### Migration
+
+`GetTopicAttributes` on a topic created without `DisplayName` now returns `""` instead of the
+topic name.
 
 ## 2026.8.26
 

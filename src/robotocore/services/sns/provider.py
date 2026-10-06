@@ -7,6 +7,7 @@ import threading
 import uuid
 from collections.abc import Callable
 from datetime import UTC
+from xml.sax.saxutils import escape as xml_escape
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -181,7 +182,8 @@ def _get_topic_attributes(
     computed = {
         "TopicArn": topic.arn,
         "Owner": topic.account_id,
-        "DisplayName": topic.attributes.get("DisplayName", topic.name),
+        # AWS reports an empty DisplayName until one is set (not the topic name)
+        "DisplayName": topic.attributes.get("DisplayName", ""),
         "SubscriptionsConfirmed": str(len(topic.subscriptions)),
         "SubscriptionsPending": "0",
         "SubscriptionsDeleted": "0",
@@ -1104,6 +1106,11 @@ def _json_response(data: dict) -> Response:
     )
 
 
+def _esc(value: object) -> str:
+    """XML-escape a scalar (endpoints, filter policies and messages often contain & < >)."""
+    return xml_escape(str(value))
+
+
 def _xml_response(action: str, data: dict) -> Response:
     # Fields that are maps and need entry/key/value serialization
     map_fields = {"Attributes", "Tags"}
@@ -1117,17 +1124,17 @@ def _xml_response(action: str, data: dict) -> Response:
                     if isinstance(item, dict):
                         parts.append(f"<member>{dict_to_xml(item)}</member>")
                     else:
-                        parts.append(f"<member>{item}</member>")
+                        parts.append(f"<member>{_esc(item)}</member>")
                 parts.append(f"</{k}>")
             elif isinstance(v, dict) and k in map_fields:
                 parts.append(f"<{k}>")
                 for mk, mv in v.items():
-                    parts.append(f"<entry><key>{mk}</key><value>{mv}</value></entry>")
+                    parts.append(f"<entry><key>{_esc(mk)}</key><value>{_esc(mv)}</value></entry>")
                 parts.append(f"</{k}>")
             elif isinstance(v, dict):
                 parts.append(f"<{k}>{dict_to_xml(v)}</{k}>")
             else:
-                parts.append(f"<{k}>{v}</{k}>")
+                parts.append(f"<{k}>{_esc(v)}</{k}>")
         return "".join(parts)
 
     result_name = action.replace("Response", "Result")
@@ -1154,8 +1161,8 @@ def _error(code: str, message: str, status: int, use_json: bool) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/">'
-        f"<Error><Type>Sender</Type><Code>{code}</Code>"
-        f"<Message>{message}</Message></Error>"
+        f"<Error><Type>Sender</Type><Code>{_esc(code)}</Code>"
+        f"<Message>{_esc(message)}</Message></Error>"
         f"<RequestId>{_new_id()}</RequestId>"
         f"</ErrorResponse>"
     )
