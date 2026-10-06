@@ -149,6 +149,17 @@ receives an empty ARN.
   account and region, so `CreateVpcPeeringConnection` and every lookup that validates the referenced
   object behave as they would against the original environment. Idempotent: an already-existing id
   is returned in `skipped`, not duplicated.
+### Fixed
+
+- **AWS-managed IAM policies are attachable.** Naming `arn:aws:iam::aws:policy/...` in
+  `AttachRolePolicy`/`AttachUserPolicy`/`AttachGroupPolicy`, `GetPolicy`, `GetPolicyVersion` or a
+  permissions boundary now materializes that policy in the caller's account from moto's bundled
+  catalog (plus a small supplement for newer policies), as it exists in every AWS account.
+  `ListPolicies(Scope=Local)` is unchanged; `ListPolicies(Scope=AWS)` only lists policies that
+  have been referenced.
+- **`SetSecurityTokenServicePreferences` is reflected in `GetAccountSummary`**
+  (`GlobalEndpointTokenVersion` 1 or 2), so `aws_iam_security_token_service_preferences` no longer
+  shows a perpetual diff.
 
 ## 2026.8.26
 

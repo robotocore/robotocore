@@ -6,7 +6,9 @@ Intercepts operations that Moto doesn't implement:
 - ChangePassword: No-op (requires user session in real AWS)
 """
 
+import json
 import logging
+import re
 import uuid
 from urllib.parse import parse_qs
 
@@ -31,7 +33,15 @@ async def handle_iam_request(request: Request, region: str, account_id: str) -> 
     if handler:
         return handler(params, region, account_id)
 
+    for key in _POLICY_ARN_PARAMS:
+        arn = _get_param(params, key)
+        if arn:
+            _ensure_aws_managed_policy(arn, account_id)
+
     response = await forward_to_moto(request, "iam", account_id=account_id)
+
+    if action == "SetSecurityTokenServicePreferences" and response.status_code == 200:
+        _record_sts_token_version(_get_param(params, "GlobalEndpointTokenVersion"), account_id)
 
     # Post-process GetUser to inject PermissionsBoundary if set
     if action == "GetUser" and response.status_code == 200:
@@ -40,6 +50,77 @@ async def handle_iam_request(request: Request, region: str, account_id: str) -> 
         )
 
     return response
+
+
+# Request parameters that may name an AWS-managed policy (arn:<partition>:iam::aws:policy/...)
+_POLICY_ARN_PARAMS = ("PolicyArn", "PermissionsBoundary")
+_AWS_MANAGED_ARN_RE = re.compile(r"^arn:(aws[a-z-]*):iam::aws:policy(/.*/|/)([^/]+)$")
+_aws_managed_index: dict[str, dict] | None = None
+# AWS-managed policies newer than moto's bundled catalog. Only existence and attachability are
+# modelled; the document is a placeholder, not AWS's published statement list.
+_AWS_MANAGED_SUPPLEMENT: dict[str, dict] = {
+    "BedrockAgentCoreRuntimeInstancesOperatorRolePolicy": {
+        "DefaultVersionId": "v1",
+        "Path": "/",
+        "Document": {"Version": "2012-10-17", "Statement": []},
+        "CreateDate": "2025-07-16T00:00:00+00:00",
+        "UpdateDate": "2025-07-16T00:00:00+00:00",
+    },
+}
+
+
+def _aws_managed_policy_data(path: str, name: str) -> dict | None:
+    """Moto's bundled copy of the AWS-managed policy catalog, indexed by path+name."""
+    global _aws_managed_index
+    if _aws_managed_index is None:
+        from moto.iam.aws_managed_policies import aws_managed_policies_data
+
+        parsed = json.loads(aws_managed_policies_data)
+        for extra_name, extra in _AWS_MANAGED_SUPPLEMENT.items():
+            parsed.setdefault(extra_name, extra)
+        _aws_managed_index = {
+            f"{d.get('Path', '/')}{n}": {"name": n, **d} for n, d in parsed.items()
+        }
+    return _aws_managed_index.get(f"{path}{name}")
+
+
+def _ensure_aws_managed_policy(arn: str, account_id: str) -> None:
+    """Materialize one AWS-managed policy in the caller's account on first reference.
+
+    AWS-managed policies exist in every account. Moto only loads them when
+    MOTO_IAM_LOAD_MANAGED_POLICIES is set, which puts ~1,300 policies into every account's
+    ListPolicies. Loading just the policies a caller actually names (AttachRolePolicy,
+    GetPolicy, permissions boundaries, ...) keeps ListPolicies(Scope=Local) unchanged while
+    making `arn:aws:iam::aws:policy/ReadOnlyAccess` attachable, as it is in AWS.
+    """
+    match = _AWS_MANAGED_ARN_RE.match(arn)
+    if not match:
+        return
+    partition, path, name = match.groups()
+    data = _aws_managed_policy_data(path, name)
+    if data is None:
+        return
+    from moto.iam.models import AWSManagedPolicy, iam_backends
+
+    backend = iam_backends[account_id][partition]
+    if arn in backend.managed_policies:
+        return
+    policy = AWSManagedPolicy.from_data(name, account_id, backend.region_name, data)
+    if policy.arn == arn:
+        backend.managed_policies[arn] = policy
+    else:
+        logger.debug("aws-managed policy arn mismatch: wanted %s built %s", arn, policy.arn)
+
+
+def _record_sts_token_version(version: str, account_id: str) -> None:
+    """Reflect SetSecurityTokenServicePreferences in GetAccountSummary, as AWS does.
+
+    Moto stores the preference but its AccountSummary hardcodes GlobalEndpointTokenVersion=1.
+    """
+    from moto.iam.models import iam_backends
+
+    summary = iam_backends[account_id]["aws"].account_summary
+    summary._global_endpoint_token_version = 2 if version == "v2Token" else 1
 
 
 def _get_param(params: dict, key: str) -> str:
