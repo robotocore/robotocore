@@ -20,6 +20,16 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 Clients that assumed a role and then relied on resources appearing in `123456789012` will now find
 them in the role's account instead.
+- **State persistence keeps SSM and KMS.** The save loop skipped every service backend that
+  failed to pickle, so SSM parameters (stored in moto `defaultdict`s with lambda or custom-init
+  factories) and KMS keys (cryptography private-key objects) silently vanished across restarts.
+  The pickler now rebuilds such maps with equivalent factories, preserves `defaultdict` subclasses
+  like moto's `ParameterDict`, and round-trips private keys as PKCS#8 DER.
+
+#### Migration
+
+Snapshots taken before this release are missing SSM and KMS data; re-create those resources
+after upgrading.
 
 ## 2026.8.26
 

@@ -17,6 +17,7 @@ Configuration via environment variables:
 from __future__ import annotations
 
 import base64
+import collections
 import copy
 import enum
 import io
@@ -234,6 +235,66 @@ _TYPE_TO_NAME: dict[type, str] = {
 }
 
 
+class _FactorySpec:
+    """Picklable stand-in for a ``defaultdict`` factory defined as a lambda/local function.
+
+    Moto backends build nested maps like ``defaultdict(lambda: defaultdict(dict))`` (SSM resource
+    tags). A lambda can't be pickled, which silently dropped the WHOLE service from saved state.
+    The spec records the shape the factory produces (a plain type, or another defaultdict and its
+    own factory's shape) and rebuilds an equivalent factory on load.
+    """
+
+    def __init__(self, kind: Any, inner: _FactorySpec | None = None) -> None:
+        self.kind = kind
+        self.inner = inner
+
+    def __call__(self) -> Any:
+        if self.kind is collections.defaultdict:
+            return collections.defaultdict(self.inner)
+        return self.kind()
+
+
+def _spec_of(factory: Any) -> _FactorySpec | None:
+    if factory is None:
+        return None
+    sample = factory()
+    if isinstance(sample, collections.defaultdict):
+        return _FactorySpec(collections.defaultdict, _spec_of(sample.default_factory))
+    return _FactorySpec(type(sample))
+
+
+def _unpicklable_factory(factory: Any) -> bool:
+    qn = getattr(factory, "__qualname__", "")
+    return "<lambda>" in qn or "<locals>" in qn
+
+
+def _rebuild_defaultdict(
+    spec: Any, items: dict, cls: type = collections.defaultdict, attrs: dict | None = None
+) -> collections.defaultdict:
+    # Subclasses (moto's ParameterDict) keep their class and instance attributes; their own
+    # __init__ may need args, so build through __new__ and initialize the defaultdict part only.
+    d = cls.__new__(cls)
+    collections.defaultdict.__init__(d, spec)
+    d.update(items)
+    if attrs:
+        d.__dict__.update(attrs)
+    return d
+
+
+def _rebuild_private_key(der: bytes) -> Any:
+    from cryptography.hazmat.primitives.serialization import load_der_private_key
+
+    return load_der_private_key(der, password=None)
+
+
+def _is_crypto_private_key(obj: Any) -> bool:
+    return (
+        type(obj).__module__.startswith("cryptography.")
+        and hasattr(obj, "private_bytes")
+        and hasattr(obj, "public_key")
+    )
+
+
 class _ThreadSafePickler(pickle.Pickler):
     """Pickler that replaces threading primitives with serializable sentinels.
 
@@ -250,6 +311,31 @@ class _ThreadSafePickler(pickle.Pickler):
                 _ThreadingSentinel,
                 (type_name,),
             )
+        if _is_crypto_private_key(obj):
+            # KMS keys hold cryptography key objects (Rust-backed, unpicklable), which dropped
+            # the whole KMS backend from saved state. Round-trip them as PKCS#8 DER.
+            from cryptography.hazmat.primitives import serialization
+
+            der = obj.private_bytes(
+                serialization.Encoding.DER,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            )
+            return (_rebuild_private_key, (der,))
+        if isinstance(obj, collections.defaultdict):
+            lam = _unpicklable_factory(obj.default_factory)
+            # defaultdict's own __reduce__ calls cls(default_factory): wrong for a subclass whose
+            # __init__ takes other args (moto's SSM ParameterDict(account_id, region_name)).
+            custom_init = type(obj).__init__ is not collections.defaultdict.__init__
+            if lam or custom_init:
+                try:
+                    factory = _spec_of(obj.default_factory) if lam else obj.default_factory
+                except Exception:  # noqa: BLE001 – a factory needing args: default pickling
+                    return NotImplemented
+                return (
+                    _rebuild_defaultdict,
+                    (factory, dict(obj), type(obj), dict(getattr(obj, "__dict__", {}))),
+                )
         # Returning NotImplemented tells pickle to use the default mechanism
         return NotImplemented
 
