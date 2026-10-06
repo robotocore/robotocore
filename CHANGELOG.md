@@ -81,6 +81,13 @@ after upgrading.
 
 `GetTopicAttributes` on a topic created without `DisplayName` now returns `""` instead of the
 topic name.
+### Fixed
+
+- **CloudWatch over Smithy RPCv2 CBOR serves every operation.** aws-sdk-go-v2 (Terraform) speaks
+  `rpc-v2-cbor` to CloudWatch; operations without a native handler (`PutMetricAlarm`,
+  `DescribeAlarms`, `DeleteAlarms`, tagging, ...) returned `501 NotImplemented`. They are now
+  bridged to Moto via AWS JSON 1.0 with model-driven timestamp/blob conversion; operations absent
+  from the CloudWatch model return `UnknownOperationException`.
 
 ## 2026.8.26
 

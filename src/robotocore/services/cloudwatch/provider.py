@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.services.cloudwatch.cbor_bridge import forward_cbor_via_json
 from robotocore.services.cloudwatch.metric_math import (
     MetricMathError,
     aggregate_values,
@@ -810,11 +811,8 @@ async def handle_cloudwatch_request(request: Request, region: str, account_id: s
             )
 
     if use_cbor_protocol:
-        # Moto has no CBOR support at all — forwarding would hit the same UTF-8-decode crash
-        # this protocol exists to avoid. Fail closed and honestly rather than 500 on garbage.
-        return _error_body_response(
-            "NotImplemented", f"CloudWatch {action} is not implemented", 501, False, True
-        )
+        # Moto has no CBOR support; re-encode as AWS JSON 1.0, which it serves, and back.
+        return await forward_cbor_via_json(request, action, params, account_id)
 
     # Fall back to Moto for everything else
     return await forward_to_moto(request, "cloudwatch", account_id=account_id)

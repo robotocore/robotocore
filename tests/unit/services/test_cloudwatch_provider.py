@@ -959,13 +959,37 @@ class TestCloudWatchCborProtocol:
 
     @pytest.mark.asyncio
     async def test_unmapped_cbor_action_fails_closed_not_to_moto(self, app):
-        """Moto has no CBOR support — forwarding a CBOR request to it would hit the
-        exact same UTF-8-decode crash this protocol handling exists to avoid."""
+        """Raw CBOR must never reach Moto (it has no CBOR support); an operation missing from
+        the CloudWatch model is answered as AWS does, with UnknownOperationException."""
         with patch("robotocore.services.cloudwatch.provider.forward_to_moto") as mock_moto:
             req = self._make_cbor_request("SomeFutureOperationNotYetMapped", {})
             resp = await app(req, "us-east-1", "123456789012")
             mock_moto.assert_not_called()
-            assert resp.status_code == 501
+            assert resp.status_code == 400
+            import cbor2
+
+            assert cbor2.loads(resp.body)["__type"] == "UnknownOperationException"
+
+    @pytest.mark.asyncio
+    async def test_moto_served_cbor_action_is_bridged_as_json(self, app):
+        """PutMetricAlarm has no native handler: it is re-encoded as AWS JSON 1.0 for Moto."""
+        from starlette.responses import Response as StarletteResponse
+
+        async def fake_forward(request, service, body, account_id):
+            assert request.headers["x-amz-target"].endswith(".PutMetricAlarm")
+            assert json.loads(body)["Threshold"] == 5.0
+            return StarletteResponse(content=b"{}", status_code=200)
+
+        with patch(
+            "robotocore.services.cloudwatch.cbor_bridge.forward_to_moto_with_body",
+            side_effect=fake_forward,
+        ):
+            req = self._make_cbor_request(
+                "PutMetricAlarm", {"AlarmName": "a", "Threshold": 5.0, "EvaluationPeriods": 1}
+            )
+            resp = await app(req, "us-east-1", "123456789012")
+            assert resp.status_code == 200
+            assert resp.headers["smithy-protocol"] == "rpc-v2-cbor"
 
 
 # ===================================================================
