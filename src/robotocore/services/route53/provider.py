@@ -18,7 +18,9 @@ Intercepts operations that Moto has bugs or doesn't implement:
 
 import logging
 import re
+import threading
 import uuid
+from xml.sax.saxutils import escape
 
 import xmltodict
 from starlette.requests import Request
@@ -29,10 +31,47 @@ from robotocore.providers.moto_bridge import forward_to_moto
 _TEST_DNS_RE = re.compile(r"^/2013-04-01/testdnsanswer$")
 _QUERY_LOG_RE = re.compile(r"^/2013-04-01/queryloggingconfig$")
 _HOSTEDZONE_RE = re.compile(r"^/2013-04-01/hostedzone$")
+_ZONE_FEATURES_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/features$")
+_ZONE_ID_IN_XML_RE = re.compile(rb"<Id>/hostedzone/([^<]+)</Id>")
+# (account, zone id) -> accelerated recovery enabled. Zones report DISABLED until enabled.
+_accelerated_recovery: dict[tuple[str, str], bool] = {}
+_features_lock = threading.Lock()
+
+
+def _with_zone_features(response: Response, account_id: str) -> Response:
+    """Add <Features><AcceleratedRecoveryStatus> to every HostedZone that lacks it.
+
+    AWS returns Features on CreateHostedZone/GetHostedZone/ListHostedZones; the AWS provider
+    (>= v6.33) waits on AcceleratedRecoveryStatus and dereferences it, crashing when absent.
+    """
+    body = getattr(response, "body", b"") or b""
+    if b"</HostedZone>" not in body or b"<Features>" in body:
+        return response
+
+    def _inject(chunk: bytes) -> bytes:
+        m = _ZONE_ID_IN_XML_RE.search(chunk)
+        zone = m.group(1).decode() if m else ""
+        with _features_lock:
+            on = _accelerated_recovery.get((account_id, zone), False)
+        status = b"ENABLED" if on else b"DISABLED"
+        return (
+            chunk
+            + b"<Features><AcceleratedRecoveryStatus>"
+            + status
+            + b"</AcceleratedRecoveryStatus></Features>"
+        )
+
+    parts = body.split(b"</HostedZone>")
+    new = b"</HostedZone>".join([_inject(p) for p in parts[:-1]] + [parts[-1]])
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return Response(content=new, status_code=response.status_code, headers=headers)
+
+
 _ASSOCIATE_VPC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/associatevpc$")
 _DISASSOCIATE_VPC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/disassociatevpc$")
 _HOSTEDZONE_ENABLE_DNSSEC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/enable-dnssec$")
 _HOSTEDZONE_DISABLE_DNSSEC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/disable-dnssec$")
+_HOSTEDZONE_GET_DNSSEC_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/dnssec$")
 _HOSTEDZONE_FEATURES_RE = re.compile(r"^/2013-04-01/hostedzone/([^/]+)/features$")
 
 # Route53 operations missing from Moto's flask_paths
@@ -84,6 +123,12 @@ _traffic_policies: dict[str, dict] = {}
 _traffic_policy_instances: dict[str, dict] = {}
 # In-memory key signing keys: {zone_id: {name: ksk_doc}}
 _key_signing_keys: dict[str, dict] = {}
+_dnssec_signing_zones: set[str] = set()
+
+
+def _zone_key(zone_id: str) -> str:
+    """Normalize `/hostedzone/Z123` and `Z123` to one key."""
+    return zone_id.rsplit("/", 1)[-1]
 
 
 logger = logging.getLogger(__name__)
@@ -120,9 +165,21 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
             # Create modified request with fixed body
             from robotocore.providers.moto_bridge import forward_to_moto_with_body
 
-            return await forward_to_moto_with_body(
-                request, "route53", body_str.encode("utf-8"), account_id=account_id
+            return _with_zone_features(
+                await forward_to_moto_with_body(
+                    request, "route53", body_str.encode("utf-8"), account_id=account_id
+                ),
+                account_id,
             )
+
+    # UpdateHostedZoneFeatures (POST /2013-04-01/hostedzone/{Id}/features)
+    m = _ZONE_FEATURES_RE.match(path)
+    if m and request.method == "POST":
+        body = await request.body()
+        enabled = b"<EnableAcceleratedRecovery>true</EnableAcceleratedRecovery>" in body
+        with _features_lock:
+            _accelerated_recovery[(account_id, m.group(1))] = enabled
+        return Response(status_code=200, content=b"", media_type="text/xml")
 
     # AssociateVPCWithHostedZone
     m = _ASSOCIATE_VPC_RE.match(path)
@@ -255,6 +312,11 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
         zone_id, ksk_name = m.group(1), m.group(2)
         return _handle_delete_key_signing_key(zone_id, ksk_name)
 
+    # GetDNSSEC: GET /2013-04-01/hostedzone/{Id}/dnssec
+    m = _HOSTEDZONE_GET_DNSSEC_RE.match(path)
+    if m and request.method == "GET":
+        return _handle_get_dnssec(m.group(1))
+
     # EnableHostedZoneDNSSEC: POST /2013-04-01/hostedzone/{Id}/enable-dnssec
     m = _HOSTEDZONE_ENABLE_DNSSEC_RE.match(path)
     if m and request.method == "POST":
@@ -274,7 +336,9 @@ async def handle_route53_request(request: Request, region: str, account_id: str)
         body = await request.body()
         return _handle_update_hosted_zone_features(zone_id, body)
 
-    return await forward_to_moto(request, "route53", account_id=account_id)
+    return _with_zone_features(
+        await forward_to_moto(request, "route53", account_id=account_id), account_id
+    )
 
 
 def _handle_checker_ip_ranges() -> Response:
@@ -1094,7 +1158,7 @@ def _handle_create_key_signing_key(body: bytes) -> Response:
     """CreateKeySigningKey — in-memory implementation."""
     parsed = xmltodict.parse(body)
     req = parsed.get("CreateKeySigningKeyRequest", {})
-    zone_id = req.get("HostedZoneId", "")
+    zone_id = _zone_key(req.get("HostedZoneId", ""))
     name = req.get("Name", "")
     kms_arn = req.get("KeyManagementServiceArn", "")
     status = req.get("Status", "INACTIVE")
@@ -1161,6 +1225,7 @@ def _handle_create_key_signing_key(body: bytes) -> Response:
 
 
 def _handle_activate_key_signing_key(zone_id: str, ksk_name: str) -> Response:
+    zone_id = _zone_key(zone_id)
     """ActivateKeySigningKey — in-memory implementation."""
     ksks = _key_signing_keys.get(zone_id, {})
     ksk = ksks.get(ksk_name)
@@ -1189,6 +1254,7 @@ def _handle_activate_key_signing_key(zone_id: str, ksk_name: str) -> Response:
 
 
 def _handle_deactivate_key_signing_key(zone_id: str, ksk_name: str) -> Response:
+    zone_id = _zone_key(zone_id)
     """DeactivateKeySigningKey — in-memory implementation."""
     ksks = _key_signing_keys.get(zone_id, {})
     ksk = ksks.get(ksk_name)
@@ -1217,6 +1283,7 @@ def _handle_deactivate_key_signing_key(zone_id: str, ksk_name: str) -> Response:
 
 
 def _handle_delete_key_signing_key(zone_id: str, ksk_name: str) -> Response:
+    zone_id = _zone_key(zone_id)
     """DeleteKeySigningKey — in-memory implementation."""
     ksks = _key_signing_keys.get(zone_id, {})
     ksk = ksks.get(ksk_name)
@@ -1250,7 +1317,8 @@ def _handle_delete_key_signing_key(zone_id: str, ksk_name: str) -> Response:
 
 
 def _handle_enable_hosted_zone_dnssec(zone_id: str) -> Response:
-    """EnableHostedZoneDNSSEC — stub implementation."""
+    """EnableHostedZoneDNSSEC — records signing so GetDNSSEC reports SIGNING."""
+    _dnssec_signing_zones.add(_zone_key(zone_id))
     change_id = f"/change/{uuid.uuid4().hex[:14].upper()}"
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <EnableHostedZoneDNSSECResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
@@ -1264,7 +1332,8 @@ def _handle_enable_hosted_zone_dnssec(zone_id: str) -> Response:
 
 
 def _handle_disable_hosted_zone_dnssec(zone_id: str) -> Response:
-    """DisableHostedZoneDNSSEC — stub implementation."""
+    """DisableHostedZoneDNSSEC — records NOT_SIGNING."""
+    _dnssec_signing_zones.discard(_zone_key(zone_id))
     change_id = f"/change/{uuid.uuid4().hex[:14].upper()}"
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <DisableHostedZoneDNSSECResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
@@ -1283,4 +1352,23 @@ def _handle_update_hosted_zone_features(zone_id: str, body: bytes) -> Response:
 <UpdateHostedZoneFeaturesResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
   <HostedZoneId>{zone_id}</HostedZoneId>
 </UpdateHostedZoneFeaturesResponse>"""
+    return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _handle_get_dnssec(zone_id: str) -> Response:
+    """GetDNSSEC — the zone's signing status plus every key-signing key created for it."""
+    zone_id = _zone_key(zone_id)
+    status = "SIGNING" if zone_id in _dnssec_signing_zones else "NOT_SIGNING"
+    keys = []
+    for k in _key_signing_keys.get(zone_id, {}).values():
+        fields = "".join(f"      <{f}>{escape(str(v))}</{f}>\n" for f, v in k.items())
+        keys.append(f"    <member>\n{fields}    </member>\n")
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<GetDNSSECResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
+  <Status>
+    <ServeSignature>{status}</ServeSignature>
+  </Status>
+  <KeySigningKeys>
+{"".join(keys)}  </KeySigningKeys>
+</GetDNSSECResponse>"""
     return Response(content=xml, status_code=200, media_type="text/xml")

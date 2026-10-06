@@ -274,3 +274,39 @@ class TestStaticEndpoints:
         resp = await handle_route53_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
         assert b"<TrafficPolicyInstances/>" in resp.body
+
+
+class TestGetDNSSEC:
+    """GetDNSSEC reports signing status and the zone's KSKs (terraform's KSK waiter polls it)."""
+
+    @pytest.mark.asyncio
+    async def test_ksk_visible_and_signing_status_tracks_enable(self):
+        create = (
+            '<CreateKeySigningKeyRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">'
+            "<CallerReference>r</CallerReference><HostedZoneId>/hostedzone/ZDNSSEC1</HostedZoneId>"
+            "<KeyManagementServiceArn>arn:aws:kms:us-east-1:123456789012:key/k</KeyManagementServiceArn>"
+            "<Name>ksk1</Name><Status>ACTIVE</Status></CreateKeySigningKeyRequest>"
+        )
+        await handle_route53_request(
+            _make_request("POST", "/2013-04-01/keysigningkey", create), "us-east-1", "123456789012"
+        )
+        resp = await handle_route53_request(
+            _make_request("GET", "/2013-04-01/hostedzone/ZDNSSEC1/dnssec"),
+            "us-east-1",
+            "123456789012",
+        )
+        body = resp.body.decode()
+        assert resp.status_code == 200
+        assert "<Name>ksk1</Name>" in body and "<Status>ACTIVE</Status>" in body
+        assert "<ServeSignature>NOT_SIGNING</ServeSignature>" in body
+        await handle_route53_request(
+            _make_request("POST", "/2013-04-01/hostedzone/ZDNSSEC1/enable-dnssec"),
+            "us-east-1",
+            "123456789012",
+        )
+        resp = await handle_route53_request(
+            _make_request("GET", "/2013-04-01/hostedzone/ZDNSSEC1/dnssec"),
+            "us-east-1",
+            "123456789012",
+        )
+        assert "<ServeSignature>SIGNING</ServeSignature>" in resp.body.decode()

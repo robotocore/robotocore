@@ -119,6 +119,13 @@ receives an empty ARN.
   `SettingId` (previously an ARN nested in an ARN), and `ResetServiceSetting` restores the default.
 - **`GetParameter` with another account's parameter ARN** resolves in the owning account (resource
   policies / RAM sharing are not modelled), so cross-account parameter reads work.
+### Fixed
+
+- **Hosted zones carry `Features.AcceleratedRecoveryStatus`** and `UpdateHostedZoneFeatures` is
+  native. Terraform AWS provider >= 6.33 crashed reading a hosted zone without it.
+- **`GetDNSSEC` returns the zone's key-signing keys and its signing status** (enable/disable is now
+  tracked), and zone ids are normalized across KSK operations, so Terraform's
+  `aws_route53_key_signing_key` waiter no longer times out.
 
 ## 2026.8.26
 
