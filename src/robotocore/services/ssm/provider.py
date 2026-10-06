@@ -5,13 +5,15 @@ Intercepts operations where Moto has bugs:
 """
 
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.providers.moto_bridge import forward_to_moto, forward_to_moto_with_body
+from robotocore.services.ssm import service_settings
 
 # Store commands we create natively
 # (account_id, region) -> {command_id -> command}
@@ -37,6 +39,21 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
             )
     else:
         _parsed = {}
+
+    if action in ("GetServiceSetting", "UpdateServiceSetting", "ResetServiceSetting"):
+        try:
+            setting_params = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            setting_params = {}
+        handled = service_settings.handle(action, setting_params, region, account_id)
+        if handled is not None:
+            return handled
+
+    if action == "GetParameter" and body:
+        owner_call = _owner_account_parameter(body, account_id)
+        if owner_call is not None:
+            owner, new_body = owner_call
+            return await forward_to_moto_with_body(request, "ssm", new_body, account_id=owner)
 
     if action == "SendCommand":
         params = _parsed
@@ -70,6 +87,26 @@ async def handle_ssm_request(request: Request, region: str, account_id: str) -> 
             )
 
     return await forward_to_moto(request, "ssm", account_id=account_id)
+
+
+_PARAM_ARN_RE = re.compile(r"^arn:aws[a-z-]*:ssm:([a-z0-9-]+):(\d{12}):parameter(/.*)$")
+
+
+def _owner_account_parameter(body: bytes, account_id: str) -> tuple[str, bytes] | None:
+    """A GetParameter naming another account's parameter ARN resolves in that account.
+
+    AWS serves parameters shared with the caller (advanced tier, via RAM) this way. The twin
+    does not model the RAM share for parameters; any existing parameter is readable by ARN.
+    """
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    m = _PARAM_ARN_RE.match(payload.get("Name", ""))
+    if not m or m.group(2) == account_id:
+        return None
+    payload["Name"] = m.group(3)
+    return m.group(2), json.dumps(payload).encode()
 
 
 def _send_command_native(params: dict, region: str, account_id: str) -> Response:

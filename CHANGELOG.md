@@ -112,6 +112,13 @@ receives an empty ARN.
 #### Migration
 
 `PutRule` on an existing rule no longer removes the rule's targets, matching AWS.
+### Fixed
+
+- **SSM service settings are stored.** `UpdateServiceSetting` persists the value per account and
+  region, `GetServiceSetting` returns it (`Status: Customized`) and accepts the setting's ARN as
+  `SettingId` (previously an ARN nested in an ARN), and `ResetServiceSetting` restores the default.
+- **`GetParameter` with another account's parameter ARN** resolves in the owning account (resource
+  policies / RAM sharing are not modelled), so cross-account parameter reads work.
 
 ## 2026.8.26
 
