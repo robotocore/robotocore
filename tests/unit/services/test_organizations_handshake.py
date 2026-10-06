@@ -33,3 +33,22 @@ def test_join_is_idempotent():
     _join_organization(backend, "920000000103", "aws")
     _join_organization(backend, "920000000103", "aws")
     assert sum(1 for a in backend.accounts if a.id == "920000000103") == 1
+
+
+def test_register_account_ids_validates():
+    import pytest
+
+    from robotocore.services.organizations.provider import register_account_ids
+
+    with pytest.raises(ValueError):
+        register_account_ids({"emails": {"a@example.com": "not-an-id"}})
+    counts = register_account_ids({"names": {"Unit Name": "980000000001"}})
+    assert counts["names"] >= 1
+
+
+def test_preassigned_id_by_email_is_case_insensitive():
+    from robotocore.services.organizations.provider import _preassigned_id, register_account_ids
+
+    register_account_ids({"emails": {"Ops+Unit@Example.com": "980000000002"}})
+    assert _preassigned_id({"Email": "ops+unit@example.com", "AccountName": "x"}) == "980000000002"
+    assert _preassigned_id({"Email": "nobody@example.com", "AccountName": "nope"}) is None

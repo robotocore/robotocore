@@ -8,6 +8,15 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ## 2026.10.6
 
+### Added
+
+- **Deterministic account ids for Organizations `CreateAccount`.** `POST
+  /_robotocore/organizations/account-ids` (or `ROBOTOCORE_ORG_ACCOUNT_IDS=<json file>`) with
+  `{"emails": {"<email>": "<12-digit id>"}, "names": {"<name>": "<id>"}}` makes `CreateAccount`
+  assign that id instead of a random one, so an existing organization can be replayed into
+  robotocore from its Terraform with every account keeping its id. `GET` returns the registered
+  counts. Unregistered accounts still get random ids.
+
 ### Fixed
 
 - **STS-issued credentials act in the role's account.** Calls signed with an `ASIA…` key from
