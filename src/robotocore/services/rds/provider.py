@@ -17,6 +17,11 @@ from robotocore.services.rds.engine import DatabaseEngine, create_engine
 
 logger = logging.getLogger(__name__)
 
+
+from robotocore.services.rds import engine_versions as _engine_versions  # noqa: E402
+
+_engine_versions.install()
+
 # Database engines keyed by (account_id, region, db_identifier)
 _db_engines: dict[tuple[str, str, str], DatabaseEngine] = {}
 _engines_lock = threading.Lock()

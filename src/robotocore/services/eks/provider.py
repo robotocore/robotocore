@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import threading
+import uuid
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -78,6 +79,10 @@ async def handle_eks_request(request: Request, region: str, account_id: str) -> 
         if m:
             return await forward_to_moto(request, "eks", account_id=account_id)
 
+        # Pod identity associations: keep the fields Moto drops
+        if _POD_IDENTITY_RE.match(path):
+            return await _pod_identity(request, method, account_id)
+
         # Everything else -> Moto
         return await forward_to_moto(request, "eks", account_id=account_id)
 
@@ -89,6 +94,47 @@ async def handle_eks_request(request: Request, region: str, account_id: str) -> 
 # ---------------------------------------------------------------------------
 # Intercepted operations
 # ---------------------------------------------------------------------------
+
+
+_POD_IDENTITY_RE = re.compile(r"^/clusters/[^/]+/pod-identity-associations(/[^/]+)?$")
+# association id -> (disableSessionTags, externalId)
+_pod_identity_extra: dict[str, tuple[bool, str]] = {}
+
+
+async def _pod_identity(request: Request, method: str, account_id: str) -> Response:
+    """Return disableSessionTags/externalId on pod identity associations, as AWS does.
+
+    Moto omits both, so Terraform re-plans every aws_eks_pod_identity_association right after a
+    clean apply. Values come from Create/Update (externalId is AWS-generated, stable per
+    association; disableSessionTags defaults to false).
+    """
+    body = await request.body()
+    try:
+        sent = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        sent = {}
+    response = await forward_to_moto(request, "eks", account_id=account_id)
+    if response.status_code >= 300 or not response.body:
+        return response
+    try:
+        data = json.loads(response.body)
+    except json.JSONDecodeError:
+        return response
+    assoc = data.get("association")
+    if isinstance(assoc, dict) and assoc.get("associationId"):
+        aid = assoc["associationId"]
+        disable, ext = _pod_identity_extra.get(aid, (False, str(uuid.uuid4())))
+        if method in ("POST",) and "disableSessionTags" in sent:
+            disable = bool(sent["disableSessionTags"])
+        if method == "DELETE":
+            _pod_identity_extra.pop(aid, None)
+        else:
+            _pod_identity_extra[aid] = (disable, ext)
+        assoc.setdefault("disableSessionTags", disable)
+        assoc["disableSessionTags"] = disable
+        assoc.setdefault("externalId", ext)
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return Response(content=json.dumps(data), status_code=response.status_code, headers=headers)
 
 
 async def _create_cluster(request: Request, region: str, account_id: str) -> Response:

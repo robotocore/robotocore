@@ -134,6 +134,15 @@ receives an empty ARN.
 - **The VPC endpoint service catalog includes** `oidc-eks`, `sqs-fips`, `ec2-fips`,
   `acm-pca-fips`, `eks-fips` and `sts-fips`, so `data.aws_vpc_endpoint_service` lookups for them
   resolve.
+### Fixed
+
+- **Cognito `DeleteResourceServer`** is implemented (previously `501`), so Terraform can replace or
+  destroy `aws_cognito_resource_server`.
+- **EKS pod identity associations return `disableSessionTags` and a stable `externalId`**, so
+  `aws_eks_pod_identity_association` no longer re-plans right after a clean apply.
+- **`DescribeDBEngineVersions` serves a broader catalog** with prefix version matching (`16`
+  matches `16.x`), `Filters` (e.g. `engine-mode`) and `DefaultOnly`, so `data.aws_rds_engine_version`
+  lookups resolve.
 
 ## 2026.8.26
 

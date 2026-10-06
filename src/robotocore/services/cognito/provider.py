@@ -1574,7 +1574,27 @@ def _error(code: str, message: str, status: int) -> Response:
 # Action map
 # ---------------------------------------------------------------------------
 
+
+def _delete_resource_server(store, params: dict, region: str, account_id: str) -> dict:
+    """DeleteResourceServer (Moto has create/describe/list/update but no delete)."""
+    from moto.backends import get_backend  # noqa: I001
+
+    backend = get_backend("cognito-idp")[account_id][region]
+    pool_id = params.get("UserPoolId", "")
+    identifier = params.get("Identifier", "")
+    pool = backend.user_pools.get(pool_id)
+    if pool is None:
+        raise CognitoError("ResourceNotFoundException", f"User pool {pool_id} does not exist.")
+    if identifier not in pool.resource_servers:
+        raise CognitoError(
+            "ResourceNotFoundException", f"Resource server {identifier} does not exist."
+        )
+    del pool.resource_servers[identifier]
+    return {}
+
+
 _ACTION_MAP: dict[str, Callable] = {
+    "DeleteResourceServer": _delete_resource_server,
     "CreateUserPool": _create_user_pool,
     "DescribeUserPool": _describe_user_pool,
     "DeleteUserPool": _delete_user_pool,
