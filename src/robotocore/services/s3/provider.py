@@ -2,6 +2,7 @@
 versioning, lifecycle, object lock, multipart support, and presigned URLs."""
 
 import calendar
+import copy
 import logging
 import re
 import threading
@@ -45,7 +46,9 @@ except Exception as exc:  # noqa: BLE001
 
 # Patterns to detect bucket and key from S3 paths
 # Path style: /<bucket>/<key>
-_PATH_RE = re.compile(r"^/([^/]+)(?:/(.+))?$")
+# Bucket, then optional key. A bare trailing slash ("/bucket/?cors", as aws-sdk-go-v2 sends in
+# path-style mode) is a bucket-level request with an empty key, not a malformed path.
+_PATH_RE = re.compile(r"^/([^/]+)(?:/(.*))?$")
 
 # SigV4 presigned URL query parameters
 _SIGV4_PARAMS = {
@@ -82,6 +85,8 @@ _RESPONSE_HEADER_OVERRIDES = {
 # ---------------------------------------------------------------------------
 _cors_store: dict[str, list[dict]] = {}
 _lifecycle_store: dict[str, list[dict]] = {}
+# bucket -> x-amz-transition-default-minimum-object-size of its lifecycle configuration
+_lifecycle_min_size_store: dict[str, str] = {}
 _object_lock_store: dict[str, dict] = {}
 _object_legal_hold_store: dict[str, dict[str, str]] = {}
 _logging_store: dict[str, dict] = {}
@@ -90,6 +95,9 @@ _directory_bucket_store: dict[str, dict] = {}
 _store_lock = threading.Lock()
 
 S3_NS = "http://s3.amazonaws.com/doc/2006-03-01/"
+# AWS default for lifecycle configurations created since 2024-09 (sent back on Get/Put)
+_TRANSITION_MIN_SIZE_HEADER = "x-amz-transition-default-minimum-object-size"
+_DEFAULT_TRANSITION_MIN_SIZE = "all_storage_classes_128K"
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +387,7 @@ def _parse_lifecycle_xml(xml_str: str) -> list[dict]:
         return rules
 
     for rule_el in root.findall(f"{{{S3_NS}}}Rule") + root.findall("Rule"):
-        rule: dict = {}
+        rule: dict = {"_xml": _canonical_rule_xml(rule_el)}
         for child in rule_el:
             tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if tag == "ID":
@@ -429,10 +437,33 @@ def _parse_lifecycle_xml(xml_str: str) -> list[dict]:
     return rules
 
 
+def _canonical_rule_xml(rule_el: ET.Element) -> str:
+    """The Rule element exactly as written, minus namespaces and pretty-print whitespace.
+
+    Lifecycle rules carry many optional elements (NoncurrentVersionTransition, Filter/And,
+    ObjectSizeGreaterThan, NewerNoncurrentVersions, ...). Storing the rule verbatim makes
+    GetBucketLifecycleConfiguration return what PutBucketLifecycleConfiguration stored, as AWS does,
+    instead of only the fields a hand-written parser knows about.
+    """
+    el = copy.deepcopy(rule_el)
+    for node in el.iter():
+        if isinstance(node.tag, str) and "}" in node.tag:
+            node.tag = node.tag.split("}", 1)[1]
+        if len(node):
+            node.text = None
+        elif node.text is not None:
+            node.text = node.text.strip()
+        node.tail = None
+    return ET.tostring(el, encoding="unicode")
+
+
 def _lifecycle_to_xml(rules: list[dict]) -> str:
     parts = ['<?xml version="1.0" encoding="UTF-8"?>']
     parts.append(f'<LifecycleConfiguration xmlns="{S3_NS}">')
     for rule in rules:
+        if "_xml" in rule:
+            parts.append(rule["_xml"])
+            continue
         parts.append("<Rule>")
         if "ID" in rule:
             parts.append(f"<ID>{rule['ID']}</ID>")
@@ -609,6 +640,7 @@ def _cleanup_bucket_stores(bucket: str) -> None:
     with _store_lock:
         _cors_store.pop(bucket, None)
         _lifecycle_store.pop(bucket, None)
+        _lifecycle_min_size_store.pop(bucket, None)
         _object_lock_store.pop(bucket, None)
         _logging_store.pop(bucket, None)
         _directory_bucket_store.pop(bucket, None)
@@ -958,14 +990,26 @@ async def _handle_lifecycle_config(request: Request, method: str, path: str) -> 
                 media_type="application/xml",
             )
         xml = _lifecycle_to_xml(rules)
-        return Response(content=xml, status_code=200, media_type="application/xml")
+        with _store_lock:
+            min_size = _lifecycle_min_size_store.get(bucket, _DEFAULT_TRANSITION_MIN_SIZE)
+        return Response(
+            content=xml,
+            status_code=200,
+            media_type="application/xml",
+            headers={_TRANSITION_MIN_SIZE_HEADER: min_size},
+        )
     elif method == "PUT":
         body = await request.body()
         rules = _parse_lifecycle_xml(body.decode())
+        min_size = request.headers.get(_TRANSITION_MIN_SIZE_HEADER) or _DEFAULT_TRANSITION_MIN_SIZE
         set_bucket_lifecycle(bucket, rules)
-        return Response(status_code=200)
+        with _store_lock:
+            _lifecycle_min_size_store[bucket] = min_size
+        return Response(status_code=200, headers={_TRANSITION_MIN_SIZE_HEADER: min_size})
     elif method == "DELETE":
         delete_bucket_lifecycle(bucket)
+        with _store_lock:
+            _lifecycle_min_size_store.pop(bucket, None)
         return Response(status_code=204)
 
     return Response(status_code=405)

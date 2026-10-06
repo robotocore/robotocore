@@ -30,6 +30,17 @@ them in the role's account instead.
 
 Snapshots taken before this release are missing SSM and KMS data; re-create those resources
 after upgrading.
+- **S3 bucket sub-resources accept a trailing slash.** aws-sdk-go-v2 (Terraform) sends path-style
+  bucket requests as `/bucket/?cors=`; the native CORS, lifecycle, object-lock, legal-hold and
+  logging handlers rejected that with `400 Bad Request`, so every `aws_s3_bucket` refresh failed
+  on `GetBucketCors`. They now treat it as a bucket-level request (`404 NoSuchCORSConfiguration`
+  when unconfigured).
+- **S3 lifecycle configurations round-trip losslessly.** Rules are stored as written, so
+  `NoncurrentVersionTransition`, `NewerNoncurrentVersions`, `Filter/And`, `ObjectSizeGreaterThan`
+  and `ObjectSizeLessThan` come back from `GetBucketLifecycleConfiguration`. The
+  `x-amz-transition-default-minimum-object-size` header is stored on Put and returned on Get/Put
+  (default `all_storage_classes_128K`). Fixes Terraform's "Provider produced inconsistent result
+  after apply" on `aws_s3_bucket_lifecycle_configuration`.
 
 ## 2026.8.26
 

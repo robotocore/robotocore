@@ -1435,3 +1435,63 @@ class TestHandleS3RequestEdgeCases:
         req = _make_request("OPTIONS", "/")
         resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 400
+
+
+class TestLifecycleRoundTrip:
+    """GetBucketLifecycleConfiguration returns exactly what Put stored (Terraform re-reads it)."""
+
+    XML = """<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+      <Rule>
+        <ID>logs</ID>
+        <Filter><And><Prefix>logs/</Prefix><ObjectSizeGreaterThan>1024</ObjectSizeGreaterThan>
+          <Tag><Key>class</Key><Value>log</Value></Tag></And></Filter>
+        <Status>Enabled</Status>
+        <Transition><Days>30</Days><StorageClass>STANDARD_IA</StorageClass></Transition>
+      </Rule>
+      <Rule>
+        <ID>noncurrent</ID>
+        <Filter/>
+        <Status>Enabled</Status>
+        <NoncurrentVersionTransition>
+          <NoncurrentDays>30</NoncurrentDays>
+          <NewerNoncurrentVersions>2</NewerNoncurrentVersions>
+          <StorageClass>INTELLIGENT_TIERING</StorageClass>
+        </NoncurrentVersionTransition>
+      </Rule>
+    </LifecycleConfiguration>"""
+
+    def test_noncurrent_version_transition_survives(self):
+        out = _lifecycle_to_xml(_parse_lifecycle_xml(self.XML))
+        assert "<NoncurrentVersionTransition>" in out
+        assert "<NewerNoncurrentVersions>2</NewerNoncurrentVersions>" in out
+        assert "<StorageClass>INTELLIGENT_TIERING</StorageClass>" in out
+
+    def test_filter_and_survives(self):
+        out = _lifecycle_to_xml(_parse_lifecycle_xml(self.XML))
+        assert "<And><Prefix>logs/</Prefix>" in out
+        assert "<ObjectSizeGreaterThan>1024</ObjectSizeGreaterThan>" in out
+        assert "<Key>class</Key>" in out
+
+    def test_round_trip_is_stable(self):
+        once = _lifecycle_to_xml(_parse_lifecycle_xml(self.XML))
+        assert _lifecycle_to_xml(_parse_lifecycle_xml(once)) == once
+
+    def test_namespace_is_not_repeated_per_rule(self):
+        out = _lifecycle_to_xml(_parse_lifecycle_xml(self.XML))
+        assert out.count("xmlns=") == 1
+
+
+class TestBucketPathTrailingSlash:
+    def test_trailing_slash_is_bucket_level(self):
+        from robotocore.services.s3.provider import _PATH_RE
+
+        match = _PATH_RE.match("/my-bucket/")
+        assert match is not None
+        assert match.group(1) == "my-bucket"
+        assert not match.group(2)
+
+    def test_key_still_parsed(self):
+        from robotocore.services.s3.provider import _PATH_RE
+
+        match = _PATH_RE.match("/my-bucket/a/b.txt")
+        assert match.group(2) == "a/b.txt"
