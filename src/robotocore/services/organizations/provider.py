@@ -9,8 +9,11 @@ This provider makes handshakes visible to every party and joins the target accou
 Everything else is forwarded to Moto.
 """
 
+import asyncio
 import json
 import logging
+import os
+import threading
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -101,6 +104,14 @@ async def handle_organizations_request(request: Request, region: str, account_id
                     _join_organization(owner_backend, account_id, _partition(region))
             return response
 
+    if operation == "CreateAccount":
+        try:
+            assigned = _preassigned_id(json.loads(body or b"{}"))
+        except json.JSONDecodeError:
+            assigned = None
+        if assigned:
+            return await _create_account_with_assigned_id(request, body, account_id, assigned)
+
     if operation == "ListHandshakesForAccount":
         from moto.organizations.models import organizations_backends
 
@@ -117,3 +128,67 @@ async def handle_organizations_request(request: Request, region: str, account_id
                         caller_backend.handshakes.append(handshake)
 
     return await forward_to_moto_with_body(request, "organizations", body, account_id=account_id)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic account ids for CreateAccount (twin control plane)
+# ---------------------------------------------------------------------------
+#
+# AWS assigns a new account a random id. Replaying an existing organization into the twin from its
+# Terraform (accounts declared with email/name, referenced elsewhere by their real ids) needs those
+# ids back. Pre-register them via POST /_robotocore/organizations/account-ids or the
+# ROBOTOCORE_ORG_ACCOUNT_IDS env var (path to a JSON file) as {"emails": {...}, "names": {...}}.
+
+_assign_lock = threading.Lock()
+# Serializes the make_random_account_id override across concurrent CreateAccount coroutines
+# (an asyncio lock: the override spans an await, which a threading lock must never do).
+_create_lock = asyncio.Lock()
+_account_ids: dict[str, dict[str, str]] = {"emails": {}, "names": {}}
+
+
+def register_account_ids(mapping: dict) -> dict[str, int]:
+    with _assign_lock:
+        for kind in ("emails", "names"):
+            for key, value in (mapping.get(kind) or {}).items():
+                if not (isinstance(value, str) and len(value) == 12 and value.isdigit()):
+                    raise ValueError(f"{kind}[{key!r}] must be a 12-digit account id")
+                _account_ids[kind][key.lower() if kind == "emails" else key] = value
+        return {k: len(v) for k, v in _account_ids.items()}
+
+
+def _load_env_account_ids() -> None:
+    path = os.environ.get("ROBOTOCORE_ORG_ACCOUNT_IDS")
+    if not path:
+        return
+    try:
+        with open(path) as fh:
+            register_account_ids(json.load(fh))
+    except (OSError, ValueError) as exc:
+        logger.warning("ROBOTOCORE_ORG_ACCOUNT_IDS %s not loaded: %s", path, exc)
+
+
+_load_env_account_ids()
+
+
+def _preassigned_id(payload: dict) -> str | None:
+    with _assign_lock:
+        email = (payload.get("Email") or "").lower()
+        return _account_ids["emails"].get(email) or _account_ids["names"].get(
+            payload.get("AccountName") or ""
+        )
+
+
+async def _create_account_with_assigned_id(
+    request: Request, body: bytes, account_id: str, assigned: str
+) -> Response:
+    from moto.organizations import utils
+
+    async with _create_lock:
+        original = utils.make_random_account_id
+        utils.make_random_account_id = lambda: assigned
+        try:
+            return await forward_to_moto_with_body(
+                request, "organizations", body, account_id=account_id
+            )
+        finally:
+            utils.make_random_account_id = original

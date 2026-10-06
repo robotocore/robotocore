@@ -751,6 +751,19 @@ async def import_state(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+async def org_account_ids_endpoint(request: Request) -> JSONResponse:
+    """Pre-register account ids that Organizations CreateAccount assigns by email or name."""
+    from robotocore.services.organizations.provider import register_account_ids
+
+    if request.method == "GET":
+        return JSONResponse(register_account_ids({}))
+    try:
+        counts = register_account_ids(await request.json())
+    except (ValueError, TypeError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(counts)
+
+
 async def chaos_list_rules(request: Request) -> JSONResponse:
     """List all fault injection rules."""
     from robotocore.chaos.fault_rules import get_fault_store
@@ -1635,6 +1648,9 @@ management_routes = [
     Route("/_robotocore/runtimes/install", runtimes_install_endpoint, methods=["POST"]),
     Route("/_robotocore/config", config_endpoint, methods=["GET", "POST"]),
     Route("/_robotocore/config/{key}", config_delete_endpoint, methods=["DELETE"]),
+    Route(
+        "/_robotocore/organizations/account-ids", org_account_ids_endpoint, methods=["GET", "POST"]
+    ),
     Route("/_robotocore/state/save", save_state, methods=["POST"]),
     Route("/_robotocore/state/load", load_state, methods=["POST"]),
     Route("/_robotocore/state/snapshots", list_snapshots, methods=["GET"]),
