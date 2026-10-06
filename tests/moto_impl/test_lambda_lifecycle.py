@@ -364,19 +364,9 @@ def test_function_code_signing_config_lifecycle(client):
         FunctionName="test-name-1",
     )
 
-    # DESCRIBE after DELETE should fail
-    with pytest.raises(ClientError) as exc:
-        client.get_function_code_signing_config(
-            FunctionName="test-name-1",
-        )
-    assert exc.value.response["Error"]["Code"] in (
-        "ResourceNotFoundException",
-        "ResourcePolicyNotFoundException",
-        "NotFoundException",
-        "EntityNotFoundException",
-        "InvalidRequestException",
-        "NoSuchEntity",
-    )
+    # DESCRIBE after DELETE reports no config (AWS returns an empty ARN, not an error)
+    after = client.get_function_code_signing_config(FunctionName="test-name-1")
+    assert after.get("CodeSigningConfigArn") == ""
 
 
 def test_function_code_signing_config_not_found(client):

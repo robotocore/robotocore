@@ -2535,9 +2535,14 @@ class TestLambdaCodeSigningConfig:
         csc_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-del"
         lam.put_function_code_signing_config(FunctionName=func, CodeSigningConfigArn=csc_arn)
         lam.delete_function_code_signing_config(FunctionName=func)
-        with pytest.raises(lam.exceptions.ClientError) as exc_info:
-            lam.get_function_code_signing_config(FunctionName=func)
-        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        resp = lam.get_function_code_signing_config(FunctionName=func)
+        assert resp["CodeSigningConfigArn"] == ""
+        assert resp["FunctionName"] == func
+
+    def test_get_function_code_signing_config_unset_is_empty(self, lam, func):
+        """A function that never had a code signing config reports an empty ARN, not 404."""
+        resp = lam.get_function_code_signing_config(FunctionName=func)
+        assert resp["CodeSigningConfigArn"] == ""
 
     def test_get_code_signing_config_nonexistent(self, lam):
         """GetFunctionCodeSigningConfig on nonexistent function raises error."""

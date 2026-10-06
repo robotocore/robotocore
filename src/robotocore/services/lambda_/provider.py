@@ -3,9 +3,11 @@
 import base64
 import json
 import logging
+import re
 import threading
 import time
 import uuid
+from urllib.parse import unquote
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -539,18 +541,13 @@ def _handle_code_signing_config(
         )
 
     key = (account_id, region, func_name)
-    func_arn = f"arn:aws:lambda:{region}:{account_id}:function:{func_name}"
 
     if method == "GET":
         with _code_signing_lock:
             csc_arn = _code_signing_configs.get(key)
-        if csc_arn is None:
-            return _error(
-                "ResourceNotFoundException",
-                f"Code signing configuration not found for function: {func_arn}",
-                404,
-            )
-        return _json(200, {"CodeSigningConfigArn": csc_arn, "FunctionName": func_name})
+        # A function without a code signing config is not an error: AWS returns 200 with an
+        # empty CodeSigningConfigArn (Terraform reads this on every aws_lambda_function refresh).
+        return _json(200, {"CodeSigningConfigArn": csc_arn or "", "FunctionName": func_name})
     elif method == "PUT":
         spec = json.loads(body) if body else {}
         csc_arn = spec.get("CodeSigningConfigArn", "")
@@ -1298,17 +1295,39 @@ async def _handle_event_source_mappings(
     return _error("InvalidRequest", "Unhandled event-source-mappings path", 400)
 
 
+_LAYER_ARN_RE = re.compile(r"^arn:aws[a-z-]*:lambda:([a-z0-9-]+):(\d{12}):layer:([A-Za-z0-9_-]+)$")
+_LAYER_VERSION_ARN_RE = re.compile(
+    r"^arn:aws[a-z-]*:lambda:([a-z0-9-]+):(\d{12}):layer:([A-Za-z0-9_-]+):(\d+)$"
+)
+
+
 async def _handle_layers(
     parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
 ) -> Response:
     backend = _get_moto_backend(account_id, region)
 
     if len(parts) == 1 and method == "GET":
+        if request.query_params.get("find") == "LayerVersion":
+            # GetLayerVersionByArn: GET /layers?find=LayerVersion&Arn=<layer version arn>
+            arn = request.query_params.get("Arn", "")
+            m = _LAYER_VERSION_ARN_RE.match(arn)
+            if not m:
+                return _error("InvalidParameterValueException", f"Invalid layer ARN {arn}", 400)
+            owner_region, owner, name, version = m.groups()
+            layer_ver = _get_moto_backend(owner, owner_region).get_layer_version(name, int(version))
+            return _json(200, _layer_version_dict(layer_ver))
         layers = list(backend.list_layers())
         return _json(200, {"Layers": layers})
 
     if len(parts) >= 2:
-        layer_name = parts[1]
+        layer_name = unquote(parts[1])
+        # A layer named by ARN lives in the ARN's account and region (e.g. a vendor's published
+        # layer such as Datadog-Extension). Reads resolve there, as in AWS.
+        m = _LAYER_ARN_RE.match(layer_name)
+        if m:
+            owner_region, owner, layer_name = m.groups()
+            if method == "GET":
+                backend = _get_moto_backend(owner, owner_region)
 
         # /layers/{name}/versions
         if len(parts) >= 3 and parts[2] == "versions":

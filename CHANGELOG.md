@@ -88,6 +88,19 @@ topic name.
   `DescribeAlarms`, `DeleteAlarms`, tagging, ...) returned `501 NotImplemented`. They are now
   bridged to Moto via AWS JSON 1.0 with model-driven timestamp/blob conversion; operations absent
   from the CloudWatch model return `UnknownOperationException`.
+### Fixed
+
+- **`GetFunctionCodeSigningConfig` on a function without one returns 200** with an empty
+  `CodeSigningConfigArn`, as AWS does, instead of `404 ResourceNotFoundException`. Terraform reads
+  it on every `aws_lambda_function` refresh, so every Lambda refresh failed.
+- **Lambda layers resolve across accounts.** `GetLayerVersion` and `GetLayerVersionByArn` with
+  another account's layer ARN resolve in the owning account (layer permissions are not modelled),
+  so a function can reference a vendor's published layer.
+
+#### Migration
+
+Code that expected `GetFunctionCodeSigningConfig` to raise for an unconfigured function now
+receives an empty ARN.
 
 ## 2026.8.26
 
