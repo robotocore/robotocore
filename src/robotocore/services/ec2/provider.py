@@ -20,17 +20,19 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import re
 import threading
 import uuid
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 from xml.sax.saxutils import escape as xml_escape
 
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.providers.moto_bridge import forward_to_moto, forward_to_moto_with_body
+from robotocore.services.ec2 import ipam as _ipam
 from robotocore.services.ec2.capacity import get_capacity_store
 from robotocore.services.ec2.guest.executor import (
     get_guest_executor,
@@ -194,6 +196,15 @@ async def handle_ec2_request(request: Request, region: str, account_id: str) -> 
             chaos_rule.status_code,
         )
 
+    if action == "DescribeIpamScopes":
+        return _ipam.describe_ipam_scopes(params, region, account_id)
+
+    if action == "DescribeIpamPools":
+        return _ipam.describe_ipam_pools(params, region, account_id)
+
+    if action == "CreateVpc" and _get_param(params, "Ipv4IpamPoolId"):
+        return await _create_vpc_from_ipam(request, params, region, account_id)
+
     # Handle RunInstances with capacity check and guest execution
     if action == "RunInstances":
         return await _run_instances(request, params, region, account_id)
@@ -307,6 +318,31 @@ def _get_param_list(params: dict, prefix: str) -> list[str]:
         result.append(val)
         i += 1
     return result
+
+
+async def _create_vpc_from_ipam(
+    request: Request, params: dict, region: str, account_id: str
+) -> Response:
+    """CreateVpc from an IPAM pool: allocate the CIDR, create the VPC, tag the allocation."""
+    prepared = _ipam.prepare_create_vpc(params, region, account_id)
+    if isinstance(prepared, Response):
+        return prepared
+    if prepared is None:
+        return await forward_to_moto(request, "ec2", account_id=account_id)
+    new_params, pool = prepared
+    body = urlencode(new_params, doseq=True).encode()
+    response = await forward_to_moto_with_body(request, "ec2", body, account_id=account_id)
+    cidr = new_params["CidrBlock"][0]
+    allocation = next(
+        (a for a in pool.allocations.values() if a.cidr == cidr and not a.resource_id), None
+    )
+    if allocation is not None:
+        if response.status_code == 200:
+            match = re.search(rb"<vpcId>(vpc-[0-9a-f]+)</vpcId>", response.body)
+            allocation.resource_id = match.group(1).decode() if match else ""
+        else:
+            pool.allocations.pop(allocation.ipam_pool_allocation_id, None)
+    return response
 
 
 def _ec2_error(code: str, message: str, status_code: int = 400) -> Response:

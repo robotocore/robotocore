@@ -41,6 +41,25 @@ after upgrading.
   `x-amz-transition-default-minimum-object-size` header is stored on Put and returned on Get/Put
   (default `all_storage_classes_128K`). Fixes Terraform's "Provider produced inconsistent result
   after apply" on `aws_s3_bucket_lifecycle_configuration`.
+- **Organizations invitations work across accounts.** The invited account now sees the handshake
+  (`ListHandshakesForAccount`, `DescribeHandshake`) and can `AcceptHandshake`/`DeclineHandshake`
+  it; accepting an `INVITE` joins the account to the organization (`JoinedMethod: INVITED`), so
+  the member's `DescribeOrganization` (Terraform's `data.aws_organizations_organization`) returns
+  the organization instead of `AWSOrganizationsNotInUseException`. Organizations is now a native
+  provider.
+- **RAM shares work across accounts.** `GetResourceShares` and `ListResources` with
+  `resourceOwner=OTHER-ACCOUNTS` (previously `501 NotImplemented`) return shares from other
+  accounts whose principals cover the caller -- its account id or IAM ARN, its organization, or any
+  OU on its path to the root (nested OUs included). Well-formed ARNs of every shareable type
+  (including `ec2:ipam-pool` and ACM PCA `certificate-authority`) can be shared, and OU principals
+  validate when the owner is a member account. RAM is now a native provider.
+- **IPAM pools behave like an organization-wide IPAM.** `DescribeIpamPools` applies `Filter.N`
+  (`description`, `locale`, `address-family`, `ipam-scope-id`, `owner-id`, `tag:*`, ...; Moto
+  ignored filters) and includes pools shared with the caller through RAM, with `OwnerId`.
+  `CreateVpc` with `Ipv4IpamPoolId` + `Ipv4NetmaskLength` allocates the first free block of the
+  pool's provisioned space (own or shared) instead of failing with "Value (None) for parameter
+  cidrBlock is invalid", and records the allocation. `DescribeIpamScopes` honours `IpamScopeId.N`
+  and `Filter.N`, and returns `IpamScopeArn`.
 
 ## 2026.8.26
 
