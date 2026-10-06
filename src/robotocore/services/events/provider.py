@@ -158,7 +158,10 @@ def _put_rule(store: EventsStore, params: dict, region: str, account_id: str) ->
         schedule_expression=schedule,
         state=state,
         description=description,
+        role_arn=params.get("RoleArn", ""),
     )
+    if params.get("Tags"):
+        store.tag_resource(rule.arn, params["Tags"])
     return {"RuleArn": rule.arn}
 
 
@@ -196,6 +199,9 @@ def _describe_rule(store: EventsStore, params: dict, region: str, account_id: st
         result["EventPattern"] = json.dumps(rule.event_pattern)
     if rule.schedule_expression:
         result["ScheduleExpression"] = rule.schedule_expression
+    if rule.role_arn:
+        result["RoleArn"] = rule.role_arn
+    result["CreatedBy"] = rule.account_id
     return result
 
 
@@ -395,8 +401,24 @@ def _create_event_bus(store: EventsStore, params: dict, region: str, account_id:
             "ResourceAlreadyExistsException",
             f"Event bus {name} already exists.",
         )
-    bus = store.create_event_bus(name, region, account_id)
-    return {"EventBusArn": bus.arn}
+    bus = store.create_event_bus(
+        name,
+        region,
+        account_id,
+        description=params.get("Description", ""),
+        kms_key_identifier=params.get("KmsKeyIdentifier", ""),
+        dead_letter_config=params.get("DeadLetterConfig"),
+    )
+    if params.get("Tags"):
+        store.tag_resource(bus.arn, params["Tags"])
+    result: dict = {"EventBusArn": bus.arn}
+    if bus.description:
+        result["Description"] = bus.description
+    if bus.kms_key_identifier:
+        result["KmsKeyIdentifier"] = bus.kms_key_identifier
+    if bus.dead_letter_config:
+        result["DeadLetterConfig"] = bus.dead_letter_config
+    return result
 
 
 def _delete_event_bus(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
@@ -410,10 +432,35 @@ def _describe_event_bus(store: EventsStore, params: dict, region: str, account_i
     bus = store.get_bus(name)
     if not bus:
         raise EventsError("ResourceNotFoundException", f"Event bus {name} not found")
-    return {
-        "Name": bus.name,
-        "Arn": bus.arn,
-    }
+    result: dict = {"Name": bus.name, "Arn": bus.arn, "CreationTime": bus.created}
+    if bus.description:
+        result["Description"] = bus.description
+    if bus.kms_key_identifier:
+        result["KmsKeyIdentifier"] = bus.kms_key_identifier
+    if bus.dead_letter_config:
+        result["DeadLetterConfig"] = bus.dead_letter_config
+    return result
+
+
+def _update_event_bus(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
+    name = params.get("Name", "default")
+    bus = store.get_bus(name)
+    if not bus:
+        raise EventsError("ResourceNotFoundException", f"Event bus {name} does not exist.")
+    if "Description" in params:
+        bus.description = params["Description"]
+    if "KmsKeyIdentifier" in params:
+        bus.kms_key_identifier = params["KmsKeyIdentifier"]
+    if "DeadLetterConfig" in params:
+        bus.dead_letter_config = params["DeadLetterConfig"] or None
+    result: dict = {"Name": bus.name, "Arn": bus.arn}
+    if bus.description:
+        result["Description"] = bus.description
+    if bus.kms_key_identifier:
+        result["KmsKeyIdentifier"] = bus.kms_key_identifier
+    if bus.dead_letter_config:
+        result["DeadLetterConfig"] = bus.dead_letter_config
+    return result
 
 
 def _list_event_buses(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
@@ -1488,6 +1535,7 @@ _ACTION_MAP = {
     "DeleteEventBus": _delete_event_bus,
     "DescribeEventBus": _describe_event_bus,
     "ListEventBuses": _list_event_buses,
+    "UpdateEventBus": _update_event_bus,
     "TagResource": _tag_resource,
     "UntagResource": _untag_resource,
     "ListTagsForResource": _list_tag_resource,

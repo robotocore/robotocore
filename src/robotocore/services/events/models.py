@@ -38,6 +38,7 @@ class EventRule:
     targets: dict[str, EventTarget] = field(default_factory=dict)
     created: float = field(default_factory=time.time)
     dead_letter_config: dict | None = None
+    role_arn: str = ""
 
     @property
     def arn(self) -> str:
@@ -141,6 +142,10 @@ class EventBus:
     region: str
     account_id: str
     rules: dict[str, EventRule] = field(default_factory=dict)
+    description: str = ""
+    kms_key_identifier: str = ""
+    dead_letter_config: dict | None = None
+    created: float = field(default_factory=time.time)
 
     @property
     def arn(self) -> str:
@@ -152,6 +157,10 @@ class EventBus:
             "region": self.region,
             "account_id": self.account_id,
             "rules": {rule_name: rule.snapshot_state() for rule_name, rule in self.rules.items()},
+            "description": self.description,
+            "kms_key_identifier": self.kms_key_identifier,
+            "dead_letter_config": self.dead_letter_config,
+            "created": self.created,
         }
 
     @classmethod
@@ -161,6 +170,10 @@ class EventBus:
             name=snapshot["name"],
             region=snapshot["region"],
             account_id=snapshot["account_id"],
+            description=snapshot.get("description", ""),
+            kms_key_identifier=snapshot.get("kms_key_identifier", ""),
+            dead_letter_config=snapshot.get("dead_letter_config"),
+            created=snapshot.get("created", time.time()),
         )
         bus.rules = {
             rule_name: EventRule.from_snapshot(rule_data)
@@ -193,9 +206,24 @@ class EventsStore:
                 self.buses["default"].region = region
                 self.buses["default"].account_id = account_id
 
-    def create_event_bus(self, name: str, region: str, account_id: str) -> EventBus:
+    def create_event_bus(
+        self,
+        name: str,
+        region: str,
+        account_id: str,
+        description: str = "",
+        kms_key_identifier: str = "",
+        dead_letter_config: dict | None = None,
+    ) -> EventBus:
         with self.mutex:
-            bus = EventBus(name=name, region=region, account_id=account_id)
+            bus = EventBus(
+                name=name,
+                region=region,
+                account_id=account_id,
+                description=description,
+                kms_key_identifier=kms_key_identifier,
+                dead_letter_config=dead_letter_config,
+            )
             self.buses[name] = bus
             return bus
 
@@ -244,11 +272,13 @@ class EventsStore:
         schedule_expression: str | None = None,
         state: str = "ENABLED",
         description: str = "",
+        role_arn: str = "",
     ) -> EventRule:
         with self.mutex:
             bus = self.buses.get(bus_name)
             if not bus:
                 raise KeyError(f"Event bus '{bus_name}' not found")
+            existing = bus.rules.get(name)
             rule = EventRule(
                 name=name,
                 event_bus_name=bus_name,
@@ -258,7 +288,13 @@ class EventsStore:
                 description=description,
                 event_pattern=event_pattern,
                 schedule_expression=schedule_expression,
+                role_arn=role_arn,
             )
+            if existing is not None:
+                # PutRule on an existing rule updates it in place: targets survive (as in AWS).
+                rule.targets = existing.targets
+                rule.created = existing.created
+                rule.dead_letter_config = existing.dead_letter_config
             bus.rules[name] = rule
             return rule
 

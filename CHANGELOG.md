@@ -101,6 +101,17 @@ topic name.
 
 Code that expected `GetFunctionCodeSigningConfig` to raise for an unconfigured function now
 receives an empty ARN.
+### Fixed
+
+- **EventBridge keeps what you set.** `PutRule` stores `RoleArn` and creation-time `Tags`, and
+  `DescribeRule` returns `RoleArn`/`CreatedBy`; `PutRule` on an existing rule updates it in place
+  instead of dropping its targets. `CreateEventBus` stores `Description`, `KmsKeyIdentifier`,
+  `DeadLetterConfig` and `Tags`, `DescribeEventBus` returns them, and `UpdateEventBus` is native.
+  Fixes perpetual `role_arn`/`tags` diffs on `aws_cloudwatch_event_rule`/`aws_cloudwatch_event_bus`.
+
+#### Migration
+
+`PutRule` on an existing rule no longer removes the rule's targets, matching AWS.
 
 ## 2026.8.26
 
