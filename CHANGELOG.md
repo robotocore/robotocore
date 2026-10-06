@@ -126,6 +126,14 @@ receives an empty ARN.
 - **`GetDNSSEC` returns the zone's key-signing keys and its signing status** (enable/disable is now
   tracked), and zone ids are normalized across KSK operations, so Terraform's
   `aws_route53_key_signing_key` waiter no longer times out.
+### Fixed
+
+- **`DescribeRegions` lists only the caller's partition** (`aws`, `aws-us-gov` or `aws-cn`), as AWS
+  does. Moto listed GovCloud and China regions to commercial callers, so configurations that
+  iterate over `data.aws_regions` built providers for regions outside their partition.
+- **The VPC endpoint service catalog includes** `oidc-eks`, `sqs-fips`, `ec2-fips`,
+  `acm-pca-fips`, `eks-fips` and `sts-fips`, so `data.aws_vpc_endpoint_service` lookups for them
+  resolve.
 
 ## 2026.8.26
 

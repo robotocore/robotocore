@@ -204,6 +204,10 @@ async def handle_ec2_request(request: Request, region: str, account_id: str) -> 
 
     if action == "CreateVpc" and _get_param(params, "Ipv4IpamPoolId"):
         return await _create_vpc_from_ipam(request, params, region, account_id)
+    if action == "DescribeRegions":
+        return _same_partition_regions(
+            await forward_to_moto(request, "ec2", account_id=account_id), region
+        )
 
     # Handle RunInstances with capacity check and guest execution
     if action == "RunInstances":
@@ -343,6 +347,49 @@ async def _create_vpc_from_ipam(
         else:
             pool.allocations.pop(allocation.ipam_pool_allocation_id, None)
     return response
+
+
+# AWS-managed interface endpoint services missing from Moto's catalog.
+_EXTRA_ENDPOINT_SERVICES = (
+    "oidc-eks",
+    "sqs-fips",
+    "ec2-fips",
+    "acm-pca-fips",
+    "eks-fips",
+    "sts-fips",
+)
+
+
+def _register_extra_endpoint_services() -> None:
+    from moto.ec2.models import vpcs
+
+    for name in _EXTRA_ENDPOINT_SERVICES:
+        if name not in vpcs.AWS_ENDPOINT_SERVICES:
+            vpcs.AWS_ENDPOINT_SERVICES.append(name)
+    vpcs.DEFAULT_VPC_ENDPOINT_SERVICES.clear()  # rebuilt lazily per region with the additions
+
+
+_register_extra_endpoint_services()
+
+_REGION_ITEM_RE = re.compile(
+    rb"<item>(?:(?!</item>).)*?<regionName>([^<]+)</regionName>.*?</item>", re.S
+)
+
+
+def _same_partition_regions(response: Response, region: str) -> Response:
+    """DescribeRegions lists only the caller's partition (aws, aws-us-gov, aws-cn), as AWS does."""
+    if response.status_code != 200:
+        return response
+    from moto.utilities.utils import get_partition
+
+    mine = get_partition(region)
+
+    def keep(m: re.Match) -> bytes:
+        return m.group(0) if get_partition(m.group(1).decode()) == mine else b""
+
+    body = _REGION_ITEM_RE.sub(keep, response.body)
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return Response(content=body, status_code=200, headers=headers, media_type="text/xml")
 
 
 def _ec2_error(code: str, message: str, status_code: int = 400) -> Response:
