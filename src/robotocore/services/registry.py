@@ -263,7 +263,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
         "opensearchserverless", ServiceStatus.MOTO_BACKED, "json", "OpenSearch Serverless"
     ),
     "organizations": ServiceInfo(
-        "organizations", ServiceStatus.MOTO_BACKED, "json", "AWS Organizations"
+        "organizations", ServiceStatus.NATIVE, "json", "AWS Organizations"
     ),
     "osis": ServiceInfo("osis", ServiceStatus.MOTO_BACKED, "rest-json", "OpenSearch Ingestion"),
     # panorama: deregistered — AWS discontinued the service and moto removed it (getmoto/moto#10085)
@@ -277,7 +277,7 @@ SERVICE_REGISTRY: dict[str, ServiceInfo] = {
     ),
     "polly": ServiceInfo("polly", ServiceStatus.MOTO_BACKED, "rest-json", "Polly Text-to-Speech"),
     "quicksight": ServiceInfo("quicksight", ServiceStatus.MOTO_BACKED, "rest-json", "QuickSight"),
-    "ram": ServiceInfo("ram", ServiceStatus.MOTO_BACKED, "rest-json", "Resource Access Manager"),
+    "ram": ServiceInfo("ram", ServiceStatus.NATIVE, "rest-json", "Resource Access Manager"),
     "rds": ServiceInfo("rds", ServiceStatus.NATIVE, "query", "Relational Database Service"),
     "rdsdata": ServiceInfo("rdsdata", ServiceStatus.NATIVE, "rest-json", "RDS Data API"),
     "redshiftdata": ServiceInfo(

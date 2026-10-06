@@ -87,7 +87,9 @@ from robotocore.services.loader import (
     is_service_allowed,
 )
 from robotocore.services.opensearch.provider import handle_es_request, handle_opensearch_request
+from robotocore.services.organizations.provider import handle_organizations_request
 from robotocore.services.pipes.provider import handle_pipes_request
+from robotocore.services.ram.provider import handle_ram_request
 from robotocore.services.rds.data_provider import handle_rdsdata_request
 from robotocore.services.rds.provider import handle_rds_request
 from robotocore.services.registry import SERVICE_REGISTRY, ServiceStatus
@@ -166,6 +168,8 @@ NATIVE_PROVIDERS = {
     "rdsdata": handle_rdsdata_request,
     "elasticache": handle_elasticache_request,
     "synthetics": handle_synthetics_request,
+    "organizations": handle_organizations_request,
+    "ram": handle_ram_request,
 }
 
 # Default account ID
