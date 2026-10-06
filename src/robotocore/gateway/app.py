@@ -173,6 +173,12 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 
 # Regex to extract account ID from SigV4 Credential
 _CREDENTIAL_RE = re.compile(r"Credential=(\d{12})/")
+# Any access key id in a SigV4 Credential (used to resolve STS/IAM-issued keys)
+_ACCESS_KEY_RE = re.compile(r"Credential=([A-Z0-9]{16,128})/")
+# Access keys AWS issues: long-term IAM user keys and temporary STS keys
+_ISSUED_KEY_PREFIXES = ("AKIA", "ASIA")
+# Positive cache: issued access key id -> owning account id (keys never change owner)
+_issued_key_accounts: dict[str, str] = {}
 
 # Track server start time for uptime
 _server_start_time: float = 0.0
@@ -204,13 +210,45 @@ def _extract_account_id(request: Request) -> str:
     match = _CREDENTIAL_RE.search(auth)
     if match:
         return match.group(1)
+    key_match = _ACCESS_KEY_RE.search(auth)
+    if key_match:
+        owner = _account_for_issued_key(key_match.group(1))
+        if owner:
+            return owner
     # Check query param for presigned URLs
     credential = request.query_params.get("X-Amz-Credential", "")
     if credential:
         parts = credential.split("/")
         if parts and len(parts[0]) == 12 and parts[0].isdigit():
             return parts[0]
+        if parts:
+            owner = _account_for_issued_key(parts[0])
+            if owner:
+                return owner
     return DEFAULT_ACCOUNT_ID
+
+
+def _account_for_issued_key(access_key_id: str) -> str | None:
+    """Account that owns an AWS-issued access key (IAM user key or STS temporary key).
+
+    STS ``AssumeRole`` into ``arn:aws:iam::<target>:role/X`` mints the temporary key in the
+    target account's IAM backend, so later calls signed with that key act in the target
+    account -- as they do in AWS. Unknown keys return ``None`` (caller falls back to default).
+    """
+    if not access_key_id.startswith(_ISSUED_KEY_PREFIXES):
+        return None
+    cached = _issued_key_accounts.get(access_key_id)
+    if cached:
+        return cached
+    from moto.iam.models import iam_backends
+    from moto.utilities.utils import PARTITION_NAMES
+
+    for account_id, account in list(iam_backends.items()):
+        for partition in PARTITION_NAMES:
+            if access_key_id in account[partition].access_keys:
+                _issued_key_accounts[access_key_id] = account_id
+                return account_id
+    return None
 
 
 def _extract_region_account(request: Request) -> tuple[str, str]:

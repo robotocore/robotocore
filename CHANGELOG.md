@@ -6,6 +6,21 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
+## 2026.10.6
+
+### Fixed
+
+- **STS-issued credentials act in the role's account.** Calls signed with an `ASIA…` key from
+  `AssumeRole` into `arn:aws:iam::<target>:role/X` (and IAM-user `AKIA…` keys) now resolve to the
+  account that owns the key, as in AWS. Previously every such call fell through to the default
+  account `123456789012`, so Terraform providers with `assume_role` plus `allowed_account_ids`
+  failed with "AWS account ID not allowed" and resources landed in the wrong account.
+
+#### Migration
+
+Clients that assumed a role and then relied on resources appearing in `123456789012` will now find
+them in the role's account instead.
+
 ## 2026.8.26
 
 ### Changed
