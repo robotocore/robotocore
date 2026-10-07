@@ -69,6 +69,7 @@ from robotocore.services.cognito.provider import handle_cognito_request
 from robotocore.services.config.provider import handle_config_request
 from robotocore.services.dynamodb.provider import handle_dynamodb_request
 from robotocore.services.dynamodbstreams.provider import handle_dynamodbstreams_request
+from robotocore.services.ec2.fabricate import handle_fabricate
 from robotocore.services.ec2.provider import handle_ec2_request
 from robotocore.services.ecr.provider import handle_ecr_request
 from robotocore.services.ecs.provider import handle_ecs_request
@@ -782,6 +783,13 @@ async def import_state(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
     await asyncio.to_thread(manager.import_json, data)
     return JSONResponse({"status": "imported"})
+
+
+async def networkmanager_core_networks_read(request: Request) -> JSONResponse:
+    """List a caller's NetworkManager core networks (admin read for awscc data-source bridges)."""
+    from robotocore.services.networkmanager.admin import handle_networkmanager_read
+
+    return await handle_networkmanager_read(request)
 
 
 # ---------------------------------------------------------------------------
@@ -1707,6 +1715,13 @@ management_routes = [
     Route("/_robotocore/ec2/capacity", ec2_capacity_delete, methods=["DELETE"]),
     Route("/_robotocore/ec2/capacity/reset", ec2_capacity_reset, methods=["POST"]),
     Route("/_robotocore/ec2/capacity/chaos", ec2_capacity_chaos, methods=["POST"]),
+    # EC2 fabrication: resources that exist outside the code under test (peer VPCs etc.)
+    Route("/_robotocore/ec2/fabricate", handle_fabricate, methods=["POST"]),
+    Route(
+        "/_robotocore/networkmanager/core-networks",
+        networkmanager_core_networks_read,
+        methods=["GET"],
+    ),
     # Resource browser
     Route("/_robotocore/resources", resources_overview, methods=["GET"]),
     Route("/_robotocore/resources/{service}", resources_for_service, methods=["GET"]),

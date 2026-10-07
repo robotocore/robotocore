@@ -72,9 +72,7 @@ class TestFabricateCompat:
         resp = requests.post(
             f"{ENDPOINT_URL}/_robotocore/ec2/fabricate",
             json={
-                "resources": [
-                    {"account": _ACCOUNT, "region": "us-east-1", "id": _FABRICATED_VPC}
-                ]
+                "resources": [{"account": _ACCOUNT, "region": "us-east-1", "id": _FABRICATED_VPC}]
             },
         )
         assert resp.status_code == 200
@@ -88,9 +86,7 @@ class TestFabricateCompat:
         # can only be about the peer: a missing peer id fails even with a real requester.
         requester = ec2.create_vpc(CidrBlock="10.242.0.0/16")["Vpc"]["VpcId"]
         with pytest.raises(ec2.exceptions.ClientError) as exc:
-            ec2.create_vpc_peering_connection(
-                VpcId=requester, PeerVpcId="vpc-0999999999missing"
-            )
+            ec2.create_vpc_peering_connection(VpcId=requester, PeerVpcId="vpc-0999999999missing")
         assert "InvalidVpcID.NotFound" in str(exc.value)
         # The accepter is the fabricated one. CIDRs do not overlap, as AWS requires.
         r = ec2.create_vpc_peering_connection(VpcId=requester, PeerVpcId=_FABRICATED_VPC)
