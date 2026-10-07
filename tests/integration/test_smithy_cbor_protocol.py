@@ -152,29 +152,36 @@ class TestCloudWatchCBORProtocol:
         assert get_response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_cbor_not_implemented_returns_501(self, client):
-        """Test that unimplemented CBOR operations return 501 with CBOR error body."""
-        # Use an operation that doesn't have a native handler
-        # DescribeAlarms is handled by forwarding to Moto, which doesn't support CBOR
-        # So it should return 501 when called via CBOR protocol
-        body = {
-            "AlarmNames": ["test-alarm"],
-        }
+    async def test_cbor_operation_in_the_model_is_bridged(self, client):
+        """An operation present in the CloudWatch model but served by Moto is bridged: the
+        CBOR request is re-encoded as AWS JSON 1.0 for Moto and the answer comes back CBOR."""
         response = await client.post(
             f"/service/{CLOUDWATCH_SERVICE_ID}/operation/DescribeAlarms",
             headers=cbor_headers("DescribeAlarms"),
-            content=cbor2.dumps(body),
+            content=cbor2.dumps({"AlarmNames": ["test-alarm"]}),
         )
-
-        # Should return 501 Not Implemented (CBOR not supported for this operation)
-        assert response.status_code == 501
+        assert response.status_code == 200
         assert response.headers.get("smithy-protocol") == "rpc-v2-cbor"
         assert response.headers.get("content-type") == "application/cbor"
+        parsed = cbor2.loads(response.content)
+        assert "__type" not in parsed
 
-        # Error body should be CBOR-encoded
-        error_body = cbor2.loads(response.content)
-        assert "__type" in error_body
-        assert error_body["__type"] == "NotImplemented"
+    @pytest.mark.asyncio
+    async def test_cbor_operation_missing_from_the_model_gets_unknown_operation(self, client):
+        """An operation absent from the CloudWatch model never reaches Moto (which would
+        crash on CBOR); AWS answers UnknownOperationException as a CBOR error body."""
+        import cbor2 as _cbor2
+
+        response = await client.post(
+            f"/service/{CLOUDWATCH_SERVICE_ID}/operation/SomeFutureOperationNotYetMapped",
+            headers=cbor_headers("SomeFutureOperationNotYetMapped"),
+            content=_cbor2.dumps({}),
+        )
+        assert response.status_code == 400
+        assert response.headers.get("smithy-protocol") == "rpc-v2-cbor"
+        assert response.headers.get("content-type") == "application/cbor"
+        error_body = _cbor2.loads(response.content)
+        assert error_body["__type"] == "UnknownOperationException"
         assert "message" in error_body
 
     @pytest.mark.asyncio
