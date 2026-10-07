@@ -143,6 +143,12 @@ receives an empty ARN.
 - **`DescribeDBEngineVersions` serves a broader catalog** with prefix version matching (`16`
   matches `16.x`), `Filters` (e.g. `engine-mode`) and `DefaultOnly`, so `data.aws_rds_engine_version`
   lookups resolve.
+- **EC2 fabrication admin plane (`POST /_robotocore/ec2/fabricate`).** Some real estates reference
+  resources by a literal id the AWS wire protocol cannot mint (a peer VPC created outside Terraform,
+  for example). The endpoint creates a real Moto-backed VPC with a caller-determined id in a chosen
+  account and region, so `CreateVpcPeeringConnection` and every lookup that validates the referenced
+  object behave as they would against the original environment. Idempotent: an already-existing id
+  is returned in `skipped`, not duplicated.
 
 ## 2026.8.26
 
