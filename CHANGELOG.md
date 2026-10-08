@@ -18,6 +18,9 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Fixed
 
+- **Routes report CoreNetworkArn.** `CreateRoute` and `ReplaceRoute` accept and echo
+  `CoreNetworkArn` (Cloud WAN routing), so snapshot-driven IaC tools no longer see the
+  route attribute as null after a write and re-propose in-place updates every plan.
 - **VPC endpoint read-back reports ServiceRegion.** `CreateVpcEndpoint` accepts and echoes
   `ServiceRegion` (defaulting to the endpoint's own region), so snapshot-driven IaC tools no
   longer see the attribute as null after a write and force endpoint replacement on every plan.
