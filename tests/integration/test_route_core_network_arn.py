@@ -11,9 +11,7 @@ class TestRouteCoreNetworkArn:
     def test_create_route_echoes_core_network_arn(self, make_boto_client):
         ec2 = make_boto_client("ec2")
         vpc_id = ec2.create_vpc(CidrBlock="10.40.0.0/16")["Vpc"]["VpcId"]
-        route_table_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"][
-            "RouteTableId"
-        ]
+        route_table_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"]["RouteTableId"]
         arn = (
             "arn:aws:networkmanager:us-east-1:123456789012:core-network/"
             "core-network-0123456789abcdef0"
@@ -26,9 +24,9 @@ class TestRouteCoreNetworkArn:
         )
         route = next(
             r
-            for r in ec2.describe_route_tables(RouteTableIds=[route_table_id])[
-                "RouteTables"
-            ][0]["Routes"]
+            for r in ec2.describe_route_tables(RouteTableIds=[route_table_id])["RouteTables"][0][
+                "Routes"
+            ]
             if r.get("DestinationCidrBlock") == "10.41.0.0/16"
         )
         assert route["CoreNetworkArn"] == arn
@@ -36,9 +34,7 @@ class TestRouteCoreNetworkArn:
     def test_replace_route_updates_core_network_arn(self, make_boto_client):
         ec2 = make_boto_client("ec2")
         vpc_id = ec2.create_vpc(CidrBlock="10.42.0.0/16")["Vpc"]["VpcId"]
-        route_table_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"][
-            "RouteTableId"
-        ]
+        route_table_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"]["RouteTableId"]
         arn = (
             "arn:aws:networkmanager:us-east-1:123456789012:core-network/"
             "core-network-fedcba9876543210f"
@@ -56,9 +52,9 @@ class TestRouteCoreNetworkArn:
         )
         route = next(
             r
-            for r in ec2.describe_route_tables(RouteTableIds=[route_table_id])[
-                "RouteTables"
-            ][0]["Routes"]
+            for r in ec2.describe_route_tables(RouteTableIds=[route_table_id])["RouteTables"][0][
+                "Routes"
+            ]
             if r.get("DestinationCidrBlock") == "10.43.0.0/16"
         )
         assert route["CoreNetworkArn"] == replaced
