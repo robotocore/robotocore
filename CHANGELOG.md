@@ -8,17 +8,34 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ## 2026.10.8
 
-### Fixed
+### Added
 
 - **IPAM pool/scope filters honour `*` and `?` wildcards** in `DescribeIpamPools` and
-  `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so aligning
-  data-source lookups that send `description=*…*`
+  `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so Terraform
+  data-source lookups that send `description=*…*` find their pool.
 - **Tag filters on IPAM pools read the tag store correctly** — a tagged pool previously crashed
   the filter path (`TaggedEC2Resource.get_tags()` returns describe_tags dicts, not tag objects).
+
+### Fixed
+
+- **State snapshots load again with a Cognito user pool present.** The restricted
+  unpickler rejected `joserfc` key classes (moto's cognito-idp stores the pool's signing
+  key as a JWK), so every snapshot load failed with `_DisallowedClassError` — restore,
+  pods and snapshot flows returned 500.
+- **`ExecuteStatement` on a syntactically invalid PartiQL statement answers 400
+  `ValidationException`** instead of crashing moto's parser (which surfaced as a 500
+  InternalError). moto advanced to that commit.
 
 ## 2026.10.6
 
 ### Added
+
+- **IPAM pool/scope filters honour `*` and `?` wildcards** in `DescribeIpamPools` and
+  `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so Terraform
+  data-source lookups that send `description=*…*` find their pool.
+- **Tag filters on IPAM pools read the tag store correctly** — a tagged pool previously crashed
+  the filter path (`TaggedEC2Resource.get_tags()` returns describe_tags dicts, not tag objects).
+
 
 - **Deterministic account ids for Organizations `CreateAccount`.** `POST
   /_robotocore/organizations/account-ids` (or `ROBOTOCORE_ORG_ACCOUNT_IDS=<json file>`) with

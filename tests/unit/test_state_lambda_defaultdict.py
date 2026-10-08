@@ -54,3 +54,20 @@ def test_kms_backend_with_keys_and_aliases_pickles():
         assert (
             backend.keys[rsa].private_key is not None and backend.keys[ecc].private_key is not None
         )
+
+
+def test_cognito_pools_with_joserfc_keys_roundtrip():
+    """The cognito-idp backend holds its user pool signing key as a joserfc JWK (a private
+    RSA module). The load path rejected that class, so any state snapshot taken while a
+    user pool existed failed to load at all."""
+    with mock_aws():
+        boto3.client("cognito-idp", region_name="us-east-1").create_user_pool(PoolName="flaky-pool")
+        c = get_backend("cognito-idp")
+        state = {a: {r: c[a][r] for r in c[a].keys()} for a in c.keys()}
+        out = _roundtrip(state)
+        backend = next(iter(next(iter(out.values())).values()))
+        pools = list(backend.user_pools.values())
+        assert pools, "user pool vanished across roundtrip"
+        jwk = getattr(pools[0], "json_web_key", None)
+        assert jwk is not None
+        assert jwk.__class__.__module__.startswith("joserfc")

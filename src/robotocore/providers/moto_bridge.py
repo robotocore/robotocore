@@ -4,6 +4,7 @@ Uses Werkzeug URL routing against Moto's flask_paths to find the correct
 BaseResponse.dispatch endpoint.
 """
 
+import json
 import os
 from functools import lru_cache
 from urllib.parse import quote
@@ -21,6 +22,7 @@ from werkzeug.wrappers import Request as WerkzeugRequest
 
 from robotocore.diagnostics import header_value as _diag_header
 from robotocore.diagnostics import record as _diag_record
+from robotocore.protocols.service_info import get_service_protocol as _gp  # noqa: F401
 
 os.environ.setdefault("MOTO_ALLOW_NONEXISTENT_REGION", "true")
 
@@ -303,6 +305,23 @@ async def forward_to_moto(
             501,
             {"x-robotocore-diag": _diag_header(e)},
         )
+    except json.JSONDecodeError as e:
+        # A malformed JSON body is a client error, not a server fault: AWS answers
+        # ValidationException (400) for it, and a raw 500 here hid real probes.
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=400,
+        )
+        return _error_response(
+            service_name,
+            "ValidationException",
+            f"Malformed input: the request body is not valid JSON ({e})",
+            400,
+            {"x-robotocore-diag": _diag_header(e)},
+        )
     except Exception as e:  # noqa: BLE001
         # Werkzeug HTTPExceptions from Moto contain the proper error response
         from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
@@ -411,6 +430,23 @@ async def forward_to_moto_with_body(
             "NotImplemented",
             str(e),
             501,
+            {"x-robotocore-diag": _diag_header(e)},
+        )
+    except json.JSONDecodeError as e:
+        # A malformed JSON body is a client error, not a server fault: AWS answers
+        # ValidationException (400) for it, and a raw 500 here hid real probe defects.
+        _diag_record(
+            exc=e,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=400,
+        )
+        return _error_response(
+            service_name,
+            "ValidationException",
+            f"Malformed input: the request body is not valid JSON ({e})",
+            400,
             {"x-robotocore-diag": _diag_header(e)},
         )
     except Exception as e:  # noqa: BLE001
