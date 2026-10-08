@@ -150,6 +150,10 @@ class _RestrictedUnpickler(pickle.Unpickler):
         "functools",  # partial, cached_property
         "abc",  # ABCMeta
         "typing",  # Type annotations stored as values
+        # moto's cognito-idp keeps its user pool's signing key as a joserfc JWK
+        # (the RSA key classes live under a private module), held on the backend
+        # across save/load.
+        "joserfc._rfc7518",
     )
 
     # Dangerous callables that should never appear in pickles.
