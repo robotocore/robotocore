@@ -65,15 +65,43 @@ class TestInterfaceEndpointComputedFields:
             SecurityGroupIds=[sg_id],
             IpAddressType="dualstack",
             DnsOptions={"DnsRecordIpType": "dualstack"},
+            ServiceRegion="eu-central-1",
         )["VpcEndpoint"]
         assert created["IpAddressType"] == "Dualstack"
         assert created["DnsOptions"] == {"DnsRecordIpType": "dualstack"}
+        assert created["ServiceRegion"] == "eu-central-1"
 
         read = ec2.describe_vpc_endpoints(VpcEndpointIds=[created["VpcEndpointId"]])[
             "VpcEndpoints"
         ][0]
         assert read["IpAddressType"] == "Dualstack"
         assert read["DnsOptions"] == {"DnsRecordIpType": "dualstack"}
+        assert read["ServiceRegion"] == "eu-central-1"
+
+    def test_service_region_defaults_to_the_endpoint_region(self, make_boto_client):
+        """Without an explicit service_region the read-back reports the endpoint's own
+        region, so a later plan does not flip the attribute to null and force replacement."""
+        ec2 = make_boto_client("ec2")
+        vpc_id = ec2.create_vpc(CidrBlock="10.0.0.0/16")["Vpc"]["VpcId"]
+        subnet_id = ec2.create_subnet(
+            VpcId=vpc_id, CidrBlock="10.0.1.0/24", AvailabilityZone="us-east-1a"
+        )["Subnet"]["SubnetId"]
+        sg_id = ec2.create_security_group(
+            GroupName="endpoint-region-probe", Description="endpoint probe", VpcId=vpc_id
+        )["GroupId"]
+
+        created = ec2.create_vpc_endpoint(
+            VpcId=vpc_id,
+            ServiceName="com.amazonaws.us-east-1.ssm",
+            VpcEndpointType="Interface",
+            SubnetIds=[subnet_id],
+            SecurityGroupIds=[sg_id],
+        )["VpcEndpoint"]
+        assert created["ServiceRegion"] == "us-east-1"
+        read = ec2.describe_vpc_endpoints(VpcEndpointIds=[created["VpcEndpointId"]])[
+            "VpcEndpoints"
+        ][0]
+        assert read["ServiceRegion"] == "us-east-1"
 
 
 class TestGatewayEndpointShape:

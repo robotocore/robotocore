@@ -18,6 +18,9 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Fixed
 
+- **VPC endpoint read-back reports ServiceRegion.** `CreateVpcEndpoint` accepts and echoes
+  `ServiceRegion` (defaulting to the endpoint's own region), so snapshot-driven IaC tools no
+  longer see the attribute as null after a write and force endpoint replacement on every plan.
 - **VPC endpoint read-back reports IpAddressType and DnsOptions.** `CreateVpcEndpoint`
   and `ModifyVpcEndpoint` now accept and echo `IpAddressType` (default IPv4, response
   casing normalized) and `DnsOptions`/`DnsRecordIpType`, so snapshot-driven IaC tools no
