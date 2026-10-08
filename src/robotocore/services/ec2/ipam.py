@@ -1,12 +1,15 @@
 """IPAM behaviours Moto lacks: pool filters, RAM-shared pools, and VPCs allocated from a pool.
 
 - ``DescribeIpamPools`` applies ``Filter.N`` (Moto ignores filters) and includes pools that other
-  accounts share with the caller through AWS RAM, as AWS does for organization-wide IPAM.
+  accounts share with the caller through AWS RAM, as AWS does for organization-wide IPAM. Filter
+  values honour the EC2 ``*`` / ``?`` wildcards, so ``description=*public-ingress*`` finds a pool
+  the way the ``aws_vpc_ipam_pool`` Terraform data source expects.
 - ``CreateVpc`` with ``Ipv4IpamPoolId`` (+ ``Ipv4NetmaskLength`` or an explicit ``CidrBlock``)
   allocates a non-overlapping CIDR from the pool's provisioned space and records the allocation,
   instead of failing with "Value (None) for parameter cidrBlock is invalid".
 """
 
+import fnmatch
 import ipaddress
 import logging
 import uuid
@@ -33,6 +36,12 @@ def _filters(params: dict) -> dict[str, list[str]]:
         out[name] = vals
         i += 1
     return out
+
+
+def _value_matches(value: str, patterns: list[str]) -> bool:
+    """EC2 filter semantics: a value matches if it equals any pattern, where ``*`` matches any
+    run of characters and ``?`` exactly one. Case-sensitive, as on AWS."""
+    return any(fnmatch.fnmatchcase(value, pattern) for pattern in patterns)
 
 
 def _ids(params: dict, prefix: str) -> list[str]:
@@ -82,7 +91,8 @@ def _shared(pool, account_id: str) -> bool:
 
 
 def _matches(pool, backend, filters: dict[str, list[str]]) -> bool:
-    tags = {t.key: t.value for t in pool.get_tags()}
+    # TaggedEC2Resource.get_tags() returns describe_tags dicts ({"key": ..., "value": ...}).
+    tags = {t["key"]: t["value"] for t in pool.get_tags()}
     fields = {
         "ipam-pool-id": pool.id,
         "ipam-pool-arn": pool.arn,
@@ -98,13 +108,13 @@ def _matches(pool, backend, filters: dict[str, list[str]]) -> bool:
     }
     for name, values in filters.items():
         if name.startswith("tag:"):
-            if tags.get(name[4:]) not in values:
+            if not _value_matches(tags.get(name[4:], ""), values):
                 return False
         elif name == "tag-key":
-            if not set(values) & set(tags):
+            if not any(_value_matches(key, values) for key in tags):
                 return False
         elif name in fields:
-            if fields[name] not in values:
+            if not _value_matches(fields[name], values):
                 return False
     return True
 
@@ -285,7 +295,7 @@ def describe_ipam_scopes(params: dict, region: str, account_id: str) -> Response
             "is-default": str(bool(scope.is_default)).lower(),
             "description": scope.description or "",
         }
-        if any(n in fields and fields[n] not in v for n, v in filters.items()):
+        if any(n in fields and not _value_matches(fields[n], v) for n, v in filters.items()):
             continue
         ipam = backend.ipams.get(scope.ipam_id)
         items.append(

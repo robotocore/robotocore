@@ -2,7 +2,7 @@
 
 from moto.ec2.models import ec2_backends
 
-from robotocore.services.ec2.ipam import _filters, _matches, allocate
+from robotocore.services.ec2.ipam import _filters, _matches, _value_matches, allocate
 
 
 def _pool(account: str):
@@ -34,6 +34,34 @@ def test_matches_description_and_locale():
     assert _matches(pool, backend, {"description": ["account-pool-x-us-east-1"]})
     assert _matches(pool, backend, {"locale": ["us-east-1"], "address-family": ["ipv4"]})
     assert not _matches(pool, backend, {"description": ["other"]})
+
+
+def test_filter_values_support_ec2_wildcards():
+    # EC2 filter values: "*" matches any run of characters, "?" exactly one; case-sensitive.
+    assert _value_matches("acct-public-ingress-us-east-1", ["*public-ingress*"])
+    assert _value_matches("pool-a", ["pool-?"])
+    assert not _value_matches("pool-ab", ["pool-?"])
+    assert not _value_matches("Public-Ingress", ["*public-ingress*"])
+    assert _value_matches("exact", ["other", "exact"])
+    assert not _value_matches("", ["*x*"])
+
+
+def test_matches_description_wildcard_like_terraform_data_source():
+    # The aws_vpc_ipam_pool data source filters on description = "*public-ingress*"; AWS matches
+    # the wildcard, so the twin must too, or the lookup finds no pool.
+    backend, pool = _pool("950000000004")
+    assert _matches(pool, backend, {"description": ["*pool-x*"]})
+    assert _matches(pool, backend, {"description": ["account-pool-?-us-east-1"]})
+    assert not _matches(pool, backend, {"description": ["*pool-y*"]})
+
+
+def test_matches_tag_filters_support_wildcards():
+    backend, pool = _pool("950000000005")
+    pool.add_tag("Name", "ingress-pool-prod")
+    assert _matches(pool, backend, {"tag:Name": ["ingress-*"]})
+    assert not _matches(pool, backend, {"tag:Name": ["egress-*"]})
+    assert _matches(pool, backend, {"tag-key": ["Na*"]})
+    assert not _matches(pool, backend, {"tag:Missing": ["x"]})
 
 
 def test_allocations_do_not_overlap():
