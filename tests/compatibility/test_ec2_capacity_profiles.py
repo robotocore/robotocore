@@ -27,6 +27,20 @@ def ec2():
 
 
 @pytest.fixture(autouse=True)
+def _clear_capacity_state():
+    """Capacity profiles and chaos overrides live in one in-server store; any test that
+    aborts midway would otherwise leave every later RunInstances in the shard with the
+    same synthetic profile or override. Clear both before and after each test."""
+    for _ in (0, 1):
+        if _:
+            yield
+        requests.post(f"{ENDPOINT_URL}/_robotocore/ec2/capacity/reset", timeout=5)
+        requests.post(
+            f"{ENDPOINT_URL}/_robotocore/ec2/capacity/chaos", json={"clear": True}, timeout=5
+        )
+
+
+@pytest.fixture(autouse=True)
 def reset_capacity_profiles():
     """Reset capacity profiles before each test."""
     requests.post(f"{ENDPOINT_URL}/_robotocore/ec2/capacity/reset", timeout=5)
