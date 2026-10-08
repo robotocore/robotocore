@@ -6,6 +6,16 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
+## 2026.10.8
+
+### Fixed
+
+- **IPAM pool/scope filters honour `*` and `?` wildcards** in `DescribeIpamPools` and
+  `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so aligning
+  data-source lookups that send `description=*…*`
+- **Tag filters on IPAM pools read the tag store correctly** — a tagged pool previously crashed
+  the filter path (`TaggedEC2Resource.get_tags()` returns describe_tags dicts, not tag objects).
+
 ## 2026.10.6
 
 ### Added
