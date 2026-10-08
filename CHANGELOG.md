@@ -18,6 +18,13 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Fixed
 
+- **VPC endpoint read-back reports IpAddressType and DnsOptions.** `CreateVpcEndpoint`
+  and `ModifyVpcEndpoint` now accept and echo `IpAddressType` (default IPv4, response
+  casing normalized) and `DnsOptions`/`DnsRecordIpType`, so snapshot-driven IaC tools no
+  longer see the fields as unknown after every write and force endpoint replacement.
+  An omitted `VpcEndpointType` also defaults to `Gateway` as AWS reports it; gateway
+  endpoints correctly carry neither field. A security group deleted while still
+  referenced by an endpoint no longer crashes the Describe read-back.
 - **State snapshots load again with a Cognito user pool present.** The restricted
   unpickler rejected `joserfc` key classes (moto's cognito-idp stores the pool's signing
   key as a JWK), so every snapshot load failed with `_DisallowedClassError` — restore,
