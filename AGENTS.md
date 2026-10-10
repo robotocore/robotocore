@@ -40,13 +40,22 @@ Also available from GHCR:
 docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
 ```
 
+### CLI shortcuts (installed in the container and as pip console scripts)
+
+```bash
+awsroboto s3 ls                  # awslocal-style CLI: `aws <service> <op>` against the twin
+robotocore start|stop|restart|logs|status   # container lifecycle wrapper
+```
+
+`/_robotocore/state/reset` wipes in-memory state without a container restart (see [Health & introspection endpoints](#health-introspection-endpoints)).
+
 ### Verify it's ready
 
 ```bash
 curl -s http://localhost:4566/_robotocore/health | python3 -m json.tool
 ```
 
-Expected output includes `"running": true` and a map of service names to `"available"`.
+Expected output: `{"status": "running", "version": ..., "uptime_seconds": ..., "services": {name: {"status": "running" | "disabled", "type": "native" | "moto", "requests": N}}}`. The flat map of service name -> `"available"` strings is the LocalStack-compatible `/_localstack/health` (drop-in for that tool's health checks). A service disabled by the `SERVICES` env var reports `"disabled"`.
 
 ### Confirm which account you're in (GetCallerIdentity)
 
@@ -350,12 +359,12 @@ curl http://localhost:4566/_robotocore/health
 # Version info
 curl http://localhost:4566/_robotocore/config
 
-# All services with status
+# All services with status (status is "running" | "disabled"; type is "native" | "moto")
 curl -s http://localhost:4566/_robotocore/health | python3 -c "
 import json, sys
 h = json.load(sys.stdin)
-for svc, status in sorted(h.get('services', {}).items()):
-    print(f'{svc:40} {status}')
+for svc, info in sorted(h.get('services', {}).items()):
+    print(f\"{svc:40} {info['status']:10} {info['type']}\")
 "
 ```
 

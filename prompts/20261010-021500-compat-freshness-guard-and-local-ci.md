@@ -2,6 +2,7 @@
 session: "dev-ux-conformance"
 timestamp: "2026-10-10T02:15:00Z"
 model: claude-opus-4-6
+sequence: 1
 ---
 
 ## Human
