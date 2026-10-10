@@ -35,7 +35,7 @@ class TestJsonErrorFormat:
         body = json.loads(ctx.response.body.decode())
         assert "__type" in body
         assert "message" in body
-        assert body["__type"] == "ValueError"
+        assert body["__type"] == "InternalFailure"
         assert body["message"] == "bad value"
 
     def test_kinesis_json_error(self):
@@ -88,7 +88,7 @@ class TestQueryXmlErrorFormat:
         assert error_elem is not None
         assert error_elem.find("Code") is not None
         assert error_elem.find("Message") is not None
-        assert error_elem.find("Code").text == "ValueError"
+        assert error_elem.find("Code").text == "InternalError"
 
     def test_sqs_query_error(self):
         # SQS now uses JSON protocol in newer boto3, but query path still works
@@ -167,14 +167,14 @@ class TestNotImplementedErrors:
         error_normalizer(ctx, RuntimeError("crash"))
         assert ctx.response.status_code == 500
         body = json.loads(ctx.response.body.decode())
-        assert body["__type"] == "RuntimeError"
+        assert body["__type"] == "InternalFailure"
 
     def test_regular_error_xml_uses_500(self):
         ctx = _make_context("sts", "query")
         error_normalizer(ctx, RuntimeError("crash"))
         assert ctx.response.status_code == 500
         root = ET.fromstring(ctx.response.body.decode())
-        assert root.find("Error/Code").text == "RuntimeError"
+        assert root.find("Error/Code").text == "InternalError"
 
 
 class TestSpecialCharactersInErrors:

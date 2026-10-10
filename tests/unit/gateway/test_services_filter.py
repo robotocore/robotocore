@@ -121,7 +121,7 @@ class TestServicesFilterActive:
         )
         assert response.status_code == 501
         data = response.json()
-        assert "not enabled" in data["error"]
+        assert "disabled by the SERVICES env var filter" in data["error"]
         assert "dynamodb" in data["error"]
 
     def test_multiple_services(self, client, monkeypatch):

@@ -83,6 +83,7 @@ from robotocore.services.iot.provider import handle_iot_request
 from robotocore.services.kinesis.provider import handle_kinesis_request
 from robotocore.services.lambda_.provider import handle_lambda_request
 from robotocore.services.loader import (
+    get_allowed_services,
     get_effective_provider,
     get_service_info_with_status,
     is_service_allowed,
@@ -1495,22 +1496,49 @@ def _unroutable_payload(request: Request) -> dict:
         or [
             "request carries no usual routing cues (path, x-amz-target, signature, or query action)"
         ],
-        "see": "README.md#accounts--regions for client examples that always route",
     }
 
 
 async def handle_aws_request(request: Request) -> Response:
     """Main handler: route, build context, run handler chain, forward to Moto."""
+    # Pre-read the body first: the router reads form-encoded Actions for unsigned
+    # requests, and the synchronous chain handlers access request._body too.
+    await request.body()
+
     service_name = route_to_service(request)
     if service_name is None:
         return JSONResponse(_unroutable_payload(request), status_code=400)
 
-    # Check if service is allowed by SERVICES env var filter
+    # Service enablement: the SERVICES filter is an operator off-switch for a
+    # registered service; a service that is not in the registry at all is the
+    # "not yet built" contract (501 with the NotImplemented code) — see AGENTS.md
+    # "Reading errors correctly".
     if not is_service_allowed(service_name):
+        if service_name not in SERVICE_REGISTRY:
+            context = RequestContext(
+                request=request,
+                service_name=service_name,
+                account_id=_extract_account_id(request),
+            )
+            error_normalizer(
+                context,
+                NotImplementedError(
+                    f"The '{service_name}' service has not been implemented in "
+                    "robotocore. See GET /_robotocore/services for the implemented list"
+                ),
+            )
+            return context.response
+        suppressed = get_allowed_services() is not None
         return JSONResponse(
             {
-                "error": f"Service {service_name} is not enabled. "
-                "Set SERVICES env var to include it."
+                "error": (
+                    f"Service {service_name} is disabled by the SERVICES env var filter"
+                    + (
+                        ". Remove it from SERVICES to route calls to this registered service."
+                        if suppressed
+                        else ""
+                    )
+                )
             },
             status_code=501,
         )
@@ -1524,10 +1552,6 @@ async def handle_aws_request(request: Request) -> Response:
         account_id=account_id,
     )
 
-    # Pre-read the body so synchronous handlers (populate_context_handler) can
-    # access it via request._body for form-encoded Action parsing.
-    await request.body()
-
     await asyncio.to_thread(_handler_chain.handle, context)
 
     # If a handler already set a response (e.g. CORS preflight), return it
@@ -1537,17 +1561,27 @@ async def handle_aws_request(request: Request) -> Response:
     # Track request count
     request_counter.increment(service_name)
 
-    # Use effective provider (respects PROVIDER_OVERRIDE_* env vars)
-    effective_handler = get_effective_provider(service_name, NATIVE_PROVIDERS)
-    if effective_handler:
-        response = await effective_handler(request, context.region, context.account_id)
-    else:
-        response = await forward_to_moto(request, service_name, account_id=account_id)
+    # Use effective provider (respects PROVIDER_OVERRIDE_* env vars). Provider
+    # crashes route through the error normalizer like handler-chain raises do:
+    # agents must never see Starlette's bare "Internal Server Error", which has
+    # no AWS error code and skips the diagnostic header.
+    try:
+        effective_handler = get_effective_provider(service_name, NATIVE_PROVIDERS)
+        response = (
+            await effective_handler(request, context.region, context.account_id)
+            if effective_handler
+            else await forward_to_moto(request, service_name, account_id=account_id)
+        )
 
-    # Run response handlers with the Moto response
-    context.response = response
-    for handler in _handler_chain.response_handlers:
-        handler(context)
+        # Run response handlers with the Moto response
+        context.response = response
+        for handler in _handler_chain.response_handlers:
+            handler(context)
+    except NotImplementedError as exc:
+        # 501: the "not implemented" gap contract from AGENTS.md (501 vs 500).
+        error_normalizer(context, exc)
+    except Exception as exc:  # noqa: BLE001 - convert to the AWS error contract
+        error_normalizer(context, exc)
 
     # Auto-save if PERSISTENCE=1
     if os.environ.get("PERSISTENCE", "0") == "1":

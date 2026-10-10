@@ -193,6 +193,23 @@ _TIMESTREAM_QUERY_OPS = frozenset(
     }
 )
 
+# STS operations that are legal without a SigV4 signature (documented by AWS:
+# AssumeRoleWithWebIdentity and AssumeRoleWithSAML authenticate via the IdP;
+# the others are included so harmless operator scripts with plain form posts
+# keep working). Everything else unsigned falls through to the unroutable 400.
+_UNSIGNED_STS_ACTIONS = frozenset(
+    {
+        "AssumeRole",
+        "AssumeRoleWithSAML",
+        "AssumeRoleWithWebIdentity",
+        "DecodeAuthorizationMessage",
+        "GetAccessKeyInfo",
+        "GetCallerIdentity",
+        "GetFederationToken",
+        "GetSessionToken",
+    }
+)
+
 
 def route_to_service(request: Request) -> str | None:
     """Determine the target AWS service from request attributes."""
@@ -332,10 +349,25 @@ def route_to_service(request: Request) -> str | None:
 
     # 7. Body-based Action detection for unsigned requests
     # Some STS operations (AssumeRoleWithWebIdentity, AssumeRoleWithSAML)
-    # don't include an Authorization header.
+    # don't include an Authorization header. Restrict this to the STS
+    # operation set: an unsigned form-encoded POST is otherwise the same wire
+    # shape as any other query-protocol service, and mis-routing it to STS
+    # turns a recoverable "unknown request" into a wrong-service error.
     content_type = request.headers.get("content-type", "")
     if "x-www-form-urlencoded" in content_type and not auth:
-        return "sts"
+        body_action = request.query_params.get("Action", "")
+        if not body_action:
+            try:
+                from urllib.parse import parse_qs
+
+                body_bytes = getattr(request, "_body", None) or b""
+                body_action = (
+                    parse_qs(body_bytes.decode("utf-8", "replace")).get("Action", [""])[0] or ""
+                )
+            except Exception:  # noqa: BLE001 - best effort read of the un-signed body
+                body_action = ""
+        if body_action in _UNSIGNED_STS_ACTIONS:
+            return "sts"
 
     # 8. Path-style S3 fallback for unsigned/anonymous GET/HEAD requests.
     # Handles: GET http://localhost:4566/bucket/key.json (public bucket access)

@@ -66,3 +66,70 @@ class TestUnroutableRequestHints:
         resp = client.get("/", headers={"authorization": "Bearer sev1"})
         assert resp.status_code == 400
         assert resp.json()["hints"], "hints must never be empty"
+
+
+class TestProviderCrashErrorContract:
+    """Provider crashes must surface as the AWS error contract (the AGENTS.md
+    501/500 table), never as Starlette's plain-text 'Internal Server Error'."""
+
+    def test_moto_path_crash_becomes_internalfailure(self, client, monkeypatch):
+        import robotocore.gateway.app as app_mod
+
+        async def boom(request, service_name, **kwargs):
+            raise KeyError("region")
+
+        monkeypatch.setattr(app_mod, "get_effective_provider", lambda *a, **k: None)
+        monkeypatch.setattr(app_mod, "forward_to_moto", boom)
+        # sts is moto-backed and needs no account/region fixtures
+        resp = client.post(
+            "/",
+            headers={
+                "authorization": (
+                    "AWS4-HMAC-SHA256 Credential=123456789012/20260310/us-east-1/sts/"
+                    "aws4_request, SignedHeaders=host, Signature=s"
+                ),
+                "content-type": "application/x-www-form-urlencoded",
+            },
+            data={"Action": "GetCallerIdentity"},
+        )
+        assert resp.status_code == 500
+        assert resp.headers["x-robotocore-diag"]
+        if resp.headers.get("content-type", "").endswith("json") or b"__type" in resp.content:
+            assert resp.json()["__type"] == "InternalFailure", resp.content[:200]
+        else:
+            assert b"InternalError" in resp.content, resp.content[:200]
+
+    def test_unregistered_service_answers_notimplemented(self, client, monkeypatch):
+        import robotocore.gateway.app as app_mod
+
+        monkeypatch.setattr(app_mod, "is_service_allowed", lambda name: False)
+        resp = client.post(
+            "/",
+            headers={
+                "authorization": (
+                    "AWS4-HMAC-SHA256 Credential=123456789012/20260310/us-east-1/"
+                    "notarealservice/aws4_request, SignedHeaders=host, Signature=s"
+                )
+            },
+        )
+        assert resp.status_code == 501
+        assert b"NotImplemented" in resp.content
+        assert b"has not been implemented" in resp.content
+
+    def test_services_filtered_registered_service_names_the_filter(self, client, monkeypatch):
+        import robotocore.gateway.app as app_mod
+
+        allowed = set()
+        monkeypatch.setattr(app_mod, "is_service_allowed", lambda name: False)
+        monkeypatch.setattr(app_mod, "get_allowed_services", lambda: allowed, raising=False)
+        resp = client.post(
+            "/",
+            headers={
+                "authorization": (
+                    "AWS4-HMAC-SHA256 Credential=123456789012/20260310/us-east-1/sqs/"
+                    "aws4_request, SignedHeaders=host, Signature=s"
+                )
+            },
+        )
+        assert resp.status_code == 501
+        assert b"SERVICES env var filter" in resp.content
