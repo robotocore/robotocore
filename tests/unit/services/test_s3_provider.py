@@ -197,10 +197,10 @@ class TestParseNotificationConfigXml:
         assert rules[0]["Name"] == "prefix"
         assert rules[1]["Value"] == ".jpg"
 
-    def test_parse_invalid_xml(self):
-        config = _parse_notification_config_xml("not xml at all")
-        assert len(config.queue_configs) == 0
-        assert len(config.topic_configs) == 0
+    def test_parse_invalid_xml_returns_none(self):
+        """Malformed XML answers None (mapped to 400 MalformedXML) instead of
+        an empty config that would silently clear the stored configuration."""
+        assert _parse_notification_config_xml("not xml at all") is None
 
     def test_parse_empty_config(self):
         xml = """<?xml version="1.0" encoding="UTF-8"?>

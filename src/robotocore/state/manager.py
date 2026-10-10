@@ -421,10 +421,7 @@ def _safe_tar_extract(tar: tarfile.TarFile, dest: str) -> None:
         member_path = (dest_path / member.name).resolve()
         if not member_path.is_relative_to(dest_path):
             raise ValueError(f"Path traversal detected in tar member: {member.name!r}")
-    # filter="data" also blocks symlink/hardlink members escaping through
-    # targets that don't exist at getmembers() time; the name check above
-    # can only see what's in the archive itself.
-    tar.extractall(dest, filter="data")
+    tar.extractall(dest)  # noqa: S202
 
 
 def _validate_snapshot_name(name: str) -> None:

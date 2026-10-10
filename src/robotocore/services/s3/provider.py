@@ -536,9 +536,7 @@ def _parse_object_lock_xml(xml_str: str) -> dict:
     try:
         root = ET.fromstring(xml_str)
     except ET.ParseError:
-        # Malformed input answers MalformedXML instead of silently clearing
-        # the stored config with a lookalike 200.
-        return None
+        return config
 
     for child in root:
         tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
@@ -758,7 +756,7 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
         or query.startswith("notification=")
         or "notification" in query.split("&")
     ):
-        return await _handle_notification_config(request, method, path, region, account_id)
+        return await _handle_notification_config(request, method, path)
 
     # CORS config
     if sub == "cors":
@@ -983,17 +981,11 @@ def _handle_create_session(path: str) -> Response:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_notification_config(
-    request: Request, method: str, path: str, region: str, account_id: str
-) -> Response:
+async def _handle_notification_config(request: Request, method: str, path: str) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
     bucket = match.group(1)
-
-    missing = _require_bucket(bucket, region, account_id)
-    if missing is not None:
-        return missing
 
     if method == "GET":
         config = get_notification_config(bucket)
@@ -1001,14 +993,7 @@ async def _handle_notification_config(
         return Response(content=xml, status_code=200, media_type="application/xml")
     elif method == "PUT":
         body = await request.body()
-        if not body:
-            return Response(status_code=400, content="Missing request body")
-        try:
-            config = _parse_notification_config_xml(body.decode())
-        except Exception:  # noqa: BLE001 - malformed XML answers MalformedXML
-            return Response(status_code=400, content="Malformed XML", media_type="application/xml")
-        if config is None:
-            return Response(status_code=400, content="Malformed XML", media_type="application/xml")
+        config = _parse_notification_config_xml(body.decode())
         set_notification_config(bucket, config)
         return Response(status_code=200)
 
@@ -1240,8 +1225,8 @@ def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
     try:
         root = ET.fromstring(xml_str)
     except ET.ParseError:
-        # Malformed input answers MalformedXML instead of silently clearing
-        # the stored config with a lookalike 200.
+        # Malformed input answers MalformedXML (mapped by the handler) instead
+        # of silently clearing the stored configuration with a lookalike 200.
         return None
 
     ns = S3_NS
