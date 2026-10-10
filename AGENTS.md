@@ -432,6 +432,7 @@ The most common misread: treating a `ClientError` as a gap.
 | Response | Meaning |
 |---|---|
 | HTTP 501, `NotImplemented` — "The accept_address_transfer action has not been implemented" | Genuinely absent |
+| HTTP 400, "Could not determine target AWS service from request" + `hints` list | No usable routing cue (unsigned, unnamed request). The `hints` list names every cue that was checked — add a SigV4 signature with the service's credential scope, a service URL path, or a target header |
 | `InvalidAMIID.NotFound`, `InvalidInstanceID.NotFound` | Implemented; the ID does not exist |
 | `InvalidAMIID.Malformed` | Implemented; the ID is the wrong shape |
 | `MissingParameter`, `ValidationException` | Implemented; the request is incomplete |
