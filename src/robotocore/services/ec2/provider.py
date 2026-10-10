@@ -1197,9 +1197,12 @@ async def _run_instances(request: Request, params: dict, region: str, account_id
     profile = store.get_profile(account_id, region, instance_type, az)
     capacity_consumed = 0
 
-    # Always check chaos override (even without explicit profile)
+    # Always check chaos override (even without explicit profile) — and only
+    # when the override's scope matches the launched instance_type/AZ, so a
+    # synthetic-scoped override from a parallel compat worker cannot inject
+    # failures into unrelated launches.
     chaos_override = store.get_chaos_override()
-    if chaos_override:
+    if chaos_override and store.chaos_override_applies(instance_type, az):
         error_code = chaos_override.get("error_code")
         if error_code == "InsufficientInstanceCapacity":
             return _ec2_error(
@@ -1492,9 +1495,9 @@ async def _request_spot_instances(
         if not profile.enabled:
             return _build_spot_capacity_unavailable_response(params, count)
 
-        # Check chaos override
+        # Check chaos override (scoped to this launch's overridden fields)
         chaos_override = store.get_chaos_override()
-        if chaos_override:
+        if chaos_override and store.chaos_override_applies(instance_type, az):
             error_code = chaos_override.get("error_code")
             if error_code == "InsufficientInstanceCapacity":
                 return _build_spot_capacity_unavailable_response(params, count)

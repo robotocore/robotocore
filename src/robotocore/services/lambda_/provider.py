@@ -154,6 +154,11 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
             return _error("RequestTooLargeException", str(e), 413)
         if isinstance(e, LimitsInvalidParam):
             return _error("InvalidParameterValueException", str(e), 400)
+        from robotocore.services.lambda_.limits import CodeStorageExceededException
+
+        if isinstance(e, CodeStorageExceededException):
+            # Account-limit errors are client errors (HTTP 400), not 500s.
+            return _error("CodeStorageExceededException", str(e), 400)
 
         # Map Moto exceptions to AWS error codes
         if "ResourceNotFoundException" in error_type or "UnknownFunction" in error_type:
@@ -198,7 +203,8 @@ async def _handle_functions(
         env_vars = (spec.get("Environment") or {}).get("Variables") or {}
         if env_vars:
             validate_envvar_size(env_vars)
-        # Validate code size
+        # Validate code size; account the bytes *after* the backend accepts
+        # the create, so a failed create does not permanently pin the account.
         code = spec.get("Code") or {}
         zip_file = code.get("ZipFile")
         if zip_file:
@@ -206,14 +212,17 @@ async def _handle_functions(
 
             raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
             validate_code_size_zipped(len(raw))
-            get_concurrency_tracker().add_code_size(len(raw))
-            _code_sizes[(account_id, region, spec.get("FunctionName", ""))] = len(raw)
         # Track DeadLetterConfig in our native store on creation
         if "DeadLetterConfig" in spec:
             func_name_from_spec = spec.get("FunctionName", "")
             if func_name_from_spec:
                 _store_dlq_config(account_id, region, func_name_from_spec, spec["DeadLetterConfig"])
         fn = backend.create_function(spec)
+        if zip_file:
+            fn_name_from_spec = spec.get("FunctionName", "")
+            if fn_name_from_spec:
+                get_concurrency_tracker().add_code_size(len(raw))
+                _code_sizes[(account_id, region, fn_name_from_spec)] = len(raw)
         result = _fn_config(fn)
         # Merge DLQ config into response
         fn_name = spec.get("FunctionName", "")
@@ -297,14 +306,22 @@ async def _handle_functions(
         if sub == "code":
             if method == "PUT":
                 spec = json.loads(body) if body else {}
-                # Validate code size
-                zip_file = spec.get("ZipFile")
-                if zip_file:
-                    import base64 as b64mod
+                if "Code" not in spec:
+                    return _error("InvalidRequest", "UpdateFunctionCode requires Code", 400)
+                code = spec["Code"]
+                zip_file = code.get("ZipFile")
+                if not zip_file:
+                    return _error("InvalidRequest", "Code must include a ZipFile", 400)
+                import base64 as b64mod
 
-                    raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
-                    validate_code_size_zipped(len(raw))
-                    get_concurrency_tracker().add_code_size(len(raw))
+                raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
+                validate_code_size_zipped(len(raw))
+                size_key = (account_id, region, func_name)
+                previous = _code_sizes.pop(size_key, 0)
+                if previous:
+                    get_concurrency_tracker().remove_code_size(previous)
+                get_concurrency_tracker().add_code_size(len(raw))
+                _code_sizes[size_key] = len(raw)
                 qualifier = request.query_params.get("Qualifier")
                 result = backend.update_function_code(func_name, qualifier, spec)
                 # Invalidate code cache so next invocation picks up new code
