@@ -202,6 +202,7 @@ def _json_body(body: bytes) -> tuple[dict | None, Response | None]:
         return None, _error("InvalidRequest", "Request body must be a JSON object", 400)
     return parsed, None
 
+
 async def _handle_functions(
     parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
 ) -> Response:
