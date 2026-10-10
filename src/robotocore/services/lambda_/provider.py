@@ -306,22 +306,21 @@ async def _handle_functions(
         if sub == "code":
             if method == "PUT":
                 spec = json.loads(body) if body else {}
-                if "Code" not in spec:
-                    return _error("InvalidRequest", "UpdateFunctionCode requires Code", 400)
-                code = spec["Code"]
-                zip_file = code.get("ZipFile")
-                if not zip_file:
-                    return _error("InvalidRequest", "Code must include a ZipFile", 400)
-                import base64 as b64mod
+                # UpdateFunctionCode accepts inline ZipFile or an S3 source;
+                # only inline payloads get size accounting (the S3 flow has no
+                # bytes at this site, and moto tracks storage separately).
+                zip_file = (spec.get("Code") or {}).get("ZipFile")
+                if zip_file:
+                    import base64 as b64mod
 
-                raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
-                validate_code_size_zipped(len(raw))
-                size_key = (account_id, region, func_name)
-                previous = _code_sizes.pop(size_key, 0)
-                if previous:
-                    get_concurrency_tracker().remove_code_size(previous)
-                get_concurrency_tracker().add_code_size(len(raw))
-                _code_sizes[size_key] = len(raw)
+                    raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
+                    validate_code_size_zipped(len(raw))
+                    size_key = (account_id, region, func_name)
+                    previous = _code_sizes.pop(size_key, 0)
+                    if previous:
+                        get_concurrency_tracker().remove_code_size(previous)
+                    get_concurrency_tracker().add_code_size(len(raw))
+                    _code_sizes[size_key] = len(raw)
                 qualifier = request.query_params.get("Qualifier")
                 result = backend.update_function_code(func_name, qualifier, spec)
                 # Invalidate code cache so next invocation picks up new code
