@@ -1429,6 +1429,7 @@ class TestGreengrassGapOps:
 
 class TestGreengrassUnimplementedGapOps:
     """Greengrass gap operations (recorded as 501 gaps in probes/greengrass.json)."""
+
     # Policy: unimplemented operations are skipped (not asserted-to-fail), so the
     # implementer sees the suite green with a skip, not a red test to un-break.
 
