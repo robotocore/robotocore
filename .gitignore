@@ -30,3 +30,6 @@ logs/
 # Generated files
 docs/quality/
 site/
+
+# scripts/local-ci.sh per-run server log
+.local-ci-server.log

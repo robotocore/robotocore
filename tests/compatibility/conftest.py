@@ -1,4 +1,10 @@
-"""Shared fixtures for compatibility tests."""
+"""Shared fixtures for compatibility tests.
+
+These suites talk to a long-lived robotocore process over HTTP (unlike
+`tests/integration`, which boots an in-process server per module). Choose the
+target with `ENDPOINT_URL` (defaults to `http://localhost:4566`); at collection
+time the server must be fresh — see `pytest_configure` below for the guard.
+"""
 
 import logging
 import os
@@ -92,4 +98,35 @@ def _clear_chaos_rules_at_session_end():
     except Exception:
         logger.debug(
             "Could not clear chaos rules at session end (server may be stopped)", exc_info=True
+        )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Refuse to run the compat suites against a server this run did not just start.
+
+    These suites are only meaningful against a robotocore whose state starts empty
+    (CI boots a fresh server immediately before the run). Pointing them at some
+    other long-running robotocore silently produces phantom failures — state it
+    never created, forty-some 'must be replaced' plans, catalog mismatches — which
+    is indistinguishable from real defects. If the only reachable server is older
+    than ``ROBOTOCORE_COMPAT_MAX_UPTIME`` seconds (default 600), abort collection
+    with instructions; ``ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1`` opts out for
+    intentional runs against a persistent server.
+    """
+    max_uptime = float(os.environ.get("ROBOTOCORE_COMPAT_MAX_UPTIME", "600"))
+    allow_warm = os.environ.get("ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER", "0") == "1"
+    try:
+        resp = requests.get(f"{ENDPOINT_URL}/_robotocore/health", timeout=5)
+        uptime = float(resp.json().get("uptime_seconds", 0))
+    except Exception:
+        return  # unreachable: leave collection alone; the tests themselves will fail loudly
+
+    if uptime > max_uptime and not allow_warm:
+        raise pytest.UsageError(
+            f"The server at {ENDPOINT_URL} has been up for {uptime:.0f}s, "
+            f"longer than the {max_uptime:.0f}s freshness limit. The compatibility "
+            "suites populate API state as they run and are only comparable against a "
+            "freshly started robotocore (see .github/workflows/ci.yml). Start one and "
+            "point ENDPOINT_URL at it, or set ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1 "
+            "if a persistent server is intentional."
         )

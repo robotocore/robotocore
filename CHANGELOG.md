@@ -43,13 +43,6 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Added
 
-- **IPAM pool/scope filters honour `*` and `?` wildcards** in `DescribeIpamPools` and
-  `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so Terraform
-  data-source lookups that send `description=*…*` find their pool.
-- **Tag filters on IPAM pools read the tag store correctly** — a tagged pool previously crashed
-  the filter path (`TaggedEC2Resource.get_tags()` returns describe_tags dicts, not tag objects).
-
-
 - **Deterministic account ids for Organizations `CreateAccount`.** `POST
   /_robotocore/organizations/account-ids` (or `ROBOTOCORE_ORG_ACCOUNT_IDS=<json file>`) with
   `{"emails": {"<email>": "<12-digit id>"}, "names": {"<name>": "<id>"}}` makes `CreateAccount`
