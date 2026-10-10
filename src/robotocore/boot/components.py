@@ -69,6 +69,12 @@ def state_component() -> ServiceComponent:
             from robotocore.services.events.provider import (
                 register_state_handler as register_events_state,
             )
+            from robotocore.services.lambda_.provider import (
+                register_state_handler as register_lambda_state,
+            )
+            from robotocore.services.s3.provider import (
+                register_state_handler as register_s3_state,
+            )
             from robotocore.services.sqs.provider import (
                 register_state_handler as register_sqs_state,
             )
@@ -78,6 +84,8 @@ def state_component() -> ServiceComponent:
             register_events_state(manager)
             register_sqs_state(manager)
             register_ec2_state(manager)
+            register_s3_state(manager)
+            register_lambda_state(manager)
             if not manager.restore_on_startup():
                 manager.load()
         _ready = True

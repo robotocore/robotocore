@@ -29,6 +29,7 @@ import sys
 import tarfile
 import threading
 import time
+import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -291,6 +292,12 @@ def _rebuild_private_key(der: bytes) -> Any:
     return load_der_private_key(der, password=None)
 
 
+def _rebuild_weak_value_dict(items: dict) -> Any:
+    """Rebuild a WeakValueDictionary from a pickled snapshot of live entries."""
+    rebuilt = weakref.WeakValueDictionary(items)
+    return rebuilt
+
+
 def _is_crypto_private_key(obj: Any) -> bool:
     return (
         type(obj).__module__.startswith("cryptography.")
@@ -315,6 +322,12 @@ class _ThreadSafePickler(pickle.Pickler):
                 _ThreadingSentinel,
                 (type_name,),
             )
+        if isinstance(obj, weakref.WeakValueDictionary):
+            # moto's LambdaStorage keeps functions in a WeakValueDictionary;
+            # its closures cannot pickle, which would drop the ENTIRE lambda
+            # backend from saved state (metadata.json still claimed it). Dump
+            # the live entries as a plain dict and rebuild on load.
+            return (_rebuild_weak_value_dict, (dict(obj),))
         if _is_crypto_private_key(obj):
             # KMS keys hold cryptography key objects (Rust-backed, unpicklable), which dropped
             # the whole KMS backend from saved state. Round-trip them as PKCS#8 DER.

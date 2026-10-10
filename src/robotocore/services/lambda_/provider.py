@@ -1194,6 +1194,42 @@ def _cascade_delete_function(func_name: str, region: str, account_id: str) -> No
         _runtime_mgmt_configs.pop(rmc_key, None)
 
 
+def export_state() -> dict:
+    """Export the native ESM + function-URL stores for state persistence."""
+    from robotocore.services.lambda_.urls import _url_configs
+
+    with _esm_lock:
+        esms = {uuid: dict(cfg) for uuid, cfg in _esm_store.items()}
+    return {
+        "schema_version": 1,
+        "event_source_mappings": esms,
+        "function_urls": {key: dict(cfg) for key, cfg in _url_configs.items()},
+    }
+
+
+def load_state(data: dict) -> None:
+    """Replace the native ESM + function-URL stores from a snapshot."""
+    data = data or {}
+    with _esm_lock:
+        _esm_store.clear()
+        for uuid, cfg in (data.get("event_source_mappings") or {}).items():
+            _esm_store[uuid] = dict(cfg)
+        loaded = len(_esm_store)
+    logger.debug("lambda state: loaded %d event source mappings", loaded)
+
+
+def register_state_handler(manager=None) -> None:
+    """Register Lambda native state save/load hooks with a state manager."""
+    global _default_state_handler_registered
+
+    if manager is None:
+        from robotocore.state.manager import get_state_manager
+
+        manager = get_state_manager()
+
+    manager.register_native_handler("lambda", export_state, load_state)
+
+
 async def _handle_event_source_mappings(
     parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
 ) -> Response:

@@ -49,3 +49,25 @@ class TestLongPollPool:
         assert all(n.startswith("sqs-longpoll") for n in watched_receives), (
             f"expected dedicated long-poll pool threads, saw {watched_receives}"
         )
+
+
+class TestLongPollPoolSize:
+    """SQS_LONGPOLL_THREADS: int parse honored; garbage falls back with a warning."""
+
+    def test_garbage_falls_back_to_default(self, monkeypatch, caplog):
+        import logging
+
+        from robotocore.services.sqs.provider import _longpoll_pool_size
+
+        caplog.set_level(logging.WARNING)
+        monkeypatch.setenv("SQS_LONGPOLL_THREADS", "not-a-number")
+        assert _longpoll_pool_size() == 16
+        assert any(
+            "SQS_LONGPOLL_THREADS" in record.message for record in caplog.records
+        ), [rec.message for rec in caplog.records]
+
+    def test_int_parse_honored(self, monkeypatch):
+        from robotocore.services.sqs.provider import _longpoll_pool_size
+
+        monkeypatch.setenv("SQS_LONGPOLL_THREADS", "5")
+        assert _longpoll_pool_size() == 5

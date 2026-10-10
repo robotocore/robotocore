@@ -15,6 +15,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.services.s3.guards import _require_bucket
 from robotocore.services.s3.notifications import (
     NotificationConfig,
     fire_event,
@@ -663,6 +664,61 @@ def _cleanup_bucket_stores(bucket: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def export_state() -> dict:
+    """Export the native S3 sub-resource stores for state persistence."""
+    return {
+        "schema_version": 1,
+        "cors": {bucket: list(rules) for bucket, rules in _cors_store.items()},
+        "lifecycle": {bucket: list(rules) for bucket, rules in _lifecycle_store.items()},
+        "transition_min_size": dict(_lifecycle_min_size_store),
+        "object_lock": {bucket: dict(cfg) for bucket, cfg in _object_lock_store.items()},
+        "legal_hold": {b: dict(h) for b, h in _object_legal_hold_store.items()},
+        "logging": {bucket: dict(cfg) for bucket, cfg in _logging_store.items()},
+        "directory_buckets": {bucket: dict(md) for bucket, md in _directory_bucket_store.items()},
+    }
+
+
+def load_state(data: dict) -> None:
+    """Replace the native S3 sub-resource stores from a persistence snapshot."""
+    data = data or {}
+    version = data.get("schema_version")
+    if version is not None and version != 1:
+        logger.warning("s3 snapshot schema_version=%s; expected 1", version)
+    with _store_lock:
+        _cors_store.clear()
+        for bucket, rules in (data.get("cors") or {}).items():
+            _cors_store[bucket] = list(rules)
+        _lifecycle_store.clear()
+        for bucket, rules in (data.get("lifecycle") or {}).items():
+            _lifecycle_store[bucket] = list(rules)
+        _lifecycle_min_size_store.clear()
+        _lifecycle_min_size_store.update(data.get("transition_min_size") or {})
+        _object_lock_store.clear()
+        for bucket, cfg in (data.get("object_lock") or {}).items():
+            _object_lock_store[bucket] = dict(cfg)
+        _object_legal_hold_store.clear()
+        for bucket, hold in (data.get("legal_hold") or {}).items():
+            _object_legal_hold_store[bucket] = dict(hold)
+        _logging_store.clear()
+        for bucket, cfg in (data.get("logging") or {}).items():
+            _logging_store[bucket] = dict(cfg)
+        _directory_bucket_store.clear()
+        for bucket, md in (data.get("directory_buckets") or {}).items():
+            _directory_bucket_store[bucket] = dict(md)
+
+
+def register_state_handler(manager=None) -> None:
+    """Register S3 sub-resource state save/load hooks with a state manager."""
+    global _default_state_handler_registered
+
+    if manager is None:
+        from robotocore.state.manager import get_state_manager
+
+        manager = get_state_manager()
+
+    manager.register_native_handler("s3", export_state, load_state)
+
+
 async def handle_s3_request(request: Request, region: str, account_id: str) -> Response:
     """Handle S3 request: delegate to Moto, then fire notifications."""
     path = request.url.path
@@ -704,23 +760,23 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
 
     # CORS config
     if sub == "cors":
-        return await _handle_cors_config(request, method, path)
+        return await _handle_cors_config(request, method, path, region, account_id)
 
     # Lifecycle config
     if sub == "lifecycle":
-        return await _handle_lifecycle_config(request, method, path)
+        return await _handle_lifecycle_config(request, method, path, region, account_id)
 
     # Object lock config
     if sub == "object-lock":
-        return await _handle_object_lock_config(request, method, path)
+        return await _handle_object_lock_config(request, method, path, region, account_id)
 
     # Legal hold
     if sub == "legal-hold":
-        return await _handle_legal_hold(request, method, path)
+        return await _handle_legal_hold(request, method, path, region, account_id)
 
     # Logging config — intercept to skip Moto's strict permission checks
     if sub == "logging":
-        return await _handle_logging_config(request, method, path)
+        return await _handle_logging_config(request, method, path, region, account_id)
 
     # Multipart: ?uploads and ?uploadId= are forwarded to Moto directly
     # Versioning: ?versioning and ?versionId= are forwarded to Moto directly
@@ -769,14 +825,19 @@ async def handle_s3_request(request: Request, region: str, account_id: str) -> R
                     logging.debug("Failed to detect directory bucket type from request body")
 
             if method == "PUT" and key:
+                # moto's PutObject response is empty (no Content-Length), so
+                # read the real object size from the S3 backend instead.
                 content_length = 0
-                for h, v in response.raw_headers:
-                    hname = h.decode() if isinstance(h, bytes) else h
-                    if hname.lower() == "content-length":
-                        try:
-                            content_length = int(v)
-                        except (ValueError, TypeError) as exc:
-                            logger.debug("handle_s3_request: int failed (non-fatal): %s", exc)
+                try:
+                    from moto.backends import get_backend  # noqa: I001
+
+                    backend = get_backend("s3")[account_id][region]
+                    stored = backend.get_object(bucket, key)
+                    content_length = stored.size
+                except Exception:  # noqa: BLE001
+                    logging.debug(
+                        "handle_s3_request: could not read stored object size (non-fatal)"
+                    )
                 etag = ""
                 for h, v in response.raw_headers:
                     hname = h.decode() if isinstance(h, bytes) else h
@@ -939,11 +1000,17 @@ async def _handle_notification_config(request: Request, method: str, path: str) 
     return Response(status_code=405)
 
 
-async def _handle_cors_config(request: Request, method: str, path: str) -> Response:
+async def _handle_cors_config(
+    request: Request, method: str, path: str, region: str, account_id: str
+) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
     bucket = match.group(1)
+
+    missing = _require_bucket(bucket, region, account_id)
+    if missing is not None:
+        return missing
 
     if method == "GET":
         rules = get_bucket_cors(bucket)
@@ -971,11 +1038,17 @@ async def _handle_cors_config(request: Request, method: str, path: str) -> Respo
     return Response(status_code=405)
 
 
-async def _handle_lifecycle_config(request: Request, method: str, path: str) -> Response:
+async def _handle_lifecycle_config(
+    request: Request, method: str, path: str, region: str, account_id: str
+) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
     bucket = match.group(1)
+
+    missing = _require_bucket(bucket, region, account_id)
+    if missing is not None:
+        return missing
 
     if method == "GET":
         rules = get_bucket_lifecycle(bucket)
@@ -1015,11 +1088,17 @@ async def _handle_lifecycle_config(request: Request, method: str, path: str) -> 
     return Response(status_code=405)
 
 
-async def _handle_object_lock_config(request: Request, method: str, path: str) -> Response:
+async def _handle_object_lock_config(
+    request: Request, method: str, path: str, region: str, account_id: str
+) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
     bucket = match.group(1)
+
+    missing = _require_bucket(bucket, region, account_id)
+    if missing is not None:
+        return missing
 
     if method == "GET":
         config = get_object_lock_config(bucket)
@@ -1044,11 +1123,17 @@ async def _handle_object_lock_config(request: Request, method: str, path: str) -
     return Response(status_code=405)
 
 
-async def _handle_legal_hold(request: Request, method: str, path: str) -> Response:
+async def _handle_legal_hold(
+    request: Request, method: str, path: str, region: str, account_id: str
+) -> Response:
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
     bucket = match.group(1)
+
+    missing = _require_bucket(bucket, region, account_id)
+    if missing is not None:
+        return missing
     key = match.group(2) or ""
 
     if not key:
@@ -1075,12 +1160,18 @@ async def _handle_legal_hold(request: Request, method: str, path: str) -> Respon
     return Response(status_code=405)
 
 
-async def _handle_logging_config(request: Request, method: str, path: str) -> Response:
+async def _handle_logging_config(
+    request: Request, method: str, path: str, region: str, account_id: str
+) -> Response:
     """Handle ?logging sub-resource — skip Moto's strict permission checks."""
     match = _PATH_RE.match(path)
     if not match:
         return Response(status_code=400, content="Bad request")
     bucket = match.group(1)
+
+    missing = _require_bucket(bucket, region, account_id)
+    if missing is not None:
+        return missing
 
     if method == "GET":
         with _store_lock:

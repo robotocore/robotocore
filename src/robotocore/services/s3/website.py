@@ -267,12 +267,19 @@ def _parse_routing_rule(rule_el: ET.Element) -> dict:
 
 
 def _s3_xml_error(code: str, message: str, status_code: int = 404) -> Response:
-    """Return a standard S3 XML error response."""
+    """Return a standard S3 XML error response.
+
+    The message embeds the caller-controlled object key; escape it so a
+    percent-decoded `<`/`&` in the key parses as the intended NoSuchKey
+    instead of a malformed document.
+    """
+    from xml.sax.saxutils import escape as xml_escape
+
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<Error>"
-        f"<Code>{code}</Code>"
-        f"<Message>{message}</Message>"
+        f"<Code>{xml_escape(code)}</Code>"
+        f"<Message>{xml_escape(message)}</Message>"
         "</Error>"
     )
     return Response(content=body, status_code=status_code, media_type="application/xml")
@@ -320,13 +327,16 @@ def _check_redirect_rules(
         else:
             new_key = key
 
+        # A decoded key may carry non-latin-1 code points that break the
+        # header encode; route-style keys are ASCII-escaped for the redirect.
+        safe_key = new_key.encode("latin-1", "backslashreplace").decode("latin-1")
         if hostname:
             if protocol:
-                location = f"{protocol}://{hostname}/{new_key}"
+                location = f"{protocol}://{hostname}/{safe_key}"
             else:
-                location = f"http://{hostname}/{new_key}"
+                location = f"http://{hostname}/{safe_key}"
         else:
-            location = f"/{new_key}"
+            location = f"/{safe_key}"
 
         return Response(
             status_code=status,
