@@ -4,10 +4,13 @@ Uses JSON protocol (application/x-amz-json-1.0) as used by modern boto3.
 Falls back to query protocol parsing for legacy clients.
 """
 
+import asyncio
 import base64
+import concurrent.futures
 import hashlib
 import json
 import logging
+import os
 import struct
 import threading
 import time
@@ -38,6 +41,14 @@ _default_state_handler_registered = False
 _purge_tracker = PurgeTracker()
 _delete_tracker = QueueDeletedTracker()
 _retention_scanner = RetentionScanner()
+
+# ReceiveMessage long-poll waits run on a dedicated bounded pool so they cannot
+# monopolize the default asyncio executor (whose worker count is small on
+# typical hosts) and queue every other service's to_thread work behind them.
+_LONG_POLL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=max(4, int(os.environ.get("SQS_LONGPOLL_THREADS", "16"))),
+    thread_name_prefix="sqs-longpoll",
+)
 
 
 def _behavioral_scope_key(account_id: str, region: str, queue_name: str) -> str:
@@ -180,12 +191,20 @@ async def handle_sqs_request(request: Request, region: str, account_id: str) -> 
         return await forward_to_moto(request, "sqs", account_id=account_id)
 
     try:
-        # ReceiveMessage may long-poll (block), so run in a thread to avoid
-        # blocking the event loop and deadlocking cross-service callbacks.
+        # ReceiveMessage may long-poll (block) — run it on the dedicated
+        # long-poll pool so waits never starve the default executor that every
+        # other to_thread call shares.
         if action == "ReceiveMessage":
-            import asyncio
-
-            result = await asyncio.to_thread(handler, store, params, region, account_id, request)
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                _LONG_POLL_EXECUTOR,
+                handler,
+                store,
+                params,
+                region,
+                account_id,
+                request,
+            )
         else:
             result = handler(store, params, region, account_id, request)
         if use_json:
