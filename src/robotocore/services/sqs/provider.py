@@ -42,11 +42,23 @@ _purge_tracker = PurgeTracker()
 _delete_tracker = QueueDeletedTracker()
 _retention_scanner = RetentionScanner()
 
+
+def _longpoll_pool_size() -> int:
+    """Pool size from SQS_LONGPOLL_THREADS; a bad value logs a warning and
+    falls back to the default so one bad env var cannot brick the server."""
+    raw = os.environ.get("SQS_LONGPOLL_THREADS", "16")
+    try:
+        return max(4, int(raw))
+    except (TypeError, ValueError):
+        logger.warning("SQS_LONGPOLL_THREADS=%r is not an integer; using 16", raw)
+        return 16
+
+
 # ReceiveMessage long-poll waits run on a dedicated bounded pool so they cannot
 # monopolize the default asyncio executor (whose worker count is small on
 # typical hosts) and queue every other service's to_thread work behind them.
 _LONG_POLL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=max(4, int(os.environ.get("SQS_LONGPOLL_THREADS", "16"))),
+    max_workers=_longpoll_pool_size(),
     thread_name_prefix="sqs-longpoll",
 )
 

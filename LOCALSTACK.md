@@ -67,7 +67,7 @@ That's it. Same port, same endpoint, same credentials.
 | `GATEWAY_LISTEN=:4566` | Default | Same port |
 | `SERVICES=s3,sqs` | All always on | No subsetting |
 | `DEBUG=1` | `ROBOTOCORE_LOG_LEVEL=DEBUG` | |
-| `PERSISTENCE=1` | Snapshot API | `POST /_robotocore/state/save` |
+| `PERSISTENCE=1` | Auto-save into `ROBOTOCORE_STATE_DIR` after every mutating request (default `/tmp/robotocore/state`); explicit snapshots remain available via `POST /_robotocore/state/save` |
 | `LAMBDA_EXECUTOR=local` | Default | In-process execution |
 | `DEFAULT_REGION` | `AWS_DEFAULT_REGION` | Standard AWS env var |
 | `ENFORCE_IAM=1` | `ENFORCE_IAM=1` | Same |
