@@ -15,9 +15,10 @@ import moto.backends as moto_backends
 from moto.core.base_backend import BackendDict
 from starlette.requests import Request
 from starlette.responses import Response
+from werkzeug.exceptions import NotFound as WerkzeugNotFound
 from werkzeug.routing import Map, Rule
 from werkzeug.routing.converters import BaseConverter
-from werkzeug.routing.exceptions import NoMatch as RoutingNotFound
+from werkzeug.routing.exceptions import NoMatch as WerkzeugNoMatch
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request as WerkzeugRequest
 
@@ -231,7 +232,7 @@ async def forward_to_moto(
         raw_path = request.url.path
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
-    except RoutingNotFound:
+    except (WerkzeugNotFound, WerkzeugNoMatch):
         # Moto has no route for this op shape (or service) — the "not
         # implemented" gap contract (AGENTS.md: only 501 is a gap).
         return _error_response(
@@ -386,7 +387,7 @@ async def forward_to_moto_with_body(
         raw_path = request.url.path
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
-    except RoutingNotFound:
+    except (WerkzeugNotFound, WerkzeugNoMatch):
         # Moto has no route for this op shape (or service) — the "not
         # implemented" gap contract (AGENTS.md: only 501 is a gap).
         return _error_response(
