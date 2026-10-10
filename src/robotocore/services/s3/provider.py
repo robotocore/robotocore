@@ -1225,7 +1225,9 @@ def _parse_notification_config_xml(xml_str: str) -> NotificationConfig:
     try:
         root = ET.fromstring(xml_str)
     except ET.ParseError:
-        return config
+        # Malformed input answers MalformedXML (mapped by the handler) instead
+        # of silently clearing the stored configuration with a lookalike 200.
+        return None
 
     ns = S3_NS
 
