@@ -186,6 +186,23 @@ async def handle_lambda_request(request: Request, region: str, account_id: str) 
         return _error("ServiceException", error_msg, 500)
 
 
+def _json_body(body: bytes) -> tuple[dict | None, Response | None]:
+    """Parse a JSON request body, answering 400 on malformed client input.
+
+    Malformed input previously escaped as a 500 `ServiceException` via the
+    unmapped-broad-handler path; AWS answers 400 `InvalidRequestContent`.
+    """
+    if not body:
+        return {}, None
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError as e:
+        return None, _error("InvalidRequest", f"Malformed request body: {e}", 400)
+    if not isinstance(parsed, dict):
+        return None, _error("InvalidRequest", "Request body must be a JSON object", 400)
+    return parsed, None
+
+
 async def _handle_functions(
     parts: list[str], method: str, body: bytes, request: Request, region: str, account_id: str
 ) -> Response:
@@ -198,7 +215,9 @@ async def _handle_functions(
 
     # POST /functions — CreateFunction
     if len(parts) == 1 and method == "POST":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         # Validate env var size
         env_vars = (spec.get("Environment") or {}).get("Variables") or {}
         if env_vars:
@@ -285,7 +304,9 @@ async def _handle_functions(
                 fn = backend.get_function(func_name)
                 return _json(200, _fn_config(fn))
             elif method == "PUT":
-                spec = json.loads(body) if body else {}
+                spec, spec_err = _json_body(body) if body else ({}, None)
+                if spec is None:
+                    return spec_err
                 # Track DeadLetterConfig in our native store
                 if "DeadLetterConfig" in spec:
                     _store_dlq_config(account_id, region, func_name, spec["DeadLetterConfig"])
@@ -316,7 +337,9 @@ async def _handle_functions(
         # /functions/{name}/code — UpdateFunctionCode / GetFunctionCode
         if sub == "code":
             if method == "PUT":
-                spec = json.loads(body) if body else {}
+                spec, spec_err = _json_body(body) if body else ({}, None)
+                if spec is None:
+                    return spec_err
                 # botocore's UpdateFunctionCodeRequest carries a TOP-LEVEL
                 # ZipFile (there is no Code member on update); only inline
                 # payloads get size accounting (S3-source flows have no bytes
@@ -343,7 +366,9 @@ async def _handle_functions(
         # /functions/{name}/versions — PublishVersion / ListVersionsByFunction
         if sub == "versions":
             if method == "POST":
-                spec = json.loads(body) if body else {}
+                spec, spec_err = _json_body(body) if body else ({}, None)
+                if spec is None:
+                    return spec_err
                 description = spec.get("Description", "")
                 ver = backend.publish_version(func_name, description)
                 return _json(201, _fn_config(ver))
@@ -355,7 +380,9 @@ async def _handle_functions(
         if sub == "aliases":
             if len(parts) == 3:
                 if method == "POST":
-                    spec = json.loads(body) if body else {}
+                    spec, spec_err = _json_body(body) if body else ({}, None)
+                    if spec is None:
+                        return spec_err
                     alias = backend.create_alias(
                         spec.get("Name"),
                         func_name,
@@ -373,7 +400,9 @@ async def _handle_functions(
                     alias = backend.get_alias(alias_name, func_name)
                     return _json(200, _alias_dict(alias))
                 elif method == "PUT":
-                    spec = json.loads(body) if body else {}
+                    spec, spec_err = _json_body(body) if body else ({}, None)
+                    if spec is None:
+                        return spec_err
                     alias = backend.update_alias(
                         alias_name,
                         func_name,
@@ -404,7 +433,9 @@ async def _handle_functions(
         # /functions/{name}/concurrency
         if sub == "concurrency":
             if method == "PUT":
-                spec = json.loads(body) if body else {}
+                spec, spec_err = _json_body(body) if body else ({}, None)
+                if spec is None:
+                    return spec_err
                 reserved = spec.get("ReservedConcurrentExecutions", 0)
                 result = backend.put_function_concurrency(func_name, reserved)
                 return _json(
@@ -501,7 +532,9 @@ def _handle_recursion_config(
             value = _recursion_configs.get(key, "Terminate")
         return _json(200, {"RecursiveLoop": value})
     elif method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         value = spec.get("RecursiveLoop", "Terminate")
         if value not in ("Allow", "Terminate"):
             return _error(
@@ -551,7 +584,9 @@ def _handle_scaling_config(
             },
         )
     elif method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         sc = spec.get("FunctionScalingConfig", {})
         with _scaling_lock:
             _scaling_configs[key] = sc
@@ -586,7 +621,9 @@ def _handle_code_signing_config(
         # empty CodeSigningConfigArn (Terraform reads this on every aws_lambda_function refresh).
         return _json(200, {"CodeSigningConfigArn": csc_arn or "", "FunctionName": func_name})
     elif method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         csc_arn = spec.get("CodeSigningConfigArn", "")
         with _code_signing_lock:
             _code_signing_configs[key] = csc_arn
@@ -627,7 +664,9 @@ def _handle_runtime_management_config(
             return _json(200, {"UpdateRuntimeOn": "Auto", "FunctionArn": func_arn})
         return _json(200, {**config, "FunctionArn": func_arn})
     elif method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         update_on = spec.get("UpdateRuntimeOn", "Auto")
         config = {"UpdateRuntimeOn": update_on}
         if update_on == "Manual" and "RuntimeVersionArn" in spec:
@@ -669,7 +708,9 @@ def _handle_layer_version_permission(
         return _json(200, {"Policy": json.dumps(policy), "RevisionId": str(uuid.uuid4())})
     elif method == "POST" and len(parts) == 5:
         # AddLayerVersionPermission
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         sid = spec.get("StatementId", "")
         statement = {
             "Sid": sid,
@@ -726,14 +767,18 @@ def _handle_function_url(
             backend.get_function(func_name)
         except Exception:  # noqa: BLE001
             return _error("ResourceNotFoundException", f"Function not found: {func_name}", 404)
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         url_config = create_function_url_config(func_name, region, account_id, spec)
         return _json(201, url_config)
     elif method == "GET":
         url_config = get_function_url_config(func_name, region, account_id)
         return _json(200, url_config)
     elif method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         url_config = update_function_url_config(func_name, region, account_id, spec)
         return _json(200, url_config)
     elif method == "DELETE":
@@ -753,12 +798,16 @@ def _handle_event_invoke_config(
 ) -> Response:
     """Handle event invoke config CRUD."""
     if method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         config = backend.put_function_event_invoke_config(func_name, spec)
         return _json(200, config)
     elif method == "POST":
         # UpdateFunctionEventInvokeConfig uses POST
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         config = backend.update_function_event_invoke_config(func_name, spec)
         return _json(200, config)
     elif method == "GET":
@@ -783,7 +832,9 @@ def _handle_provisioned_concurrency(
     qualifier = request.query_params.get("Qualifier", "$LATEST")
 
     if method == "PUT":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         config = _put_provisioned_concurrency(
             account_id,
             region,
@@ -1009,7 +1060,9 @@ def _handle_code_signing_configs(
 
     if len(parts) == 1:
         if method == "POST":
-            spec = json.loads(body) if body else {}
+            spec, spec_err = _json_body(body) if body else ({}, None)
+            if spec is None:
+                return spec_err
             csc = backend.create_code_signing_config(
                 spec.get("AllowedPublishers", {}),
                 spec.get("Description", ""),
@@ -1036,7 +1089,9 @@ def _handle_code_signing_configs(
             backend.delete_code_signing_config(config_arn)
             return _json(204, None)
         if method == "PUT":
-            spec = json.loads(body) if body else {}
+            spec, spec_err = _json_body(body) if body else ({}, None)
+            if spec is None:
+                return spec_err
             csc = backend.get_code_signing_config(config_arn)
             if "Description" in spec:
                 csc.description = spec["Description"]
@@ -1068,7 +1123,9 @@ def _handle_capacity_providers(
     if len(parts) == 1:
         # POST /capacity-providers → CreateCapacityProvider
         if method == "POST":
-            spec = json.loads(body) if body else {}
+            spec, spec_err = _json_body(body) if body else ({}, None)
+            if spec is None:
+                return spec_err
             name = spec.get("CapacityProviderName", "")
             provider = {
                 "CapacityProviderName": name,
@@ -1122,7 +1179,9 @@ def _handle_capacity_providers(
             return _json(200, {"CapacityProvider": provider})
         # PUT /capacity-providers/{name} → UpdateCapacityProvider
         if method == "PUT":
-            spec = json.loads(body) if body else {}
+            spec, spec_err = _json_body(body) if body else ({}, None)
+            if spec is None:
+                return spec_err
             with _capacity_providers_lock:
                 provider = _capacity_providers.get(key)
             if provider is None:
@@ -1292,7 +1351,9 @@ async def _handle_event_source_mappings(
 
     if len(parts) == 1:
         if method == "POST":
-            spec = json.loads(body) if body else {}
+            spec, spec_err = _json_body(body) if body else ({}, None)
+            if spec is None:
+                return spec_err
             esm_uuid = str(uuid.uuid4())
 
             # Resolve function ARN
@@ -1369,7 +1430,9 @@ async def _handle_event_source_mappings(
             return _json(200, _sanitize_esm(config))
 
         elif method == "PUT":
-            spec = json.loads(body) if body else {}
+            spec, spec_err = _json_body(body) if body else ({}, None)
+            if spec is None:
+                return spec_err
             with _esm_lock:
                 if esm_uuid in _esm_store:
                     for key in [
@@ -1435,7 +1498,9 @@ async def _handle_layers(
         if len(parts) >= 3 and parts[2] == "versions":
             if len(parts) == 3:
                 if method == "POST":
-                    spec = json.loads(body) if body else {}
+                    spec, spec_err = _json_body(body) if body else ({}, None)
+                    if spec is None:
+                        return spec_err
                     spec["LayerName"] = layer_name
                     layer_ver = backend.publish_layer_version(spec)
                     return _json(201, _layer_version_dict(layer_ver))
@@ -1474,7 +1539,9 @@ async def _handle_tags(
         fn = backend.get_function(arn)
         return _json(200, {"Tags": fn.tags or {}})
     elif method == "POST":
-        spec = json.loads(body) if body else {}
+        spec, spec_err = _json_body(body) if body else ({}, None)
+        if spec is None:
+            return spec_err
         backend.tag_resource(arn, spec.get("Tags", {}))
         return _json(204, None)
     elif method == "DELETE":
