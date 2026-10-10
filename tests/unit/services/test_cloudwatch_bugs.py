@@ -175,7 +175,7 @@ class TestMetricFilterExtraction:
     def test_metric_value_extracted_from_message_not_hardcoded_to_one(self):
         """metricValue may be a `$.field.path` extractor, not just a literal."""
         region, account = "us-east-1", "999999999999"
-        store = get_filter_store(region)
+        store = get_filter_store(region, account)
         store.put_metric_filter(
             "/aws/bedrock/engineer-inference",
             "BedrockInputTokensByModel",
@@ -206,7 +206,7 @@ class TestMetricFilterExtraction:
     def test_metric_filter_without_dimensions_still_works(self):
         """A metric filter with no `dimensions` key (the common case) is unaffected."""
         region, account = "us-east-1", "999999999998"
-        store = get_filter_store(region)
+        store = get_filter_store(region, account)
         store.put_metric_filter(
             "/some/group",
             "PlainCount",
@@ -227,7 +227,7 @@ class TestMetricFilterExtraction:
     def test_metric_not_emitted_when_extracted_value_missing(self):
         """If metricValue references a field the message doesn't have, skip cleanly."""
         region, account = "us-east-1", "999999999997"
-        store = get_filter_store(region)
+        store = get_filter_store(region, account)
         store.put_metric_filter(
             "/some/group",
             "MissingField",

@@ -24,7 +24,7 @@ _sampling_rules: dict[
     tuple[str, str], dict[str, Any]
 ] = {}  # (account_id, region) -> {rule_name: record}
 _groups: dict[tuple[str, str], dict[str, Any]] = {}  # (account_id, region) -> {group_name: group}
-_encryption_config: dict[str, dict[str, Any]] = {}  # region -> config
+_encryption_config: dict[tuple[str, str], dict[str, Any]] = {}  # (account_id, region) -> config
 _tags: dict[str, list[dict[str, str]]] = {}  # ARN -> tags
 
 
@@ -276,12 +276,12 @@ def _update_group(params: dict, region: str, account_id: str) -> dict:
 
 
 def _get_encryption_config(params: dict, region: str, account_id: str) -> dict:
-    config = _encryption_config.get(region, _default_encryption_config())
+    config = _encryption_config.get((account_id, region), _default_encryption_config())
     return {"EncryptionConfig": dict(config)}
 
 
 def _put_encryption_config(params: dict, region: str, account_id: str) -> dict:
-    config = _encryption_config.setdefault(region, _default_encryption_config())
+    config = _encryption_config.setdefault((account_id, region), _default_encryption_config())
     enc_type = params.get("Type", "NONE")
     key_id = params.get("KeyId", "")
     config["Type"] = enc_type
@@ -324,8 +324,8 @@ def _list_tags_for_resource(params: dict, region: str, account_id: str) -> dict:
     return {"Tags": tags, "NextToken": None}
 
 
-# Resource policies store: policy_name -> policy dict
-_resource_policies: dict[str, dict[str, Any]] = {}
+# Resource policies store: (account_id, region) -> {policy_name: policy dict}
+_resource_policies: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def _put_resource_policy(params: dict, region: str, account_id: str) -> dict:
@@ -339,28 +339,31 @@ def _put_resource_policy(params: dict, region: str, account_id: str) -> dict:
         "PolicyRevisionId": revision_id,
         "LastUpdatedTime": 0.0,
     }
-    _resource_policies[policy_name] = policy
+    account_policies = _resource_policies.setdefault((account_id, region), {})
+    account_policies[policy_name] = policy
     return {"ResourcePolicy": policy}
 
 
 def _list_resource_policies(params: dict, region: str, account_id: str) -> dict:
-    policies = list(_resource_policies.values())
+    account_policies = _resource_policies.get((account_id, region), {})
+    policies = list(account_policies.values())
     return {"ResourcePolicies": policies, "NextToken": None}
 
 
 def _delete_resource_policy(params: dict, region: str, account_id: str) -> dict:
     policy_name = params.get("PolicyName", "")
     revision_id = params.get("PolicyRevisionId", "")
+    account_policies = _resource_policies.setdefault((account_id, region), {})
 
-    if policy_name in _resource_policies:
-        existing = _resource_policies[policy_name]
+    if policy_name in account_policies:
+        existing = account_policies[policy_name]
         if revision_id and existing["PolicyRevisionId"] != revision_id:
             return _error_response(
                 "InvalidPolicyRevisionIdException",
                 "The provided policy revision id does not match.",
                 400,
             )
-        _resource_policies.pop(policy_name)
+        account_policies.pop(policy_name)
     return {}
 
 

@@ -20,8 +20,8 @@ from robotocore.services.ses.email_store import get_email_store
 
 logger = logging.getLogger(__name__)
 
-# In-memory template store: {region: {template_name: template_data}}
-_templates: dict[str, dict[str, dict]] = {}
+# In-memory template store: {(account_id, region): {template_name: template_data}}
+_templates: dict[tuple[str, str], dict[str, dict]] = {}
 
 # Path patterns for operations we handle natively
 _TEMPLATE_PATH = re.compile(r"^/v2/email/templates/?$")
@@ -41,7 +41,7 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
     if m:
         template_name = m.group(1)
         if method == "GET":
-            return _get_email_template(template_name, region)
+            return _get_email_template(template_name, region, account_id)
         elif method == "PUT":
             try:
                 body = json.loads(await request.body())
@@ -49,9 +49,9 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
                 from starlette.responses import JSONResponse
 
                 return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
-            return _update_email_template(template_name, body, region)
+            return _update_email_template(template_name, body, region, account_id)
         elif method == "DELETE":
-            return _delete_email_template(template_name, region)
+            return _delete_email_template(template_name, region, account_id)
 
     if _TEMPLATE_PATH.match(path):
         if method == "POST":
@@ -61,9 +61,9 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
                 from starlette.responses import JSONResponse
 
                 return JSONResponse({"error": f"Invalid JSON: {e}"}, status_code=400)
-            return _create_email_template(body, region)
+            return _create_email_template(body, region, account_id)
         elif method == "GET":
-            return _list_email_templates(region)
+            return _list_email_templates(region, account_id)
 
     m = _MESSAGE_INSIGHTS_PATH.match(path)
     if m:
@@ -87,14 +87,14 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
     return await forward_to_moto(request, "sesv2", account_id=account_id)
 
 
-def _store(region: str) -> dict[str, dict]:
-    return _templates.setdefault(region, {})
+def _store(region: str, account_id: str) -> dict[str, dict]:
+    return _templates.setdefault((account_id, region), {})
 
 
-def _create_email_template(body: dict, region: str) -> Response:
+def _create_email_template(body: dict, region: str, account_id: str) -> Response:
     name = body.get("TemplateName", "")
     content = body.get("TemplateContent", {})
-    store = _store(region)
+    store = _store(region, account_id)
     if name in store:
         return _error("AlreadyExistsException", f"Template {name} already exists", 409)
     store[name] = {
@@ -105,8 +105,8 @@ def _create_email_template(body: dict, region: str) -> Response:
     return Response(content=json.dumps({}), status_code=200, media_type="application/json")
 
 
-def _get_email_template(name: str, region: str) -> Response:
-    store = _store(region)
+def _get_email_template(name: str, region: str, account_id: str) -> Response:
+    store = _store(region, account_id)
     tmpl = store.get(name)
     if not tmpl:
         return _error("NotFoundException", f"Template {name} does not exist", 404)
@@ -122,8 +122,8 @@ def _get_email_template(name: str, region: str) -> Response:
     )
 
 
-def _list_email_templates(region: str) -> Response:
-    store = _store(region)
+def _list_email_templates(region: str, account_id: str) -> Response:
+    store = _store(region, account_id)
     metadata = [
         {
             "TemplateName": t["TemplateName"],
@@ -138,8 +138,8 @@ def _list_email_templates(region: str) -> Response:
     )
 
 
-def _update_email_template(name: str, body: dict, region: str) -> Response:
-    store = _store(region)
+def _update_email_template(name: str, body: dict, region: str, account_id: str) -> Response:
+    store = _store(region, account_id)
     if name not in store:
         return _error("NotFoundException", f"Template {name} does not exist", 404)
     content = body.get("TemplateContent", {})
@@ -147,8 +147,8 @@ def _update_email_template(name: str, body: dict, region: str) -> Response:
     return Response(content=json.dumps({}), status_code=200, media_type="application/json")
 
 
-def _delete_email_template(name: str, region: str) -> Response:
-    store = _store(region)
+def _delete_email_template(name: str, region: str, account_id: str) -> Response:
+    store = _store(region, account_id)
     store.pop(name, None)
     return Response(content=json.dumps({}), status_code=200, media_type="application/json")
 
