@@ -48,9 +48,13 @@ def echoable_members(create_op: str) -> set[str]:
 def test_every_resource_probe_declares_real_echo_members():
     """Guard on the harness itself: if botocore reshapes, the hardcoded probe
     expectations in the class below must be updated, not silently vacuous."""
-    assert {"IpAddressType", "ServiceRegion", "PrivateDnsEnabled"} <= echoable_members("CreateVpcEndpoint")
+    assert {"IpAddressType", "ServiceRegion", "PrivateDnsEnabled"} <= echoable_members(
+        "CreateVpcEndpoint"
+    )
     assert {"CoreNetworkArn", "CarrierGatewayId"} <= echoable_members("CreateRoute")
-    assert {"AvailabilityZone", "Encrypted", "Iops", "Size", "VolumeType"} <= echoable_members("CreateVolume")
+    assert {"AvailabilityZone", "Encrypted", "Iops", "Size", "VolumeType"} <= echoable_members(
+        "CreateVolume"
+    )
     assert {"AvailabilityZone", "VpcId", "Ipv6Native"} <= echoable_members("CreateSubnet")
 
 
@@ -82,7 +86,8 @@ class TestEchobackConformance:
         ][0]
 
         missing = [
-            name for name, value in request.items()
+            name
+            for name, value in request.items()
             if name in echoable_members("CreateVpcEndpoint") and name not in read
         ]
         assert not missing, (
@@ -98,9 +103,7 @@ class TestEchobackConformance:
         created = ec2.create_volume(
             AvailabilityZone="us-east-1a", Size=8, VolumeType="gp3", Encrypted=True
         )
-        read = next(
-            v for v in ec2.describe_volumes(VolumeIds=[created["VolumeId"]])["Volumes"]
-        )
+        read = next(v for v in ec2.describe_volumes(VolumeIds=[created["VolumeId"]])["Volumes"])
         for name in ("AvailabilityZone", "Encrypted", "Size", "VolumeType", "Iops"):
             assert name in read, f"DescribeVolumes dropped {name} after CreateVolume"
         assert read["Encrypted"] is True
@@ -108,12 +111,8 @@ class TestEchobackConformance:
     def test_subnet_echoes_settable_members(self, make_boto_client: Any):
         ec2 = make_boto_client("ec2")
         vpc_id = ec2.create_vpc(CidrBlock="10.71.0.0/16")["Vpc"]["VpcId"]
-        ec2.create_subnet(
-            VpcId=vpc_id, CidrBlock="10.71.4.0/24", AvailabilityZone="us-east-1a"
-        )
-        read = ec2.describe_subnets(
-            Filters=[{"Name": "vpc-id", "Values": [vpc_id]}]
-        )["Subnets"][0]
+        ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.71.4.0/24", AvailabilityZone="us-east-1a")
+        read = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])["Subnets"][0]
         for name in ("AvailabilityZone", "VpcId", "CidrBlock"):
             assert name in read, f"DescribeSubnets dropped {name} after CreateSubnet"
 
@@ -131,9 +130,10 @@ class TestEchobackConformance:
             CoreNetworkArn=arn,
         )
         route = next(
-            r for r in ec2.describe_route_tables(RouteTableIds=[route_table_id])[
-                "RouteTables"
-            ][0]["Routes"]
+            r
+            for r in ec2.describe_route_tables(RouteTableIds=[route_table_id])["RouteTables"][0][
+                "Routes"
+            ]
             if r.get("DestinationCidrBlock") == "10.72.1.0/24"
         )
         assert route["CoreNetworkArn"] == arn
