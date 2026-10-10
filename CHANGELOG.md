@@ -10,6 +10,10 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Added
 
+- **SQS long polls stop starving other services.** `ReceiveMessage` waits run on a
+  dedicated bounded pool (`SQS_LONGPOLL_THREADS`, default 16) instead of the shared
+  default executor, so long polls can no longer queue every other service's work
+  behind 20-second waits.
 - **Auto-save never stalls the event loop.** Under `PERSISTENCE=1` the debounced
   snapshot runs on a worker thread (as `/state/save` already did); a request no
   longer wedges every other in-flight call behind a full state dump.
