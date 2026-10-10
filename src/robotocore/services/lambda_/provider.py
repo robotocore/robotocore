@@ -217,7 +217,18 @@ async def _handle_functions(
             func_name_from_spec = spec.get("FunctionName", "")
             if func_name_from_spec:
                 _store_dlq_config(account_id, region, func_name_from_spec, spec["DeadLetterConfig"])
-        fn = backend.create_function(spec)
+        try:
+            fn = backend.create_function(spec)
+        except Exception:
+            # A rejected create must not leave a phantom live function in the
+            # moto backend with its bytes unbilled below.
+            fn_name_rollback = spec.get("FunctionName", "")
+            if fn_name_rollback:
+                try:
+                    backend.delete_function(fn_name_rollback)
+                except Exception:  # noqa: BLE001
+                    logger.debug("rollback delete failed (non-fatal)", exc_info=True)
+            raise
         if zip_file:
             fn_name_from_spec = spec.get("FunctionName", "")
             if fn_name_from_spec:
@@ -306,22 +317,24 @@ async def _handle_functions(
         if sub == "code":
             if method == "PUT":
                 spec = json.loads(body) if body else {}
-                # UpdateFunctionCode accepts inline ZipFile or an S3 source;
-                # only inline payloads get size accounting (the S3 flow has no
-                # bytes at this site, and moto tracks storage separately).
-                zip_file = (spec.get("Code") or {}).get("ZipFile")
+                # botocore's UpdateFunctionCodeRequest carries a TOP-LEVEL
+                # ZipFile (there is no Code member on update); only inline
+                # payloads get size accounting (S3-source flows have no bytes
+                # at this site, and moto tracks storage separately).
+                zip_file = spec.get("ZipFile") or (spec.get("Code") or {}).get("ZipFile")
                 if zip_file:
                     import base64 as b64mod
 
                     raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
                     validate_code_size_zipped(len(raw))
                     size_key = (account_id, region, func_name)
-                    previous = _code_sizes.pop(size_key, 0)
-                    if previous:
-                        get_concurrency_tracker().remove_code_size(previous)
-                    get_concurrency_tracker().add_code_size(len(raw))
-                    _code_sizes[size_key] = len(raw)
                 qualifier = request.query_params.get("Qualifier")
+                previous = _code_sizes.pop(size_key, 0) if zip_file else 0
+                if previous:
+                    get_concurrency_tracker().remove_code_size(previous)
+                get_concurrency_tracker().add_code_size(len(raw))
+                if zip_file:
+                    _code_sizes[size_key] = len(raw)
                 result = backend.update_function_code(func_name, qualifier, spec)
                 # Invalidate code cache so next invocation picks up new code
                 get_code_cache().invalidate(func_name)
