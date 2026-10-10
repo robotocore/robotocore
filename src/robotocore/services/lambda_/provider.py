@@ -41,6 +41,9 @@ logger = logging.getLogger(__name__)
 # Native event source mapping store (bypasses Moto's validation)
 _esm_store: dict[str, dict] = {}  # uuid -> mapping config
 _esm_lock = threading.Lock()
+# Per-function raw code size (account, region, name) -> bytes, so updates
+# subtract and deletes release the account-level storage total.
+_code_sizes: dict[tuple[str, str, str], int] = {}
 
 # Native provisioned concurrency store
 # key: (account_id, region, func_name, qualifier)
@@ -204,6 +207,7 @@ async def _handle_functions(
             raw = b64mod.b64decode(zip_file) if isinstance(zip_file, str) else zip_file
             validate_code_size_zipped(len(raw))
             get_concurrency_tracker().add_code_size(len(raw))
+            _code_sizes[(account_id, region, spec.get("FunctionName", ""))] = len(raw)
         # Track DeadLetterConfig in our native store on creation
         if "DeadLetterConfig" in spec:
             func_name_from_spec = spec.get("FunctionName", "")
@@ -235,6 +239,10 @@ async def _handle_functions(
         elif method == "DELETE":
             qualifier = request.query_params.get("Qualifier")
             backend.delete_function(func_name, qualifier)
+            # Release tracked code size so the account total shrinks again.
+            old = _code_sizes.pop((account_id, region, func_name), None)
+            if old is not None:
+                get_concurrency_tracker().remove_code_size(old)
             # Cascade: clean up native stores for this function
             if qualifier is None:
                 _cascade_delete_function(func_name, region, account_id)
@@ -681,6 +689,14 @@ def _handle_function_url(
     )
 
     if method == "POST":
+        # AWS answers 404 ResourceNotFoundException when the target function
+        # does not exist; without the check a config for a future same-named
+        # function would silently materialize a URL.
+        backend = _get_moto_backend(account_id, region)
+        try:
+            backend.get_function(func_name)
+        except Exception:  # noqa: BLE001
+            return _error("ResourceNotFoundException", f"Function not found: {func_name}", 404)
         spec = json.loads(body) if body else {}
         url_config = create_function_url_config(func_name, region, account_id, spec)
         return _json(201, url_config)
@@ -891,11 +907,12 @@ def dispatch_to_dlq(
         if ":sqs:" in target_arn:
             import hashlib
 
+            from robotocore.services.lambda_.destinations import _arn_scope
             from robotocore.services.sqs.models import SqsMessage
             from robotocore.services.sqs.provider import _get_store
 
-            queue_name = target_arn.rsplit(":", 1)[-1]
-            store = _get_store(region, account_id)
+            dlq_region, dlq_account, queue_name = _arn_scope(target_arn, region, account_id)
+            store = _get_store(dlq_region, dlq_account)
             queue = store.get_queue(queue_name)
             if queue:
                 msg = SqsMessage(
@@ -1192,6 +1209,15 @@ def _cascade_delete_function(func_name: str, region: str, account_id: str) -> No
     rmc_key = (account_id, region, func_name)
     with _runtime_mgmt_lock:
         _runtime_mgmt_configs.pop(rmc_key, None)
+
+    # Remove function URL config, recursion check and layer permission stores
+    from robotocore.services.lambda_.urls import _url_configs
+
+    url_key = (account_id, region, func_name)
+    _url_configs.pop(url_key, None)
+    _recursion_configs.pop(url_key, None)
+    for lp_key in [k for k in _layer_permissions if k[:3] == (account_id, region, func_name)]:
+        _layer_permissions.pop(lp_key, None)
 
 
 def export_state() -> dict:

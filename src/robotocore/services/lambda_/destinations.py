@@ -91,6 +91,20 @@ def _build_destination_record(
     return record
 
 
+def _arn_scope(arn: str, fallback_region: str, fallback_account: str) -> tuple[str, str, str]:
+    """(region, account, name/qualifier) parsed from a destination ARN.
+
+    Destination ARNs may live in another account than the invoking function;
+    the store lookup must follow the ARN's own account, not the caller's."""
+    parts = arn.split(":")
+    if len(parts) >= 6 and parts[0] == "arn":
+        region = parts[3] or fallback_region
+        account = parts[4] or fallback_account
+        name = parts[-1].split("/")[-1].split(":")[-1]
+        return region, account, name
+    return fallback_region, fallback_account, arn.rsplit(":", 1)[-1]
+
+
 def _send_to_sqs(
     queue_arn: str, record: dict, region: str, account_id: str = "123456789012"
 ) -> None:
@@ -100,8 +114,8 @@ def _send_to_sqs(
     from robotocore.services.sqs.models import SqsMessage
     from robotocore.services.sqs.provider import _get_store
 
-    queue_name = queue_arn.rsplit(":", 1)[-1]
-    store = _get_store(region, account_id)
+    queue_region, queue_account, queue_name = _arn_scope(queue_arn, region, account_id)
+    store = _get_store(queue_region, queue_account)
     queue = store.get_queue(queue_name)
     if queue:
         body = json.dumps(record)
@@ -112,7 +126,7 @@ def _send_to_sqs(
         )
         queue.put(msg)
     else:
-        logger.warning("Destination SQS queue not found: %s", queue_name)
+        logger.warning("Destination SQS queue not found: %s", queue_arn)
 
 
 def _send_to_sns(
@@ -125,7 +139,8 @@ def _send_to_sns(
         _new_id,
     )
 
-    store = _get_store(region, account_id)
+    topic_region, topic_account, _ = _arn_scope(topic_arn, region, account_id)
+    store = _get_store(topic_region, topic_account)
     topic = store.get_topic(topic_arn)
     if topic:
         message = json.dumps(record)
