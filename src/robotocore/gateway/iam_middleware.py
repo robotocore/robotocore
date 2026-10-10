@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import unquote
 
@@ -277,6 +278,8 @@ def _build_access_denied_response(
     protocol: str | None,
 ) -> Response:
     """Build a 403 AccessDenied response in the appropriate format."""
+    from xml.sax.saxutils import escape as xml_escape
+
     message = (
         f"User is not authorized to perform: {action} "
         f"with an explicit deny in an identity-based policy"
@@ -295,12 +298,15 @@ def _build_access_denied_response(
             media_type="application/x-amz-json-1.1",
         )
     else:
+        # `action` is caller-controlled (query/form/X-Amz-Target); escape it
+        # so a '<' or '&' in the Action renders the intended fault instead of
+        # a malformed or injectable document.
         body = (
             "<ErrorResponse>"
             "<Error>"
             "<Type>Sender</Type>"
             "<Code>AccessDenied</Code>"
-            f"<Message>{message}</Message>"
+            f"<Message>{xml_escape(message)}</Message>"
             "</Error>"
             "</ErrorResponse>"
         )
@@ -426,7 +432,9 @@ def iam_enforcement_handler(context: RequestContext) -> None:
         "aws:SourceIp": getattr(context.request.client, "host", "127.0.0.1")
         if context.request.client
         else "127.0.0.1",
-        "aws:CurrentTime": "2024-01-01T00:00:00Z",
+        # Policies evaluate aws:CurrentTime against wall-clock now; a fixed
+        # timestamp inverted DateLessThan/DateGreaterThan conditions.
+        "aws:CurrentTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "aws:username": creds["access_key_id"],
     }
 

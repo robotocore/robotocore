@@ -14,6 +14,7 @@ Uses query protocol (Action parameter).
 import base64
 import hashlib
 import json
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
@@ -23,6 +24,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto_with_body
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ACCOUNT_ID = "123456789012"
 MAX_PACKED_POLICY_SIZE = 2048
@@ -70,13 +73,71 @@ async def handle_sts_request(request: Request, region: str, account_id: str) -> 
     if action == "GetWebIdentityToken":
         return _get_web_identity_token(parsed, account_id)
 
-    return await forward_to_moto_with_body(request, "sts", body, account_id=account_id)
+    return await _register_forwarded_session(request, body, account_id, action)
 
 
 def _require_param(params: dict, name: str) -> str | None:
     """Return param value if present and non-empty, or None."""
     val = params.get(name, "")
     return val if val else None
+
+
+def _register_invoked_session(access_key_id: str, role_arn: str, account_id: str) -> None:
+    """Record a minted STS key for IAM enforcement metadata.
+
+    Under ``ENFORCE_IAM=1`` every subsequent call signed with this temporary
+    key must resolve to the assumed role's policy set; without registration
+    the key is unknown policy-wise and implicit-denies.
+    """
+    try:
+        from robotocore.gateway.iam_middleware import register_sts_session
+
+        register_sts_session(access_key_id, role_arn, account_id)
+    except Exception:  # noqa: BLE001 - enforcement metadata is best-effort
+        logger.debug("register_sts_session failed (non-fatal)", exc_info=True)
+
+
+def _canonical_role_arn(assumed_role_arn: str) -> tuple[str, str]:
+    """(canonical role arn, account id) for an assumed-role session ARN.
+
+    `arn:aws:sts::123456789012:assumed-role/RoleName/Session` →
+    `arn:aws:iam::123456789012:role/RoleName`.
+    """
+    marker = "assumed-role/"
+    idx = assumed_role_arn.find(marker)
+    if idx == -1:
+        return assumed_role_arn, ""
+    prefix = assumed_role_arn[:idx].rstrip(":")  # arn:aws:sts::<account>
+    account_id = prefix.split(":")[-1]
+    partition = prefix.split(":")[1] if len(prefix.split(":")) > 1 else "aws"
+    role_name = assumed_role_arn[idx + len(marker) :].split("/")[0]
+    return f"arn:{partition}:iam::{account_id}:role/{role_name}", account_id
+
+
+async def _register_forwarded_session(
+    request: Request, body: bytes, account_id: str, action: str
+) -> Response:
+    """Forward to moto, then register any minted STS key for IAM enforcement.
+
+    `AssumeRole` forwards to moto, so the returned ASIA key never passes
+    through a native handler; without registration the key is unknown to the
+    IAM policy evaluator and every call signed with it implicit-denies under
+    ENFORCE_IAM=1.
+    """
+    response = await forward_to_moto_with_body(request, "sts", body, account_id=account_id)
+    if action == "AssumeRole" and response.status_code == 200:
+        try:
+            from xml.etree import ElementTree as ET
+
+            root = ET.fromstring(response.body.decode())
+            key = (root.findtext(".//Credentials/AccessKeyId") or "").strip()
+            assumed_arn = (root.findtext(".//AssumedRoleUser/Arn") or "").strip()
+            if key and assumed_arn:
+                role_arn, role_account = _canonical_role_arn(assumed_arn)
+                _register_invoked_session(key, role_arn, role_account or account_id)
+        except Exception:  # noqa: BLE001
+            logger.debug("could not register assumed-role session", exc_info=True)
+    return response
 
 
 def _missing_param_response(param_name: str) -> Response:

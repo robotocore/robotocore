@@ -365,16 +365,19 @@ class TestHandleS3Request:
             status_code=200,
             headers={"content-length": "100", "etag": '"abc123"'},
         )
-        req = _make_request("PUT", "/mybucket/mykey")
-        resp = await handle_s3_request(req, "us-east-1", "123456789012")
+        with patch("moto.backends.get_backend", side_effect=Exception("no moto here")):
+            req = _make_request("PUT", "/mybucket/mykey")
+            resp = await handle_s3_request(req, "us-east-1", "123456789012")
         assert resp.status_code == 200
+        # moto's PUT response strips content-length; without a backend store to
+        # read the object's real size from, the fallback reports 0.
         mock_fire.assert_called_once_with(
             "s3:ObjectCreated:Put",
             "mybucket",
             "mykey",
             "us-east-1",
             "123456789012",
-            100,
+            0,
             "abc123",
         )
 
@@ -479,14 +482,30 @@ class TestHandleS3Request:
         assert resp.status_code == 403
 
     async def test_get_object_lock_not_configured(self):
-        """GET ?object-lock on bucket without config returns 404."""
+        """GET ?object-lock on an existing bucket without config returns 404.
+
+        (A nonexistent bucket answers NoSuchBucket first — round-4)"""
+        from moto.backends import get_backend
+
         from robotocore.services.s3.provider import _object_lock_store
 
-        _object_lock_store.pop("no-lock-bucket", None)
-        req = _make_request("GET", "/no-lock-bucket", query_string=b"object-lock")
-        resp = await handle_s3_request(req, "us-east-1", "123456789012")
-        assert resp.status_code == 404
-        assert b"ObjectLockConfigurationNotFoundError" in resp.body
+        try:
+            backend = get_backend("s3")["123456789012"]["us-east-1"]
+            try:
+                backend.create_bucket("no-lock-bucket", "us-east-1")
+            except Exception:
+                pass  # best-effort cleanup
+            _object_lock_store.pop("no-lock-bucket", None)
+            req = _make_request("GET", "/no-lock-bucket", query_string=b"object-lock")
+            resp = await handle_s3_request(req, "us-east-1", "123456789012")
+            assert resp.status_code == 404
+            assert b"ObjectLockConfigurationNotFoundError" in resp.body
+        finally:
+            _object_lock_store.pop("no-lock-bucket", None)
+            try:
+                backend.delete_bucket("no-lock-bucket")
+            except Exception:
+                pass  # best-effort cleanup
 
 
 class TestStoreHelpers:

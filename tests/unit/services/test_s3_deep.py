@@ -88,6 +88,18 @@ def _make_request(method, path, body=b"", query_string=b"", headers=None):
 
 
 def _clear_stores():
+    from moto.backends import get_backend
+
+    try:
+        # The sub-resource handlers are backed by moto bucket existence
+        # checks now; give the endpoint tests a real bucket to attach to.
+        backend = get_backend("s3")["123456789012"]["us-east-1"]
+        try:
+            backend.create_bucket("mybucket", "us-east-1")
+        except Exception:
+            pass  # bucket already exists from an earlier test
+    except Exception:
+        pass  # moto backend not initialized in this scope
     _cors_store.clear()
     _lifecycle_store.clear()
     _object_lock_store.clear()
