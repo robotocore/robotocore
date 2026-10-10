@@ -646,9 +646,11 @@ uv run python -m robotocore.main
 ### Tests
 
 ```bash
-uv run pytest tests/unit/           # 7,736 unit tests
-uv run pytest tests/compatibility/  # 14,140 compatibility tests (requires running server)
-uv run pytest tests/integration/    # 44 integration tests (requires Docker)
+uv run pytest tests/unit/           # 8,900+ unit tests
+uv run pytest tests/compatibility/  # 13,400+ compatibility tests
+                                    # (skip themselves against a warm server; boot a fresh one first —
+                                    #  scripts/local-ci.sh does)
+uv run pytest tests/integration/    # integration tests (in-process servers)
 ```
 
 ### Useful scripts

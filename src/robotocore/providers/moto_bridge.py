@@ -221,6 +221,37 @@ async def forward_to_moto(
     """Forward an AWS API request to the appropriate Moto backend."""
     body = await request.body()
 
+    # JSON-protocol client errors must never reach moto's handlers as odd 500s:
+    # (a) a JSON-protocol call with no X-Amz-Target is unparseable (AWS answers
+    # 400), and (b) a body that json can't decode is a client error (AWS answers
+    # 400 ValidationException instead of a KeyError deep inside moto). Both
+    # gates run before route matching: moto's dispatch may lead with an
+    # unrelated handler that crashes on the missing pieces (KeyError) instead
+    # of reporting the malformed request.
+    target = request.headers.get("x-amz-target", "")
+    content_type = request.headers.get("content-type", "")
+    is_json_protocol = _gp(service_name) == "json"
+
+    if is_json_protocol and "x-amz-json-1." in content_type:
+        if not target:
+            return _error_response(
+                service_name,
+                "InvalidAction",
+                "JSON-protocol requests must carry an X-Amz-Target header",
+                400,
+            )
+        if body:
+            try:
+                json.loads(body)
+            except (json.JSONDecodeError, UnicodeDecodeError) as json_exc:
+                return _error_response(
+                    service_name,
+                    "ValidationException",
+                    f"Malformed request body: {json_exc}",
+                    400,
+                    {"x-robotocore-diag": _diag_header(json_exc)},
+                )
+
     # Use the raw (percent-encoded) path from the ASGI scope for URL matching.
     # Starlette's request.url.path decodes %2F to '/', which would break route
     # matching against patterns like [^/]+ when ARNs (e.g. principalArn) are

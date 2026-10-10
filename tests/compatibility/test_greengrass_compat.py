@@ -1428,27 +1428,23 @@ class TestGreengrassGapOps:
 
 
 class TestGreengrassUnimplementedGapOps:
-    """Tests for Greengrass gap operations (all return 501)."""
+    """Greengrass gap operations (recorded as 501 gaps in probes/greengrass.json)."""
+    # Policy: unimplemented operations are skipped (not asserted-to-fail), so the
+    # implementer sees the suite green with a skip, not a red test to un-break.
 
     @pytest.fixture
     def client(self):
         return make_client("greengrass")
 
-    def test_reset_deployments_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.reset_deployments(GroupId="abc-123-group")
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "BadRequestException",
-        )
+    @pytest.mark.skip(reason="not implemented; probe records the gap — unskip when implemented")
+    def test_reset_deployments(self, client):
+        resp = client.reset_deployments(GroupId="abc-123-group")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_stop_bulk_deployment_not_implemented(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.stop_bulk_deployment(BulkDeploymentId="abc-123-bulk")
-        assert exc.value.response["Error"]["Code"] in (
-            "NotImplemented",
-            "BadRequestException",
-        )
+    @pytest.mark.skip(reason="not implemented; probe records the gap — unskip when implemented")
+    def test_stop_bulk_deployment(self, client):
+        resp = client.stop_bulk_deployment(BulkDeploymentId="abc-123-bulk")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_group_certificate_configuration_returns_200(self, client):
         resp = client.update_group_certificate_configuration(GroupId="abc-123-group")

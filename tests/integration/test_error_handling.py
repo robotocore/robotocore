@@ -55,7 +55,7 @@ class TestMalformedRequests:
             },
         )
         # Should return an error, not crash
-        assert resp.status_code in (400, 500, 501)
+        assert resp.status_code == 400
 
     async def test_dynamodb_missing_target_header(self, client):
         """DynamoDB request without X-Amz-Target header."""
@@ -68,7 +68,7 @@ class TestMalformedRequests:
             },
         )
         # Without X-Amz-Target, service routing may fail
-        assert resp.status_code in (400, 500, 501)
+        assert resp.status_code == 400
 
     async def test_dynamodb_invalid_json_body(self, client):
         """DynamoDB request with broken JSON."""
@@ -80,7 +80,7 @@ class TestMalformedRequests:
                 "X-Amz-Target": "DynamoDB_20120810.DescribeTable",
             },
         )
-        assert resp.status_code in (400, 500, 501)
+        assert resp.status_code == 400
 
     async def test_lambda_invoke_nonexistent_function(self, client):
         """Invoke a Lambda function that does not exist."""
@@ -89,7 +89,7 @@ class TestMalformedRequests:
             content=b"{}",
             headers=auth_header("lambda"),
         )
-        assert resp.status_code in (404, 500, 501)
+        assert resp.status_code == 404
         body = resp.json()
         assert "ResourceNotFoundException" in (
             body.get("__type", "")
