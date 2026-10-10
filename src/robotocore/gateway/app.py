@@ -1593,13 +1593,19 @@ async def handle_aws_request(request: Request) -> Response:
 
     # Auto-save if PERSISTENCE=1
     if os.environ.get("PERSISTENCE", "0") == "1":
-        _maybe_persist()
+        await _maybe_persist()
 
     return context.response
 
 
-def _maybe_persist() -> None:
-    """Debounced auto-save: at most once per second."""
+async def _maybe_persist() -> None:
+    """Debounced auto-save: at most once per second.
+
+    The dump serializes every backend and does fsync-class disk work; run it on
+    a thread like the /state/save endpoints do, so a request never stalls the
+    event loop waiting for the save lock (the scheduled saver thread may be
+    holding it concurrently).
+    """
     from robotocore.state.manager import get_state_manager
 
     manager = get_state_manager()
@@ -1609,7 +1615,7 @@ def _maybe_persist() -> None:
 
         manager.state_dir = Path(default_dir)
 
-    manager.save_debounced()
+    await asyncio.to_thread(manager.save_debounced)
 
 
 # ---------------------------------------------------------------------------
