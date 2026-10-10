@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Local replication of the CI jobs (.github/workflows/ci.yml), so a branch
-# merges with the same evidence a reviewer would see on GitHub: lint, the
-# three unit splits, the integration suite, the compatibility shards, the
-# cross-service suite, and parity — the live-server ones against a freshly
-# started robotocore on a port nobody else owns.
+# Local replication of the live-server subset of CI (.github/workflows/ci.yml):
+# lint, the three unit splits, the integration suite, the compatibility
+# shards, the cross-service suite, and parity — the live-server ones against
+# a freshly started robotocore on a port nobody else owns. (CI also runs
+# iac/terraform, cdk, pulumi, shape-regression and the security audits,
+# which this script does not cover yet.)
 #
 # Why: bare `uv run pytest tests/` is not a meaningful local command — the
 # compatibility suites are only meaningful against a robotocore whose state

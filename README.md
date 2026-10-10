@@ -303,11 +303,11 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 
 **156 services** are available at two levels of fidelity:
 
-- **Native providers** (46 services) — robotocore intercepts the request and handles it directly, adding behavior that Moto doesn't provide: real Lambda execution, SQS visibility timeouts, SigV4 authentication, IAM policy evaluation, CloudFormation resource orchestration, etc. These services are where robotocore goes beyond what any mock library can do.
+- **Native providers** (48 services) — robotocore intercepts the request and handles it directly, adding behavior that Moto doesn't provide: real Lambda execution, SQS visibility timeouts, SigV4 authentication, IAM policy evaluation, CloudFormation resource orchestration, etc. These services are where robotocore goes beyond what any mock library can do.
 
-- **Moto-backed services** (110 services) — requests are forwarded to [Moto](https://github.com/getmoto/moto)'s backend. Moto stores and retrieves resources in memory with correct AWS response formats. While building robotocore we also [automatically implemented](prompts/20260309-020000-moto-implementation-wave1.md) over 450 new operations in Moto across 30+ services — those fixes will be sent upstream.
+- **Moto-backed services** (108 services) — requests are forwarded to [Moto](https://github.com/getmoto/moto)'s backend. Moto stores and retrieves resources in memory with correct AWS response formats. While building robotocore we also [automatically implemented](prompts/20260309-020000-moto-implementation-wave1.md) over 450 new operations in Moto across 30+ services — those fixes will be sent upstream.
 
-### Native providers (46)
+### Native providers (48)
 
 | Service | Notes |
 |---------|-------|
@@ -350,7 +350,7 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 | Support | Trusted Advisor |
 | X-Ray | Trace management |
 
-### Moto-backed services (112)
+### Moto-backed services (108)
 
 <details>
 <summary>Click to expand full list</summary>
@@ -358,6 +358,17 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, EKS, ElastiCache, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IoT, IoT Data, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, Organizations, OSIS, Pinpoint, Pipes, Polly, QuickSight, RAM, RDS, RDS Data, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Synthetics, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web.
 
 </details>
+| EKS | Cluster, nodegroup, Fargate profile management |
+| ElastiCache | Cluster and replication group management |
+| IoT | Thing, cert, and endpoint registry |
+| IoT Data Plane | Publish, shadow, and jobs API |
+| Organizations | Accounts, OU trees, policies |
+| Pipes (EventBridge) | Source-to-target enrichment pipes |
+| RAM | Cross-account resource sharing |
+| RDS | DB instances, clusters, snapshots |
+| RDS Data API | Serverless statements |
+| Synthetics | Canary management |
+
 
 ---
 

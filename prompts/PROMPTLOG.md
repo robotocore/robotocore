@@ -46,7 +46,7 @@ That file would be named `prompts/20260307-143208-fix-nil-pointer-auth.md`.
 ### Frontmatter fields
 
 **Required:**
-- `session` — hex ID reused for all prompts in one conversation
+- `session` — a stable short id reused for all prompts in one conversation (a hex id or a lowercase slug)
 - `timestamp` — ISO 8601 UTC when the conversation phase started
 
 **Optional:**
@@ -190,7 +190,7 @@ When using `isolation: "worktree"` agents, the agent cannot create prompt log fi
 3. Orchestrator creates the prompt log file capturing the agent's task and key decisions
 4. Orchestrator commits and pushes the prompt log as a follow-up commit
 
-This is why `SKIP_PROMPT_LOG=1` exists — the first commit (code) bypasses the hook, and the second commit (prompt log) satisfies it. CI will re-run on the prompt log push and pass.
+This two-commit pattern (code first, prompt log as follow-up) predates the retirement of the mechanical checks; it remains the accepted workflow for worktree agents whose code commits land before their log does.
 
 ## Committing
 
@@ -202,21 +202,13 @@ Create `prompts/` on first use. Don't add it to `.gitignore` unless the user ask
 
 Prompt files are permanent historical record. Never rewrite, shorten, merge, or "clean up" existing entries — not even to save tokens or tidy the directory. The verbosity is the point. A reviewer six months from now needs the actual words, not a digest.
 
-This applies to autonomous cleanup passes too. If an agent is asked to "tidy the repo," `prompts/` is off-limits. The only valid operations on existing prompt files are:
+Applies to autonomous cleanup passes too. If an agent is asked to "tidy the repo," `prompts/` is off-limits. The only valid operations on existing prompt files are:
 
 - Adding optional frontmatter fields (e.g. backfilling `commits:`)
 - Redacting newly-discovered secrets or PII (with a note in the file explaining what was redacted and why)
 
 Everything else is append-only.
 
-## Pre-commit hook
+## Prompt logs are no longer mechanically enforced
 
-The pre-commit hook enforces that commits touching `src/` or `tests/` include a `prompts/` file. To bypass for legitimate cases (e.g., worktree agent code commits that will get a prompt log in a follow-up):
-
-```bash
-SKIP_PROMPT_LOG=1 git commit -m "..."
-```
-
-The CI `Prompt log check` job also enforces this. A follow-up commit adding the prompt log file will make the check pass on the next push.
-
-**Do not routinely skip the hook.** It exists because prompt logs are easy to forget during autonomous work. The two-commit pattern (code then prompt log) is the intended workflow for worktree agents — not a workaround.
+An earlier version of this repository used a pre-commit hook plus a CI check to require a `prompts/` file on every commit touching `src/` or `tests/`; those checks are retired (they exist in history, not in the config). The discipline is now purely encouraged by this document: same-session prompt entries follow the format above, and the two-commit pattern (code, then prompt log) is the accepted workflow for worktree agents whose code commits land before their log does.

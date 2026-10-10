@@ -134,7 +134,7 @@ ENV ROBOTOCORE_VERSION=${HATCH_VCS_FALLBACK_VERSION}
 USER robotocore
 
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:4566/_localstack/health || exit 1
+    CMD curl -f http://localhost:${ROBOTOCORE_PORT}/_robotocore/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
 

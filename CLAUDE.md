@@ -1,6 +1,6 @@
 # Robotocore
 
-An MIT-licensed, open-source AWS emulator built on top of Moto. Runs as a single Docker container on ARM Mac.
+An MIT-licensed, open-source AWS emulator built on top of Moto. Runs as a single Docker container.
 
 ## Project Philosophy
 
@@ -59,7 +59,6 @@ robotocore/
 │   │   ├── app.py             # ASGI/WSGI app
 │   │   ├── router.py          # AWS service detection & dispatch
 │   │   └── handler_chain.py   # Request/response handler chain
-│   ├── protocols/             # AWS protocol parsers/serializers
 │   │   ├── __init__.py
 │   │   ├── parser.py          # HTTP → Python objects
 │   │   └── serializer.py      # Python objects → HTTP response
@@ -83,7 +82,6 @@ robotocore/
 │   └── ...                    # gen_provider, gen_compat_tests, batch_register, etc.
 ├── vendor/
 │   ├── moto/                  # Git submodule: getmoto/moto
-│   └── localstack/            # Git submodule (reference implementation)
 └── docker/
     └── entrypoint.sh          # Container entrypoint
 ```
@@ -160,7 +158,7 @@ make status                            # Check if server is running
 
 ## Reference Materials
 
-- **vendor/moto/**: Local checkout of `github.com/JackDanger/moto` (`master` branch) for agent/dev convenience. **Not used at install time** — `uv sync` clones from the git remote. Key files:
+- **vendor/moto/**: Local checkout of `github.com/JackDanger/moto` (`robotocore/all-fixes` branch) for agent/dev convenience. **Not used at install time** — `uv sync` clones from the git remote. Key files:
   - `moto/core/botocore_stubber.py` — Request interception architecture
   - `moto/backends.py` — Backend registry
   - `moto/{service}/models.py` — Service implementations
@@ -219,7 +217,7 @@ When using Claude Code agents on this project:
 - Before doing the same thing to 5+ files, write a script in `scripts/` that automates it
 - Tools should have `--dry-run` (default), `--write` (apply), and `--file` (target specific files) flags
 - Run `uv run python scripts/<tool>.py` to analyze, then spawn agents to act on the results
-- Existing tools: `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`, `validate_test_quality.py`, `validate_tests_runtime.py`, `lint_project.py`
+- Existing tools: `local-ci.sh` (replicates the CI jobs locally; hot-server stages boot their own robotocore), `gen_provider.py`, `gen_compat_tests.py`, `gen_unit_tests.py`, `gen_cfn_resource.py`, `gen_eventbridge_targets.py`, `gen_gap_tests.py`, `coverage_gaps.py`, `compat_coverage.py`, `analyze_localstack.py`, `batch_register_services.py`, `check_wire_format.py`, `probe_service.py`, `smoke_test.py`, `generate_parity_report.py`, `service_health_matrix.py`, `dev.py`, `validate_test_quality.py`, `validate_tests_runtime.py`, `lint_project.py`
 
 ### Subagent patterns
 - **Research first**: Use Explore agents (parallel, no worktree) to understand the problem, then code agents to implement
@@ -232,13 +230,13 @@ When we discover a Moto bug or missing feature:
 1. Create a feature branch in `vendor/moto/`: `cd vendor/moto && git checkout -b fix/<name>`
 2. Implement the fix directly in Moto's source
 3. Write a test for it in Moto's test suite
-4. Merge the branch into `master`: `git checkout master && git merge fix/<name>`
-5. **Push to the fork**: `git push jackdanger master` — this is the source of truth
+4. Merge the branch into the integration branch (`robotocore/all-fixes`): `git checkout robotocore/all-fixes && git merge fix/<name>`
+5. **Push to the fork**: `git push origin robotocore/all-fixes` (or `git push jackdanger robotocore/all-fixes:robotocore/all-fixes` on a fork remote) — this is the source of truth
 6. **Update the lockfile in robotocore**: `cd ../.. && uv lock` to pick up the new commit
 7. Do NOT open PRs to `getmoto/moto` yet — we'll batch upstream contributions later in a structured push
 8. For gaps that CANNOT be fixed in Moto (e.g., behavioral fidelity that conflicts with Moto's design), implement a native provider in `src/robotocore/services/<service>/provider.py` instead
 
-**How Moto is installed**: `pyproject.toml` has `moto = { git = "https://github.com/JackDanger/moto.git", branch = "master" }`. The `vendor/moto/` checkout is only for dev/agent convenience (reading source, making fixes). Docker and CI install from the git remote. After making Moto fixes locally, always push to the fork and run `uv lock` so the lockfile pins the new commit.
+**How Moto is installed**: `pyproject.toml` pins `moto = { git = "https://github.com/JackDanger/moto.git", branch = "robotocore/all-fixes" }`. The `vendor/moto/` checkout is only for dev/agent convenience (reading source, making fixes). Docker and CI install from the git remote. After making Moto fixes locally, always push to the fork and run `uv lock` so the lockfile pins the new commit.
 
 ### Commit cadence (CRITICAL — do this proactively)
 - **Always branch first; never commit on `main`.** `main` is protected — `git push origin main` is rejected. Before you make a single edit, run `git checkout -b <kind>/<slug>` from `main` (`feat/…`, `fix/…`, `chore/…`, `docs/…`). If you realize you've already committed to a local `main`, **do not** retry the push: move the commit to a branch with `git checkout -b feat/<slug>` (the commit moves with you) and then `git fetch origin && git branch -f main origin/main` to resync local main. CI publishes from `main` only after a merged PR.
