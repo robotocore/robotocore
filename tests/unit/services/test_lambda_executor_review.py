@@ -169,7 +169,6 @@ class TestSysPathConcurrency:
         code_zip = _make_zip({"lambda_function.py": code})
 
         errors = []
-        path_before = sys.path[:]
 
         def invoke(fn_name):
             try:
