@@ -77,7 +77,10 @@ class _FakeRequest:
     url = type("U", (), {"path": "/", "query": ""})()
 
     async def body(self):
-        return b"Action=AssumeRole&RoleArn=arn:aws:iam::123456789012:role/DeployRole&RoleSessionName=probe"
+        return (
+            b"Action=AssumeRole&RoleArn=arn:aws:iam::123456789012:role/DeployRole"
+            b"&RoleSessionName=probe"
+        )
 
 
 class TestAccessDeniedXmlEscaping:

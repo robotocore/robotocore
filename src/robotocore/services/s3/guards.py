@@ -3,7 +3,11 @@ bucket moto does not hold, matching AWS's per-bucket behavior instead of
 accepting configs for nonexistent buckets (which also leaked across accounts
 when a later account created a same-named bucket that inherited them)."""
 
+import logging
+
 from starlette.responses import Response
+
+logger = logging.getLogger(__name__)
 
 
 def _require_bucket(bucket: str, region: str, account_id: str) -> Response | None:
@@ -16,7 +20,7 @@ def _require_bucket(bucket: str, region: str, account_id: str) -> Response | Non
         backend.get_bucket(bucket)
         return None
     except MotoNoSuchBucket:
-        pass
+        logger.debug("bucket %r is absent in account %r", bucket, account_id)
     from xml.sax.saxutils import escape as xml_escape
 
     return Response(

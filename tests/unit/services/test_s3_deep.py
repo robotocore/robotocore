@@ -97,9 +97,9 @@ def _clear_stores():
         try:
             backend.create_bucket("mybucket", "us-east-1")
         except Exception:
-            pass
+            pass  # bucket already exists from an earlier test
     except Exception:
-        pass
+        pass  # moto backend not initialized in this scope
     _cors_store.clear()
     _lifecycle_store.clear()
     _object_lock_store.clear()

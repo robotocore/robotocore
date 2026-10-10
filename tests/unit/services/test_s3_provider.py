@@ -494,7 +494,7 @@ class TestHandleS3Request:
             try:
                 backend.create_bucket("no-lock-bucket", "us-east-1")
             except Exception:
-                pass
+                pass  # best-effort cleanup
             _object_lock_store.pop("no-lock-bucket", None)
             req = _make_request("GET", "/no-lock-bucket", query_string=b"object-lock")
             resp = await handle_s3_request(req, "us-east-1", "123456789012")
@@ -505,7 +505,7 @@ class TestHandleS3Request:
             try:
                 backend.delete_bucket("no-lock-bucket")
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestStoreHelpers:
