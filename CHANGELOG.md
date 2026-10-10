@@ -10,12 +10,15 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Added
 
+- **Auto-save never stalls the event loop.** Under `PERSISTENCE=1` the debounced
+  snapshot runs on a worker thread (as `/state/save` already did); a request no
+  longer wedges every other in-flight call behind a full state dump.
 - **Unroutable requests get a `hints` list.** The 400 for requests whose AWS service cannot be
   resolved now names every routing cue the request carried — a bare unsigned `?Action=…` call
   learns that query-protocol services share that shape and that a SigV4 credential scope (or a
   service path) is what would route it; AGENTS.md documents it so agents do not count it as a
   service absence (only 501 `NotImplemented` is a gap).
-- **Compherensive health reporting.** `/_robotocore/health` and `/_localstack/health` report
+- **Comprehensive health reporting.** `/_robotocore/health` and `/_localstack/health` report
   `running` or `disabled` per service (honouring the `SERVICES` env filter), so LocalStack-style
   tooling gating on health does not proceed into 501s.
 - **`scripts/local-ci.sh`** — local replication of CI's lint/unit/integration/compat/cross-service/
