@@ -79,36 +79,15 @@ def make_client(service_name: str, **kwargs):
     )
 
 
-@pytest.fixture(autouse=True, scope="session")
-def _clear_test_admin_state_at_session_end():
-    """Safety net: clear admin-plane leftovers when a compat test session ends.
-
-    Chaos rules and EC2 capacity profiles persist for the life of the server;
-    if a test session in another stage leaks them into a compat shard (e.g.
-    due to CI misconfiguration), subsequent RunInstances calls would answer
-    InsufficientInstanceCapacity forever. Clearing both on teardown keeps a
-    shard's server clean for the next stage.
-    """
-    yield
-    try:
-        resp = requests.post(f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear", timeout=5)
-        if resp.ok and resp.json().get("count", 0) > 0:
-            logger.warning(
-                "Session teardown cleared %d leftover chaos rules — "
-                "chaos tests may have leaked into this shard",
-                resp.json()["count"],
-            )
-    except Exception:
-        logger.debug(
-            "Could not clear chaos rules at session end (server may be stopped)", exc_info=True
-        )
-    try:
-        requests.post(f"{ENDPOINT_URL}/_robotocore/ec2/capacity/reset", timeout=5)
-    except Exception:
-        logger.debug(
-            "Could not clear capacity profiles at session end (server may be stopped)",
-            exc_info=True,
-        )
+# NOTE: there is deliberately NO session-scoped admin-state teardown here.
+# Under pytest-xdist every worker runs its own pytest session against the one
+# shared server; a session-end reset from a *finishing* worker would wipe
+# capacity profiles and chaos overrides that a still-running worker's tests
+# depend on — the InsufficientInstanceCapacity pair failed in CI exactly that
+# way (forensics showed chaos_override=None profile_count=0 mid-test). Tests
+# whose fixtures mutate the admin plane must clean up per test (see
+# test_ec2_capacity_profiles.py's `_clear_capacity_state`). The CI job's server
+# dies when the job ends, so leftovers do not outlive the stage.
 
 
 def _target_server_is_warm() -> bool:
