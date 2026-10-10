@@ -127,7 +127,7 @@ class TestCloudWatchProtocolBug:
             f"but got XML-like response. Protocol was '{protocol}' which "
             f"doesn't match 'json' or 'rest-json' in error_normalizer."
         )
-        assert parsed["__type"] == "ValueError"
+        assert parsed["__type"] == "InternalFailure"  # AWS generic 500 code for JSON
         assert "cw error" in parsed["message"]
 
 
