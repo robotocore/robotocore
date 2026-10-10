@@ -695,7 +695,7 @@ class TestESMEnhancements:
             "BisectBatchOnFunctionError": False,
             "MaximumRetryAttempts": -1,
             "_region": "us-east-1",
-            "_account_id": "123",
+            "_account_id": "123456789012",
         }
 
         new_filter = {"Filters": [{"Pattern": '{"body": {"x": [1]}}'}]}

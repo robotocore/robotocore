@@ -1182,7 +1182,7 @@ def _json(status_code: int, data) -> Response:
 
 # --- Connections ---
 
-_connections: dict[tuple[str, str], dict] = {}
+_connections: dict[tuple[str, str, str], dict] = {}  # (account_id, region, name)
 
 
 def _create_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
@@ -1199,7 +1199,7 @@ def _create_connection(store: EventsStore, params: dict, region: str, account_id
         "CreationTime": time.time(),
         "LastModifiedTime": time.time(),
     }
-    _connections[(account_id, name)] = conn
+    _connections[(account_id, region, name)] = conn
     return {
         "ConnectionArn": conn_arn,
         "ConnectionState": "AUTHORIZED",
@@ -1209,7 +1209,7 @@ def _create_connection(store: EventsStore, params: dict, region: str, account_id
 
 def _describe_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    conn = _connections.get((account_id, name))
+    conn = _connections.get((account_id, region, name))
     if not conn:
         raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 400)
     return conn
@@ -1217,7 +1217,7 @@ def _describe_connection(store: EventsStore, params: dict, region: str, account_
 
 def _delete_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    conn = _connections.pop((account_id, name), None)
+    conn = _connections.pop((account_id, region, name), None)
     if not conn:
         raise EventsError("ResourceNotFoundException", f"Connection {name} not found", 400)
     return {"ConnectionArn": conn["ConnectionArn"], "ConnectionState": "DELETING"}
@@ -1225,7 +1225,7 @@ def _delete_connection(store: EventsStore, params: dict, region: str, account_id
 
 # --- API Destinations ---
 
-_api_destinations: dict[tuple[str, str], dict] = {}
+_api_destinations: dict[tuple[str, str, str], dict] = {}  # (account_id, region, name)
 
 
 def _create_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
@@ -1246,7 +1246,7 @@ def _create_api_destination(store: EventsStore, params: dict, region: str, accou
         "CreationTime": time.time(),
         "LastModifiedTime": time.time(),
     }
-    _api_destinations[(account_id, name)] = dest
+    _api_destinations[(account_id, region, name)] = dest
     return {
         "ApiDestinationArn": dest_arn,
         "ApiDestinationState": "ACTIVE",
@@ -1258,7 +1258,7 @@ def _describe_api_destination(
     store: EventsStore, params: dict, region: str, account_id: str
 ) -> dict:
     name = params.get("Name", "")
-    dest = _api_destinations.get((account_id, name))
+    dest = _api_destinations.get((account_id, region, name))
     if not dest:
         raise EventsError("ResourceNotFoundException", f"ApiDestination {name} not found", 400)
     return dest
@@ -1266,7 +1266,7 @@ def _describe_api_destination(
 
 def _delete_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    _api_destinations.pop((account_id, name), None)
+    _api_destinations.pop((account_id, region, name), None)
     return {}
 
 
@@ -1302,7 +1302,7 @@ def _update_archive(store: EventsStore, params: dict, region: str, account_id: s
 
 def _update_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    conn = _connections.get((account_id, name))
+    conn = _connections.get((account_id, region, name))
     if not conn:
         raise EventsError("ResourceNotFoundException", f"Connection '{name}' does not exist.", 400)
     if "Description" in params:
@@ -1321,7 +1321,7 @@ def _update_connection(store: EventsStore, params: dict, region: str, account_id
 
 def _update_api_destination(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    dest = _api_destinations.get((account_id, name))
+    dest = _api_destinations.get((account_id, region, name))
     if not dest:
         raise EventsError(
             "ResourceNotFoundException", f"An api-destination '{name}' does not exist.", 400
@@ -1371,7 +1371,7 @@ def _test_event_pattern(store: EventsStore, params: dict, region: str, account_i
 
 def _deauthorize_connection(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    conn = _connections.get((account_id, name))
+    conn = _connections.get((account_id, region, name))
     if not conn:
         raise EventsError("ResourceNotFoundException", f"Connection '{name}' does not exist.", 400)
     conn["ConnectionState"] = "DEAUTHORIZED"
@@ -1405,7 +1405,7 @@ def _create_endpoint(store: EventsStore, params: dict, region: str, account_id: 
         "CreationTime": time.time(),
         "LastModifiedTime": time.time(),
     }
-    _endpoints[(account_id, name)] = endpoint
+    _endpoints[(account_id, region, name)] = endpoint
     return {
         "Name": endpoint["Name"],
         "Arn": endpoint_arn,
@@ -1419,13 +1419,13 @@ def _create_endpoint(store: EventsStore, params: dict, region: str, account_id: 
 
 def _delete_endpoint(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    _endpoints.pop((account_id, name), None)
+    _endpoints.pop((account_id, region, name), None)
     return {}
 
 
 def _update_endpoint(store: EventsStore, params: dict, region: str, account_id: str) -> dict:
     name = params.get("Name", "")
-    endpoint = _endpoints.get((account_id, name))
+    endpoint = _endpoints.get((account_id, region, name))
     if not endpoint:
         raise EventsError("ResourceNotFoundException", f"Endpoint '{name}' does not exist.", 400)
     for field in ("RoutingConfig", "ReplicationConfig", "EventBuses", "RoleArn", "Description"):
@@ -1448,8 +1448,8 @@ def _list_connections(store, params: dict, region: str, account_id: str) -> dict
     with_prefix = params.get("NamePrefix", "")
     results = [
         conn
-        for (acct, name), conn in _connections.items()
-        if acct == account_id and name.startswith(with_prefix)
+        for (acct, conn_region, name), conn in _connections.items()
+        if acct == account_id and conn_region == region and name.startswith(with_prefix)
     ]
     return {"Connections": results}
 
@@ -1459,8 +1459,8 @@ def _list_api_destinations(store, params: dict, region: str, account_id: str) ->
     with_prefix = params.get("NamePrefix", "")
     results = [
         dest
-        for (acct, name), dest in _api_destinations.items()
-        if acct == account_id and name.startswith(with_prefix)
+        for (acct, dest_region, name), dest in _api_destinations.items()
+        if acct == account_id and dest_region == region and name.startswith(with_prefix)
     ]
     return {"ApiDestinations": results}
 
@@ -1469,8 +1469,8 @@ def _list_endpoints(store, params: dict, region: str, account_id: str) -> dict:
     """ListEndpoints — return endpoints for this account."""
     with_prefix = params.get("NamePrefix", "")
     results = []
-    for (acct, name), ep in _endpoints.items():
-        if acct == account_id and name.startswith(with_prefix):
+    for (acct, ep_region, name), ep in _endpoints.items():
+        if acct == account_id and ep_region == region and name.startswith(with_prefix):
             # AWS ListEndpoints uses "Arn" not "EndpointArn" in summary objects
             entry = dict(ep)
             entry["Arn"] = entry.get("EndpointArn", "")
@@ -1481,7 +1481,7 @@ def _list_endpoints(store, params: dict, region: str, account_id: str) -> dict:
 def _describe_endpoint(store, params: dict, region: str, account_id: str) -> dict:
     """DescribeEndpoint."""
     name = params.get("Name", "")
-    endpoint = _endpoints.get((account_id, name))
+    endpoint = _endpoints.get((account_id, region, name))
     if not endpoint:
         raise EventsError("ResourceNotFoundException", f"Endpoint '{name}' does not exist.", 400)
     return {
@@ -1577,30 +1577,64 @@ def export_state() -> dict:
     for (account_id, region), store in items:
         stores.setdefault(account_id, {})[region] = store.snapshot_state()
 
+    def _snapshot_key(entity: dict) -> str:
+        """Snapshot key `{account}:{region}:{name}` — the region is recovered from
+        the entity ARN so key clashes across regions cannot collapse."""
+        arn = str(
+            entity.get("Arn")
+            or entity.get("ConnectionArn")
+            or entity.get("ApiDestinationArn")
+            or entity.get("EndpointArn")
+            or ""
+        )
+        parts = arn.split(":")
+        acct = parts[4] if len(parts) > 4 else ""
+        region = parts[3] if len(parts) > 3 else ""
+        return f"{acct}:{region}:{entity.get('Name') or ''}"
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "stores": stores,
         "connections": {
-            f"{acct}:{name}": dict(conn) for (acct, name), conn in _connections.items()
+            _snapshot_key(conn): dict(conn) for _key, conn in list(_connections.items())
         },
         "api_destinations": {
-            f"{acct}:{name}": dict(destination)
-            for (acct, name), destination in _api_destinations.items()
+            _snapshot_key(dest): dict(dest) for _key, dest in list(_api_destinations.items())
         },
         "endpoints": {
-            f"{acct}:{name}": dict(endpoint) for (acct, name), endpoint in _endpoints.items()
+            _snapshot_key(endpoint): dict(endpoint) for _key, endpoint in list(_endpoints.items())
         },
     }
+
+
+def _restore_entity(store: dict, key: str, entity: dict) -> None:
+    """Restore one entity whose snapshot key may be v2 `{acct}:{region}:{name}`
+    or the older v1 `{acct}:{name}` (region recovered from the entity ARN)."""
+    parts = key.split(":")
+    if len(parts) == 3:
+        acct, region, name = parts
+    elif len(parts) == 2:
+        acct, name = parts
+        arn = str(
+            entity.get("ConnectionArn")
+            or entity.get("ApiDestinationArn")
+            or entity.get("EndpointArn")
+            or ""
+        )
+        region = arn.split(":")[3] if len(arn.split(":")) > 3 else ""
+    else:
+        acct, region, name = "", "", key
+    store[(acct, region, name)] = dict(entity)
 
 
 def load_state(data: dict) -> None:
     """Replace in-memory EventBridge state from exported snapshot."""
     data = data or {}
     version = data.get("schema_version")
-    if version is not None and version != 1:
+    if version is not None and version != 2:
         logger.warning(
-            "events snapshot schema_version=%s; expected 1. "
-            "Loading with v1 logic; fields may be dropped or misinterpreted.",
+            "events snapshot schema_version=%s; expected 2. "
+            "Loading with the current logic; fields may be dropped or misinterpreted.",
             version,
         )
     stores_data = data.get("stores", {})
@@ -1617,16 +1651,13 @@ def load_state(data: dict) -> None:
 
     _connections.clear()
     for key, conn in data.get("connections", {}).items():
-        acct, name = key.split(":", 1) if ":" in key else ("", key)
-        _connections[(acct, name)] = dict(conn)
+        _restore_entity(_connections, key, conn)
     _api_destinations.clear()
     for key, dest in data.get("api_destinations", {}).items():
-        acct, name = key.split(":", 1) if ":" in key else ("", key)
-        _api_destinations[(acct, name)] = dict(dest)
+        _restore_entity(_api_destinations, key, dest)
     _endpoints.clear()
     for key, ep in data.get("endpoints", {}).items():
-        acct, name = key.split(":", 1) if ":" in key else ("", key)
-        _endpoints[(acct, name)] = dict(ep)
+        _restore_entity(_endpoints, key, ep)
     # Invocation log is ephemeral debug state; restored service state should start clean.
     clear_invocation_log()
 

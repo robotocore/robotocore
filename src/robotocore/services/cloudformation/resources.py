@@ -744,6 +744,10 @@ def _create_lambda_event_source_mapping(
         "StartingPosition": resource.properties.get("StartingPosition", "LATEST"),
         "LastModified": _time.time(),
         "MaximumBatchingWindowInSeconds": 0,
+        # Ownership attributes the CRUD handlers enforce (round-3 audit):
+        # without these the created mapping is invisible to its own account.
+        "_region": region,
+        "_account_id": account_id,
     }
     with _esm_lock:
         _esm_store[uid] = config

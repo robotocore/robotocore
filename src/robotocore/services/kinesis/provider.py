@@ -13,7 +13,12 @@ from collections.abc import Callable
 from starlette.requests import Request
 from starlette.responses import Response
 
-from robotocore.services.kinesis.models import KinesisStore, KinesisStream, _get_store
+from robotocore.services.kinesis.models import (
+    DEFAULT_ACCOUNT_ID,
+    KinesisStore,
+    KinesisStream,
+    _get_store,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,7 @@ def _encode_iterator(
     sequence: str,
     region: str,
     timestamp: float | None = None,
+    account_id: str = DEFAULT_ACCOUNT_ID,
 ) -> str:
     """Encode shard iterator as a base64 JSON blob."""
     payload = json.dumps(
@@ -46,6 +52,7 @@ def _encode_iterator(
             "type": iterator_type,
             "seq": sequence,
             "region": region,
+            "account": account_id,
             "ts": time.time(),
             "timestamp": timestamp,  # Store timestamp for AT_TIMESTAMP iterators
         }
@@ -306,14 +313,16 @@ def _get_shard_iterator(store: KinesisStore, params: dict, region: str, account_
         seq = "00000000000000000000"
         # Store the timestamp for filtering in GetRecords
         timestamp = params.get("Timestamp")
-        token = _encode_iterator(name, shard_id, iterator_type, seq, region, timestamp=timestamp)
+        token = _encode_iterator(
+            name, shard_id, iterator_type, seq, region, timestamp=timestamp, account_id=account_id
+        )
         return {"ShardIterator": token}
     else:
         raise KinesisError(
             "InvalidArgumentException", f"Invalid ShardIteratorType: {iterator_type}"
         )
 
-    token = _encode_iterator(name, shard_id, iterator_type, seq, region)
+    token = _encode_iterator(name, shard_id, iterator_type, seq, region, account_id=account_id)
     return {"ShardIterator": token}
 
 
@@ -327,7 +336,7 @@ def _get_records(store: KinesisStore, params: dict, region: str, account_id: str
     seq = iterator_info["seq"]
     iter_region = iterator_info.get("region", region)
 
-    iter_store = _get_store(iter_region)
+    iter_store = _get_store(iter_region, account_id)
     stream = iter_store.get_stream(stream_name)
     if not stream:
         raise KinesisError("ResourceNotFoundException", f"Stream {stream_name} not found.")
@@ -350,7 +359,9 @@ def _get_records(store: KinesisStore, params: dict, region: str, account_id: str
 
     # Build the next iterator
     new_seq = next_seq if next_seq else seq
-    next_token = _encode_iterator(stream_name, shard_id, "AT_SEQUENCE_NUMBER", new_seq, iter_region)
+    next_token = _encode_iterator(
+        stream_name, shard_id, "AT_SEQUENCE_NUMBER", new_seq, iter_region, account_id=account_id
+    )
 
     output_records = []
     for rec in records:

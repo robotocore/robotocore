@@ -1243,7 +1243,11 @@ async def _handle_event_source_mappings(
             func_name = request.query_params.get("FunctionName")
 
             with _esm_lock:
-                mappings = list(_esm_store.values())
+                mappings = [
+                    m
+                    for m in _esm_store.values()
+                    if m.get("_account_id") == account_id and m.get("_region") == region
+                ]
 
             if event_source_arn:
                 mappings = [m for m in mappings if m.get("EventSourceArn") == event_source_arn]
@@ -1257,6 +1261,13 @@ async def _handle_event_source_mappings(
 
         with _esm_lock:
             config = _esm_store.get(esm_uuid)
+            # Mappings belong to the (account, region) that created them; a
+            # UUID leaked from another account must not be readable, mutable
+            # or deletable.
+            if config and (
+                config.get("_account_id") != account_id or config.get("_region") != region
+            ):
+                config = None
 
         if not config:
             return _error(

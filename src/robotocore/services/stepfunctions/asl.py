@@ -610,7 +610,7 @@ class ASLExecutor:
         if isinstance(message_body, dict):
             message_body = json.dumps(message_body)
 
-        store = _get_store(self.region)
+        store = _get_store(self.region, self.account_id)
         queue = store.get_queue_by_url(queue_url)
         if not queue:
             raise ASLExecutionError("SQS.QueueDoesNotExist", f"Queue not found: {queue_url}")
@@ -632,7 +632,7 @@ class ASLExecutor:
 
         from robotocore.services.sns.provider import _deliver_to_subscriber, _get_store, _new_id
 
-        store = _get_store(self.region)
+        store = _get_store(self.region, self.account_id)
         topic = store.get_topic(topic_arn)
         if not topic:
             raise ASLExecutionError("SNS.NotFound", f"Topic not found: {topic_arn}")

@@ -8,6 +8,7 @@ import time
 import uuid
 from collections.abc import Callable
 
+from moto.core import DEFAULT_ACCOUNT_ID
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -84,22 +85,25 @@ def _flush_buffer(stream_key: tuple[str, str, str]) -> None:
 
     # Concatenate all records
     data = b"".join(records)
-    _stream_buffers[stream_key] = []
 
-    # Write to S3 via Moto's internal API
-    _write_to_s3(bucket, s3_key, data, stream.get("region", "us-east-1"))
+    # Write to S3 via Moto's internal API; only drop the buffer once the
+    # write succeeded so a transient failure does not silently lose records.
+    stream_account = stream.get("account_id") or DEFAULT_ACCOUNT_ID
+    if _write_to_s3(bucket, s3_key, data, stream.get("region", "us-east-1"), stream_account):
+        _stream_buffers[stream_key] = []
 
 
-def _write_to_s3(bucket: str, key: str, data: bytes, region: str) -> None:
-    """Write data to S3 using Moto's backend directly."""
+def _write_to_s3(bucket: str, key: str, data: bytes, region: str, account_id: str) -> bool:
+    """Write data to S3 using Moto's backend directly. Returns success."""
     try:
         from moto.backends import get_backend  # noqa: I001
-        from moto.core import DEFAULT_ACCOUNT_ID
 
-        s3_backend = get_backend("s3")[DEFAULT_ACCOUNT_ID]["global"]
+        s3_backend = get_backend("s3")[account_id]["global"]
         s3_backend.put_object(bucket, key, data)
+        return True
     except Exception as exc:  # noqa: BLE001
         logger.debug("_write_to_s3: put_object failed (non-fatal): %s", exc)
+        return False
 
 
 async def handle_firehose_request(request: Request, region: str, account_id: str) -> Response:
