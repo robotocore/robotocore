@@ -41,7 +41,7 @@ async def handle_sesv2_request(request: Request, region: str, account_id: str) -
     if m:
         template_name = m.group(1)
         if method == "GET":
-            return _get_email_template(template_name, region)
+            return _get_email_template(template_name, region, account_id)
         elif method == "PUT":
             try:
                 body = json.loads(await request.body())
