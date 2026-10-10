@@ -1453,14 +1453,57 @@ async def pods_delete(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+def _unroutable_payload(request: Request) -> dict:
+    """A 400 body for requests whose AWS service the gateway cannot resolve.
+
+    The bare message agents see most often ("could not determine service")
+    is a dead end: it says what is missing but never what is available. Echo
+    back every cue the request carried and the standard ways to add one.
+    """
+    hints: list[str] = []
+
+    auth = request.headers.get("authorization", "")
+    if not auth:
+        hints.append(
+            "no Signature-V4 Authorization header — signing with the service's "
+            "credential scope (e.g. .../<region>/<service>/aws4_request) is the "
+            "most reliable way to route a request"
+        )
+
+    target = request.headers.get("x-amz-target", "")
+    if target:
+        hints.append(f"x-amz-target={target!r} is not a known Service[_Version].Operation prefix")
+
+    action = request.query_params.get("Action", "")
+    if action:
+        hints.append(
+            f"Action={action!r} alone is ambiguous — several query-protocol services "
+            "(ec2, sqs, sns, sts, logs, ...) share the query shape; the service must "
+            "come from the Authorization signature, the service's own URL path, or "
+            "one of its endpoint hostnames"
+        )
+        version = request.query_params.get("Version", "")
+        if version:
+            hints.append(f"API version {version!r} does not change the routing by itself")
+
+    if request.url.path and request.url.path != "/":
+        hints.append(f"path {request.url.path!r} matches no service URL pattern")
+
+    return {
+        "error": "Could not determine target AWS service from request",
+        "hints": hints
+        or [
+            "request carries no usual routing cues (path, x-amz-target, signature, or query action)"
+        ],
+        "see": "README.md#accounts--regions for client examples that always route",
+    }
+
+
 async def handle_aws_request(request: Request) -> Response:
     """Main handler: route, build context, run handler chain, forward to Moto."""
     service_name = route_to_service(request)
     if service_name is None:
-        return JSONResponse(
-            {"error": "Could not determine target AWS service from request"},
-            status_code=400,
-        )
+        return JSONResponse(_unroutable_payload(request), status_code=400)
 
     # Check if service is allowed by SERVICES env var filter
     if not is_service_allowed(service_name):

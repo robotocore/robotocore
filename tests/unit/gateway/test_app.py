@@ -36,3 +36,33 @@ class TestExtractAccountId:
     def test_rejects_1_digit_string(self):
         req = self._request_with_credential("1/20260305/us-east-1/s3/aws4_request")
         assert _extract_account_id(req) != "1"
+
+
+class TestUnroutableRequestHints:
+    """The 400 body agents see for unroutable requests should name the missing
+    routing cue and how to satisfy it, not just report failure."""
+
+    def test_unsigned_query_action_suggests_signing(self, client):
+        resp = client.get("/", params={"Action": "DescribeNotAThing", "Version": "2016-11-15"})
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data["error"] == "Could not determine target AWS service from request"
+        assert any("Authorization" in h for h in data["hints"])
+        assert any("DescribeNotAThing" in h for h in data["hints"])
+
+    def test_unknown_prefix_gets_a_target_hint(self, client):
+        resp = client.post(
+            "/",
+            headers={
+                "x-amz-target": "NotAService_20200101.NotAnOperation",
+                "content-type": "application/x-amz-json-1.1",
+            },
+            content=b"{}",
+        )
+        assert resp.status_code == 400
+        assert any("NotAService_20200101.NotAnOperation" in h for h in resp.json()["hints"])
+
+    def test_no_cues_falls_back_to_a_neutral_hint(self, client):
+        resp = client.get("/", headers={"authorization": "Bearer sev1"})
+        assert resp.status_code == 400
+        assert resp.json()["hints"], "hints must never be empty"

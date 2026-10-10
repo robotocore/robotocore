@@ -10,6 +10,11 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
 ### Added
 
+- **Unroutable requests get a `hints` list.** The 400 for requests whose AWS service cannot be
+  resolved now names every routing cue the request carried — a bare unsigned `?Action=…` call
+  learns that query-protocol services share that shape and that a SigV4 credential scope (or a
+  service path) is what would route it; AGENTS.md documents it so agents do not count it as a
+  service absence (only 501 `NotImplemented` is a gap).
 - **IPAM pool/scope filters honour `*` and `?` wildcards** in `DescribeIpamPools` and
   `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so Terraform
   data-source lookups that send `description=*…*` find their pool.
