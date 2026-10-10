@@ -6,7 +6,7 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
-## 2026.10.8
+## 2026.10.10
 
 ### Added
 
@@ -15,6 +15,46 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
   learns that query-protocol services share that shape and that a SigV4 credential scope (or a
   service path) is what would route it; AGENTS.md documents it so agents do not count it as a
   service absence (only 501 `NotImplemented` is a gap).
+- **Compherensive health reporting.** `/_robotocore/health` and `/_localstack/health` report
+  `running` or `disabled` per service (honouring the `SERVICES` env filter), so LocalStack-style
+  tooling gating on health does not proceed into 501s.
+- **`scripts/local-ci.sh`** — local replication of CI's lint/unit/integration/compat/cross-service/
+  parity gates, with the live-server stages booting their own fresh robotocore on a private port.
+
+### Fixed
+
+- **Provider crashes answer the AWS error contract.** A raise inside a native provider, the moto
+  bridge, or a response handler used to escape every try/except and surface as Starlette's
+  plain-text `Internal Server Error`; it now routes through the error normalizer.
+- **500 responses use AWS's standard `InternalError`/`InternalFailure` codes** instead of leaking
+  the Python exception class name; the specific exception stays in the `x-robotocore-diag`
+  header — whose values are now ASCII-fenced (non-latin-1 exception text previously crashed the
+  response encode and turned a 4xx into a 500).
+- **JSON-protocol client errors stop producing 500s.** A body that json cannot decode answers
+  400 `ValidationException`, and a JSON-protocol call missing `X-Amz-Target` answers
+  400 `InvalidAction` — both previously crashed moto handlers (KeyError) and surfaced as 500.
+- **Moto-bridge dispatch misses vs crashes are distinct.** A missing moto route keeps the 501
+  `NotImplemented` contract ("only 501 is a gap"); other dispatch errors answer the 500
+  contract with the diagnostic header, and moto's own error content type (XML with
+  `X-Amzn-ErrorType`) is mirrored instead of declared JSON.
+- **Unresolved-vs-failed health.** Services disabled by the `SERVICES` env filter report
+  `disabled` in both health surfaces (was `running`/`available` regardless).
+- **`@connections` API answers 405 with `Allow`** for methods other than GET/POST/DELETE (the
+  handler previously fell through and crashed the caller with a None response).
+- **Under `ENFORCE_IAM=1`, an unreachable IAM backend answers 500** with the diagnostic header
+  instead of a 403 `AccessDenied` that blamed the caller for an emulator fault.
+- **Unsigned form-encoded posts route to STS only for STS operations** (the one service AWS
+  documents unsigned calls for); other unsigned form POSTs reach the unroutable 400 hints.
+- **Chaos-injected errors and SQS error messages escape XML bodies** so `<` or `&` in a fault
+  rule or exception text is readable output rather than a malformed document that the client
+  cannot parse.
+- **Validate fault rules on create**: an invalid operation regex in a chaos payload answers
+  400 with the reason instead of crashing the admin route.
+
+## 2026.10.8
+
+### Added
+
 - **IPAM pool/scope filters honour `*` and `?` wildcards** in `DescribeIpamPools` and
   `DescribeIpamScopes` filter values, case-sensitive and any-of-the-list as AWS does, so Terraform
   data-source lookups that send `description=*…*` find their pool.
@@ -54,8 +94,6 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
   assign that id instead of a random one, so an existing organization can be replayed into
   robotocore from its Terraform with every account keeping its id. `GET` returns the registered
   counts. Unregistered accounts still get random ids.
-
-### Fixed
 
 - **STS-issued credentials act in the role's account.** Calls signed with an `ASIA…` key from
   `AssumeRole` into `arn:aws:iam::<target>:role/X` (and IAM-user `AKIA…` keys) now resolve to the
@@ -107,7 +145,6 @@ after upgrading.
   pool's provisioned space (own or shared) instead of failing with "Value (None) for parameter
   cidrBlock is invalid", and records the allocation. `DescribeIpamScopes` honours `IpamScopeId.N`
   and `Filter.N`, and returns `IpamScopeArn`.
-### Fixed
 
 - **SNS query-protocol responses are XML-escaped.** Attribute values, list members and error
   messages containing `&`, `<` or `>` (e.g. an HTTPS subscription endpoint with a query string)
@@ -119,14 +156,12 @@ after upgrading.
 
 `GetTopicAttributes` on a topic created without `DisplayName` now returns `""` instead of the
 topic name.
-### Fixed
 
 - **CloudWatch over Smithy RPCv2 CBOR serves every operation.** aws-sdk-go-v2 (Terraform) speaks
   `rpc-v2-cbor` to CloudWatch; operations without a native handler (`PutMetricAlarm`,
   `DescribeAlarms`, `DeleteAlarms`, tagging, ...) returned `501 NotImplemented`. They are now
   bridged to Moto via AWS JSON 1.0 with model-driven timestamp/blob conversion; operations absent
   from the CloudWatch model return `UnknownOperationException`.
-### Fixed
 
 - **`GetFunctionCodeSigningConfig` on a function without one returns 200** with an empty
   `CodeSigningConfigArn`, as AWS does, instead of `404 ResourceNotFoundException`. Terraform reads
@@ -139,7 +174,6 @@ topic name.
 
 Code that expected `GetFunctionCodeSigningConfig` to raise for an unconfigured function now
 receives an empty ARN.
-### Fixed
 
 - **EventBridge keeps what you set.** `PutRule` stores `RoleArn` and creation-time `Tags`, and
   `DescribeRule` returns `RoleArn`/`CreatedBy`; `PutRule` on an existing rule updates it in place
@@ -150,21 +184,18 @@ receives an empty ARN.
 #### Migration
 
 `PutRule` on an existing rule no longer removes the rule's targets, matching AWS.
-### Fixed
 
 - **SSM service settings are stored.** `UpdateServiceSetting` persists the value per account and
   region, `GetServiceSetting` returns it (`Status: Customized`) and accepts the setting's ARN as
   `SettingId` (previously an ARN nested in an ARN), and `ResetServiceSetting` restores the default.
 - **`GetParameter` with another account's parameter ARN** resolves in the owning account (resource
   policies / RAM sharing are not modelled), so cross-account parameter reads work.
-### Fixed
 
 - **Hosted zones carry `Features.AcceleratedRecoveryStatus`** and `UpdateHostedZoneFeatures` is
   native. Terraform AWS provider >= 6.33 crashed reading a hosted zone without it.
 - **`GetDNSSEC` returns the zone's key-signing keys and its signing status** (enable/disable is now
   tracked), and zone ids are normalized across KSK operations, so Terraform's
   `aws_route53_key_signing_key` waiter no longer times out.
-### Fixed
 
 - **`DescribeRegions` lists only the caller's partition** (`aws`, `aws-us-gov` or `aws-cn`), as AWS
   does. Moto listed GovCloud and China regions to commercial callers, so configurations that
@@ -172,7 +203,6 @@ receives an empty ARN.
 - **The VPC endpoint service catalog includes** `oidc-eks`, `sqs-fips`, `ec2-fips`,
   `acm-pca-fips`, `eks-fips` and `sts-fips`, so `data.aws_vpc_endpoint_service` lookups for them
   resolve.
-### Fixed
 
 - **Cognito `DeleteResourceServer`** is implemented (previously `501`), so Terraform can replace or
   destroy `aws_cognito_resource_server`.
@@ -187,7 +217,6 @@ receives an empty ARN.
   account and region, so `CreateVpcPeeringConnection` and every lookup that validates the referenced
   object behave as they would against the original environment. Idempotent: an already-existing id
   is returned in `skipped`, not duplicated.
-### Fixed
 
 - **AWS-managed IAM policies are attachable.** Naming `arn:aws:iam::aws:policy/...` in
   `AttachRolePolicy`/`AttachUserPolicy`/`AttachGroupPolicy`, `GetPolicy`, `GetPolicyVersion` or a

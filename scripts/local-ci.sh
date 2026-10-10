@@ -73,7 +73,7 @@ start_robotocore() {
   done
   echo "server on :${port} did not become healthy in 60s" >&2
   cat .local-ci-server.log >&2
-  stop_all  # unreachable means something failed; keep the trap contract clean
+  stop_current_server  # the failure path still cleans up through the EXIT trap
   exit 1
 }
 
