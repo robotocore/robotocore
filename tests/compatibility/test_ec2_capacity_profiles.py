@@ -38,6 +38,7 @@ def _clear_capacity_state():
         requests.post(
             f"{ENDPOINT_URL}/_robotocore/ec2/capacity/chaos", json={"clear": True}, timeout=5
         )
+        requests.post(f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear", timeout=5)
 
 
 @pytest.fixture(autouse=True)
