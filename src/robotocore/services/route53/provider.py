@@ -545,13 +545,18 @@ def _handle_test_dns_answer(request: Request, region: str, account_id: str) -> R
     if not record_data:
         record_data = ["127.0.0.1"] if record_type == "A" else [record_name]
 
-    records_xml = "".join(f"    <RecordData>{r}</RecordData>\n" for r in record_data)
+    # Caller-provided names/types/values land in the XML verbatim: escape each
+    # so a '<' or '&' record name yields the AWS-shaped answer, not a broken
+    # document the client cannot parse.
+    safe_record_name = escape(record_name)
+    safe_record_type = escape(record_type)
+    records_xml = "".join(f"    <RecordData>{escape(r)}</RecordData>\n" for r in record_data)
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <TestDNSAnswerResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
   <Nameserver>ns-1.awsdns-01.com</Nameserver>
-  <RecordName>{record_name}</RecordName>
-  <RecordType>{record_type}</RecordType>
+  <RecordName>{safe_record_name}</RecordName>
+  <RecordType>{safe_record_type}</RecordType>
   <ResponseCode>NOERROR</ResponseCode>
   <Protocol>UDP</Protocol>
 {records_xml}</TestDNSAnswerResponse>"""
@@ -573,12 +578,16 @@ def _handle_create_query_logging_config(body: bytes, region: str, account_id: st
     }
     _query_log_configs[config_id] = config
 
+    # Body-derived values reflect back into the XML: escape so entity-bearing
+    # payloads yield parseable documents.
+    safe_zone_id = escape(hosted_zone_id)
+    safe_log_group_arn = escape(log_group_arn)
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <CreateQueryLoggingConfigResponse xmlns="https://route53.amazonaws.com/doc/2013-04-01/">
   <QueryLoggingConfig>
     <Id>{config_id}</Id>
-    <HostedZoneId>{hosted_zone_id}</HostedZoneId>
-    <CloudWatchLogsLogGroupArn>{log_group_arn}</CloudWatchLogsLogGroupArn>
+    <HostedZoneId>{safe_zone_id}</HostedZoneId>
+    <CloudWatchLogsLogGroupArn>{safe_log_group_arn}</CloudWatchLogsLogGroupArn>
   </QueryLoggingConfig>
 </CreateQueryLoggingConfigResponse>"""
     return Response(
@@ -598,7 +607,7 @@ def _no_such_hosted_zone_response(zone_id: str) -> Response:
   <Error>
     <Type>Sender</Type>
     <Code>NoSuchHostedZone</Code>
-    <Message>No hosted zone found with ID: {zone_id}</Message>
+    <Message>No hosted zone found with ID: {escape(zone_id)}</Message>
   </Error>
 </ErrorResponse>"""
     return Response(content=xml, status_code=404, media_type="text/xml")

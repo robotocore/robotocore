@@ -564,3 +564,44 @@ class TestConsistencyIntegration:
         # No reader events between writer_start and writer_end
         between = log[writer_start : writer_end + 1]
         assert between == ["writer_start", "writer_end"]
+
+
+class TestWriteWriterExclusion:
+    """Two writers must never both hold the write side of the ReadWriteLock.
+
+    Regression: _acquire_write waited only on readers, so a second writer with
+    zero readers passed straight through and both believed they were inside —
+    state saves could interleave and un-pause each other's mutation pause.
+    """
+
+    @staticmethod
+    async def test_second_writer_waits_for_first():
+        import asyncio
+
+        from robotocore.state.rwlock import ReadWriteLock
+
+        lock = ReadWriteLock()
+        # Simulate the first writer already inside the lock.
+        lock._writer_active = True
+
+        acquired: list[float] = []
+
+        async def second_writer():
+            await lock._acquire_write()
+            acquired.append(1.0)
+            await lock._release_write()
+
+        second = asyncio.ensure_future(second_writer())
+        # Give the second writer a few loop ticks: with the old bug it would
+        # have acquired through the readers-empty path immediately (the first
+        # writer flips _writer_active without waiting for it).
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not acquired, "second writer acquires while the first is inside"
+        assert lock._writer_active is True
+
+        # Release the first writer; the second must then get through.
+        await lock._release_write()
+        await asyncio.wait_for(second, timeout=2)
+        assert acquired == [1.0]
+        assert lock._writer_active is False

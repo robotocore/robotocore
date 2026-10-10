@@ -40,6 +40,13 @@ _delete_tracker = QueueDeletedTracker()
 _retention_scanner = RetentionScanner()
 
 
+def _behavioral_scope_key(account_id: str, region: str, queue_name: str) -> str:
+    """Behavioral cooldown keys scope by (account, region, queue): a name-only
+    key made one account's delete/purge cooldown gate another account's queue
+    of the same name."""
+    return f"{account_id}/{region}/{queue_name}"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -236,7 +243,7 @@ def _create_queue(
     store: SqsStore, params: dict, region: str, account_id: str, request: Request
 ) -> dict:
     name = params.get("QueueName", "")
-    _delete_tracker.check_create(name)
+    _delete_tracker.check_create(_behavioral_scope_key(account_id, region, name))
     attributes = params.get("Attributes", {})
     tags = params.get("Tags", params.get("tags", {}))
     # Query protocol: Attribute.N.Name/Value
@@ -261,8 +268,8 @@ def _delete_queue(
             "The specified queue does not exist.",
         )
     store.delete_queue(queue.name)
-    _delete_tracker.record_deletion(queue.name)
-    _purge_tracker.remove(queue.name)
+    _delete_tracker.record_deletion(_behavioral_scope_key(account_id, region, queue.name))
+    _purge_tracker.remove(_behavioral_scope_key(account_id, region, queue.name))
     return {}
 
 
@@ -446,7 +453,7 @@ def _purge_queue(
     store: SqsStore, params: dict, region: str, account_id: str, request: Request
 ) -> dict:
     queue = _resolve_queue(store, params, request)
-    _purge_tracker.check_and_record(queue.name)
+    _purge_tracker.check_and_record(_behavioral_scope_key(account_id, region, queue.name))
     queue.purge()
     return {}
 

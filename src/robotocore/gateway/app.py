@@ -211,7 +211,7 @@ _handler_chain = _build_handler_chain()
 
 
 def _extract_account_id(request: Request) -> str:
-    """Extract account ID from SigV4 credentials, defaulting to 000000000000."""
+    """Extract account ID from SigV4 credentials, defaulting to DEFAULT_ACCOUNT_ID."""
     auth = request.headers.get("authorization", "")
     match = _CREDENTIAL_RE.search(auth)
     if match:

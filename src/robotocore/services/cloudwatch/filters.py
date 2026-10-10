@@ -162,16 +162,16 @@ class FilterStore:
             return list(self.subscription_filters.get(log_group_name, {}).values())
 
 
-# Global store per region
-_stores: dict[str, FilterStore] = {}
+# Global store per (account_id, region)
+_stores: dict[tuple[str, str], FilterStore] = {}
 _store_lock = threading.Lock()
 
 
-def get_filter_store(region: str = "us-east-1") -> FilterStore:
+def get_filter_store(region: str = "us-east-1", account_id: str = "123456789012") -> FilterStore:
     with _store_lock:
-        if region not in _stores:
-            _stores[region] = FilterStore()
-        return _stores[region]
+        if (account_id, region) not in _stores:
+            _stores[(account_id, region)] = FilterStore()
+        return _stores[(account_id, region)]
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +339,7 @@ def process_log_events(
 
     Called after PutLogEvents to evaluate filters.
     """
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
 
     # Process metric filters
     metric_filters = store.describe_metric_filters(log_group_name=log_group_name)

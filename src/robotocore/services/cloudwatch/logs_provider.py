@@ -358,7 +358,7 @@ def _stop_query(params: dict, region: str, account_id: str) -> dict:
 
 
 def _put_metric_filter(params: dict, region: str, account_id: str) -> dict:
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
     log_group_name = params.get("logGroupName", "")
     filter_name = params.get("filterName", "")
     filter_pattern = params.get("filterPattern", "")
@@ -374,7 +374,7 @@ def _put_metric_filter(params: dict, region: str, account_id: str) -> dict:
 
 
 def _delete_metric_filter(params: dict, region: str, account_id: str) -> dict:
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
     log_group_name = params.get("logGroupName", "")
     filter_name = params.get("filterName", "")
 
@@ -387,7 +387,7 @@ def _delete_metric_filter(params: dict, region: str, account_id: str) -> dict:
 
 
 def _describe_metric_filters(params: dict, region: str, account_id: str) -> dict:
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
     log_group_name = params.get("logGroupName")
     filter_name_prefix = params.get("filterNamePrefix")
 
@@ -413,7 +413,7 @@ def _describe_metric_filters(params: dict, region: str, account_id: str) -> dict
 
 
 def _put_subscription_filter(params: dict, region: str, account_id: str) -> dict:
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
     log_group_name = params.get("logGroupName", "")
     filter_name = params.get("filterName", "")
     filter_pattern = params.get("filterPattern", "")
@@ -434,7 +434,7 @@ def _put_subscription_filter(params: dict, region: str, account_id: str) -> dict
 
 
 def _delete_subscription_filter(params: dict, region: str, account_id: str) -> dict:
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
     log_group_name = params.get("logGroupName", "")
     filter_name = params.get("filterName", "")
 
@@ -447,7 +447,7 @@ def _delete_subscription_filter(params: dict, region: str, account_id: str) -> d
 
 
 def _describe_subscription_filters(params: dict, region: str, account_id: str) -> dict:
-    store = get_filter_store(region)
+    store = get_filter_store(region, account_id)
     log_group_name = params.get("logGroupName", "")
 
     filters = store.describe_subscription_filters(log_group_name)

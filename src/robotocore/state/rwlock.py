@@ -88,10 +88,13 @@ class ReadWriteLock:
             self._writer_waiting = True
             self._no_writer.clear()
 
-            # Wait for all readers to finish
-            while self._readers > 0:
+            # Wait for any active writer to finish, then for all readers
+            while self._readers > 0 or self._writer_active:
                 self._lock.release()
-                await self._no_readers.wait()
+                if self._writer_active:
+                    await self._no_writer.wait()
+                else:
+                    await self._no_readers.wait()
                 await self._lock.acquire()
 
             self._writer_waiting = False
