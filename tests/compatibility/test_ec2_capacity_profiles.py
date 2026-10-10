@@ -420,10 +420,16 @@ class TestChaosIntegration:
             timeout=5,
         )
 
-        # Set chaos override
+        # Set chaos override scoped to this test's synthetic instance type —
+        # under -n8 another worker's unscoped override would fail unrelated
+        # tests' RunInstances (the a-g capacity flake).
         requests.post(
             f"{ENDPOINT_URL}/_robotocore/ec2/capacity/chaos",
-            json={"error_code": "InsufficientInstanceCapacity"},
+            json={
+                "error_code": "InsufficientInstanceCapacity",
+                "instance_type": synthetic_type,
+                "availability_zone": synthetic_az,
+            },
             timeout=5,
         )
 
@@ -467,15 +473,20 @@ class TestChaosIntegration:
 
     def test_chaos_override_unsupported(self, ec2):
         """Test that chaos override can force Unsupported error."""
-        # Set chaos override
+        # Set chaos override scoped to the synthetic type under test.
+        synthetic_az = "us-east-1f"
+        synthetic_type = _unique("cap-test-chaos")
         requests.post(
             f"{ENDPOINT_URL}/_robotocore/ec2/capacity/chaos",
-            json={"error_code": "Unsupported"},
+            json={
+                "error_code": "Unsupported",
+                "instance_type": synthetic_type,
+                "availability_zone": synthetic_az,
+            },
             timeout=5,
         )
 
         # Create VPC and subnet - use synthetic AZ to be safe
-        synthetic_az = "us-east-1f"
         vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")
         vpc_id = vpc["Vpc"]["VpcId"]
         subnet = ec2.create_subnet(
@@ -487,8 +498,6 @@ class TestChaosIntegration:
 
         try:
             # Launch should fail due to chaos override
-            # Use a synthetic instance type to avoid collision
-            synthetic_type = _unique("cap-test-chaos")
             with pytest.raises(botocore.exceptions.ClientError) as exc:
                 ec2.run_instances(
                     ImageId="ami-12345678",

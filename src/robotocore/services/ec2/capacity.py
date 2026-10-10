@@ -239,8 +239,11 @@ class CapacityStore:
         Returns:
             (success, error_code) tuple. error_code is None on success.
         """
-        # Check chaos override first
-        if self._chaos_override:
+        # Check chaos override first. Overrides may carry an
+        # instance_type/availability_zone scope: parallel compat shards share
+        # one server, so an unscooped override would inject failures into
+        # unrelated workers' RunInstances calls.
+        if self._chaos_override_applies(instance_type, az):
             error_code = self._chaos_override.get("error_code")
             if error_code == "InsufficientInstanceCapacity":
                 return False, "InsufficientInstanceCapacity"
@@ -320,8 +323,7 @@ class CapacityStore:
         Returns:
             (available, spot_price) tuple. spot_price is None if not available.
         """
-        # Check chaos override first
-        if self._chaos_override:
+        if self._chaos_override_applies(instance_type, az):
             error_code = self._chaos_override.get("error_code")
             if error_code == "InsufficientInstanceCapacity":
                 return False, None
@@ -339,8 +341,26 @@ class CapacityStore:
         return True, profile.spot_price
 
     def set_chaos_override(self, override: dict[str, Any] | None) -> None:
-        """Set chaos override for capacity checks (for testing)."""
+        """Set chaos override for capacity checks (for testing).
+
+        The override may carry `instance_type`/`availability_zone` to scope it:
+        under a parallel compat shard sharing one server, an unscooped
+        InsufficientInstanceCapacity override injects failures into unrelated
+        workers' launches. Unscooped overrides apply globally.
+        """
         self._chaos_override = override
+
+    def _chaos_override_applies(self, instance_type: str, az: str) -> bool:
+        """Whether the stored override targets this instance_type/AZ pair."""
+        if not self._chaos_override:
+            return False
+        scoped_type = self._chaos_override.get("instance_type")
+        scoped_az = self._chaos_override.get("availability_zone")
+        if scoped_type and scoped_type != instance_type:
+            return False
+        if scoped_az and scoped_az != az:
+            return False
+        return True
 
     def get_chaos_override(self) -> dict[str, Any] | None:
         """Get current chaos override."""
