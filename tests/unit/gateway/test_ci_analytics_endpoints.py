@@ -8,14 +8,15 @@ from unittest.mock import patch
 class TestCISessionsList:
     """GET /_robotocore/ci/sessions"""
 
-    def test_returns_200_without_state_dir(self, client):
+    def test_returns_400_without_state_dir(self, client):
+        """The ROBOTOCORE_STATE_DIR precondition answers 400 like the sibling
+        /ci endpoints (round-3 audit: /ci/sessions used to answer 200 with an
+        error field, so tooling branching on non-2xx missed it)."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOTOCORE_STATE_DIR", None)
             response = client.get("/_robotocore/ci/sessions")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["sessions"] == []
-        assert "error" in data
+        assert response.status_code == 400
+        assert "error" in response.json()
 
     def test_returns_empty_sessions_with_empty_dir(self, client, tmp_path):
         with patch.dict(os.environ, {"ROBOTOCORE_STATE_DIR": str(tmp_path)}):

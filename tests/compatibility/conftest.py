@@ -80,12 +80,14 @@ def make_client(service_name: str, **kwargs):
 
 
 @pytest.fixture(autouse=True, scope="session")
-def _clear_chaos_rules_at_session_end():
-    """Safety net: clear all chaos rules when a compat test session ends.
+def _clear_test_admin_state_at_session_end():
+    """Safety net: clear admin-plane leftovers when a compat test session ends.
 
-    If chaos tests somehow leak into a compat shard (e.g., due to CI
-    misconfiguration), this prevents leftover rules from poisoning
-    subsequent test runs on the same server.
+    Chaos rules and EC2 capacity profiles persist for the life of the server;
+    if a test session in another stage leaks them into a compat shard (e.g.
+    due to CI misconfiguration), subsequent RunInstances calls would answer
+    InsufficientInstanceCapacity forever. Clearing both on teardown keeps a
+    shard's server clean for the next stage.
     """
     yield
     try:
@@ -99,6 +101,13 @@ def _clear_chaos_rules_at_session_end():
     except Exception:
         logger.debug(
             "Could not clear chaos rules at session end (server may be stopped)", exc_info=True
+        )
+    try:
+        requests.post(f"{ENDPOINT_URL}/_robotocore/ec2/capacity/reset", timeout=5)
+    except Exception:
+        logger.debug(
+            "Could not clear capacity profiles at session end (server may be stopped)",
+            exc_info=True,
         )
 
 
