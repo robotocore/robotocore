@@ -141,6 +141,19 @@ class TestCapacityProfileAdminEndpoints:
         assert response.json()["status"] == "reset"
 
 
+def _capacity_forensics() -> str:
+    """Snapshot of the server's stored profiles + chaos override (failure dumps)."""
+    resp = requests.get(f"{ENDPOINT_URL}/_robotocore/ec2/capacity", timeout=5)
+    try:
+        data = resp.json()
+    except Exception:
+        return f"http {resp.status_code}"
+    return (
+        f"chaos_override={data.get('chaos_override')!r} "
+        f"profile_count={len(data.get('profiles', []))}"
+    )
+
+
 class TestInsufficientInstanceCapacity:
     """Tests for InsufficientInstanceCapacity error handling."""
 
@@ -193,7 +206,7 @@ class TestInsufficientInstanceCapacity:
             )
 
         error = exc.value.response["Error"]
-        assert error["Code"] == "InsufficientInstanceCapacity"
+        assert error["Code"] == "InsufficientInstanceCapacity", _capacity_forensics()
         assert synthetic_type in error["Message"]
         assert synthetic_az in error["Message"]
 
@@ -422,7 +435,8 @@ class TestChaosIntegration:
         subnet_id = subnet["Subnet"]["SubnetId"]
 
         try:
-            # Launch should fail due to chaos override
+            # Launch should fail due to chaos override; when it does not, the
+            # forensics dump shows the override state the server held.
             with pytest.raises(botocore.exceptions.ClientError) as exc:
                 ec2.run_instances(
                     ImageId="ami-12345678",
@@ -431,10 +445,9 @@ class TestChaosIntegration:
                     InstanceType=synthetic_type,
                     SubnetId=subnet_id,
                 )
-
             error = exc.value.response["Error"]
-            assert error["Code"] == "InsufficientInstanceCapacity"
         finally:
+            postmortem = _capacity_forensics()
             # Clear chaos override
             requests.post(
                 f"{ENDPOINT_URL}/_robotocore/ec2/capacity/chaos",
@@ -444,6 +457,8 @@ class TestChaosIntegration:
             # Cleanup
             ec2.delete_subnet(SubnetId=subnet_id)
             ec2.delete_vpc(VpcId=vpc_id)
+
+        assert error["Code"] == "InsufficientInstanceCapacity", postmortem
 
     def test_chaos_override_unsupported(self, ec2):
         """Test that chaos override can force Unsupported error."""

@@ -884,6 +884,7 @@ async def ec2_capacity_list(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "profiles": [p.to_dict() for p in profiles],
+            "chaos_override": store.get_chaos_override(),
             "account_id": account_id,
             "region": region,
         }
