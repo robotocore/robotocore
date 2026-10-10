@@ -606,6 +606,7 @@ async def config_endpoint(request: Request) -> JSONResponse:
     debug_val = rt.get("DEBUG", "0")
     return JSONResponse(
         {
+            "version": __version__,
             "enforce_iam": rt.get("ENFORCE_IAM", "0") == "1",
             "persistence": os.environ.get("PERSISTENCE", "0") == "1",
             "log_level": (log_level or "INFO").upper(),
@@ -883,6 +884,7 @@ async def ec2_capacity_list(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "profiles": [p.to_dict() for p in profiles],
+            "chaos_override": store.get_chaos_override(),
             "account_id": account_id,
             "region": region,
         }
@@ -907,14 +909,38 @@ async def ec2_capacity_set(request: Request) -> JSONResponse:
         if field not in data:
             return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
 
+    # Numeric fields arrive from arbitrary admin payloads: coerce them up
+    # front so a bad value answers 400 with the field name instead of a
+    # bare 500 from CapacityProfile or a silently-stored string.
+    numeric_fields = {
+        "total_capacity": "int",
+        "available_capacity": "int",
+        "spot_price": "float",
+    }
+    coerced = {}
+    for field, kind in numeric_fields.items():
+        raw = data.get(field)
+        if raw is None:
+            continue
+        try:
+            coerced[field] = int(raw) if kind == "int" else float(raw)
+        except (TypeError, ValueError):
+            expectation = "an integer" if kind == "int" else "a number"
+            return JSONResponse(
+                {"error": f"Field '{field}' must be {expectation}, got {raw!r}"},
+                status_code=400,
+            )
+
     profile = CapacityProfile(
         instance_type=data["instance_type"],
         availability_zone=data["availability_zone"],
-        total_capacity=data["total_capacity"],
-        available_capacity=data.get("available_capacity", data["total_capacity"]),
-        spot_available=data.get("spot_available", True),
-        spot_price=data.get("spot_price", 0.05),
-        enabled=data.get("enabled", True),
+        total_capacity=coerced.get("total_capacity", data["total_capacity"]),
+        available_capacity=coerced.get(
+            "available_capacity", coerced.get("total_capacity", data["total_capacity"])
+        ),
+        spot_available=bool(data.get("spot_available", True)),
+        spot_price=coerced.get("spot_price", 0.05),
+        enabled=bool(data.get("enabled", True)),
     )
 
     account_id = data.get("account_id", DEFAULT_ACCOUNT_ID)
@@ -1095,7 +1121,9 @@ async def ci_sessions_list(request: Request) -> JSONResponse:
 
     state_dir = _ci_analytics_state_dir()
     if not state_dir:
-        return JSONResponse({"sessions": [], "error": "ROBOTOCORE_STATE_DIR not set"})
+        # Consistent with the sibling endpoints: the same precondition answers
+        # 400 everywhere, so tooling branching on non-2xx sees it uniformly.
+        return JSONResponse({"error": "ROBOTOCORE_STATE_DIR not set"}, status_code=400)
     sessions = list_sessions(state_dir)
     return JSONResponse({"sessions": sessions, "count": len(sessions)})
 

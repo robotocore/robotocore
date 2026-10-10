@@ -349,15 +349,6 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 | STS | AssumeRole, federation, caller identity |
 | Support | Trusted Advisor |
 | X-Ray | Trace management |
-
-### Moto-backed services (108)
-
-<details>
-<summary>Click to expand full list</summary>
-
-Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, EKS, ElastiCache, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IoT, IoT Data, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, Organizations, OSIS, Pinpoint, Pipes, Polly, QuickSight, RAM, RDS, RDS Data, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Synthetics, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web.
-
-</details>
 | EKS | Cluster, nodegroup, Fargate profile management |
 | ElastiCache | Cluster and replication group management |
 | IoT | Thing, cert, and endpoint registry |
@@ -368,6 +359,15 @@ Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Au
 | RDS | DB instances, clusters, snapshots |
 | RDS Data API | Serverless statements |
 | Synthetics | Canary management |
+
+### Moto-backed services (108)
+
+<details>
+<summary>Click to expand full list</summary>
+
+Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, OSIS, Pinpoint, Polly, QuickSight, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web.
+
+</details>
 
 
 ---
@@ -602,7 +602,7 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 │  │   │                         │               │  │
 │  │   ▼                         ▼               │  │
 │  │  Native Providers         Moto Bridge       │  │
-│  │  (46 services —           (~110 services —  │  │
+│  │  (48 services —           (108 services —  │  │
 │  │   full fidelity)           Moto backends)   │  │
 │  │                                             │  │
 │  │  In-Memory State (per-account, per-region)  │  │

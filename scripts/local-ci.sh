@@ -14,24 +14,24 @@
 # Usage:
 #   scripts/local-ci.sh [stage ...]    # default: every stage sequentially
 #   scripts/local-ci.sh lint unit compat
-# Stages: lint, unit, integration, compat, cross-service, parity
+# Stages: lint, quality, unit, integration, compat, cross-service, parity, apps
 #
-# The compat / cross-service / parity stages each boot their own fresh server
-# (CI parity: HTTPS and DNS disabled, plain HTTP) and stop it afterwards. Set
-# LOCAL_CI_JOBS=N for parallel pytest workers (default 4; compat shards 8).
+# The compat / cross-service / parity / apps stages each boot their own fresh
+# server (CI parity: HTTPS and DNS disabled, plain HTTP) and stop it afterwards.
+# Set LOCAL_CI_JOBS=N for parallel pytest workers (default 4; compat shards 8).
 
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
 stages=("$@")
-[[ ${#stages[@]} -eq 0 ]] && stages=(lint unit integration compat cross-service parity)
+[[ ${#stages[@]} -eq 0 ]] && stages=(lint quality unit integration compat cross-service parity apps)
 
 validate_stages() {
   for stage in "$@"; do
     case "$stage" in
-      lint|unit|integration|compat|cross-service|parity) true ;;
-      *) echo "unknown stage: $stage" >&2; echo "stages: lint unit integration compat cross-service parity" >&2; return 1 ;;
+      lint|quality|unit|integration|compat|cross-service|parity|apps) true ;;
+      *) echo "unknown stage: $stage" >&2; echo "stages: lint quality unit integration compat cross-service parity apps" >&2; return 1 ;;
     esac
   done
 }
@@ -106,6 +106,17 @@ if has_stage lint; then
   timed "lint: mypy" uv run mypy src/robotocore/ --ignore-missing-imports
 fi
 
+# ---- test quality (offline static checks; mirrors CI's test-quality job) ----
+if has_stage quality; then
+  timed "quality: static analysis" uv run python scripts/validate_test_quality.py \
+    --max-no-contact-pct 5 --max-no-assertion-pct 6 --max-weak-assertion-pct 25
+  timed "quality: empty except:pass" uv run python scripts/fix_empty_except.py --check
+  timed "quality: wire names" uv run python scripts/fix_moto_param_names.py --all
+  timed "quality: compat sharding" uv run python scripts/check_compat_sharding.py
+  timed "quality: fallthrough audit" uv run python scripts/audit_fallthrough.py --all --max-uncovered 400
+  timed "quality: structural lint" uv run python scripts/lint_project.py --fail
+fi
+
 # ---- unit + integration (serverless; fixtures boot in-process servers) -----
 if has_stage unit; then
   timed "unit: gateway" uv run pytest \
@@ -160,6 +171,24 @@ if has_stage parity; then
   echo "starting fresh robotocore on :${p_port} for parity"
   start_robotocore "$p_port"
   timed "parity" env "ENDPOINT_URL=http://127.0.0.1:${p_port}" uv run pytest tests/parity/ -q
+  stop_current_server
+fi
+
+# ---- apps ---------------------------------------------------------------------------------------------------------
+if has_stage apps; then
+  a_port=$(free_port)
+  echo "starting fresh robotocore on :${a_port} for apps"
+  start_robotocore "$a_port"
+  # One timer per app matches CI's app-integration matrix (each scenario gets
+  # its own fresh server there; locally one server hosts them sequentially).
+  for app_dir in tests/apps/*/; do
+    app_name=$(basename "$app_dir")
+    if [[ -n "${LOCAL_CI_APPS:-}" ]] && [[ ", ${LOCAL_CI_APPS}, " != *" ${app_name} "* ]]; then
+      continue
+    fi
+    timed "apps: ${app_name}" env "ENDPOINT_URL=http://127.0.0.1:${a_port}" \
+      uv run pytest "${app_dir%/}" -q
+  done
   stop_current_server
 fi
 

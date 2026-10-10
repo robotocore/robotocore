@@ -38,6 +38,7 @@ def _clear_capacity_state():
         requests.post(
             f"{ENDPOINT_URL}/_robotocore/ec2/capacity/chaos", json={"clear": True}, timeout=5
         )
+        requests.post(f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear", timeout=5)
 
 
 @pytest.fixture(autouse=True)
@@ -140,6 +141,19 @@ class TestCapacityProfileAdminEndpoints:
         assert response.json()["status"] == "reset"
 
 
+def _capacity_forensics() -> str:
+    """Snapshot of the server's stored profiles + chaos override (failure dumps)."""
+    resp = requests.get(f"{ENDPOINT_URL}/_robotocore/ec2/capacity", timeout=5)
+    try:
+        data = resp.json()
+    except Exception:
+        return f"http {resp.status_code}"
+    return (
+        f"chaos_override={data.get('chaos_override')!r} "
+        f"profile_count={len(data.get('profiles', []))}"
+    )
+
+
 class TestInsufficientInstanceCapacity:
     """Tests for InsufficientInstanceCapacity error handling."""
 
@@ -182,16 +196,19 @@ class TestInsufficientInstanceCapacity:
         assert len(response["Instances"]) == 1
 
         # Second instance should fail with InsufficientInstanceCapacity
-        with pytest.raises(botocore.exceptions.ClientError) as exc:
-            ec2.run_instances(
-                ImageId="ami-12345678",
-                MinCount=1,
-                MaxCount=1,
-                InstanceType=synthetic_type,
-                SubnetId=subnet_id,
-            )
+        try:
+            with pytest.raises(botocore.exceptions.ClientError) as exc:
+                ec2.run_instances(
+                    ImageId="ami-12345678",
+                    MinCount=1,
+                    MaxCount=1,
+                    InstanceType=synthetic_type,
+                    SubnetId=subnet_id,
+                )
+            error = exc.value.response["Error"]
+        except BaseException:
+            raise AssertionError(f"server stored: {_capacity_forensics()}")
 
-        error = exc.value.response["Error"]
         assert error["Code"] == "InsufficientInstanceCapacity"
         assert synthetic_type in error["Message"]
         assert synthetic_az in error["Message"]
@@ -421,18 +438,20 @@ class TestChaosIntegration:
         subnet_id = subnet["Subnet"]["SubnetId"]
 
         try:
-            # Launch should fail due to chaos override
-            with pytest.raises(botocore.exceptions.ClientError) as exc:
-                ec2.run_instances(
-                    ImageId="ami-12345678",
-                    MinCount=1,
-                    MaxCount=1,
-                    InstanceType=synthetic_type,
-                    SubnetId=subnet_id,
-                )
-
-            error = exc.value.response["Error"]
-            assert error["Code"] == "InsufficientInstanceCapacity"
+            # Launch should fail due to chaos override; when it does not, the
+            # forensics dump shows the override state the server held.
+            try:
+                with pytest.raises(botocore.exceptions.ClientError) as exc:
+                    ec2.run_instances(
+                        ImageId="ami-12345678",
+                        MinCount=1,
+                        MaxCount=1,
+                        InstanceType=synthetic_type,
+                        SubnetId=subnet_id,
+                    )
+                error = exc.value.response["Error"]
+            except BaseException:
+                raise AssertionError(f"forensics: {_capacity_forensics()}")
         finally:
             # Clear chaos override
             requests.post(
@@ -443,6 +462,8 @@ class TestChaosIntegration:
             # Cleanup
             ec2.delete_subnet(SubnetId=subnet_id)
             ec2.delete_vpc(VpcId=vpc_id)
+
+        assert error["Code"] == "InsufficientInstanceCapacity"
 
     def test_chaos_override_unsupported(self, ec2):
         """Test that chaos override can force Unsupported error."""
