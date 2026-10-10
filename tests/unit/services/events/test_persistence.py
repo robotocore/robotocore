@@ -97,7 +97,7 @@ class TestEventBridgeRoundTrip:
         replay.events_replayed = 1
 
         snapshot = export_state()
-        assert snapshot["schema_version"] == 1
+        assert snapshot["schema_version"] == 2
         assert (
             snapshot["stores"]["111111111111"]["us-east-1"]["buses"]["orders"]["name"] == "orders"
         )
@@ -244,12 +244,12 @@ class TestEventBridgeRoundTrip:
         store = _get_store("us-east-1", "111111111111")
         store.create_event_bus("versioned-bus", "us-east-1", "111111111111")
         snapshot = export_state()
-        snapshot["schema_version"] = 2
+        snapshot["schema_version"] = 3
 
         with caplog.at_level(logging.WARNING):
             load_state(snapshot)
 
-        assert "events snapshot schema_version=2; expected 1" in caplog.text
+        assert "events snapshot schema_version=3; expected 2" in caplog.text
         restored = _get_store("us-east-1", "111111111111")
         assert restored.get_bus("versioned-bus") is not None
 
@@ -337,7 +337,7 @@ class TestDiskRoundTripViaStateManager:
         manager.load(name="events-cache", services=["events"])
 
         snapshot = export_state()
-        assert snapshot["schema_version"] == 1
+        assert snapshot["schema_version"] == 2
         assert "connections" in snapshot
         assert "api_destinations" in snapshot
         assert "endpoints" in snapshot
@@ -359,7 +359,10 @@ class TestDiskRoundTripViaStateManager:
         assert restored_connection["AuthorizationType"] == "API_KEY"
         assert restored_destination["ApiDestinationArn"] == api_destination["ApiDestinationArn"]
         assert restored_destination["InvocationRateLimitPerSecond"] == 42
-        assert _endpoints[("333333333333", "replica-endpoint")]["EndpointArn"] == endpoint["Arn"]
+        assert (
+            _endpoints[("333333333333", "ap-southeast-2", "replica-endpoint")]["EndpointArn"]
+            == endpoint["Arn"]
+        )
 
     def test_future_snapshot_fields_on_dataclasses_are_ignored(self):
         store = _get_store("us-east-1", "111111111111")

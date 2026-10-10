@@ -6,6 +6,7 @@ Forwards other operations to Moto.
 """
 
 import json
+import threading
 import time
 import uuid
 
@@ -33,6 +34,11 @@ _liveness_sessions: dict[str, dict] = {}
 _users: dict[tuple[str, str], dict[str, dict[str, dict]]] = {}
 
 _JSON_TYPE = "application/x-amz-json-1.1"
+
+# One re-entrant lock guards the mutable stores against mutation-during-iteration:
+# SearchFaces iterates a collection's faces while DeleteFaces may drop entries in
+# another request, and dict mutation mid-iteration would 500 both callers.
+_REKOGNITION_LOCK = threading.RLock()
 
 
 def _get_collections(account_id: str, region: str) -> dict[str, dict]:
@@ -346,11 +352,13 @@ def _search_faces(params: dict, region: str, account_id: str) -> dict:
     face_store = _get_faces(account_id, region)
     faces = face_store.get(collection_id, {})
 
-    # Return other faces as matches (excluding the query face)
-    matches = []
-    for fid, face in faces.items():
-        if fid != face_id:
-            matches.append({"Similarity": 95.0, "Face": face})
+    # Return other faces as matches (excluding the query face); take a
+    # consistent copy under the lock so a concurrent DeleteFaces cannot mutate
+    # the dict mid-iteration.
+    with _REKOGNITION_LOCK:
+        matches = [
+            {"Similarity": 95.0, "Face": face} for fid, face in faces.items() if fid != face_id
+        ]
 
     return {
         "SearchedFaceId": face_id,
@@ -369,7 +377,10 @@ def _search_faces_by_image(params: dict, region: str, account_id: str) -> dict:
     face_store = _get_faces(account_id, region)
     faces = face_store.get(collection_id, {})
 
-    matches = [{"Similarity": 95.0, "Face": face} for face in faces.values()]
+    # Snapshot under the lock: a concurrent DeleteFaces must not mutate the
+    # dict while we build the matches list.
+    with _REKOGNITION_LOCK:
+        matches = [{"Similarity": 95.0, "Face": face} for face in faces.values()]
 
     return {
         "SearchedFaceBoundingBox": {"Width": 0.5, "Height": 0.6, "Left": 0.2, "Top": 0.1},
@@ -390,10 +401,11 @@ def _delete_faces(params: dict, region: str, account_id: str) -> dict:
     face_store = _get_faces(account_id, region)
     faces = face_store.get(collection_id, {})
     deleted = []
-    for fid in face_ids:
-        if fid in faces:
-            del faces[fid]
-            deleted.append(fid)
+    with _REKOGNITION_LOCK:
+        for fid in face_ids:
+            if fid in faces:
+                del faces[fid]
+                deleted.append(fid)
     store[collection_id]["FaceCount"] = len(faces)
 
     return {"DeletedFaces": deleted}

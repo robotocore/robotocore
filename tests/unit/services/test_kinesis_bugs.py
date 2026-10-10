@@ -107,3 +107,38 @@ class TestATTimestampIterator:
 
         assert len(records) == 1, f"Expected 1 record, got {len(records)}"
         assert base64.b64decode(records[0]["Data"]) == b"new-data"
+
+
+# ===================================================================
+# Cross-account scoping: GetRecords must read the caller's account store
+# ===================================================================
+
+
+class TestGetRecordsAccountScoping:
+    def test_get_records_uses_the_calling_accounts_store(self):
+        """GetRecords resolved _get_store(region) with no account, so callers in
+        account B read (or failed to find) account A's streams."""
+        account_a, account_b = "444444444444", "555555555555"
+        store_a = _get_store("us-east-1", account_a)
+        store_a.create_stream("shared-name", 1, "us-east-1", account_a)
+        _get_store("us-east-1", account_b)  # account B has no streams
+
+        iterator = _get_shard_iterator(
+            store_a,
+            {"StreamName": "shared-name", "ShardId": "shardId-000000000000"},
+            "us-east-1",
+            account_a,
+        )["ShardIterator"]
+
+        payload = base64.b64decode(iterator.encode()).decode()
+        assert '"account": "444444444444"' in payload, (
+            "the iterator token must carry the creating account"
+        )
+
+        with pytest.raises(Exception, match="not found"):
+            _get_records(
+                _get_store("us-east-1", account_b),
+                {"ShardIterator": iterator},
+                "us-east-1",
+                account_b,
+            )

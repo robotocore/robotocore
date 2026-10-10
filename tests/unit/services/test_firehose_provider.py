@@ -322,12 +322,13 @@ class TestWriteToS3:
             return_value=MagicMock(__getitem__=MagicMock(return_value=mock_s3))
         )
         with patch("moto.backends.get_backend", mock_get):
-            _write_to_s3("bucket", "key", b"data", "us-east-1")
+            ok = _write_to_s3("bucket", "key", b"data", "us-east-1", "123456789012")
         mock_s3.put_object.assert_called_once_with("bucket", "key", b"data")
+        assert ok is True
 
     def test_exception_is_silenced(self):
         with patch("moto.backends.get_backend", side_effect=Exception("fail")):
-            _write_to_s3("bucket", "key", b"data", "us-east-1")
+            assert _write_to_s3("bucket", "key", b"data", "us-east-1", "123456789012") is False
 
 
 # ---------------------------------------------------------------------------

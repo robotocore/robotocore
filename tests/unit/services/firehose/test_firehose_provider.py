@@ -781,13 +781,15 @@ class TestWriteToS3:
             return_value=MagicMock(__getitem__=MagicMock(return_value=mock_s3))
         )
         with patch("moto.backends.get_backend", mock_get):
-            _write_to_s3("bucket", "key", b"data", "us-east-1")
+            ok = _write_to_s3("bucket", "key", b"data", "us-east-1", "123456789012")
         mock_s3.put_object.assert_called_once_with("bucket", "key", b"data")
+        assert ok is True, "a successful put must report success to the buffer"
 
     def test_silences_exceptions(self):
         """_write_to_s3 should not raise even if the backend fails."""
         with patch("moto.backends.get_backend", side_effect=Exception("fail")):
-            _write_to_s3("bucket", "key", b"data", "us-east-1")  # Should not raise
+            ok = _write_to_s3("bucket", "key", b"data", "us-east-1", "123456789012")
+        assert ok is False, "a failed write must report failure so the buffer is retained"
 
 
 # ---------------------------------------------------------------------------

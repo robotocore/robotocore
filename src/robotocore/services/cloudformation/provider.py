@@ -7,6 +7,7 @@ import time
 import uuid
 from collections import OrderedDict
 from collections.abc import Callable
+from xml.sax.saxutils import escape as xml_escape
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -1223,14 +1224,17 @@ def _list_exports(store: CfnStore, params: dict, region: str, account_id: str) -
 def _xml_response(action: str, data: dict) -> Response:
     def dict_to_xml(d) -> str:
         if isinstance(d, str):
-            return d
+            # A bare string is a scalar text node; user values reach here
+            # (stack names, parameters, tag values), so escape them like
+            # every other leaf rather than emitting them verbatim.
+            return xml_escape(d)
         if isinstance(d, list):
             parts = []
             for item in d:
                 if isinstance(item, dict):
                     parts.append(f"<member>{dict_to_xml(item)}</member>")
                 else:
-                    parts.append(f"<member>{item}</member>")
+                    parts.append(f"<member>{xml_escape(item)}</member>")
             return "".join(parts)
         if isinstance(d, dict):
             parts = []
@@ -1240,9 +1244,9 @@ def _xml_response(action: str, data: dict) -> Response:
                 elif isinstance(v, dict):
                     parts.append(f"<{k}>{dict_to_xml(v)}</{k}>")
                 else:
-                    parts.append(f"<{k}>{v}</{k}>")
+                    parts.append(f"<{k}>{xml_escape(str(v))}</{k}>")
             return "".join(parts)
-        return str(d)
+        return xml_escape(str(d))
 
     result_name = action.replace("Response", "Result")
     body_xml = dict_to_xml(data)
@@ -1260,7 +1264,8 @@ def _error(code: str, message: str, status: int) -> Response:
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://cloudformation.amazonaws.com/doc/2010-05-15/">'
-        f"<Error><Type>Sender</Type><Code>{code}</Code><Message>{message}</Message></Error>"
+        f"<Error><Type>Sender</Type><Code>{xml_escape(code)}</Code>"
+        f"<Message>{xml_escape(message)}</Message></Error>"
         f"<RequestId>{_new_id()}</RequestId>"
         f"</ErrorResponse>"
     )

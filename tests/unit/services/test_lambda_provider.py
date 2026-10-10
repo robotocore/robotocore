@@ -73,7 +73,7 @@ class TestHelpers:
             "UUID": "abc",
             "FunctionArn": "arn:aws:lambda:us-east-1:123:function:fn",
             "_region": "us-east-1",
-            "_account_id": "123",
+            "_account_id": "123456789012",
         }
         result = _sanitize_esm(config)
         assert "UUID" in result
@@ -377,7 +377,7 @@ class TestEventSourceMappings:
             "FunctionArn": "arn:aws:lambda:us-east-1:123:function:fn",
             "State": "Enabled",
             "_region": "us-east-1",
-            "_account_id": "123",
+            "_account_id": "123456789012",
         }
 
         req = await _make_request("GET", "/2015-03-31/event-source-mappings")
@@ -406,7 +406,7 @@ class TestEventSourceMappings:
             "UUID": "del-uuid",
             "State": "Enabled",
             "_region": "us-east-1",
-            "_account_id": "123",
+            "_account_id": "123456789012",
         }
 
         req = await _make_request("DELETE", "/2015-03-31/event-source-mappings/del-uuid")
@@ -569,7 +569,7 @@ class TestESMRaceCondition:
             "BatchSize": 10,
             "State": "Enabled",
             "_region": "us-east-1",
-            "_account_id": "123",
+            "_account_id": "123456789012",
         }
 
         # Simulate: read happens, then delete happens, then write happens
@@ -598,7 +598,7 @@ class TestESMRaceCondition:
             "BatchSize": 10,
             "State": "Enabled",
             "_region": "us-east-1",
-            "_account_id": "123",
+            "_account_id": "123456789012",
         }
 
         req = await _make_request("DELETE", "/2015-03-31/event-source-mappings/del-race")
