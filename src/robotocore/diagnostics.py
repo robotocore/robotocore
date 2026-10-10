@@ -110,7 +110,7 @@ def _ensure_configured() -> None:
 def header_value(exc: BaseException) -> str:
     """Build the ``x-robotocore-diag`` header value from an exception.
 
-    Format: ``ExceptionType: message`` truncated to 512 bytes.
+    Format: ``ExceptionType: message`` truncated to 512 bytes, ASCII-limited.
     Always safe to call — returns a string even if exc is weird.
     """
     try:
@@ -119,8 +119,12 @@ def header_value(exc: BaseException) -> str:
         val = "UnknownError"
     if len(val) > _MAX_HEADER_LEN:
         val = val[: _MAX_HEADER_LEN - 3] + "..."
-    # Headers must not contain newlines
-    return val.replace("\n", " ").replace("\r", "")
+    # Headers must not contain newlines, and Starlette encodes header values
+    # as latin-1: replace anything outside that range (typographic characters
+    # like em dashes are common in human-facing messages) so the response
+    # headers never fail to encode and turn a 4xx into an encoding 500.
+    val = val.replace("\n", " ").replace("\r", "")
+    return val.encode("latin-1", "replace").decode("latin-1")
 
 
 def record(

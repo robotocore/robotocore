@@ -302,7 +302,7 @@ class TestErrorNormalizer:
         error_normalizer(ctx, ValueError("bad value"))
         assert ctx.response.status_code == 500
         body = json.loads(ctx.response.body.decode())
-        assert body["__type"] == "ValueError"
+        assert body["__type"] == "InternalFailure"
         assert "bad value" in body["message"]
 
     def test_rest_json_protocol_error(self):
@@ -311,7 +311,7 @@ class TestErrorNormalizer:
         error_normalizer(ctx, RuntimeError("runtime fail"))
         assert ctx.response.status_code == 500
         body = json.loads(ctx.response.body.decode())
-        assert body["__type"] == "RuntimeError"
+        assert body["__type"] == "InternalFailure"
 
     def test_query_protocol_error(self):
         ctx = _make_context(service_name="sts")

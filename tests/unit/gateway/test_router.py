@@ -419,13 +419,29 @@ class TestPresignedURLRouting:
 
 
 class TestFormUrlEncodedFallback:
-    """Unsigned form-urlencoded requests should route to STS."""
+    """Unsigned form-urlencoded requests route to STS only for STS operations
+    (the one service AWS documents unsigned calls for); anything else falls
+    through to the unroutable 400 instead of claiming to be STS."""
 
-    def test_sts_unsigned_request(self):
+    def test_unsigned_sts_operation(self):
+        req = _make_request(
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            query_params={"Action": "AssumeRoleWithWebIdentity"},
+        )
+        assert route_to_service(req) == "sts"
+
+    def test_unsigned_non_sts_action_does_not_default_to_sts(self):
+        req = _make_request(
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            query_params={"Action": "CreateQueue"},
+        )
+        assert route_to_service(req) is None
+
+    def test_unsigned_no_action_does_not_default_to_sts(self):
         req = _make_request(
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
-        assert route_to_service(req) == "sts"
+        assert route_to_service(req) is None
 
     def test_form_urlencoded_with_auth_does_not_default_to_sts(self):
         """If auth header is present, don't default to STS."""
@@ -488,3 +504,43 @@ class TestUnknownService:
         # Uppercase/underscores are not valid S3 bucket name chars — truly unroutable
         req = _make_request(path="/UNKNOWN_SERVICE")
         assert route_to_service(req) is None
+
+
+class TestUnsignedFormPosts:
+    """An unsigned x-www-form-urlencoded POST must only route to STS when the
+    Action is an STS operation (STS is the only AWS service that documents
+    unsigned calls); anything else falls through to the unroutable 400."""
+
+    def _form_request(self, action: str | None, in_body: bool = False):
+        req = _make_request(headers={"content-type": "application/x-www-form-urlencoded"})
+        if action is not None:
+            if in_body:
+                import urllib.parse
+
+                req._body = urllib.parse.urlencode({"Action": action}).encode()
+            else:
+                req.query_params = {"Action": action}
+        return req
+
+    def test_unsigned_sts_operation_routes_to_sts(self):
+        assert route_to_service(self._form_request("AssumeRoleWithWebIdentity")) == "sts"
+
+    def test_unsigned_non_sts_operation_is_not_routed(self):
+        # A CreateQueue posted unsigned is no longer misrouted to STS.
+        assert route_to_service(self._form_request("CreateQueue")) is None
+
+    def test_unsigned_body_action_routes_to_sts(self):
+        assert route_to_service(self._form_request("AssumeRole", in_body=True)) == "sts"
+
+    def test_signed_other_service_query_action_is_unaffected(self):
+        req = _make_request(
+            headers={
+                "authorization": (
+                    "AWS4-HMAC-SHA256 "
+                    "Credential=AKID/20260310/us-east-1/sqs/aws4_request, "
+                    "SignedHeaders=host, Signature=abc"
+                )
+            },
+            query_params={"Action": "CreateQueue"},
+        )
+        assert route_to_service(req) == "sqs"

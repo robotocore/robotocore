@@ -324,7 +324,18 @@ def error_normalizer(context: RequestContext, exc: Exception) -> None:
     protocol = context.protocol or "query"
     is_not_implemented = isinstance(exc, NotImplementedError)
     status_code = 501 if is_not_implemented else 500
-    error_code = "NotImplemented" if is_not_implemented else type(exc).__name__
+    if is_not_implemented:
+        error_code = "NotImplemented"
+    else:
+        # AWS's standard server-error codes, not the Python exception class
+        # name: agents dispatch on the code per the AGENTS.md error contract,
+        # and the specific exception is already in the x-robotocore-diag
+        # header for debugging.
+        error_code = (
+            "InternalFailure"
+            if protocol in ("json", "rest-json", "smithy-rpc-v2-cbor")
+            else "InternalError"
+        )
 
     diag_record(
         exc=exc,
