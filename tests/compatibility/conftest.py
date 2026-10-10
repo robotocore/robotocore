@@ -3,12 +3,13 @@
 These suites talk to a long-lived robotocore process over HTTP (unlike
 `tests/integration`, which boots an in-process server per module). Choose the
 target with `ENDPOINT_URL` (defaults to `http://localhost:4566`); at collection
-time the server must be fresh — see `pytest_configure` below for the guard.
+time the server must be fresh — see `pytest_collection_modifyitems` below for the guard.
 """
 
 import logging
 import os
 import shutil
+import sys
 
 import boto3
 import pytest
@@ -101,32 +102,45 @@ def _clear_chaos_rules_at_session_end():
         )
 
 
-def pytest_configure(config: pytest.Config) -> None:
-    """Refuse to run the compat suites against a server this run did not just start.
+def _target_server_is_warm() -> bool:
+    """True when ENDPOINT_URL points at a server older than the freshness limit.
 
-    These suites are only meaningful against a robotocore whose state starts empty
-    (CI boots a fresh server immediately before the run). Pointing them at some
-    other long-running robotocore silently produces phantom failures — state it
-    never created, forty-some 'must be replaced' plans, catalog mismatches — which
-    is indistinguishable from real defects. If the only reachable server is older
-    than ``ROBOTOCORE_COMPAT_MAX_UPTIME`` seconds (default 600), abort collection
-    with instructions; ``ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1`` opts out for
-    intentional runs against a persistent server.
+    Unreachable servers are never "warm" — the suites themselves will fail loudly.
+    ``ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1`` opts out entirely.
     """
+    if os.environ.get("ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER", "0") == "1":
+        return False
     max_uptime = float(os.environ.get("ROBOTOCORE_COMPAT_MAX_UPTIME", "600"))
-    allow_warm = os.environ.get("ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER", "0") == "1"
     try:
         resp = requests.get(f"{ENDPOINT_URL}/_robotocore/health", timeout=5)
         uptime = float(resp.json().get("uptime_seconds", 0))
     except Exception:
-        return  # unreachable: leave collection alone; the tests themselves will fail loudly
+        return False  # unreachable: let the tests fail themselves, loudly
+    return uptime > max_uptime
 
-    if uptime > max_uptime and not allow_warm:
-        raise pytest.UsageError(
-            f"The server at {ENDPOINT_URL} has been up for {uptime:.0f}s, "
-            f"longer than the {max_uptime:.0f}s freshness limit. The compatibility "
-            "suites populate API state as they run and are only comparable against a "
-            "freshly started robotocore (see .github/workflows/ci.yml). Start one and "
-            "point ENDPOINT_URL at it, or set ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1 "
-            "if a persistent server is intentional."
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip compat tests, politely, when they target a server someone else owns.
+
+    These suites are only meaningful against a robotocore whose state starts
+    empty (CI boots a fresh server immediately before the run). Pointing them
+    at a long-running robotocore produces phantom failures indistinguishable
+    from real defects — but aborting every whole-tree run because
+    localhost:4566 happens to be busy would be worse for a repo whose unit
+    suites are serverless. When the guard trips, compat items are dropped and
+    one warning is emitted; `scripts/local-ci.sh compat` and CI boot their own
+    fresh server and are unaffected.
+    """
+    if not _target_server_is_warm():
+        return
+    compat_tests = [item for item in items if "/tests/compatibility/" in str(item.fspath)]
+    kept = [item for item in items if item not in compat_tests]
+    if compat_tests:
+        items[:] = kept
+        print(
+            f"WARNING: skipped {len(compat_tests)} compatibility tests — the server at "
+            f"{ENDPOINT_URL} is warm (uptime above the freshness limit), and these "
+            "suites only compare against a freshly started robotocore. Boot one per "
+            "run (scripts/local-ci.sh) or set ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1.",
+            sys.stderr,
         )

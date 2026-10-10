@@ -4,6 +4,8 @@ Phase 6C: Verify malformed JSON, missing fields, and unexpected types
 return 400 with clear error messages (not 500 with tracebacks).
 """
 
+import json
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -319,3 +321,23 @@ class TestSnapshotsEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "snapshots" in data
+
+
+class TestChaosRuleValidation:
+    def test_add_rule_bad_regex_returns_400(self, client):
+        """An invalid operation regex is a client error and must answer 400
+        with the reason, not crash the admin route."""
+        resp = client.post(
+            "/_robotocore/chaos/rules",
+            content=json.dumps(
+                {
+                    "service": "s3",
+                    "operation": "(bad",
+                    "error_code": "ProbeDepthOne",
+                    "error_message": "probe",
+                }
+            ),
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 400
+        assert "regex" in resp.json()["error"].lower()

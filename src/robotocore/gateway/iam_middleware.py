@@ -66,6 +66,14 @@ _SERVICE_ACTION_PREFIX: dict[str, str] = {
 _sts_sessions: dict[str, dict[str, str]] = {}
 
 
+class IAMBackendUnavailableError(Exception):
+    """The IAM backend could not be reached to authorize a request."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 def register_sts_session(access_key_id: str, role_arn: str, account_id: str) -> None:
     """Register an assumed-role session for IAM enforcement."""
     _sts_sessions[access_key_id] = {"role_arn": role_arn, "account_id": account_id}
@@ -185,18 +193,24 @@ def build_resource_arn(
     return f"arn:aws:{service_name}:{region}:{account_id}:*"
 
 
-def _gather_policies(access_key_id: str, account_id: str, region: str) -> list[dict]:
+def _gather_policies(access_key_id: str, account_id: str, region: str) -> list[dict] | None:
     """Gather all IAM policies for the given access key.
 
     Looks up the user/role in the Moto IAM backend and collects
     inline policies, attached managed policies, and group policies.
+
+    Returns None when the IAM backend itself is unusable (import failure or a
+    missing backend): a server fault that the caller must surface as 500,
+    distinct from an empty policy list, which is an implicit deny.
     """
     try:
         from moto.backends import get_backend  # noqa: I001
 
         iam_backend = get_backend("iam")[account_id]["global"]
-    except Exception:  # noqa: BLE001
-        return []
+    except Exception as backend_err:  # noqa: BLE001
+        raise IAMBackendUnavailableError(
+            f"IAM backend unavailable for account {account_id}: {backend_err}"
+        ) from backend_err
 
     policies: list[dict] = []
 
@@ -378,7 +392,21 @@ def iam_enforcement_handler(context: RequestContext) -> None:
 
     t0 = _time.monotonic()
 
-    policies = _gather_policies(creds["access_key_id"], context.account_id, context.region)
+    try:
+        policies = _gather_policies(creds["access_key_id"], context.account_id, context.region)
+    except IAMBackendUnavailableError as be:
+        # Cannot authorize: a server fault, not a caller fault. Answering 403
+        # here would blame the caller for an emulator crash.
+        from robotocore.gateway.handlers import error_normalizer
+
+        error_normalizer(
+            context,
+            RuntimeError(
+                f"The IAM authorization backend could not be reached "
+                f"(ENFORCE_IAM is on): {be.message}"
+            ),
+        )
+        return
 
     if not policies:
         # No policies found - implicit deny

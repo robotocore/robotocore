@@ -278,11 +278,13 @@ async def health(request: Request) -> JSONResponse:
     uptime = time.monotonic() - _server_start_time if _server_start_time else 0
 
     counts = request_counter.get_all()
+    allowed = get_allowed_services()  # None means no SERVICES filter is active
     services_status = {}
     for name, info in sorted(SERVICE_REGISTRY.items()):
         stype = "native" if info.status == ServiceStatus.NATIVE else "moto"
+        enabled = allowed is None or name in allowed
         services_status[name] = {
-            "status": "running",
+            "status": "running" if enabled else "disabled",
             "type": stype,
             "requests": counts.get(name, 0),
         }
@@ -299,9 +301,10 @@ async def health(request: Request) -> JSONResponse:
 
 async def localstack_health(request: Request) -> JSONResponse:
     """LocalStack-compatible health endpoint (drop-in replacement format)."""
+    allowed = get_allowed_services()
     services_status = {}
     for name in sorted(SERVICE_REGISTRY.keys()):
-        services_status[name] = "available"
+        services_status[name] = "available" if (allowed is None or name in allowed) else "disabled"
 
     return JSONResponse(
         {
@@ -833,7 +836,12 @@ async def chaos_add_rule(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
     if not isinstance(data, dict):
         return JSONResponse({"error": "Expected JSON object"}, status_code=400)
-    rule = FaultRule.from_dict(data)
+    try:
+        rule = FaultRule.from_dict(data)
+    except ValueError as exc:
+        # A bad operator regex in the fault payload is a client error: answer
+        # with the reason instead of crashing the admin route.
+        return JSONResponse({"error": str(exc)}, status_code=400)
     rule_id = get_fault_store().add(rule)
     return JSONResponse({"status": "created", "rule_id": rule_id}, status_code=201)
 
@@ -1710,6 +1718,15 @@ async def handle_connections_api(
             status_code=410,
             media_type="application/json",
         )
+    # Anything else must not fall through: returning None here made the caller
+    # respond to a None and crash with TypeError. AWS answers 403 for PUT on
+    # @connections paths; 405 with the allowed set is the standard shape.
+    return Response(
+        content=json.dumps({"message": f"Method {method} not allowed on @connections API"}),
+        status_code=405,
+        headers={"Allow": "GET, POST, DELETE"},
+        media_type="application/json",
+    )
 
 
 async def _boot_status_endpoint(request: Request) -> JSONResponse:

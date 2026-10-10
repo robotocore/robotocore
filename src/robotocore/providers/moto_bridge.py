@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from werkzeug.routing import Map, Rule
 from werkzeug.routing.converters import BaseConverter
+from werkzeug.routing.exceptions import NoMatch as RoutingNotFound
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request as WerkzeugRequest
 
@@ -230,12 +231,31 @@ async def forward_to_moto(
         raw_path = request.url.path
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
-    except Exception:  # noqa: BLE001
+    except RoutingNotFound:
+        # Moto has no route for this op shape (or service) — the "not
+        # implemented" gap contract (AGENTS.md: only 501 is a gap).
         return _error_response(
             service_name,
             "NotImplemented",
             f"Service {service_name} is not yet implemented",
             501,
+        )
+    except Exception as dispatch_err:  # noqa: BLE001
+        # Any other dispatch failure is a real bug: answer the 500 contract
+        # here instead of filing it as a coverage gap.
+        _diag_record(
+            exc=dispatch_err,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=500,
+        )
+        return _error_response(
+            service_name,
+            "InternalError",
+            str(dispatch_err),
+            500,
+            {"x-robotocore-diag": _diag_header(dispatch_err)},
         )
 
     werkzeug_request = _build_werkzeug_request(
@@ -329,11 +349,15 @@ async def forward_to_moto(
         if isinstance(e, WerkzeugHTTPException):
             resp = e.get_response()
             body_text = resp.get_data(as_text=True) if resp else str(e)
-            status_code = e.code or 400
+            # Label the body with moto's own content type (RESTError sends
+            # XML with X-Amzn-ErrorType) instead of declaring XML "JSON".
+            headers = {"Content-Type": resp.content_type or "application/json"}
+            if resp.headers.get("X-Amzn-ErrorType"):
+                headers["x-amzn-ErrorType"] = resp.headers["X-Amzn-ErrorType"]
             return Response(
                 content=body_text,
-                status_code=status_code,
-                headers={"Content-Type": "application/json"},
+                status_code=e.code or 400,
+                headers=headers,
             )
         _diag_record(
             exc=e,
@@ -362,12 +386,31 @@ async def forward_to_moto_with_body(
         raw_path = request.url.path
     try:
         dispatch = _get_dispatcher(service_name, raw_path)
-    except Exception:  # noqa: BLE001
+    except RoutingNotFound:
+        # Moto has no route for this op shape (or service) — the "not
+        # implemented" gap contract (AGENTS.md: only 501 is a gap).
         return _error_response(
             service_name,
             "NotImplemented",
             f"Service {service_name} is not yet implemented",
             501,
+        )
+    except Exception as dispatch_err:  # noqa: BLE001
+        # Any other dispatch failure is a real bug: answer the 500 contract
+        # here instead of filing it as a coverage gap.
+        _diag_record(
+            exc=dispatch_err,
+            service=service_name,
+            method=request.method,
+            path=raw_path,
+            status=500,
+        )
+        return _error_response(
+            service_name,
+            "InternalError",
+            str(dispatch_err),
+            500,
+            {"x-robotocore-diag": _diag_header(dispatch_err)},
         )
 
     werkzeug_request = _build_werkzeug_request(
@@ -455,11 +498,15 @@ async def forward_to_moto_with_body(
         if isinstance(e, WerkzeugHTTPException):
             resp = e.get_response()
             body_text = resp.get_data(as_text=True) if resp else str(e)
-            status_code = e.code or 400
+            # Label the body with moto's own content type (RESTError sends
+            # XML with X-Amzn-ErrorType) instead of declaring XML "JSON".
+            headers = {"Content-Type": resp.content_type or "application/json"}
+            if resp.headers.get("X-Amzn-ErrorType"):
+                headers["x-amzn-ErrorType"] = resp.headers["X-Amzn-ErrorType"]
             return Response(
                 content=body_text,
-                status_code=status_code,
-                headers={"Content-Type": "application/json"},
+                status_code=e.code or 400,
+                headers=headers,
             )
         _diag_record(
             exc=e,
