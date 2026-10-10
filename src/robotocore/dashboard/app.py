@@ -866,8 +866,10 @@ td, .tree-toggle, .tree-children div { font-family: "SF Mono", Menlo, Consolas, 
 
   function esc(s) {
     if (s == null) return "";
+    // Also escape single quotes: snapshot names are interpolated into
+    // single-quoted JS strings inside inline onclick handlers.
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
   // Initial load

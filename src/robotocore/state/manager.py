@@ -1009,6 +1009,9 @@ class StateManager:
                 resolved_name = name or meta.get("name") or f"imported-{int(time.time())}"
             else:
                 resolved_name = name or f"imported-{int(time.time())}"
+            # The name flows into a filesystem path below; without this check a
+            # `?name=../../x` import wrote outside the state directory.
+            _validate_snapshot_name(resolved_name)
 
             # Move to snapshots directory
             snap_dir = self.state_dir / "snapshots" / resolved_name
