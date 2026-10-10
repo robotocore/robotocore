@@ -46,8 +46,8 @@ AWS_REQUEST_HEADERS = {
 
 @pytest.mark.asyncio
 async def test_health_responds_while_a_slow_auto_save_runs(monkeypatch):
+
     import robotocore.state.manager as state_manager
-    import os
 
     manager = _SlowManager()
     monkeypatch.setattr(state_manager, "get_state_manager", lambda: manager)
