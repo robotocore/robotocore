@@ -27,6 +27,45 @@ maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
   tooling gating on health does not proceed into 501s.
 - **`scripts/local-ci.sh`** — local replication of CI's lint/unit/integration/compat/cross-service/
   parity gates, with the live-server stages booting their own fresh robotocore on a private port.
+- **`/_robotocore/config` reports `version`.** AGENTS.md and README direct agents at the
+  endpoint for the emulator version; the field was previously absent from the payload.
+- **`POST /_robotocore/ec2/capacity` validates its numeric fields and answers 400 with the
+  field name**; `SQS_LONGPOLL_THREADS` tolerates a bad value (warn + default) so one wrong env
+  var cannot brick server boot.
+
+### Fixed
+
+- **Cross-account in-memory stores were region- (or name-) keyed.** CloudWatch log metric
+  and subscription filters, SESv2 email templates, X-Ray encryption config and resource
+  policies, Kinesis `GetRecords`/shard iterators, Lambda event source mappings, Step
+  Functions SQS/SNS integrations, EventBridge connections/API-destinations/endpoints,
+  Firehose S3 delivery, and SQS delete/purge behavioral cooldowns all now key state by
+  `(account_id, region)` (plus the entity name where multiple of one exist per queue). A
+  second account in the same region no longer reads account A's filter destinations,
+  template HTML, KMS key ids, or policy documents — and cannot overwrite or delete them.
+- **CloudFormation XML escapes caller values.** Stack names, parameter/tag values and
+  error messages were emitted into `DescribeStacks`/`ErrorResponse` verbatim, so an `&` in
+  a parameter produced a document botocore could not parse. Rekognition face stores take
+  a re-entrant lock so concurrent SearchFace/DeleteFace cannot mutate mid-iteration.
+- **Moto snapshot restores keep Lambda functions.** moto's LambdaStorage holds functions
+  in a `WeakValueDictionary` whose closures cannot pickle — the save loop skipped the
+  whole `lambda` backend while `metadata.json` still claimed it. The restricted pickler now
+  reduces WeakValueDictionaries to a live-entry snapshot and rebuilds them on load.
+- **Tenant-level state reach**: the boot state component registers S3 (CORS, lifecycle,
+  object-lock, legal-hold, logging, directory buckets) and Lambda (event source mappings,
+  function URLs) save/load hooks; restarting with `ROBOTOCORE_STATE_DIR` previously reset
+  those configs while queues/functions/buckets restored.
+- **Considering AWS shape**: S3 `ObjectCreated` notifications carry the stored object's
+  real size (moto's PUT response is empty so the header scrape read 0), the six sub-resource
+  config handlers answer 404 `NoSuchBucket` like AWS (configs previously attached to
+  nonexistent buckets leaked across accounts), the website 404 body escapes decoded keys
+  and the `AssumeRole`/SAML paths register their minted ASIA keys so assumed-role calls
+  resolve role policies under `ENFORCE_IAM=1` instead of implicit-denying.
+- **Lambda account code-size accounting** releases on delete and replace-of-old, and
+  `CodeStorageExceededException` answers 400 `CodeStorageExceededException` instead of
+  500 `ServiceException`. Capacity chaos overrides honor their scope (instance type/AZ)
+  at every consumption site, so a compat shard's synthetic override cannot inject
+  `InsufficientInstanceCapacity` into an unrelated parallel worker's launches.
 
 ### Fixed
 

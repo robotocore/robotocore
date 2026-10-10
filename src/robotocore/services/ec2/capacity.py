@@ -243,7 +243,7 @@ class CapacityStore:
         # instance_type/availability_zone scope: parallel compat shards share
         # one server, so an unscooped override would inject failures into
         # unrelated workers' RunInstances calls.
-        if self._chaos_override_applies(instance_type, az):
+        if self.chaos_override_applies(instance_type, az):
             error_code = self._chaos_override.get("error_code")
             if error_code == "InsufficientInstanceCapacity":
                 return False, "InsufficientInstanceCapacity"
@@ -323,7 +323,7 @@ class CapacityStore:
         Returns:
             (available, spot_price) tuple. spot_price is None if not available.
         """
-        if self._chaos_override_applies(instance_type, az):
+        if self.chaos_override_applies(instance_type, az):
             error_code = self._chaos_override.get("error_code")
             if error_code == "InsufficientInstanceCapacity":
                 return False, None
@@ -350,7 +350,7 @@ class CapacityStore:
         """
         self._chaos_override = override
 
-    def _chaos_override_applies(self, instance_type: str, az: str) -> bool:
+    def chaos_override_applies(self, instance_type: str, az: str) -> bool:
         """Whether the stored override targets this instance_type/AZ pair."""
         if not self._chaos_override:
             return False

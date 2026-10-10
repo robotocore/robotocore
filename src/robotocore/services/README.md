@@ -108,11 +108,11 @@ Every service available in LocalStack Community Edition is available in Robotoco
 | Support | No | Yes | Yes (native) | |
 | X-Ray | No | Yes | Yes (native) | |
 
-### Additional services (101 Moto-backed)
+### Additional services (108 Moto-backed)
 
-Beyond the 46 native providers listed above, Robotocore registers 101 additional services via Moto backends. These include: Athena, Auto Scaling, CodeBuild, CodeCommit, CodePipeline, Glue, IoT, MediaStore, MQ, Neptune, QLDB, RDS, Redshift, SageMaker, WAF, and many more. Run `aws --endpoint-url http://localhost:4566 <service> help` to check any specific service.
+Beyond the 48 native providers listed above, Robotocore registers 108 additional services via Moto backends. These include: Athena, Auto Scaling, CodeBuild, CodeCommit, CodePipeline, Glue, IoT, MediaStore, MQ, Neptune, QLDB, RDS, Redshift, SageMaker, WAF, and many more. Run `aws --endpoint-url http://localhost:4566 <service> help` to check any specific service.
 
-**Total: 147 services** (46 native + 101 Moto-backed), compared to ~25 for LocalStack Community and ~195 for moto server (though moto's implementations are pure mocks with no behavioral fidelity).
+**Total: 156 services** (48 native + 108 Moto-backed), compared to ~25 for LocalStack Community and ~195 for moto server (though moto's implementations are pure mocks with no behavioral fidelity).
 
 ---
 
@@ -123,7 +123,8 @@ Beyond the 46 native providers listed above, Robotocore registers 101 additional
 | LocalStack env var | Robotocore equivalent | Notes |
 |---|---|---|
 | `GATEWAY_LISTEN=:4566` | Default is 4566 | Same default port |
-| `SERVICES=s3,sqs,lambda` | All 147 services always available | No need to specify; all services are on |
+| `SERVICES=unset` | All 156 registered services available | Unset by default; set the var to enable a subset |
+| `SERVICES=s3,sqs,lambda` | Only the listed services respond | Disabled services answer 501 `NotImplemented` when called |
 | `DEBUG=1` | `ROBOTOCORE_LOG_LEVEL=DEBUG` | Structured logging with levels |
 | `PERSISTENCE=1` | State snapshots (see below) | LocalStack persistence was Pro-only anyway |
 | `LAMBDA_EXECUTOR=local` | Default behavior | Lambda executes in-process by default |
