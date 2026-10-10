@@ -37,15 +37,22 @@ def chaos_handler(context: RequestContext) -> None:
 
     # Apply error injection
     if rule.error_code:
+        from xml.sax.saxutils import escape as xml_escape
+
         request_id = uuid.uuid4().hex
+        # Admin-authored rule fields land verbatim in protocol bodies: escape
+        # the XML path so a '<' or '&' in a fault message is the injected
+        # fault, not a malformed document the client cannot parse.
+        safe_code = xml_escape(rule.error_code)
+        safe_message = xml_escape(rule.error_message)
 
         if context.protocol in ("rest-xml", "query", "ec2"):
             # XML-protocol services expect XML error responses
             error_body = (
                 '<?xml version="1.0" encoding="UTF-8"?>'
                 "<ErrorResponse><Error>"
-                f"<Code>{rule.error_code}</Code>"
-                f"<Message>{rule.error_message}</Message>"
+                f"<Code>{safe_code}</Code>"
+                f"<Message>{safe_message}</Message>"
                 "</Error>"
                 f"<RequestId>{request_id}</RequestId>"
                 "</ErrorResponse>"
@@ -55,7 +62,7 @@ def chaos_handler(context: RequestContext) -> None:
             # JSON-protocol services
             error_body = json.dumps(
                 {
-                    "__type": rule.error_code,
+                    "__type": safe_code,
                     "message": rule.error_message,
                     "Message": rule.error_message,
                     "RequestId": request_id,

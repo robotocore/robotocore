@@ -889,11 +889,17 @@ def _error(code: str, message: str, status: int, use_json: bool) -> Response:
     if use_json:
         body = json.dumps({"__type": code, "message": message})
         return Response(content=body, status_code=status, media_type="application/x-amz-json-1.0")
+    # XML bodies carry caller-derived text (queue names, message content in
+    # unexpected-exception paths): escape so the fault response stays parseable.
+    from xml.sax.saxutils import escape as xml_escape
+
+    safe_code = xml_escape(code)
+    safe_message = xml_escape(message)
     xml = (
         f'<?xml version="1.0"?>'
         f'<ErrorResponse xmlns="http://queue.amazonaws.com/doc/2012-11-05/">'
-        f"<Error><Type>Sender</Type><Code>{code}</Code>"
-        f"<Message>{message}</Message></Error>"
+        f"<Error><Type>Sender</Type><Code>{safe_code}</Code>"
+        f"<Message>{safe_message}</Message></Error>"
         f"<RequestId>{_new_id()}</RequestId>"
         f"</ErrorResponse>"
     )
