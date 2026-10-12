@@ -36,11 +36,13 @@ def _substitute_variables(value: str, context: dict[str, Any]) -> str:
 
 
 def _iam_match(value: str, pattern: str, *, case_sensitive: bool = False) -> bool:
-    """Match using IAM wildcard rules (only * is supported, not ? or [])."""
+    """Match using IAM wildcard rules: * matches any run of characters, ? exactly one."""
     regex_parts = []
-    for part in re.split(r"(\*)", pattern):
+    for part in re.split(r"([*?])", pattern):
         if part == "*":
             regex_parts.append(".*")
+        elif part == "?":
+            regex_parts.append(".")
         else:
             regex_parts.append(re.escape(part))
     regex = "^" + "".join(regex_parts) + "$"
@@ -49,7 +51,7 @@ def _iam_match(value: str, pattern: str, *, case_sensitive: bool = False) -> boo
 
 
 def _action_matches(action: str, pattern: str) -> bool:
-    """Check if an action matches a pattern (case-insensitive, only * wildcard)."""
+    """Check if an action matches a pattern (case-insensitive, * and ? wildcards)."""
     return _iam_match(action, pattern, case_sensitive=False)
 
 

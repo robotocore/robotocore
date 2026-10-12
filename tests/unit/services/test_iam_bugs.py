@@ -100,26 +100,21 @@ class TestNotPrincipalHandling:
 
 
 # ===========================================================================
-# Bug 3: fnmatch '?' wildcard accepted in action matching (AWS only has '*')
+# Bug 3: fnmatch character classes accepted in action matching
 # ===========================================================================
 
 
 class TestActionMatchingFnmatchBugs:
-    """AWS IAM action matching only supports '*' as a wildcard character.
-    The '?' single-character wildcard and '[...]' character classes are
-    fnmatch features that should NOT work in IAM policies.
-
-    The current code uses fnmatch.fnmatch() which supports ?, [, ].
+    """AWS IAM action matching supports '*' (any run of characters) and '?'
+    (exactly one character); see the IAM User Guide's Action element page.
+    '[...]' character classes are fnmatch features that should NOT work.
     """
 
-    def test_question_mark_should_not_be_wildcard_in_action(self):
-        """'s3:Get?bject' should NOT match 's3:GetObject' in real AWS."""
+    def test_question_mark_is_single_char_wildcard_in_action(self):
+        """'s3:Get?bject' matches 's3:GetObject' but not 's3:Getbject'."""
         policy = {"Statement": [{"Effect": "Allow", "Action": "s3:Get?bject", "Resource": "*"}]}
-        result = evaluate_policy([policy], "s3:GetObject", "*")
-        assert result == IMPLICIT_DENY, (
-            f"Expected IMPLICIT_DENY because '?' is not a valid IAM wildcard, got {result}. "
-            "AWS IAM only supports '*' wildcards, not '?' single-char wildcards."
-        )
+        assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
+        assert evaluate_policy([policy], "s3:Getbject", "*") == IMPLICIT_DENY
 
     def test_bracket_char_class_should_not_work_in_action(self):
         """'s3:[GP]etObject' should NOT match 's3:GetObject' in real AWS."""
@@ -131,23 +126,21 @@ class TestActionMatchingFnmatchBugs:
         )
 
     def test_question_mark_in_action_matches_function(self):
-        """Direct test of _action_matches with '?' wildcard."""
-        # In real AWS, 's3:Get?bject' would be a literal (non-matching) action pattern
-        assert _action_matches("s3:GetObject", "s3:Get?bject") is False, (
-            "_action_matches should not treat '?' as a wildcard"
-        )
+        """Direct test of _action_matches with the '?' wildcard."""
+        assert _action_matches("s3:GetObject", "s3:Get?bject") is True
+        assert _action_matches("s3:GetObject", "s3:Get??bject") is False
 
 
 # ===========================================================================
-# Bug 4: fnmatch '?' wildcard accepted in resource matching
+# Bug 4: '?' wildcard in resource matching
 # ===========================================================================
 
 
 class TestResourceMatchingFnmatchBugs:
-    """Same fnmatch issue as actions, but for resource ARN matching."""
+    """Resource ARNs support '?' as a single-character wildcard, as actions do."""
 
-    def test_question_mark_should_not_be_wildcard_in_resource(self):
-        """'arn:aws:s3:::my-?ucket/*' should NOT match 'arn:aws:s3:::my-bucket/key'."""
+    def test_question_mark_is_single_char_wildcard_in_resource(self):
+        """'arn:aws:s3:::my-?ucket/*' matches 'arn:aws:s3:::my-bucket/key'."""
         policy = {
             "Statement": [
                 {
@@ -157,17 +150,15 @@ class TestResourceMatchingFnmatchBugs:
                 }
             ]
         }
-        result = evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/key")
-        assert result == IMPLICIT_DENY, (
-            f"Expected IMPLICIT_DENY because '?' is not a valid IAM resource wildcard, "
-            f"got {result}."
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-bucket/key") == ALLOW
+        assert (
+            evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::my-ucket/key") == IMPLICIT_DENY
         )
 
     def test_question_mark_in_resource_matches_function(self):
         """Direct test of _resource_matches with '?'."""
-        assert _resource_matches("arn:aws:s3:::my-bucket", "arn:aws:s3:::my-?ucket", {}) is False, (
-            "_resource_matches should not treat '?' as a wildcard"
-        )
+        assert _resource_matches("arn:aws:s3:::my-bucket", "arn:aws:s3:::my-?ucket", {}) is True
+        assert _resource_matches("arn:aws:s3:::my-bbucket", "arn:aws:s3:::my-?ucket", {}) is False
 
 
 # ===========================================================================

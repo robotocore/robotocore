@@ -328,20 +328,16 @@ class TestAuditDurationPrecision:
 
 
 class TestIamMatchVsFnmatchInconsistency:
-    """The policy engine uses _iam_match (re-based, only * wildcard) for
-    action/resource matching, but the conditions module uses fnmatch.fnmatch
-    for StringLike which supports ?, [, ]. This inconsistency means
-    conditions have different wildcard semantics than action/resource matching.
+    """The policy engine uses _iam_match (re-based) for action/resource
+    matching, while the conditions module uses fnmatch.fnmatch for StringLike,
+    which also accepts [...] character classes.
 
-    AWS documentation says StringLike supports * and ? for conditions,
-    but IAM action/resource matching only supports *.
-    The _iam_match function correctly rejects ?, but test that it does."""
+    AWS documents * and ? as the only wildcards, for StringLike conditions as
+    well as for Action and Resource elements; _iam_match must not accept [...]."""
 
-    def test_iam_match_treats_question_mark_as_literal(self):
-        # _iam_match should treat ? as a literal character, not a wildcard
-        assert _iam_match("s3:GetObject", "s3:Get?bject") is False, (
-            "_iam_match should treat '?' as literal, not as a wildcard"
-        )
+    def test_iam_match_treats_question_mark_as_single_char_wildcard(self):
+        assert _iam_match("s3:GetObject", "s3:Get?bject") is True
+        assert _iam_match("s3:GetObject", "s3:Get?Object") is False
 
     def test_iam_match_treats_brackets_as_literal(self):
         # _iam_match should treat [...] as literal characters

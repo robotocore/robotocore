@@ -190,6 +190,22 @@ class TestActionMatching:
         assert evaluate_policy([policy], "s3:PutObject", "*") == ALLOW
         assert evaluate_policy([policy], "s3:DeleteObject", "*") == IMPLICIT_DENY
 
+    def test_question_mark_matches_exactly_one_character(self):
+        policy = {"Statement": [{"Effect": "Allow", "Action": "s3:?etObject", "Resource": "*"}]}
+        assert evaluate_policy([policy], "s3:GetObject", "*") == ALLOW
+        assert evaluate_policy([policy], "s3:SetObject", "*") == ALLOW
+        assert evaluate_policy([policy], "s3:etObject", "*") == IMPLICIT_DENY
+        assert evaluate_policy([policy], "s3:GGetObject", "*") == IMPLICIT_DENY
+
+    def test_question_mark_in_resource(self):
+        policy = {
+            "Statement": [
+                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::bucket-?"}
+            ]
+        }
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-1") == ALLOW
+        assert evaluate_policy([policy], "s3:GetObject", "arn:aws:s3:::bucket-12") == IMPLICIT_DENY
+
 
 # ===========================================================================
 # NotAction / NotResource
@@ -682,6 +698,17 @@ class TestIfExists:
         """Without IfExists, missing key means condition fails."""
         ctx: dict[str, Any] = {}
         result = evaluate_condition_block({"StringEquals": {"aws:SourceVpc": "vpc-123"}}, ctx)
+        assert result is False
+
+    def test_negated_operator_key_absent_is_satisfied(self):
+        """A missing key never matches, so a negated operator is satisfied."""
+        ctx: dict[str, Any] = {}
+        for op in ("StringNotEquals", "StringNotLike", "ArnNotLike", "NotIpAddress"):
+            assert evaluate_condition_block({op: {"aws:SomeKey": "value"}}, ctx) is True, op
+
+    def test_negated_operator_key_present_still_compares(self):
+        ctx = {"aws:SourceVpc": "vpc-123"}
+        result = evaluate_condition_block({"StringNotEquals": {"aws:SourceVpc": "vpc-123"}}, ctx)
         assert result is False
 
 
