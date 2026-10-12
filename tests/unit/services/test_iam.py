@@ -1896,3 +1896,298 @@ class TestIAMProviderPermissionsBoundaryInjection:
         # 500 from Moto should pass through unchanged
         assert resp.status_code == 500
         assert b"ServiceFailure" in resp.body
+
+
+# ===========================================================================
+# SimulateCustomPolicy / SimulatePrincipalPolicy request handling
+# ===========================================================================
+
+
+def _simulate(operation: str, params: dict[str, str], account_id: str = "123456789012"):
+    """Send a Simulate* query request; return (status, parsed body) using botocore's parser."""
+    from urllib.parse import urlencode
+
+    import botocore.session
+    from botocore.parsers import QueryParser
+
+    body = urlencode({"Action": operation, "Version": "2010-05-08", **params}).encode()
+    resp = asyncio.run(handle_iam_request(_make_iam_request(body), "us-east-1", account_id))
+    model = botocore.session.get_session().get_service_model("iam")
+    parsed = QueryParser().parse(
+        {"body": resp.body, "headers": {}, "status_code": resp.status_code},
+        model.operation_model(operation).output_shape,
+    )
+    return resp.status_code, parsed
+
+
+def _members(prefix: str, values: list[str]) -> dict[str, str]:
+    return {f"{prefix}.member.{i}": v for i, v in enumerate(values, start=1)}
+
+
+_READ_BUCKET = (
+    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject",'
+    '"Resource":"arn:aws:s3:::example-bucket/*"}]}'
+)
+_DENY_DELETE = (
+    '{"Version":"2012-10-17","Statement":{"Effect":"Deny","Action":"s3:Delete*","Resource":"*"}}'
+)
+_ALLOW_S3 = '{"Version":"2012-10-17","Statement":{"Effect":"Allow","Action":"s3:*","Resource":"*"}}'
+
+
+class TestIAMProviderSimulatePolicy:
+    def test_custom_policy_decisions_per_action(self):
+        status, parsed = _simulate(
+            "SimulateCustomPolicy",
+            {
+                **_members("PolicyInputList", [_ALLOW_S3, _DENY_DELETE]),
+                **_members("ActionNames", ["s3:GetObject", "s3:DeleteObject", "ec2:RunInstances"]),
+            },
+        )
+        assert status == 200
+        results = {r["EvalActionName"]: r for r in parsed["EvaluationResults"]}
+        assert results["s3:GetObject"]["EvalDecision"] == "allowed"
+        assert results["s3:GetObject"]["EvalResourceName"] == "*"
+        assert results["s3:GetObject"]["MatchedStatements"] == [
+            {"SourcePolicyId": "PolicyInputList.1", "SourcePolicyType": "IAM Policy"}
+        ]
+        assert results["s3:DeleteObject"]["EvalDecision"] == "explicitDeny"
+        assert results["s3:DeleteObject"]["MatchedStatements"][0]["SourcePolicyId"] == (
+            "PolicyInputList.2"
+        )
+        assert results["ec2:RunInstances"]["EvalDecision"] == "implicitDeny"
+        assert results["ec2:RunInstances"]["MatchedStatements"] == []
+        assert "ResourceSpecificResults" not in results["s3:GetObject"]
+        assert parsed["IsTruncated"] is False
+
+    def test_resource_arns_yield_resource_specific_results(self):
+        inside = "arn:aws:s3:::example-bucket/data.csv"
+        outside = "arn:aws:s3:::other-bucket/data.csv"
+        _status, parsed = _simulate(
+            "SimulateCustomPolicy",
+            {
+                **_members("PolicyInputList", [_READ_BUCKET]),
+                **_members("ActionNames", ["s3:GetObject"]),
+                **_members("ResourceArns", [inside, outside]),
+            },
+        )
+        results = parsed["EvaluationResults"]
+        assert [(r["EvalResourceName"], r["EvalDecision"]) for r in results] == [
+            (inside, "allowed"),
+            (outside, "implicitDeny"),
+        ]
+        specific = results[0]["ResourceSpecificResults"]
+        assert specific[0]["EvalResourceName"] == inside
+        assert specific[0]["EvalResourceDecision"] == "allowed"
+
+    def test_context_entries_and_missing_context_values(self):
+        policy = (
+            '{"Version":"2012-10-17","Statement":{"Effect":"Allow","Action":"ec2:RunInstances",'
+            '"Resource":"*","Condition":{"StringEquals":{"ec2:InstanceType":["t3.micro"]}}}}'
+        )
+        base = {
+            **_members("PolicyInputList", [policy]),
+            **_members("ActionNames", ["ec2:RunInstances"]),
+        }
+        _status, missing = _simulate("SimulateCustomPolicy", base)
+        assert missing["EvaluationResults"][0]["EvalDecision"] == "implicitDeny"
+        assert missing["EvaluationResults"][0]["MissingContextValues"] == ["ec2:InstanceType"]
+
+        _status, supplied = _simulate(
+            "SimulateCustomPolicy",
+            {
+                **base,
+                "ContextEntries.member.1.ContextKeyName": "ec2:InstanceType",
+                "ContextEntries.member.1.ContextKeyValues.member.1": "t3.micro",
+                "ContextEntries.member.1.ContextKeyType": "string",
+            },
+        )
+        assert supplied["EvaluationResults"][0]["EvalDecision"] == "allowed"
+        assert supplied["EvaluationResults"][0]["MissingContextValues"] == []
+
+    def test_permissions_boundary_input_reports_decision_detail(self):
+        boundary = (
+            '{"Version":"2012-10-17","Statement":{"Effect":"Allow","Action":"s3:List*",'
+            '"Resource":"*"}}'
+        )
+        _status, parsed = _simulate(
+            "SimulateCustomPolicy",
+            {
+                **_members("PolicyInputList", [_ALLOW_S3]),
+                **_members("PermissionsBoundaryPolicyInputList", [boundary]),
+                **_members("ActionNames", ["s3:GetObject", "s3:ListBucket"]),
+            },
+        )
+        get, lst = parsed["EvaluationResults"]
+        assert get["EvalDecision"] == "implicitDeny"
+        assert get["PermissionsBoundaryDecisionDetail"] == {"AllowedByPermissionsBoundary": False}
+        assert lst["EvalDecision"] == "allowed"
+        assert lst["PermissionsBoundaryDecisionDetail"] == {"AllowedByPermissionsBoundary": True}
+        assert [m["SourcePolicyId"] for m in lst["MatchedStatements"]] == [
+            "PolicyInputList.1",
+            "PermissionsBoundaryPolicyInputList.1",
+        ]
+
+    def test_resource_policy_with_caller_arn(self):
+        bucket_policy = (
+            '{"Version":"2012-10-17","Statement":{"Effect":"Allow",'
+            '"Principal":{"AWS":"arn:aws:iam::111122223333:user/alice"},'
+            '"Action":"s3:GetObject","Resource":"arn:aws:s3:::example-bucket/*"}}'
+        )
+        params = {
+            **_members("PolicyInputList", [_READ_BUCKET]),
+            **_members("ActionNames", ["s3:GetObject"]),
+            **_members("ResourceArns", ["arn:aws:s3:::example-bucket/data.csv"]),
+            "ResourcePolicy": bucket_policy,
+            "ResourceOwner": "arn:aws:iam::123456789012:root",
+            "CallerArn": "arn:aws:iam::111122223333:user/alice",
+        }
+        _status, parsed = _simulate("SimulateCustomPolicy", params)
+        result = parsed["EvaluationResults"][0]
+        assert result["EvalDecision"] == "allowed"
+        assert {m["SourcePolicyType"] for m in result["MatchedStatements"]} == {
+            "IAM Policy",
+            "resource",
+        }
+
+        params["CallerArn"] = "arn:aws:iam::111122223333:user/bob"
+        _status, parsed = _simulate("SimulateCustomPolicy", params)
+        assert parsed["EvaluationResults"][0]["EvalDecision"] == "implicitDeny"
+
+    def test_pagination(self):
+        params = {
+            **_members("PolicyInputList", [_ALLOW_S3]),
+            **_members("ActionNames", ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]),
+            "MaxItems": "2",
+        }
+        _status, first = _simulate("SimulateCustomPolicy", params)
+        assert [r["EvalActionName"] for r in first["EvaluationResults"]] == [
+            "s3:GetObject",
+            "s3:PutObject",
+        ]
+        assert first["IsTruncated"] is True
+        _status, second = _simulate("SimulateCustomPolicy", {**params, "Marker": first["Marker"]})
+        assert [r["EvalActionName"] for r in second["EvaluationResults"]] == ["s3:ListBucket"]
+        assert second["IsTruncated"] is False
+        assert "Marker" not in second
+
+    def test_invalid_pagination_params_are_invalid_input(self):
+        for extra in (b"&MaxItems=0", b"&Marker=abc", b"&Marker=-1"):
+            resp = asyncio.run(
+                handle_iam_request(
+                    _make_iam_request(
+                        b"Action=SimulateCustomPolicy&PolicyInputList.member.1=%7B%7D"
+                        b"&ActionNames.member.1=s3%3AGetObject" + extra
+                    ),
+                    "us-east-1",
+                    "123456789012",
+                )
+            )
+            assert resp.status_code == 400, extra
+            assert b"<Code>InvalidInput</Code>" in resp.body
+
+    def test_malformed_policy_is_invalid_input(self):
+        resp = asyncio.run(
+            handle_iam_request(
+                _make_iam_request(
+                    b"Action=SimulateCustomPolicy&PolicyInputList.member.1=%7Bnot-json"
+                    b"&ActionNames.member.1=s3%3AGetObject"
+                ),
+                "us-east-1",
+                "123456789012",
+            )
+        )
+        assert resp.status_code == 400
+        assert b"<Code>InvalidInput</Code>" in resp.body
+        assert b"PolicyInputList.1" in resp.body
+
+    def test_principal_policy_for_user_with_group_and_boundary(self):
+        from moto.iam.models import iam_backends
+
+        account = "300000000101"
+        backend = iam_backends[account]["aws"]
+        backend.create_user("us-east-1", "alice")
+        backend.put_user_policy("alice", "S3Full", _ALLOW_S3)
+        backend.create_group("guards")
+        backend.put_group_policy("guards", "NoDeletes", _DENY_DELETE)
+        backend.add_user_to_group("guards", "alice")
+        boundary_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+        backend.users["alice"].permissions_boundary_arn = boundary_arn
+
+        _status, parsed = _simulate(
+            "SimulatePrincipalPolicy",
+            {
+                "PolicySourceArn": f"arn:aws:iam::{account}:user/alice",
+                **_members("ActionNames", ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]),
+            },
+            account_id=account,
+        )
+        results = {r["EvalActionName"]: r for r in parsed["EvaluationResults"]}
+        assert results["s3:GetObject"]["EvalDecision"] == "allowed"
+        assert [m["SourcePolicyId"] for m in results["s3:GetObject"]["MatchedStatements"]] == [
+            "S3Full",
+            "AmazonS3ReadOnlyAccess",
+        ]
+        assert results["s3:PutObject"]["EvalDecision"] == "implicitDeny"
+        assert results["s3:PutObject"]["PermissionsBoundaryDecisionDetail"] == {
+            "AllowedByPermissionsBoundary": False
+        }
+        assert results["s3:DeleteObject"]["EvalDecision"] == "explicitDeny"
+        assert results["s3:DeleteObject"]["MatchedStatements"][0]["SourcePolicyId"] == "NoDeletes"
+
+    def test_principal_policy_extra_inputs_and_boundary_override(self):
+        from moto.iam.models import iam_backends
+
+        account = "300000000102"
+        backend = iam_backends[account]["aws"]
+        backend.create_role(
+            role_name="app",
+            assume_role_policy_document="{}",
+            path="/",
+            permissions_boundary=None,
+            description="",
+            tags=[],
+            max_session_duration=None,
+        )
+        _status, parsed = _simulate(
+            "SimulatePrincipalPolicy",
+            {
+                "PolicySourceArn": f"arn:aws:iam::{account}:role/app",
+                **_members("PolicyInputList", [_ALLOW_S3]),
+                **_members("PermissionsBoundaryPolicyInputList", [_READ_BUCKET]),
+                **_members("ActionNames", ["s3:GetObject", "s3:PutObject"]),
+                **_members("ResourceArns", ["arn:aws:s3:::example-bucket/k"]),
+            },
+            account_id=account,
+        )
+        decisions = [r["EvalDecision"] for r in parsed["EvaluationResults"]]
+        assert decisions == ["allowed", "implicitDeny"]
+
+    def test_principal_policy_missing_principal_is_no_such_entity(self):
+        resp = asyncio.run(
+            handle_iam_request(
+                _make_iam_request(
+                    b"Action=SimulatePrincipalPolicy"
+                    b"&PolicySourceArn=arn%3Aaws%3Aiam%3A%3A300000000103%3Arole%2Fghost"
+                    b"&ActionNames.member.1=s3%3AGetObject"
+                ),
+                "us-east-1",
+                "300000000103",
+            )
+        )
+        assert resp.status_code == 404
+        assert b"<Code>NoSuchEntity</Code>" in resp.body
+        assert b"The role with name ghost cannot be found." in resp.body
+
+    def test_principal_policy_invalid_arn_is_invalid_input(self):
+        resp = asyncio.run(
+            handle_iam_request(
+                _make_iam_request(
+                    b"Action=SimulatePrincipalPolicy&PolicySourceArn=not-an-arn"
+                    b"&ActionNames.member.1=s3%3AGetObject"
+                ),
+                "us-east-1",
+                "123456789012",
+            )
+        )
+        assert resp.status_code == 400
+        assert b"<Code>InvalidInput</Code>" in resp.body
