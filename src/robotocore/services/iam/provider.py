@@ -1,7 +1,7 @@
 """Native IAM provider.
 
 Intercepts operations that Moto doesn't implement:
-- SimulateCustomPolicy / SimulatePrincipalPolicy: Returns simulated results
+- SimulateCustomPolicy / SimulatePrincipalPolicy: Evaluates policies (see simulator.py)
 - PutUserPermissionsBoundary / DeleteUserPermissionsBoundary: Stores boundary
 - ChangePassword: No-op (requires user session in real AWS)
 """
@@ -10,12 +10,26 @@ import json
 import logging
 import re
 import uuid
+from typing import Any
 from urllib.parse import parse_qs
+from xml.sax.saxutils import escape as xml_escape
 
 from starlette.requests import Request
 from starlette.responses import Response
 
 from robotocore.providers.moto_bridge import forward_to_moto
+from robotocore.services.iam.simulator import (
+    RESOURCE_POLICY_TYPE,
+    ContextValues,
+    Decision,
+    InvalidPrincipalArnError,
+    PrincipalNotFoundError,
+    SourcePolicy,
+    account_of,
+    collect_principal_policies,
+    load_policy_document,
+    simulate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,63 +206,192 @@ def _get_list_param(params: dict, prefix: str) -> list[str]:
     return result
 
 
-def _simulate_custom_policy(params: dict, region: str, account_id: str) -> Response:
-    action_names = _get_list_param(params, "ActionNames")
+def _simulation_policy_inputs(params: dict, prefix: str) -> list[SourcePolicy]:
+    """Parse PolicyInputList-style members; raises ValueError naming a malformed one."""
+    policies = []
+    for i, raw in enumerate(_get_list_param(params, prefix), start=1):
+        policy_id = f"{prefix}.{i}"
+        try:
+            policies.append(SourcePolicy(policy_id, load_policy_document(raw)))
+        except ValueError as exc:
+            raise ValueError(f"Policy {policy_id} is not a valid JSON policy document.") from exc
+    return policies
 
-    results_xml = ""
-    for action_name in action_names:
-        results_xml += f"""      <member>
-        <EvalActionName>{action_name}</EvalActionName>
-        <EvalDecision>allowed</EvalDecision>
-        <MatchedStatements>
-          <member>
-            <SourcePolicyId>PolicyInputList.1</SourcePolicyId>
-            <SourcePolicyType>IAM Policy</SourcePolicyType>
-          </member>
-        </MatchedStatements>
-        <MissingContextValues/>
-        <EvalResourceName>*</EvalResourceName>
-      </member>
-"""
 
-    xml = f"""<SimulateCustomPolicyResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
-  <SimulateCustomPolicyResult>
-    <EvaluationResults>
-{results_xml}    </EvaluationResults>
-    <IsTruncated>false</IsTruncated>
-  </SimulateCustomPolicyResult>
-  <ResponseMetadata>
-    <RequestId>{uuid.uuid4()}</RequestId>
-  </ResponseMetadata>
-</SimulateCustomPolicyResponse>"""
+def _simulation_context(params: dict) -> ContextValues:
+    """ContextEntries.member.N -> condition-key values (lists for the *List key types)."""
+    context = ContextValues()
+    i = 1
+    while name := _get_param(params, f"ContextEntries.member.{i}.ContextKeyName"):
+        values = _get_list_param(params, f"ContextEntries.member.{i}.ContextKeyValues")
+        key_type = _get_param(params, f"ContextEntries.member.{i}.ContextKeyType")
+        if values:
+            context[name] = values if key_type.endswith("List") else values[0]
+        i += 1
+    return context
+
+
+def _render_matched(matched: list[SourcePolicy]) -> str:
+    members = "".join(
+        f"<member><SourcePolicyId>{xml_escape(p.policy_id)}</SourcePolicyId>"
+        f"<SourcePolicyType>{xml_escape(p.policy_type)}</SourcePolicyType></member>"
+        for p in matched
+    )
+    return f"<MatchedStatements>{members}</MatchedStatements>"
+
+
+def _render_decision_body(decision: Decision) -> str:
+    missing = "".join(f"<member>{xml_escape(k)}</member>" for k in decision.missing_context)
+    body = (
+        f"{_render_matched(decision.matched)}<MissingContextValues>{missing}</MissingContextValues>"
+    )
+    if decision.allowed_by_boundary is not None:
+        allowed = "true" if decision.allowed_by_boundary else "false"
+        body += (
+            "<PermissionsBoundaryDecisionDetail>"
+            f"<AllowedByPermissionsBoundary>{allowed}</AllowedByPermissionsBoundary>"
+            "</PermissionsBoundaryDecisionDetail>"
+        )
+    return body
+
+
+def _render_evaluation_result(
+    action: str, resource: str, decision: Decision, *, resource_specific: bool
+) -> str:
+    xml = (
+        f"<member><EvalActionName>{xml_escape(action)}</EvalActionName>"
+        f"<EvalResourceName>{xml_escape(resource)}</EvalResourceName>"
+        f"<EvalDecision>{decision.decision}</EvalDecision>"
+        f"{_render_decision_body(decision)}"
+    )
+    if resource_specific:
+        xml += (
+            "<ResourceSpecificResults><member>"
+            f"<EvalResourceName>{xml_escape(resource)}</EvalResourceName>"
+            f"<EvalResourceDecision>{decision.decision}</EvalResourceDecision>"
+            f"{_render_decision_body(decision)}"
+            "</member></ResourceSpecificResults>"
+        )
+    return xml + "</member>"
+
+
+def _run_simulation(
+    operation: str,
+    params: dict,
+    account_id: str,
+    identity: list[SourcePolicy],
+    boundary: list[SourcePolicy] | None,
+    default_caller_arn: str = "",
+) -> Response:
+    try:
+        identity = identity + _simulation_policy_inputs(params, "PolicyInputList")
+        boundary_inputs = _simulation_policy_inputs(params, "PermissionsBoundaryPolicyInputList")
+        raw_resource_policy = _get_param(params, "ResourcePolicy")
+        resource_policy = (
+            SourcePolicy(
+                "ResourcePolicy",
+                load_policy_document(raw_resource_policy),
+                RESOURCE_POLICY_TYPE,
+            )
+            if raw_resource_policy
+            else None
+        )
+    except ValueError as exc:
+        return _iam_error_response("InvalidInput", xml_escape(str(exc)))
+    if boundary_inputs:
+        # Supplied boundary policies stand in for any boundary attached to the principal.
+        boundary = boundary_inputs
+
+    caller_arn = _get_param(params, "CallerArn") or default_caller_arn
+    owner_account = account_of(_get_param(params, "ResourceOwner"))
+    caller_account = account_of(caller_arn) or account_id
+    cross_account = owner_account is not None and owner_account != caller_account
+
+    context = _simulation_context(params)
+    resource_arns = _get_list_param(params, "ResourceArns")
+    results = [
+        _render_evaluation_result(
+            action,
+            resource,
+            simulate(
+                identity=identity,
+                boundary=boundary,
+                resource_policy=resource_policy,
+                action=action,
+                resource=resource,
+                context=context,
+                caller_arn=caller_arn,
+                cross_account=cross_account,
+            ),
+            resource_specific=bool(resource_arns),
+        )
+        for action in _get_list_param(params, "ActionNames")
+        for resource in resource_arns or ["*"]
+    ]
+
+    marker = _get_param(params, "Marker")
+    max_items = _get_param(params, "MaxItems")
+    try:
+        start = int(marker) if marker else 0
+        limit = int(max_items) if max_items else max(len(results), 1)
+    except ValueError:
+        start, limit = -1, 0
+    if start < 0 or limit < 1:
+        return _iam_error_response("InvalidInput", "Invalid Marker or MaxItems.")
+    page = results[start : start + limit]
+    truncated = start + limit < len(results)
+    marker_xml = f"<Marker>{start + limit}</Marker>" if truncated else ""
+
+    xml = (
+        f'<{operation}Response xmlns="https://iam.amazonaws.com/doc/2010-05-08/">'
+        f"<{operation}Result>"
+        f"<EvaluationResults>{''.join(page)}</EvaluationResults>"
+        f"<IsTruncated>{'true' if truncated else 'false'}</IsTruncated>{marker_xml}"
+        f"</{operation}Result>"
+        f"<ResponseMetadata><RequestId>{uuid.uuid4()}</RequestId></ResponseMetadata>"
+        f"</{operation}Response>"
+    )
     return Response(content=xml, status_code=200, media_type="text/xml")
+
+
+def _simulate_custom_policy(params: dict, region: str, account_id: str) -> Response:
+    return _run_simulation("SimulateCustomPolicy", params, account_id, [], None)
+
+
+def _resolve_managed_policy(arn: str, account_id: str) -> Any:
+    from moto.backends import get_backend
+
+    _ensure_aws_managed_policy(arn, account_id)
+    return get_backend("iam")[account_id]["global"].managed_policies.get(arn)
 
 
 def _simulate_principal_policy(params: dict, region: str, account_id: str) -> Response:
-    action_names = _get_list_param(params, "ActionNames")
+    from moto.backends import get_backend
 
-    results_xml = ""
-    for action_name in action_names:
-        results_xml += f"""      <member>
-        <EvalActionName>{action_name}</EvalActionName>
-        <EvalDecision>allowed</EvalDecision>
-        <MatchedStatements/>
-        <MissingContextValues/>
-        <EvalResourceName>*</EvalResourceName>
-      </member>
-"""
-
-    xml = f"""<SimulatePrincipalPolicyResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
-  <SimulatePrincipalPolicyResult>
-    <EvaluationResults>
-{results_xml}    </EvaluationResults>
-    <IsTruncated>false</IsTruncated>
-  </SimulatePrincipalPolicyResult>
-  <ResponseMetadata>
-    <RequestId>{uuid.uuid4()}</RequestId>
-  </ResponseMetadata>
-</SimulatePrincipalPolicyResponse>"""
-    return Response(content=xml, status_code=200, media_type="text/xml")
+    source_arn = _get_param(params, "PolicySourceArn")
+    backend = get_backend("iam")[account_id]["global"]
+    try:
+        identity, boundary = collect_principal_policies(
+            backend,
+            source_arn,
+            account_id,
+            lambda arn: _resolve_managed_policy(arn, account_id),
+        )
+    except InvalidPrincipalArnError:
+        return _iam_error_response(
+            "InvalidInput", f"Invalid ARN {xml_escape(source_arn)}: expected a user, group or role."
+        )
+    except PrincipalNotFoundError as exc:
+        return _iam_error_response("NoSuchEntity", xml_escape(str(exc)), 404)
+    except ValueError as exc:
+        logger.debug("SimulatePrincipalPolicy: unreadable stored policy: %s", exc)
+        return _iam_error_response(
+            "InvalidInput", "A policy attached to the principal is malformed."
+        )
+    default_caller = source_arn if ":user/" in source_arn else ""
+    return _run_simulation(
+        "SimulatePrincipalPolicy", params, account_id, identity, boundary, default_caller
+    )
 
 
 def _put_user_permissions_boundary(params: dict, region: str, account_id: str) -> Response:

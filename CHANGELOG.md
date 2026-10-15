@@ -6,6 +6,43 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
+## 2026.10.12
+
+IAM's policy simulator answered `allowed` for every action no matter what policies it was
+given. `SimulateCustomPolicy` and `SimulatePrincipalPolicy` now evaluate those policies with
+the IAM policy engine, so tests that ask the simulator "can this principal do X?" get the
+answer AWS would give.
+
+### Changed
+
+- **`SimulateCustomPolicy` / `SimulatePrincipalPolicy` evaluate policies.** Results carry
+  `allowed`, `explicitDeny` or `implicitDeny` (explicit Deny wins; a permissions boundary limits
+  allows and is reported in `PermissionsBoundaryDecisionDetail`), `MatchedStatements` naming the
+  source policy, `MissingContextValues` for condition keys a matching statement needed but
+  `ContextEntries` did not supply, and one result per action and resource with
+  `ResourceSpecificResults` when `ResourceArns` is given. `ResourcePolicy` is evaluated against
+  `CallerArn`, a `ResourceOwner` in another account requires both sides to allow, and
+  `MaxItems`/`Marker` paginate. `SimulatePrincipalPolicy` gathers a user's, group's or role's
+  inline and attached managed policies (AWS-managed included), a user's group policies, and the
+  attached permissions boundary; a missing principal returns `NoSuchEntity` (404) and a malformed
+  input policy returns `InvalidInput` (400).
+
+### Fixed
+
+- **IAM policy wildcards and negated conditions.** `?` in an `Action` or `Resource` pattern
+  matches exactly one character, as in AWS, instead of only a literal `?`. A negated condition
+  operator (`StringNotEquals`, `StringNotLike`, `ArnNotLike`, `NotIpAddress`, ...) whose key is
+  absent from the request is satisfied, per AWS's documented semantics; it previously never
+  matched. This also applies to `ENFORCE_IAM=1` request enforcement.
+
+#### Migration
+
+Simulator calls that used to return `allowed` unconditionally now return `implicitDeny` or
+`explicitDeny` when the policies do not grant the action. Note that with no `ResourceArns` the
+simulated resource is `*`, which only statements with `"Resource": "*"` match. Under
+`ENFORCE_IAM=1`, a Deny statement guarded by a negated operator now applies when the request
+lacks the condition key.
+
 ## 2026.10.10
 
 ### Added

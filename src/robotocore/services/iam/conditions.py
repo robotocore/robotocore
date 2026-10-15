@@ -228,6 +228,20 @@ CONDITION_OPERATORS: dict[str, Any] = {
 }
 
 
+NEGATED_OPERATORS = frozenset(
+    {
+        "StringNotEquals",
+        "StringNotEqualsIgnoreCase",
+        "StringNotLike",
+        "NumericNotEquals",
+        "DateNotEquals",
+        "NotIpAddress",
+        "ArnNotEquals",
+        "ArnNotLike",
+    }
+)
+
+
 def _evaluate_single_operator(
     operator_name: str,
     condition_key: str,
@@ -249,9 +263,10 @@ def _evaluate_single_operator(
         expect_null = _to_str(policy_values[0]).lower() == "true"
         return not key_present if expect_null else key_present
 
-    # IfExists: if the key is not present, the condition is satisfied
+    # A missing key never matches, so a negated operator (StringNotEquals, ArnNotLike, ...)
+    # is satisfied and a positive one is not. IfExists makes either kind satisfied.
     if condition_key not in context_values or context_values[condition_key] is None:
-        return bool(if_exists)
+        return if_exists or operator_name in NEGATED_OPERATORS
 
     op_fn = CONDITION_OPERATORS.get(operator_name)
     if op_fn is None:
