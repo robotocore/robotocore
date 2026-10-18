@@ -887,7 +887,16 @@ pub async fn catch_all_handler(
             if let Some(proxy) = &state.moto_proxy {
                 if !proxy.is_native(&service) {
                     match proxy.forward(&parsed_req).await {
-                        Ok(resp) => return response_from_parsed(resp, &service, &parsed_req.operation),
+                        Ok(resp) => {
+                            crate::core::introspection::record(
+                                &service,
+                                &parsed_req.operation,
+                                resp.status.as_u16(),
+                                account,
+                                &parsed_req.region,
+                            );
+                            return response_from_parsed(resp, &service, &parsed_req.operation);
+                        }
                         Err(e) => {
                             return error_response(
                                 StatusCode::SERVICE_UNAVAILABLE,
@@ -906,7 +915,8 @@ pub async fn catch_all_handler(
 
     // Handle request with a timeout to catch runaway tasks
     let handler = handler.clone();
-    let parsed_req = std::sync::Arc::new(parsed_req);
+    let parsed_req = Arc::new(parsed_req);
+    let parsed_req_for_log = Arc::clone(&parsed_req);
     let service = service.clone();
     let timeout_secs: u64 = 30;
 
@@ -923,8 +933,14 @@ pub async fn catch_all_handler(
     .await;
 
     match result {
-        Ok(Ok(Ok((resp, op)))) => response_from_parsed(resp, &service, &op),
-        Ok(Ok(Err(e))) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        Ok(Ok(Ok((resp, op)))) => {
+            crate::core::introspection::record(&service, &op, resp.status.as_u16(), account, &parsed_req_for_log.region);
+            response_from_parsed(resp, &service, &op)
+        }
+        Ok(Ok(Err(e))) => {
+            crate::core::introspection::record(&service, &operation, 500, account, &parsed_req_for_log.region);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+        }
         Ok(Err(e)) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("Handler task failed: {}", e),
@@ -945,16 +961,47 @@ pub async fn health_handler() -> impl IntoResponse {
         "status": "running",
         "version": env!("CARGO_PKG_VERSION"),
         "uptime_seconds": 0.0,
-        "services": {
-            "sts": {
-                "status": "running",
-                "type": "native",
-                "requests": 0
-            }
-        }
+        "services": registry_service_statuses()
     });
 
     (StatusCode::OK, axum::Json(health))
+}
+
+/// Names of every service with a native handler in this build.
+pub const NATIVE_SERVICES: &[&str] = &[
+    "sts", "sqs", "s3", "dynamodb", "sns", "secretsmanager", "kms", "ssm",
+    "iam", "lambda", "logs", "events", "kinesis", "firehose", "cloudwatch",
+    "ecr", "ecs", "stepfunctions",
+];
+
+fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
+    let mut map = serde_json::Map::new();
+    for svc in NATIVE_SERVICES {
+        map.insert(
+            svc.to_string(),
+            json!({
+                "status": "running",
+                "type": "native",
+                "requests": 0,
+            }),
+        );
+    }
+    map
+}
+
+/// Runtime families report. The Rust lambda handler executes Python and
+/// shell-based (custom) handlers in-process; other families are not available.
+pub async fn runtimes_handler() -> impl IntoResponse {
+    let all = ["python", "nodejs", "java", "ruby", "dotnet", "go", "custom"];
+    let node_paths = ["/usr/bin/node", "/usr/local/bin/node"];
+    let mut available: Vec<String> = vec!["python".into(), "custom".into()];
+    if node_paths.iter().any(|p| std::path::Path::new(p).exists()) {
+        available.push("nodejs".into());
+    }
+    (
+        StatusCode::OK,
+        axum::Json(json!({ "available": available, "all": all })),
+    )
 }
 
 /// Config endpoint
@@ -968,14 +1015,72 @@ pub async fn config_handler() -> impl IntoResponse {
     (StatusCode::OK, axum::Json(config))
 }
 
-/// Audit endpoint
-pub async fn audit_handler() -> impl IntoResponse {
-    let audit = json!({
-        "entries": [],
-        "count": 0
-    });
+/// Audit endpoint: `?limit=N` recent call records.
+pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
+    let mut limit = 100usize;
+    if let Some(q) = uri.query() {
+        for kv in q.split('&') {
+            if let Some((k, v)) = kv.split_once('=') {
+                if k == "limit" {
+                    if let Ok(n) = v.parse::<usize>() {
+                        limit = n.min(1000);
+                    }
+                }
+            }
+        }
+    }
+    let entries = crate::core::introspection::recent_entries(limit);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "entries": entries,
+            "count": entries.len(),
+        })),
+    )
+}
 
-    (StatusCode::OK, axum::Json(audit))
+/// Per-service protocol listing: `GET /_robotocore/services`.
+pub async fn services_handler() -> impl IntoResponse {
+    let protocols: &[(&str, &str)] = &[
+        ("sqs", "query"),
+        ("sns", "query"),
+        ("secretsmanager", "json"),
+        ("kms", "json"),
+        ("ssm", "json"),
+        ("iam", "query"),
+        ("lambda", "rest-json"),
+        ("logs", "json"),
+        ("events", "json"),
+        ("kinesis", "json"),
+        ("firehose", "json"),
+        ("cloudwatch", "query"),
+        ("ecr", "json"),
+        ("ecs", "json"),
+        ("stepfunctions", "json"),
+        ("dynamodb", "json"),
+        ("sts", "query"),
+        ("s3", "rest-xml"),
+    ];
+    let entries: Vec<serde_json::Value> = protocols
+        .iter()
+        .map(|(name, protocol)| {
+            json!({
+                "name": name,
+                "protocol": protocol,
+                "description": name,
+                "status": "running",
+            })
+        })
+        .collect();
+    (StatusCode::OK, axum::Json(json!({ "services": entries })))
+}
+
+/// Error usage summary: `GET /_robotocore/usage/errors`.
+pub async fn usage_errors_handler() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        axum::Json(crate::core::introspection::error_summary()),
+    )
 }
 
 /// Build the Axum router.
@@ -989,6 +1094,9 @@ pub fn build_router(registry: ServiceRegistry, moto_proxy: Option<crate::core::p
         .route("/_robotocore/health", get(health_handler))
         .route("/_robotocore/config", get(config_handler))
         .route("/_robotocore/audit", get(audit_handler))
+        .route("/_robotocore/runtimes", get(runtimes_handler))
+        .route("/_robotocore/services", get(services_handler))
+        .route("/_robotocore/usage/errors", get(usage_errors_handler))
         .fallback(catch_all_handler)
         .with_state(state)
 }
