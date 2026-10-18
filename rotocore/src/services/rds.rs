@@ -3239,4 +3239,267 @@ fn create_manual_snapshot(db: &DBInstance, snapshot_id: &str, tags: &[Tag]) -> D
     snapshot_from_db(db, snapshot_id, "manual", tags)
 }
 
+
+// Snapshots ------------------------------------------------------------------
+
+fn create_db_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let snapshot_id = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
+    RdsError::check_snapshot_identifier(&snapshot_id, "DBSnapshotIdentifier")?;
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    let db = match st.databases.get(&id) {
+        Some(db) => db.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    let snap_id = snapshot_id.to_lowercase();
+    if st.database_snapshots.contains_key(&snap_id) {
+        return Err(RdsError::client400(
+            "DBSnapshotAlreadyExists",
+            format!("Cannot create the snapshot because a snapshot with the identifier {snap_id} already exists."),
+        ));
+    }
+    let snapshot_type = p_string(p, "SnapshotType").unwrap_or_else(|| "manual".into());
+    let snapshot = snapshot_from_db(&db, &snapshot_id, &snapshot_type, &tags_param(p));
+    let response = snapshot.clone();
+    st.database_snapshots.insert(snap_id, snapshot);
+    Ok(Some(format!(
+        "<DBSnapshot>{}</DBSnapshot>",
+        db_snapshot_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_snapshots_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let db_filter = p_string(p, "DBInstanceIdentifier").map(|s| s.to_lowercase());
+    let snap_filter = p_string(p, "DBSnapshotIdentifier").map(|s| s.to_lowercase());
+    let matched: Vec<&DBSnapshot> = st
+        .database_snapshots
+        .values()
+        .filter(|s| match &db_filter {
+            Some(db_id) => s.source.id == *db_id,
+            None => true,
+        })
+        .filter(|s| match &snap_filter {
+            Some(snap_id) => s.id == *snap_id,
+            None => true,
+        })
+        .collect();
+    if let Some(snap_id) = &snap_filter {
+        if matched.is_empty() && db_filter.is_none() {
+            return Err(RdsError::not_found404(
+                "DBSnapshotNotFound",
+                format!("DBSnapshot {snap_id} not found."),
+            ));
+        }
+    }
+    let mut list = String::new();
+    for snap in &matched {
+        list.push_str(&db_snapshot_xml(acct, region, snap));
+    }
+    Ok(Some(format!("<DBSnapshots>{list}</DBSnapshots>")))
+}
+
+fn delete_db_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
+    let snap_id = ident.to_lowercase();
+    if !st.database_snapshots.contains_key(&snap_id) {
+        return Err(RdsError::not_found404(
+            "DBSnapshotNotFound",
+            format!("DBSnapshot {ident} not found."),
+        ));
+    }
+    let snapshot = st.database_snapshots.remove(&snap_id).unwrap();
+    Ok(Some(format!(
+        "<DBSnapshot>{}</DBSnapshot>",
+        db_snapshot_xml(acct, region, &snapshot)
+    )))
+}
+
+fn copy_db_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let target = p_string(p, "TargetDBSnapshotIdentifier").unwrap_or_default();
+    RdsError::check_snapshot_identifier(&target, "TargetDBSnapshotIdentifier")?;
+    let source = p_string(p, "SourceDBSnapshotIdentifier").unwrap_or_default();
+    let source_id = identifier_from_arn(&source).to_lowercase();
+    let src = match st.database_snapshots.get(&source_id) {
+        Some(s) => s.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBSnapshotNotFound",
+                format!("DBSnapshot {source} not found."),
+            ))
+        }
+    };
+    let target_id = target.to_lowercase();
+    if st.database_snapshots.contains_key(&target_id) {
+        return Err(RdsError::client400(
+            "DBSnapshotAlreadyExists",
+            format!("Cannot create the snapshot because a snapshot with the identifier {target_id} already exists."),
+        ));
+    }
+    let mut snapshot = snapshot_from_db(&src.source, &target, &src.snapshot_type, &[]);
+    snapshot.original_created = src.original_created;
+    if !src.tags.is_empty() && p_bool(p, "CopyTags").unwrap_or(false) {
+        snapshot.tags = src.tags.clone();
+    }
+    let tags = tags_param(p);
+    if !tags.is_empty() {
+        snapshot.tags = tags;
+    }
+    let out = snapshot.clone();
+    st.database_snapshots.insert(target_id, snapshot);
+    Ok(Some(format!(
+        "<DBSnapshot>{}</DBSnapshot>",
+        db_snapshot_xml(acct, region, &out)
+    )))
+}
+
+fn snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> String {
+    let mut items = String::new();
+    for (name, values) in attrs {
+        items.push_str(&format!(
+            "<DBSnapshotAttributes><AttributeName>{}{}\
+             </DBSnapshotAttributes>",
+            esc(name),
+            list_xml("AttributeValues", "AttributeValue", values)
+        ));
+    }
+    if items.is_empty() {
+        format!(
+            "<DBSnapshotAttributesResult>\
+             <DBSnapshotIdentifier>{}</DBSnapshotIdentifier>\
+             <DBSnapshotAttributes/>\
+             </DBSnapshotAttributesResult>",
+            esc(identifier)
+        )
+    } else {
+        format!(
+            "<DBSnapshotAttributesResult>\
+             <DBSnapshotIdentifier>{}</DBSnapshotIdentifier>{items}\
+             </DBSnapshotAttributesResult>",
+            esc(identifier)
+        )
+    }
+}
+
+fn describe_db_snapshot_attributes(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
+    let snap_id = ident.to_lowercase();
+    match find_snapshot(st, &snap_id) {
+        Some(db_snapshot) => {
+            let attrs = vec![("restore".to_string(), db_snapshot.attributes_restore.clone())];
+            Ok(Some(snapshot_attrs_xml(&snap_id, &attrs)))
+        }
+        None => Err(RdsError::not_found404(
+            "DBSnapshotNotFound",
+            format!("DBSnapshot {ident} not found."),
+        )),
+    }
+}
+
+fn modify_db_snapshot_attribute(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
+    let snap_id = ident.to_lowercase();
+    let db_owned = match find_snapshot(st, &snap_id) {
+        Some(existing) => existing.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBSnapshotNotFound",
+                format!("DBSnapshot {ident} not found."),
+            ))
+        }
+    };
+    if snap_id.starts_with("rds:") {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter DBSnapshotIdentifier is not a valid identifier.",
+        ));
+    }
+    let attribute_name = p_string(p, "AttributeName").unwrap_or_default();
+    if attribute_name != "restore" {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            format!("Invalid snapshot attribute {attribute_name}"),
+        ));
+    }
+    let existing = db_owned.attributes_restore.clone();
+    let mut merged = existing;
+    for v in p_list(p, "ValuesToAdd") {
+        if !merged.contains(&v) {
+            merged.push(v);
+        }
+    }
+    let to_remove = p_list(p, "ValuesToRemove");
+    let merged: Vec<String> = merged.into_iter().filter(|v| !to_remove.contains(v)).collect();
+    st.database_snapshots
+        .get_mut(&snap_id)
+        .unwrap()
+        .attributes_restore = merged;
+    let attrs = vec![(
+        "restore".to_string(),
+        st.database_snapshots[&snap_id].attributes_restore.clone(),
+    )];
+    Ok(Some(snapshot_attrs_xml(&snap_id, &attrs)))
+}
+
+
+// Lookup helpers -------------------------------------------------------------
+
+fn identifier_from_arn(value: &str) -> String {
+    // arn:aws:rds:us-east-1:123456789012:snapshot:name → name
+    if value.starts_with("arn:aws:rds:") {
+        value.rsplit(':').next().unwrap_or(value).to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn find_snapshot<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBSnapshot> {
+    st.database_snapshots.get(&identifier.to_lowercase())
+}
+
+fn find_cluster_snapshot<'s>(
+    st: &'s RdsState,
+    identifier: &str,
+) -> Option<&'s DBClusterSnapshot> {
+    st.cluster_snapshots.get(&identifier.to_lowercase())
+}
+
+fn find_cluster<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBCluster> {
+    st.clusters.get(&identifier.to_lowercase())
+}
+
+fn find_instance<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBInstance> {
+    st.databases.get(&identifier.to_lowercase())
+}
+
 // __APPEND_MARKER__
