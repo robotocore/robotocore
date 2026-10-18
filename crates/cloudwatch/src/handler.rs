@@ -1440,3 +1440,169 @@ impl CloudwatchHandler {
 impl Default for CloudwatchHandler {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use serde_json::json;
+
+    fn make_req(operation: &str, params: Value) -> AwsRequest {
+        AwsRequest {
+            service: "cloudwatch".to_string(),
+            operation: operation.to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        }
+    }
+
+    fn parse(resp: &AwsResponse) -> Value {
+        serde_json::from_str(&resp.body).unwrap()
+    }
+
+    #[test]
+    fn test_put_and_list_metrics_with_dimensions() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req("PutMetricData", json!({
+            "Namespace": "NS",
+            "MetricData": [
+                {"MetricName": "Req", "Value": 1.0,
+                 "Dimensions": [{"Name": "Env", "Value": "prod"}]},
+                {"MetricName": "Req", "Value": 2.0,
+                 "Dimensions": [{"Name": "Env", "Value": "staging"}]}
+            ]
+        })));
+        let resp = handler.handle(make_req("ListMetrics", json!({
+            "Namespace": "NS",
+            "MetricName": "Req",
+            "Dimensions": [{"Name": "Env", "Value": "prod"}]
+        })));
+        let body = parse(&resp);
+        let metrics = body["Metrics"].as_array().unwrap();
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0]["Dimensions"][0]["Value"], "prod");
+    }
+
+    #[test]
+    fn test_get_metric_statistics_extended_percentiles() {
+        let handler = CloudwatchHandler::new();
+        let start = chrono::Utc::now();
+        let now = start.to_rfc3339();
+        let end = (start + chrono::Duration::minutes(5)).to_rfc3339();
+        handler.handle(make_req("PutMetricData", json!({
+            "Namespace": "NS",
+            "MetricData": [
+                {"MetricName": "Lat", "Value": 10.0, "Timestamp": now},
+                {"MetricName": "Lat", "Value": 20.0, "Timestamp": now},
+                {"MetricName": "Lat", "Value": 30.0, "Timestamp": now}
+            ]
+        })));
+        let resp = handler.handle(make_req("GetMetricStatistics", json!({
+            "Namespace": "NS", "MetricName": "Lat",
+            "StartTime": now, "EndTime": end,
+            "Period": 300, "Statistics": ["Average"],
+            "ExtendedStatistics": ["p50", "p99"]
+        })));
+        let body = parse(&resp);
+        let dps = body["Datapoints"].as_array().unwrap();
+        assert_eq!(dps.len(), 1);
+        assert_eq!(dps[0]["Average"], 20.0);
+        assert_eq!(dps[0]["ExtendedStatistics"]["p50"], 20.0);
+        assert!((dps[0]["ExtendedStatistics"]["p99"].as_f64().unwrap() - 29.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_statistic_values_aggregation() {
+        let handler = CloudwatchHandler::new();
+        let start = chrono::Utc::now();
+        let now = start.to_rfc3339();
+        let end = (start + chrono::Duration::minutes(5)).to_rfc3339();
+        handler.handle(make_req("PutMetricData", json!({
+            "Namespace": "NS",
+            "MetricData": [{
+                "MetricName": "Agg",
+                "StatisticValues": {"SampleCount": 10.0, "Sum": 500.0, "Minimum": 10.0, "Maximum": 100.0},
+                "Timestamp": now
+            }]
+        })));
+        let resp = handler.handle(make_req("GetMetricStatistics", json!({
+            "Namespace": "NS", "MetricName": "Agg",
+            "StartTime": now, "EndTime": end,
+            "Period": 300,
+            "Statistics": ["Average", "Sum", "SampleCount"]
+        })));
+        let body = parse(&resp);
+        let dp = &body["Datapoints"][0];
+        assert_eq!(dp["SampleCount"], 10.0);
+        assert_eq!(dp["Sum"], 500.0);
+        assert_eq!(dp["Average"], 50.0);
+        // Statistics not requested must be omitted.
+        assert_eq!(dp.get("Minimum"), None);
+        assert_eq!(dp.get("Maximum"), None);
+    }
+
+    #[test]
+    fn test_alarm_state_and_actions() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req("PutMetricAlarm", json!({
+            "AlarmName": "a", "Namespace": "NS", "MetricName": "M",
+            "ComparisonOperator": "GreaterThanThreshold",
+            "EvaluationPeriods": 1, "Threshold": 5.0, "Statistic": "Average"
+        })));
+        handler.handle(make_req("SetAlarmState", json!({
+            "AlarmName": "a", "StateValue": "ALARM", "StateReason": "testing"
+        })));
+        let desc = handler.handle(make_req("DescribeAlarms", json!({
+            "AlarmNames": ["a"], "AlarmTypes": ["MetricAlarm"]
+        })));
+        let body = parse(&desc);
+        let alarm = &body["MetricAlarms"][0];
+        assert_eq!(alarm["StateValue"], "ALARM");
+        assert_eq!(alarm["StateReason"], "testing");
+
+        handler.handle(make_req("DisableAlarmActions", json!({ "AlarmNames": ["a"] })));
+        let desc2 = handler.handle(make_req("DescribeAlarms", json!({ "AlarmNames": ["a"] })));
+        assert_eq!(parse(&desc2)["MetricAlarms"][0]["ActionsEnabled"], false);
+    }
+
+    #[test]
+    fn test_composite_alarm_describe_alarms() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req("PutCompositeAlarm", json!({
+            "AlarmName": "comp", "AlarmRule": r#"ALARM("child")"#
+        })));
+        let desc = handler.handle(make_req("DescribeAlarms", json!({
+            "AlarmTypes": ["CompositeAlarm"]
+        })));
+        let body = parse(&desc);
+        assert_eq!(body["CompositeAlarms"].as_array().unwrap().len(), 1);
+        assert_eq!(body["MetricAlarms"].as_array().unwrap().len(), 0);
+        assert_eq!(body["CompositeAlarms"][0]["StateValue"], "INSUFFICIENT_DATA");
+    }
+
+    #[test]
+    fn test_metric_stream_lifecycle() {
+        let handler = CloudwatchHandler::new();
+        let put = handler.handle(make_req("PutMetricStream", json!({
+            "Name": "stream",
+            "FirehoseArn": "arn:aws:firehose:us-east-1:123456789012:deliverystream/t",
+            "RoleArn": "arn:aws:iam::123456789012:role/t",
+            "OutputFormat": "json",
+            "IncludeFilters": [{"Namespace": "AWS/EC2"}]
+        })));
+        let body = parse(&put);
+        assert!(body["Arn"].as_str().unwrap().contains("stream"));
+
+        handler.handle(make_req("StopMetricStreams", json!({ "Names": ["stream"] })));
+        let got = handler.handle(make_req("GetMetricStream", json!({ "Name": "stream" })));
+        assert_eq!(parse(&got)["State"], "stopped");
+
+        let list = handler.handle(make_req("ListMetricStreams", json!({})));
+        assert_eq!(parse(&list)["Entries"].as_array().unwrap().len(), 1);
+
+        handler.handle(make_req("DeleteMetricStream", json!({ "Name": "stream" })));
+        assert_eq!(handler.handle(make_req("GetMetricStream", json!({ "Name": "stream" }))).status, 400);
+    }
+}

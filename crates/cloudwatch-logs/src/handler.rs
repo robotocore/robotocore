@@ -1977,3 +1977,122 @@ impl LogsHandler {
 impl Default for LogsHandler {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use serde_json::json;
+
+    fn make_req(operation: &str, params: Value) -> AwsRequest {
+        AwsRequest {
+            service: "logs".to_string(),
+            operation: operation.to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        }
+    }
+
+    #[test]
+    fn test_put_and_get_log_events_with_tokens() {
+        let handler = LogsHandler::new();
+        handler.handle(make_req("CreateLogGroup", json!({ "logGroupName": "/t" })));
+        handler.handle(make_req(
+            "CreateLogStream",
+            json!({ "logGroupName": "/t", "logStreamName": "s" }),
+        ));
+        let now = now_millis();
+        handler.handle(make_req("PutLogEvents", json!({
+            "logGroupName": "/t",
+            "logStreamName": "s",
+            "logEvents": [
+                {"timestamp": now, "message": "one"},
+                {"timestamp": now + 1, "message": "two"}
+            ]
+        })));
+        let resp = handler.handle(make_req("GetLogEvents", json!({
+            "logGroupName": "/t", "logStreamName": "s", "startFromHead": true, "limit": 1
+        })));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["events"].as_array().unwrap().len(), 1);
+        assert!(body["nextForwardToken"].as_str().unwrap().starts_with("f/"));
+
+        // Follow the forward token.
+        let next = body["nextForwardToken"].as_str().unwrap().to_string();
+        let resp2 = handler.handle(make_req("GetLogEvents", json!({
+            "logGroupName": "/t", "logStreamName": "s", "nextToken": next, "limit": 1
+        })));
+        let body2: Value = serde_json::from_str(&resp2.body).unwrap();
+        assert_eq!(body2["events"][0]["message"], "two");
+    }
+
+    #[test]
+    fn test_filter_log_events_pattern() {
+        let handler = LogsHandler::new();
+        handler.handle(make_req("CreateLogGroup", json!({ "logGroupName": "/f" })));
+        handler.handle(make_req(
+            "CreateLogStream",
+            json!({ "logGroupName": "/f", "logStreamName": "s" }),
+        ));
+        let now = now_millis();
+        handler.handle(make_req("PutLogEvents", json!({
+            "logGroupName": "/f",
+            "logStreamName": "s",
+            "logEvents": [
+                {"timestamp": now, "message": "ERROR boom"},
+                {"timestamp": now + 1, "message": "INFO fine"}
+            ]
+        })));
+        let resp = handler.handle(make_req("FilterLogEvents", json!({
+            "logGroupName": "/f", "filterPattern": "ERROR"
+        })));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let events = body["events"].as_array().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["message"], "ERROR boom");
+        assert_eq!(events[0]["logStreamName"], "s");
+    }
+
+    #[test]
+    fn test_metric_filter_lifecycle() {
+        let handler = LogsHandler::new();
+        handler.handle(make_req("CreateLogGroup", json!({ "logGroupName": "/m" })));
+        let put = handler.handle(make_req("PutMetricFilter", json!({
+            "logGroupName": "/m",
+            "filterName": "mf",
+            "filterPattern": "ERROR",
+            "metricTransformations": [{"metricName": "E", "metricNamespace": "N", "metricValue": "1"}]
+        })));
+        assert_eq!(put.status, 200);
+        let desc = handler.handle(make_req("DescribeMetricFilters", json!({
+            "logGroupName": "/m", "filterNamePrefix": "mf"
+        })));
+        let body: Value = serde_json::from_str(&desc.body).unwrap();
+        assert_eq!(body["metricFilters"].as_array().unwrap().len(), 1);
+        handler.handle(make_req("DeleteMetricFilter", json!({
+            "logGroupName": "/m", "filterName": "mf"
+        })));
+        let after = handler.handle(make_req("DescribeMetricFilters", json!({ "logGroupName": "/m" })));
+        let body2: Value = serde_json::from_str(&after.body).unwrap();
+        assert_eq!(body2["metricFilters"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_retention_validation() {
+        let handler = LogsHandler::new();
+        handler.handle(make_req("CreateLogGroup", json!({ "logGroupName": "/r" })));
+        let bad = handler.handle(make_req("PutRetentionPolicy", json!({
+            "logGroupName": "/r", "retentionInDays": 999
+        })));
+        assert_eq!(bad.status, 400);
+        let ok = handler.handle(make_req("PutRetentionPolicy", json!({
+            "logGroupName": "/r", "retentionInDays": 30
+        })));
+        assert_eq!(ok.status, 200);
+        let groups = handler.handle(make_req("DescribeLogGroups", json!({})));
+        let body: Value = serde_json::from_str(&groups.body).unwrap();
+        assert_eq!(body["logGroups"][0]["retentionInDays"], 30);
+    }
+}
