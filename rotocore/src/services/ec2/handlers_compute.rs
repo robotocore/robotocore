@@ -1959,10 +1959,7 @@ fn create_snapshot(req: &Request, params: &P) -> Response {
         state.snapshots.push(snap.clone());
         ec2_xml(
             "CreateSnapshotResponse",
-            &format!(
-                "<snapshot>{}</snapshot>",
-                super::ec2b::snapshot_fields(&snap)
-            ),
+            &super::ec2b::snapshot_fields(&snap),
         )
     })
 }

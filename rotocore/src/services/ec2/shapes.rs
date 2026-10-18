@@ -163,3 +163,69 @@ pub fn render_response(op: &str, fills: &Fills, region: &str) -> Option<String> 
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{xml}"
     ))
 }
+
+/// Render an op whose output root is a single list member: each item is
+/// rendered from its element (structure) node with the given fills, then
+/// wrapped `<item>..</item>` inside the set's wire wrapper.
+pub fn render_list_response(
+    op: &str,
+    list_pykey: &str,
+    items: &[Fills],
+    region: &str,
+) -> Option<String> {
+    let shape = shape_of(op)?;
+    let members = shape.get("m")?.as_object()?;
+    let mut wire = String::new();
+    let mut elem_shape: Option<&Value> = None;
+    for (w, member) in members {
+        if member
+            .get("k")
+            .and_then(|k| k.as_str())
+            .map(|k| k == list_pykey)
+            .unwrap_or(false)
+        {
+            wire = w.clone();
+            if member.get("t").and_then(|t| t.as_str()) == Some("list") {
+                elem_shape = member.get("i").map(|i| i);
+            }
+            break;
+        }
+    }
+    if wire.is_empty() || elem_shape.is_none() {
+        return None;
+    }
+    let elem = elem_shape.unwrap();
+    let elem_wire = elem
+        .get("n")
+        .and_then(|n| n.as_str())
+        .unwrap_or("item")
+        .to_string();
+    let mut inner = String::new();
+    for item_fills in items {
+        let body = render_members(elem, item_fills);
+        if elem_wire == "item" {
+            inner.push_str(&format!("<item>{body}</item>"));
+        } else {
+            inner.push_str(&body);
+        }
+    }
+    let flattened = members
+        .iter()
+        .any(|(_w, m)| {
+            m.get("k")
+                .and_then(|k| k.as_str())
+                .map(|k| k == list_pykey)
+                .unwrap_or(false)
+                && m.get("f").is_some()
+        });
+    let body_out = if flattened {
+        inner
+    } else {
+        format!("<{wire}>{inner}</{wire}>")
+    };
+    Some(format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<{root}Response xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\">{body_out}<requestId>{rid}</requestId></{root}Response>",
+        root = op,
+        rid = uuid::Uuid::new_v4()
+    ))
+}
