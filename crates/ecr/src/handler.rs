@@ -18,14 +18,20 @@ pub struct EcrHandler {
     state: RwLock<HashMap<(u64, String), EcrState>>,
 }
 
+impl Default for EcrHandler {
+    fn default() -> Self {
+        Self { state: RwLock::new(HashMap::new()) }
+    }
+}
+
 impl EcrHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self::default()
     }
 
     fn get_state(&self, account: u64, region: &str) -> EcrState {
         let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_insert_with(EcrState::new).clone()
+        states.entry((account, region.to_string())).or_default().clone()
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
@@ -135,7 +141,7 @@ impl EcrHandler {
         {
             let repos = state.repositories.read();
             if !repos.contains_key(name) {
-                return repo_not_found(&req, name);
+                return repo_not_found(req, name);
             }
         }
         if !force {
@@ -216,7 +222,7 @@ impl EcrHandler {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
         let manifest = req.params.get("imageManifest").and_then(|v| v.as_str()).unwrap_or_default();
         let tag: Option<String> = req.params.get("imageTag").and_then(|v| v.as_str()).map(String::from);
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -274,9 +280,8 @@ impl EcrHandler {
                     }
                     // moto deletes the tag elsewhere (batch_delete_image) and
                     // moves it onto the image carrying this manifest.
-                    if tag_in_use_idx.is_some() && tag_in_use_idx != Some(idx) {
-                        let other = &mut repo_images[tag_in_use_idx.unwrap()];
-                        other.tags.retain(|x| x != t);
+                    if let Some(other_idx) = tag_in_use_idx.filter(|&j| j != idx) {
+                        repo_images[other_idx].tags.retain(|x| x != t);
                     }
                     repo_images[idx].tags.push(t.clone());
                 }
@@ -313,7 +318,7 @@ impl EcrHandler {
 
     fn list_images(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -333,7 +338,7 @@ impl EcrHandler {
 
     fn describe_images(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -364,7 +369,7 @@ impl EcrHandler {
 
     fn batch_get_image(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -403,7 +408,7 @@ impl EcrHandler {
 
     fn batch_delete_image(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -511,7 +516,7 @@ impl EcrHandler {
             None => return AwsResponse::error(400, "InvalidParameterException",
                 "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'"),
         };
-        let state = match self.require_repository(&req, &repo_name) {
+        let state = match self.require_repository(req, &repo_name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -525,7 +530,7 @@ impl EcrHandler {
             None => return AwsResponse::error(400, "InvalidParameterException",
                 "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'"),
         };
-        let state = match self.require_repository(&req, &repo_name) {
+        let state = match self.require_repository(req, &repo_name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -549,7 +554,7 @@ impl EcrHandler {
             None => return AwsResponse::error(400, "InvalidParameterException",
                 "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'"),
         };
-        let state = match self.require_repository(&req, &repo_name) {
+        let state = match self.require_repository(req, &repo_name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -575,7 +580,7 @@ impl EcrHandler {
     fn put_image_scanning_config(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let config = scan_on_push_config(req.params.get("imageScanningConfiguration"));
-        let state = match self.require_repository(&req, &name) {
+        let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -592,7 +597,7 @@ impl EcrHandler {
     fn put_image_tag_mutability(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let mutability = req.params.get("imageTagMutability").and_then(|v| v.as_str()).unwrap_or("MUTABLE");
-        let state = match self.require_repository(&req, &name) {
+        let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -608,7 +613,7 @@ impl EcrHandler {
 
     fn get_repository_policy(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -628,7 +633,7 @@ impl EcrHandler {
     fn set_repository_policy(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let policy = req.params.get("policyText").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let state = match self.require_repository(&req, &name) {
+        let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -642,7 +647,7 @@ impl EcrHandler {
 
     fn delete_repository_policy(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -666,7 +671,7 @@ impl EcrHandler {
     fn put_lifecycle_policy(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         let policy = req.params.get("lifecyclePolicyText").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let state = match self.require_repository(&req, &name) {
+        let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -680,7 +685,7 @@ impl EcrHandler {
 
     fn get_lifecycle_policy(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -700,7 +705,7 @@ impl EcrHandler {
 
     fn delete_lifecycle_policy(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -720,7 +725,7 @@ impl EcrHandler {
 
     fn start_lifecycle_policy_preview(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -742,7 +747,7 @@ impl EcrHandler {
 
     fn get_lifecycle_policy_preview(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -1142,7 +1147,7 @@ impl EcrHandler {
 
     fn start_image_scan(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -1172,7 +1177,7 @@ impl EcrHandler {
 
     fn describe_scan_findings(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -1220,7 +1225,7 @@ impl EcrHandler {
 
     fn describe_image_replication_status(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = match self.require_repository(&req, name) {
+        let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };

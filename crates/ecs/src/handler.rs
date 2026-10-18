@@ -27,14 +27,20 @@ pub struct EcsHandler {
     state: RwLock<HashMap<(u64, String), EcsState>>,
 }
 
+impl Default for EcsHandler {
+    fn default() -> Self {
+        Self { state: RwLock::new(HashMap::new()) }
+    }
+}
+
 impl EcsHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self::default()
     }
 
     fn get_state(&self, account: u64, region: &str) -> EcsState {
         let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_insert_with(EcsState::new).clone()
+        states.entry((account, region.to_string())).or_default().clone()
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
@@ -245,11 +251,11 @@ impl EcsHandler {
     }
 
     fn update_cluster(&self, req: &AwsRequest) -> AwsResponse {
-        self.update_cluster_common(&req, true)
+        self.update_cluster_common(req, true)
     }
 
     fn update_cluster_settings(&self, req: &AwsRequest) -> AwsResponse {
-        self.update_cluster_common(&req, true)
+        self.update_cluster_common(req, true)
     }
 
     fn put_cluster_capacity_providers(&self, req: &AwsRequest) -> AwsResponse {
@@ -366,7 +372,7 @@ impl EcsHandler {
         let tags: Vec<Value>;
         let td = {
             let mut tds = state.task_definitions.write();
-            let revisions = tds.entry(family.to_string()).or_insert_with(Vec::new);
+            let revisions = tds.entry(family.to_string()).or_default();
             let revision = revisions.len() + 1;
             td_arn = format!("arn:aws:ecs:{}:{}:task-definition/{}:{}",
                 req.region, req.account, family, revision);
@@ -570,7 +576,7 @@ impl EcsHandler {
         });
         {
             let mut services = state.services.write();
-            let cluster_services = services.entry(cluster_name.to_string()).or_insert_with(HashMap::new);
+            let cluster_services = services.entry(cluster_name.to_string()).or_default();
             if cluster_services.contains_key(svc_name) {
                 return AwsResponse::error(400, "ClientException",
                     &format!("Service {} already exists.", svc_name));
@@ -757,7 +763,7 @@ impl EcsHandler {
         }
         state.tasks.write()
             .entry(cluster_name.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .extend(inserted);
         AwsResponse::json(200, json!({ "tasks": tasks, "failures": [] }))
     }
@@ -790,7 +796,7 @@ impl EcsHandler {
         });
         state.tasks.write()
             .entry(cluster_name.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(task_id, task.clone());
         AwsResponse::json(200, json!({ "tasks": [task], "failures": [] }))
     }
@@ -909,7 +915,7 @@ impl EcsHandler {
         });
         state.container_instances.write()
             .entry(cluster_name.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(ci_id, ci.clone());
         if let Some(cluster) = state.clusters.write().get_mut(cluster_name) {
             let current = cluster["registeredContainerInstancesCount"].as_i64().unwrap_or(0);
@@ -1089,7 +1095,7 @@ impl EcsHandler {
         });
         state.task_sets.write()
             .entry(svc_arn)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(ts_id, task_set.clone());
         if !tags.is_empty() {
             state.tags.write().insert(ts_arn, json!(tags));
@@ -1196,7 +1202,7 @@ impl EcsHandler {
         let attrs: Vec<Value> = req.params.get("attributes")
             .and_then(|v| v.as_array()).cloned().unwrap_or_default();
         let mut all = state.attributes.write();
-        let existing = all.entry(cluster_name.to_string()).or_insert_with(Vec::new);
+        let existing = all.entry(cluster_name.to_string()).or_default();
         for attr in &attrs {
             let key = attr_key(attr);
             existing.retain(|a| attr_key(a) != key);
@@ -1217,7 +1223,7 @@ impl EcsHandler {
             .and_then(|v| v.as_array()).cloned().unwrap_or_default();
         {
             let mut all = state.attributes.write();
-            let existing = all.entry(cluster_name.to_string()).or_insert_with(Vec::new);
+            let existing = all.entry(cluster_name.to_string()).or_default();
             for attr in &attrs_to_del {
                 let key = attr_key(attr);
                 existing.retain(|a| attr_key(a) != key);
