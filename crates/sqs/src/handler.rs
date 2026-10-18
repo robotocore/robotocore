@@ -13,16 +13,30 @@ use uuid::Uuid;
 
 type StoreMap = Arc<RwLock<HashMap<(u64, String), Arc<SqsStore>>>>;
 
+/// Process-wide store map shared by every `DefaultSqsHandler` instance.
+///
+/// Cross-service callers (SNS message delivery) construct their own handler
+/// instance; sharing the store map lets those instances see the same queues
+/// as the server's registered SQS handler, mirroring Moto's in-process
+/// backend semantics.
+fn global_stores() -> StoreMap {
+    use std::sync::OnceLock;
+    static STORES: OnceLock<StoreMap> = OnceLock::new();
+    STORES
+        .get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+        .clone()
+}
+
 /// The actual SQS handler implementation
 pub struct DefaultSqsHandler {
-    // Store per (account, region)
+    // Store per (account, region), shared process-wide
     stores: StoreMap,
 }
 
 impl DefaultSqsHandler {
     pub fn new() -> Self {
         Self {
-            stores: Arc::new(RwLock::new(HashMap::new())),
+            stores: global_stores(),
         }
     }
 

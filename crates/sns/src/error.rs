@@ -10,9 +10,7 @@ pub enum SnsError {
 }
 
 impl SnsError {
-    pub fn not_found(resource: &str) -> Self {
-        SnsError::Other(format!(
-            "InvalidParameterValue: The specified topic does not exist"
-        ))
+    pub fn not_found(_resource: &str) -> Self {
+        SnsError::Other("InvalidParameterValue: The specified topic does not exist".to_string())
     }
 }
