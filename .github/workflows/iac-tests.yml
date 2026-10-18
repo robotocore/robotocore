@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - "tests/iac/**"
-      - "src/robotocore/**"
+      - "rotocore/**"
+      - "crates/**"
+      - "src/**"
   pull_request:
     branches: [main]
     paths:
       - "tests/iac/**"
-      - "src/robotocore/**"
+      - "rotocore/**"
+      - "crates/**"
+      - "src/**"
 
 concurrency:
   group: iac-${{ github.ref }}
@@ -30,26 +34,11 @@ jobs:
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.x"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Terraform IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -65,7 +54,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-terraform
-          path: .robotocore.log
+          path: |
+            /tmp/iac_rust.log
+            /tmp/iac_sidecar.log
 
   cloudformation:
     runs-on: ubuntu-latest
@@ -77,26 +68,11 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run CloudFormation IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -112,7 +88,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-cloudformation
-          path: .robotocore.log
+          path: |
+            /tmp/iac_rust.log
+            /tmp/iac_sidecar.log
 
   cdk:
     runs-on: ubuntu-latest
@@ -128,26 +106,11 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run CDK IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -163,7 +126,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-cdk
-          path: .robotocore.log
+          path: |
+            /tmp/iac_rust.log
+            /tmp/iac_sidecar.log
 
   pulumi:
     runs-on: ubuntu-latest
@@ -176,26 +141,11 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Pulumi IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -211,7 +161,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-pulumi
-          path: .robotocore.log
+          path: |
+            /tmp/iac_rust.log
+            /tmp/iac_sidecar.log
 
   serverless:
     runs-on: ubuntu-latest
@@ -227,26 +179,11 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Serverless Framework IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -262,7 +199,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-serverless
-          path: .robotocore.log
+          path: |
+            /tmp/iac_rust.log
+            /tmp/iac_sidecar.log
 
   sam:
     runs-on: ubuntu-latest
@@ -278,26 +217,11 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run SAM IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -313,4 +237,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-sam
-          path: .robotocore.log
+          path: |
+            /tmp/iac_rust.log
+            /tmp/iac_sidecar.log
