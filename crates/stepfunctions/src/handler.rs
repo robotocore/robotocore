@@ -9,7 +9,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct StepfunctionsHandler {
-    state: RwLock<HashMap<(u64, String), StepfunctionsState>>,
+    /// Per-(account, region) state, shared process-wide (see `global_states`).
+    state: &'static RwLock<HashMap<(u64, String), StepfunctionsState>>,
+}
+
+/// Process-global state registry, shared by every handler instance.
+///
+/// Extra handler instances must never fork state, mirroring Moto's
+/// in-process backend semantics (same pattern as the SQS/EventBridge
+/// stores).
+fn global_states() -> &'static RwLock<HashMap<(u64, String), StepfunctionsState>> {
+    use std::sync::OnceLock;
+    static STATES: OnceLock<RwLock<HashMap<(u64, String), StepfunctionsState>>> = OnceLock::new();
+    STATES.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
@@ -24,13 +36,13 @@ fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
 impl StepfunctionsHandler {
     pub fn new() -> Self {
         Self {
-            state: RwLock::new(HashMap::new()),
+            state: global_states(),
         }
     }
 
     fn get_state(&self, account: u64, region: &str) -> StepfunctionsState {
-        let mut states = self.state.write();
-        states
+        self.state
+            .write()
             .entry((account, region.to_string()))
             .or_default()
             .clone()
@@ -945,6 +957,34 @@ mod tests {
         ));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("executionArn"));
+    }
+
+    #[test]
+    fn test_handler_instances_share_state() {
+        let a = StepfunctionsHandler::new();
+        a.handle(make_req("CreateStateMachine", json!({
+            "stateMachineName": "shared-sm",
+            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+            "definition": "{\"StartAt\": \"Pass\", \"States\": {}}"
+        })));
+        // A second instance must see (and be able to use) the same state.
+        let b = StepfunctionsHandler::new();
+        let resp = b.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:shared-sm"
+            }),
+        ));
+        assert_eq!(resp.status, 200, "second instance sees the machine: {}", resp.body);
+        assert!(resp.body.contains("executionArn"));
+        let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
+        let c = StepfunctionsHandler::new();
+        let desc = body(&c.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
+        // The description comes from shared state, not from instance c's own.
+        assert!(desc.get("executionArn").is_some());
     }
 
     #[test]
