@@ -11,6 +11,8 @@ use crate::{Request, Response};
 // - ec2 (stub)
 // - cloudformation (stub)
 
+mod rds;
+
 pub fn dispatch(req: &Request) -> Option<Response> {
     let _ = req;
     // No service fully ported yet.
