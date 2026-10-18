@@ -29,7 +29,7 @@ impl EventsHandler {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))
-            .or_insert_with(EventsState::new)
+            .or_default()
             .clone()
     }
 

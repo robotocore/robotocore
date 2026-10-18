@@ -5,6 +5,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Shared rule map type: (bus name, rule name) -> rule.
+pub type RuleMap = HashMap<(String, String), Arc<Rule>>;
+
 /// An EventBridge rule.
 #[derive(Debug)]
 pub struct Rule {
@@ -48,7 +51,7 @@ impl Rule {
 #[derive(Clone, Default)]
 pub struct EventsState {
     /// Rules keyed by (bus name, rule name).
-    pub rules: Arc<RwLock<HashMap<(String, String), Arc<Rule>>>>,
+    pub rules: Arc<RwLock<RuleMap>>,
     /// Custom event buses: name -> bus record.
     pub event_buses: Arc<RwLock<HashMap<String, Value>>>,
     /// Per-bus permission policy JSON (bus name -> policy document).
