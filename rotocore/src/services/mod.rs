@@ -3,6 +3,17 @@
 //! Only PORTED services appear here — a module replaces the moto sidecar
 //! for its service the moment it publishes real behavior. Until then the
 //! gateway falls back to the sidecar, so the wire contract stays intact.
+//!
+//! Ported:
+//! - batch (moto-equivalent, docker-free)
+//! - backup (moto-equivalent rest-json)
+//! - eks (moto-equivalent rest-json)
+//!
+//! Still moto-backed via the sidecar (no module): athena, glue, emr.
+
+mod backup;
+mod batch;
+mod eks;
 
 use crate::{Request, Response};
 
@@ -32,4 +43,12 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "securityhub" => Some(securityhub::dispatch(req)),
         _ => None,
     }
+/// Dispatch a routed request to its service backend.
+///
+/// Returns `None` when no ported backend exists for `service` (bin routes
+/// the request to its own crate table).
+pub fn dispatch(req: &Request) -> Option<Response> {
+    batch::dispatch(req)
+        .or_else(|| backup::dispatch(req))
+        .or_else(|| eks::dispatch(req))
 }
