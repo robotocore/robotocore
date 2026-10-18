@@ -7848,6 +7848,211 @@ fn db_instance_xml_single(_db: &DBInstance) -> String {
     "<DBInstance/>".to_string()
 }
 
+
+// Read replicas + remaining instance ops -------------------------------------
+
+fn create_read_replica(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    RdsError::check_db_identifier(&identifier)?;
+    let source = p_string(p, "SourceDBInstanceIdentifier").unwrap_or_default();
+    let source_id = identifier_from_arn(&source).to_lowercase();
+    let source_db = match find_instance(st, &source_id) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {source} not found."),
+            ))
+        }
+    };
+    let id = identifier.to_lowercase();
+    if st.databases.contains_key(&id) {
+        return Err(RdsError::client400(
+            "DBInstanceAlreadyExists",
+            format!("DBInstance {identifier} already exists"),
+        ));
+    }
+    let mut replica = source_db.clone();
+    replica.id = id.clone();
+    replica.original_id = identifier.clone();
+    replica.is_replica = true;
+    replica.source_db_instance_identifier = Some(source_db.id.clone());
+    replica.replicas = Vec::new();
+    replica.availability_zone = p_string(p, "AvailabilityZone")
+        .unwrap_or_else(|| format!("{region}a"));
+    if let Some(port) = p_i64(p, "Port") {
+        replica.port = port;
+    }
+    if let Some(v) = p_string(p, "DBInstanceClass") {
+        replica.db_instance_class = v;
+    }
+    if let Some(v) = p_string(p, "StorageType") {
+        replica.storage_type = v;
+    }
+    ensure_pg_for_instance(st, &replica);
+    st.databases.insert(id.clone(), replica);
+    if let Some(src) = st.databases.get_mut(&source_db.id) {
+        src.replicas.push(id.clone());
+    }
+    match st.databases.get(&id) {
+        Some(found) => Ok(Some(db_instance_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+fn describe_db_log_files_xml(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let db = match find_instance(st, &identifier) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    let filename = if db.engine == "postgres" {
+        format!("error/postgresql.log.{}", Utc::now().format("%Y-%m-%d-%H"))
+    } else {
+        format!("error/{}.log", db.engine)
+    };
+    let mut out = String::from("<DescribeDBLogFiles>");
+    out.push_str(&db_log_file_entry(&filename, now_unix() * 1000, 123));
+    out.push_str("</DescribeDBLogFiles>");
+    Ok(Some(out))
+}
+
+fn describe_valid_db_instance_modifications_xml(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let _ = require_instance_record(st, &identifier)?;
+    let mut out = String::from("<ValidDBInstanceModificationsMessage>");
+    out.push_str("<Storage>");
+    out.push_str(&storage_block("gp2", false));
+    out.push_str(&storage_block("gp3", true));
+    out.push_str(&storage_block("io1", false));
+    out.push_str("</Storage>");
+    out.push_str("<ValidProcessorFeatures/>");
+    out.push_str("<SupportsDedicatedLogVolume>true</SupportsDedicatedLogVolume>");
+    out.push_str("</ValidDBInstanceModificationsMessage>");
+    Ok(Some(out))
+}
+
+fn require_instance_record(st: &RdsState, identifier: &str) -> Result<(), RdsError> {
+    if find_instance(st, identifier).is_some() {
+        Ok(())
+    } else {
+        Err(RdsError::not_found404(
+            "DBInstanceNotFound",
+            format!("DBInstance {identifier} not found."),
+        ))
+    }
+}
+
+fn storage_block(storage_type: &str, provisioned_throughput: bool) -> String {
+    let mut out = String::from("<ValidStorageOptions>");
+    out.push_str(&format!(
+        "<StorageType>{}</StorageType>",
+        esc(storage_type)
+    ));
+    out.push_str("<StorageSize><Range><From>20</From><To>65536</To><Step>1</Step></Range></StorageSize>");
+    if provisioned_throughput {
+        out.push_str("<ProvisionedIops><Range><From>3000</From><To>64000</To><Step>1</Step></Range></ProvisionedIops>");
+        out.push_str("<ProvisionedStorageThroughput><Range><From>125</From><To>4000</To><Step>1</Step></Range></ProvisionedStorageThroughput>");
+    } else {
+        out.push_str("<ProvisionedIops/>");
+        out.push_str("<ProvisionedStorageThroughput/>");
+    }
+    out.push_str("</ValidStorageOptions>");
+    out
+}
+
+fn add_role_to_db_instance_op(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let db = match find_instance(st, &identifier) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    if db.status != "available" {
+        return Err(RdsError::client400(
+            "InvalidDBInstanceStateFault",
+            format!("Instance {identifier} should be in a valid state to add role."),
+        ));
+    }
+    let role_arn = p_string(p, "RoleArn").unwrap_or_default();
+    let feature = p_string(p, "FeatureName");
+    for role in &db.associated_roles {
+        if role.role_arn == role_arn || role.feature_name == feature.clone().filter(|_| feature.is_some()) && role.feature_name == feature && feature.is_some() {
+            return Err(RdsError::client400(
+                "DBInstanceRoleAlreadyExists",
+                format!("Role {role_arn} alreday assigned to Instance {identifier}"),
+            ));
+        }
+    }
+    st.databases
+        .get_mut(&identifier.to_lowercase())
+        .unwrap()
+        .associated_roles
+        .push(AssociatedRole {
+            role_arn,
+            feature_name: feature,
+        });
+    Ok(None)
+}
+
+fn remove_role_from_db_instance_op(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    require_instance_record(st, &identifier)?;
+    let role_arn = p_string(p, "RoleArn").unwrap_or_default();
+    let target = st.databases.get_mut(&identifier.to_lowercase()).unwrap();
+    if let Some(feature) = p_string(p, "FeatureName") {
+        target
+            .associated_roles
+            .retain(|r| !(r.role_arn == role_arn && r.feature_name.as_deref() == Some(feature.as_str())));
+    } else {
+        target.associated_roles.retain(|r| r.role_arn != role_arn);
+    }
+    Ok(None)
+}
+
 // __APPEND_MARKER__
+
+
+// Read replicas + remaining instance ops -------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // __APPEND_MARKER__
