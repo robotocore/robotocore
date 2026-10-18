@@ -434,7 +434,68 @@ pub struct EffectiveRefs {
     pub db_name: Option<String>,
 }
 
-#[derive(Debug)]
+impl DBInstance {
+    pub fn valid_engine(engine: &str) -> bool {
+        [
+            "aurora-mysql",
+            "aurora-postgresql",
+            "custom-oracle-ee",
+            "custom-oracle-ee-cdb",
+            "custom-sqlserver-ee",
+            "custom-sqlserver-se",
+            "custom-sqlserver-web",
+            "mariadb",
+            "mysql",
+            "neptune",
+            "oracle-ee",
+            "oracle-ee-cdb",
+            "oracle-se",
+            "oracle-se1",
+            "oracle-se2",
+            "oracle-se2-cdb",
+            "postgres",
+            "sqlserver-ee",
+            "sqlserver-se",
+            "sqlserver-ex",
+            "sqlserver-web",
+        ]
+        .contains(&engine)
+    }
+
+    pub fn default_storage(engine: &str) -> (i64, &'static str) {
+        match engine {
+            "aurora" => (0, "gp2"),
+            "sqlserver-ee" | "sqlserver-se" => (200, "gp2"),
+            _ => (20, "gp2"),
+        }
+    }
+
+    pub fn default_port(engine: &str) -> i64 {
+        match engine {
+            "aurora-postgresql" | "postgres" => 5432,
+            "neptune" => 8182,
+            "oracle-ee" | "oracle-se2" | "oracle-se1" | "oracle-se" => 1521,
+            "sqlserver-ee" | "sqlserver-ex" | "sqlserver-se" | "sqlserver-web" => 1433,
+            "custom-oracle-ee" | "custom-oracle-ee-cdb" => 1521,
+            "custom-sqlserver-ee" | "custom-sqlserver-se" | "custom-sqlserver-web" => 1433,
+            _ => 3306,
+        }
+    }
+
+    pub fn default_engine_version(engine: &str) -> Option<&'static str> {
+        match engine {
+            "mysql" | "MySQL" => Some("5.6.21"),
+            "neptune" => Some("1.3.2.1"),
+            "oracle-ee" | "oracle-se" | "oracle-se1" | "oracle-se2" => Some("11.2.0.4.v3"),
+            "postgres" => Some("9.3.3"),
+            "sqlserver-ee" | "sqlserver-ex" | "sqlserver-se" | "sqlserver-web" => {
+                Some("11.00.2100.60.v1")
+            }
+            _ => None,
+        }
+    }
+}
+
 pub struct DBCluster {
     /// Lowercased identifier (moto lowercases cluster identifiers).
     pub id: String,
@@ -484,6 +545,12 @@ impl DBCluster {
     pub fn set_kms_key_id(mut self, key: Option<String>) -> Self {
         self.kms_key_id = key.unwrap_or_else(|| "default_kms_key_id".to_string());
         self
+    }
+}
+
+impl std::fmt::Debug for DBCluster {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DBCluster").field("id", &self.id).finish()
     }
 }
 
@@ -2741,6 +2808,197 @@ fn run_op(
         "NotImplemented",
         format!("The {} action has not been implemented", lowercase_first(op)),
     ))
+}
+
+
+// ---------------------------------------------------------------------------
+// DB instance operations
+// ---------------------------------------------------------------------------
+
+fn cluster_info_missing(cid: Option<&str>, st: &RdsState) -> bool {
+    match cid {
+        Some(c) => !st.clusters.contains_key(&c.to_lowercase()),
+        None => false,
+    }
+}
+
+fn create_db_instance(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    RdsError::check_db_identifier(&identifier)?;
+    let engine = p_string(p, "Engine").unwrap_or_default();
+    if !DBInstance::valid_engine(&engine) {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            format!("Value {engine} for parameter Engine is invalid. Reason: engine {engine} not supported"),
+        ));
+    }
+    let id = identifier.to_lowercase();
+    if st.databases.contains_key(&id) {
+        return Err(RdsError::client400(
+            "DBInstanceAlreadyExists",
+            format!("DBInstance {identifier} already exists"),
+        ));
+    }
+    let (storage_default, _) = DBInstance::default_storage(&engine);
+    let engine_version = match p_string(p, "EngineVersion") {
+        Some(v) => v,
+        None => DBInstance::default_engine_version(&engine).unwrap_or("").to_string(),
+    };
+    let supplied_og = p_string(p, "OptionGroupName");
+    let option_group = match &supplied_og {
+        Some(name) => {
+            if !st.option_groups.contains_key(&name.to_lowercase()) {
+                return Err(RdsError::not_found404(
+                    "OptionGroupNotFoundFault",
+                    format!("Specified OptionGroupName: {name} not found."),
+                ));
+            }
+            name.clone()
+        }
+        None => DBCluster::compute_default_option_group(&engine, &engine_version),
+    };
+    let supplied_db_subnet = p_string(p, "DBSubnetGroupName");
+    if let Some(group) = &supplied_db_subnet {
+        if !st.subnet_groups.contains_key(&group.to_lowercase()) {
+            return Err(RdsError::not_found404(
+                "DBSubnetGroupNotFoundFault",
+                format!("Subnet Group {group} not found."),
+            ));
+        }
+    }
+    if let Some(pg) = p_string(p, "DBParameterGroupName") {
+        let default_prefix = format!("default.{}", engine.to_lowercase());
+        if !pg.to_lowercase().starts_with(&default_prefix)
+            && !st.db_parameter_groups.contains_key(&pg.to_lowercase())
+        {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DB Parameter Group {pg} not found."),
+            ));
+        }
+    }
+    let master_username = p_string(p, "MasterUsername");
+    let cluster_name = p_string(p, "DBClusterIdentifier");
+    let cluster_ref = cluster_name.clone().map(|s| s.to_lowercase());
+    let managing_password = p_bool(p, "ManageMasterUserPassword").unwrap_or(false);
+    if cluster_ref.is_none() && master_username.is_none() && !managing_password {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter MasterUsername must be provided and must not be blank.",
+        ));
+    }
+    if let Some(pass) = p_string(p, "MasterUserPassword") {
+        if pass.len() < 8 && !managing_password {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                "The parameter MasterUserPassword is not a valid password because it is shorter than 8 characters.",
+            ));
+        }
+    }
+    if cluster_info_missing(cluster_ref.as_deref(), st) {
+        let shown = cluster_name.clone().unwrap_or_default();
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("The source cluster could not be found or cannot be accessed: {shown}"),
+        ));
+    }
+    let cluster = cluster_ref
+        .as_ref()
+        .and_then(|cid| st.clusters.get(cid));
+    let cluster_engine = cluster.map(|cl| cl.engine.clone());
+    let cluster_version = cluster.map(|cl| cl.engine_version.clone());
+    let cluster_username = cluster.and_then(|cl| cl.master_username.clone());
+    if cluster_engine.is_some() && cluster_engine.as_deref() != Some(engine.as_str()) {
+        let ce = cluster_engine.clone().unwrap_or_default();
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            format!("The engine name requested for your DB instance ({engine}) doesn't match the engine name of your DB cluster ({ce})."),
+        ));
+    }
+    let db = DBInstance {
+        id: id.clone(),
+        original_id: identifier.clone(),
+        db_instance_class: p_string(p, "DBInstanceClass").unwrap_or_else(|| "db.t3.micro".into()),
+        engine: engine.clone(),
+        engine_version: cluster_version.clone().unwrap_or(engine_version),
+        port: p_i64(p, "Port").unwrap_or_else(|| DBInstance::default_port(&engine)),
+        status: "available".into(),
+        master_username: if cluster.is_some() {
+            None
+        } else {
+            master_username.clone()
+        },
+        allocated_storage: p_i64(p, "AllocatedStorage").unwrap_or(storage_default),
+        max_allocated_storage: p_i64(p, "MaxAllocatedStorage"),
+        storage_type: p_string(p, "StorageType").unwrap_or_else(|| "gp2".into()),
+        storage_encrypted: p_bool(p, "StorageEncrypted").unwrap_or(false),
+        backup_retention_period: p_i64(p, "BackupRetentionPeriod").unwrap_or(1),
+        auto_minor_version_upgrade: p_bool(p, "AutoMinorVersionUpgrade").unwrap_or(true),
+        license_model: p_string(p, "LicenseModel")
+            .unwrap_or_else(|| "general-public-license".into()),
+        preferred_backup_window: p_string(p, "PreferredBackupWindow")
+            .unwrap_or_else(|| "13:14-13:44".into()),
+        preferred_maintenance_window: p_string(p, "PreferredMaintenanceWindow")
+            .unwrap_or_else(|| "wed:06:38-wed:07:08".into())
+            .to_lowercase(),
+        availability_zone: p_string(p, "AvailabilityZone")
+            .unwrap_or_else(|| format!("{region}a")),
+        multi_az: p_bool(p, "MultiAZ").unwrap_or(false),
+        publicly_accessible: p_bool(p, "PubliclyAccessible"),
+        copy_tags_to_snapshot: p_bool(p, "CopyTagsToSnapshot").unwrap_or(false),
+        db_parameter_group_name: p_string(p, "DBParameterGroupName"),
+        option_group_name: option_group,
+        option_group_supplied: supplied_og.is_some(),
+        vpc_security_group_ids: p_list(p, "VpcSecurityGroupIds"),
+        db_security_groups: p_list(p, "DBSecurityGroups"),
+        db_subnet_group_name: supplied_db_subnet,
+        db_cluster_identifier: cluster_ref,
+        is_replica: false,
+        replicas: Vec::new(),
+        source_db_instance_identifier: None,
+        deletion_protection: p_bool(p, "DeletionProtection").unwrap_or(false),
+        iam_auth: p_bool(p, "EnableIAMDatabaseAuthentication").unwrap_or(false),
+        ca_certificate_identifier: p_string(p, "CACertificateIdentifier")
+            .unwrap_or_else(|| "rds-ca-default".into()),
+        tags: tags_param(p),
+        enabled_cloudwatch_logs_exports: p_list(p, "EnableCloudwatchLogsExports"),
+        associated_roles: Vec::new(),
+        created: Utc::now(),
+        db_name: p_string(p, "DBName"),
+        character_set_name: p_string(p, "CharacterSetName"),
+    };
+    let _ = cluster_username;
+    ensure_pg_for_instance(st, &db);
+    st.databases.insert(db.id.clone(), db);
+    let arn = format!("arn:aws:rds:{region}:{acct}:db:{id}");
+    st.add_event("DB_INSTANCE_CREATE", &id, arn);
+    create_automated_snapshot(st, acct, region, &id, &auto_snapshot_id(&id));
+    match st.databases.get(&id) {
+        Some(found) => Ok(Some(db_instance_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+
+/// Snapshot record from an instance with the moto auto-id, stored as `automated`.
+fn create_automated_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    db_id: &str,
+    snapshot_id: &str,
+) {
+    if let Some(db) = st.databases.get(db_id).cloned() {
+        let snapshot = snapshot_from_db(&db, snapshot_id, "automated", &[]);
+        let snap_id = snapshot.id.clone();
+        st.database_snapshots.insert(snap_id, snapshot);
+        let _ = (acct, region);
+    }
 }
 
 // __APPEND_MARKER__
