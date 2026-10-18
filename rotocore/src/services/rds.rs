@@ -4931,4 +4931,432 @@ fn switchover_global_cluster(
     failover_global_cluster(st, acct, region, p)
 }
 
+
+// Parameter groups -----------------------------------------------------------
+
+fn create_db_parameter_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if st.db_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::client400(
+            "DBParameterGroupAlreadyExists",
+            format!("A DB parameter group named {identifier} already exists."),
+        ));
+    }
+    let family = p_string(p, "DBParameterGroupFamily").unwrap_or_default();
+    if family.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter DBParameterGroupFamily must be provided and must not be blank.",
+        ));
+    }
+    let description = p_string(p, "Description").unwrap_or_default();
+    if description.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter Description must be provided and must not be blank.",
+        ));
+    }
+    let group = DBParameterGroup {
+        name: lower.clone(),
+        family,
+        description,
+        tags: tags_param(p),
+        parameters: Vec::new(),
+    };
+    st.db_parameter_groups.insert(lower, group);
+    let group = st.db_parameter_groups.get(&identifier.to_lowercase()).unwrap();
+    Ok(Some(format!(
+        "<DBParameterGroup>{}</DBParameterGroup>",
+        parameter_group_xml(acct, region, group)
+    )))
+}
+
+fn describe_db_parameter_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    // Wrapped DBParameterGroups list; filtered by name like moto.
+    let filter = p_string(p, "DBParameterGroupName").map(|s| s.to_lowercase());
+    let matched: Vec<&DBParameterGroup> = st
+        .db_parameter_groups
+        .values()
+        .filter(|g| match &filter {
+            Some(f) => g.name == *f,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for g in &matched {
+        list.push_str(&parameter_group_xml(acct, region, g));
+    }
+    let mut out = format!("<DBParameterGroups>{list}</DBParameterGroups>");
+    let _ = &mut out;
+    if param(p, "Marker").string().is_some() {
+        let marker = param(p, "Marker").string().unwrap_or("").to_string();
+        out = format!("<Marker>{}</Marker>", esc(&marker));
+    }
+    Ok(Some(out))
+}
+
+/// DescribeDBParameters for a group (auto-creating default groups like moto's
+/// `db_instance.db_parameter_groups()` would for instance-owned defaults).
+fn describe_db_parameters(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    let group = match st.db_parameter_groups.get(&lower) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DB Parameter Group {identifier} not found."),
+            ))
+        }
+    };
+    Ok(Some(parameters_xml(&group.parameters)))
+}
+
+fn modify_db_parameter_group(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.db_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBParameterGroupNotFound",
+            format!("DB Parameter Group {identifier} not found."),
+        ));
+    }
+    for m in p_maps(p, "Parameters") {
+        let mut name = None;
+        let mut values = std::collections::BTreeMap::new();
+        for (k, v) in m {
+            if k == "ParameterName" {
+                name = Some(v);
+            } else {
+                values.insert(k, v);
+            }
+        }
+        if let Some(name) = name {
+            st.db_parameter_groups
+                .get_mut(&lower)
+                .unwrap()
+                .set_parameter(&name, values);
+        }
+    }
+    Ok(Some(format!(
+        "<DBParameterGroupName>{}</DBParameterGroupName>",
+        esc(&identifier)
+    )))
+}
+
+fn delete_db_parameter_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.db_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBParameterGroupNotFound",
+            format!("DB Parameter Group {identifier} not found."),
+        ));
+    }
+    st.db_parameter_groups.remove(&lower);
+    // moto deletes the default group names too; nothing left to emit: the
+    // response shape only carries ResponseMetadata.
+    let _ = (acct, region);
+    Ok(None)
+}
+
+fn copy_db_parameter_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let source = p_string(p, "SourceDBParameterGroupIdentifier").unwrap_or_default();
+    let target = p_string(p, "TargetDBParameterGroupIdentifier").unwrap_or_default();
+    let description = p_string(p, "TargetDBParameterGroupDescription").unwrap_or_default();
+    let source_id = identifier_from_arn(&source).to_lowercase();
+    let src = match st.db_parameter_groups.get(&source_id) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DB Parameter Group {source} not found."),
+            ))
+        }
+    };
+    let target_id = target.to_lowercase();
+    if st.db_parameter_groups.contains_key(&target_id) {
+        return Err(RdsError::client400(
+            "DBParameterGroupAlreadyExists",
+            format!("A DB parameter group named {target} already exists."),
+        ));
+    }
+    let mut group = DBParameterGroup {
+        name: target_id.clone(),
+        family: src.family.clone(),
+        description,
+        tags: tags_param(p),
+        parameters: Vec::new(),
+    };
+    for (name, values) in &src.parameters {
+        group.set_parameter(name, values.clone());
+    }
+    let response = group.clone();
+    st.db_parameter_groups.insert(target_id, group);
+    Ok(Some(format!(
+        "<DBParameterGroup>{}</DBParameterGroup>",
+        parameter_group_xml(acct, region, &response)
+    )))
+}
+
+fn reset_db_parameter_group(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.db_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBParameterGroupNotFound",
+            format!("DB Parameter Group {identifier} not found."),
+        ));
+    }
+    if p_bool(p, "ResetAllParameters").unwrap_or(false) {
+        st.db_parameter_groups.get_mut(&lower).unwrap().reset_all();
+    }
+    Ok(Some(format!(
+        "<DBParameterGroupName>{}</DBParameterGroupName>",
+        esc(&identifier)
+    )))
+}
+
+// Cluster parameter groups ---------------------------------------------------
+
+fn create_db_cluster_parameter_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if st.db_cluster_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::client400(
+            "DBParameterGroupAlreadyExists",
+            format!("A DB parameter group named {identifier} already exists."),
+        ));
+    }
+    let family = p_string(p, "DBParameterGroupFamily").unwrap_or_default();
+    if family.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter DBParameterGroupFamily must be provided and must not be blank.",
+        ));
+    }
+    let description = p_string(p, "Description").unwrap_or_default();
+    if description.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter Description must be provided and must not be blank.",
+        ));
+    }
+    let group = DBClusterParameterGroup {
+        name: lower.clone(),
+        family,
+        description,
+        tags: tags_param(p),
+        parameters: Vec::new(),
+    };
+    let response = group.clone();
+    st.db_cluster_parameter_groups.insert(lower, group);
+    Ok(Some(format!(
+        "<DBClusterParameterGroup>{}</DBClusterParameterGroup>",
+        cluster_parameter_group_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_cluster_parameter_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBClusterParameterGroupName").map(|s| s.to_lowercase());
+    if let Some(f) = &filter {
+        if !st.db_cluster_parameter_groups.contains_key(f) {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DBClusterParameterGroup not found: {f}"),
+            ));
+        }
+    }
+    let matched: Vec<&DBClusterParameterGroup> = st
+        .db_cluster_parameter_groups
+        .values()
+        .filter(|g| match &filter {
+            Some(f) => g.name == *f,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for g in &matched {
+        list.push_str(&cluster_parameter_group_xml(acct, region, g));
+    }
+    Ok(Some(format!(
+        "<DBClusterParameterGroups>{list}</DBClusterParameterGroups>"
+    )))
+}
+
+fn describe_db_cluster_parameters(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    let group = match st.db_cluster_parameter_groups.get(&lower) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DBClusterParameterGroup not found: {identifier}"),
+            ))
+        }
+    };
+    Ok(Some(parameters_xml(&group.parameters)))
+}
+
+fn modify_db_cluster_parameter_group(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.db_cluster_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBParameterGroupNotFound",
+            format!("DBClusterParameterGroup not found: {identifier}"),
+        ));
+    }
+    for m in p_maps(p, "Parameters") {
+        let mut name = None;
+        let mut values = std::collections::BTreeMap::new();
+        for (k, v) in m {
+            if k == "ParameterName" {
+                name = Some(v);
+            } else {
+                values.insert(k, v);
+            }
+        }
+        if let Some(name) = name {
+            st.db_cluster_parameter_groups
+                .get_mut(&lower)
+                .unwrap()
+                .set_parameter(&name, values);
+        }
+    }
+    Ok(Some(format!(
+        "<DBClusterParameterGroupName>{}</DBClusterParameterGroupName>",
+        esc(&identifier)
+    )))
+}
+
+fn delete_db_cluster_parameter_group(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.db_cluster_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBParameterGroupNotFound",
+            format!("DBClusterParameterGroup not found: {identifier}"),
+        ));
+    }
+    st.db_cluster_parameter_groups.remove(&lower);
+    Ok(None)
+}
+
+fn copy_db_cluster_parameter_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let source = p_string(p, "SourceDBClusterParameterGroupIdentifier").unwrap_or_default();
+    let target = p_string(p, "TargetDBClusterParameterGroupIdentifier").unwrap_or_default();
+    let description = p_string(p, "TargetDBClusterParameterGroupDescription").unwrap_or_default();
+    let source_id = identifier_from_arn(&source).to_lowercase();
+    let src = match st.db_cluster_parameter_groups.get(&source_id) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DBClusterParameterGroup not found: {source}"),
+            ))
+        }
+    };
+    let target_id = target.to_lowercase();
+    if st.db_cluster_parameter_groups.contains_key(&target_id) {
+        return Err(RdsError::client400(
+            "DBParameterGroupAlreadyExists",
+            format!("A DB parameter group named {target} already exists."),
+        ));
+    }
+    let mut group = DBClusterParameterGroup {
+        name: target_id,
+        family: src.family.clone(),
+        description,
+        tags: tags_param(p),
+        parameters: Vec::new(),
+    };
+    for (name, values) in &src.parameters {
+        group.set_parameter(name, values.clone());
+    }
+    let response = group.clone();
+    st.db_cluster_parameter_groups
+        .insert(response.name.clone(), group);
+    Ok(Some(format!(
+        "<DBClusterParameterGroup>{}</DBClusterParameterGroup>",
+        cluster_parameter_group_xml(acct, region, &response)
+    )))
+}
+
+fn reset_db_cluster_parameter_group(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.db_cluster_parameter_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBParameterGroupNotFound",
+            format!("DBClusterParameterGroup not found: {identifier}"),
+        ));
+    }
+    if p_bool(p, "ResetAllParameters").unwrap_or(false) {
+        st.db_cluster_parameter_groups
+            .get_mut(&lower)
+            .unwrap()
+            .reset_all();
+    }
+    Ok(Some(format!(
+        "<DBClusterParameterGroupName>{}</DBClusterParameterGroupName>",
+        esc(&identifier)
+    )))
+}
+
 // __APPEND_MARKER__
