@@ -4126,15 +4126,16 @@ fn stop_db_cluster(
             format!("DBCluster {identifier} not found."),
         ));
     }
-    let status = forwarded_status(st, &id);
-    if status != "available" {
+    let shown = st.clusters.get(&id).unwrap().publish_status();
+    if shown != "available" {
         return Err(RdsError::client400(
             "InvalidDBClusterStateFault",
-            format!("DbCluster {identifier} is in {status} state but expected it to be one of available."),
+            format!("DbCluster {identifier} is in {shown} state but expected it to be one of available."),
         ));
     }
     let cl = st.clusters.get(&id).unwrap().clone();
     st.clusters.get_mut(&id).unwrap().status = "stopped".into();
+    st.clusters.get_mut(&id).unwrap().status_shown.store(true, std::sync::atomic::Ordering::SeqCst);
     Ok(Some(db_cluster_xml(st, acct, region, &cl)))
 }
 
@@ -4152,12 +4153,12 @@ fn start_db_cluster(
             format!("DBCluster {identifier} not found."),
         ));
     }
-    let status = forwarded_status(st, &id);
-    if status != "stopped" {
+    let shown = st.clusters.get(&id).unwrap().publish_status();
+    if shown != "stopped" {
         return Err(RdsError::client400(
             "InvalidDBClusterStateFault",
             format!(
-                "DbCluster {identifier} is in {status} state but expected it to be one of stopped,inaccessible-encryption-credentials-recoverable."
+                "DbCluster {identifier} is in {shown} state but expected it to be one of stopped,inaccessible-encryption-credentials-recoverable."
             ),
         ));
     }
@@ -4952,10 +4953,7 @@ fn create_db_parameter_group(
     };
     st.db_parameter_groups.insert(lower, group);
     let group = st.db_parameter_groups.get(&identifier.to_lowercase()).unwrap();
-    Ok(Some(format!(
-        "<DBParameterGroup>{}</DBParameterGroup>",
-        parameter_group_xml(acct, region, group)
-    )))
+    Ok(Some(parameter_group_xml(acct, region, group)))
 }
 
 fn describe_db_parameter_groups_xml(
@@ -5101,10 +5099,7 @@ fn copy_db_parameter_group(
     }
     let response = group.clone();
     st.db_parameter_groups.insert(target_id, group);
-    Ok(Some(format!(
-        "<DBParameterGroup>{}</DBParameterGroup>",
-        parameter_group_xml(acct, region, &response)
-    )))
+    Ok(Some(parameter_group_xml(acct, region, &response)))
 }
 
 fn reset_db_parameter_group(
@@ -5167,10 +5162,7 @@ fn create_db_cluster_parameter_group(
     };
     let response = group.clone();
     st.db_cluster_parameter_groups.insert(lower, group);
-    Ok(Some(format!(
-        "<DBClusterParameterGroup>{}</DBClusterParameterGroup>",
-        cluster_parameter_group_xml(acct, region, &response)
-    )))
+    Ok(Some(cluster_parameter_group_xml(acct, region, &response)))
 }
 
 fn describe_db_cluster_parameter_groups_xml(
@@ -5310,10 +5302,7 @@ fn copy_db_cluster_parameter_group(
     let response = group.clone();
     st.db_cluster_parameter_groups
         .insert(response.name.clone(), group);
-    Ok(Some(format!(
-        "<DBClusterParameterGroup>{}</DBClusterParameterGroup>",
-        cluster_parameter_group_xml(acct, region, &response)
-    )))
+    Ok(Some(cluster_parameter_group_xml(acct, region, &response)))
 }
 
 fn reset_db_cluster_parameter_group(
@@ -5511,10 +5500,7 @@ fn create_db_security_group(
     };
     let response = group.clone();
     st.security_groups.insert(identifier, group);
-    Ok(Some(format!(
-        "<DBSecurityGroup>{}</DBSecurityGroup>",
-        security_group_xml(acct, region, &response)
-    )))
+    Ok(Some(security_group_xml(acct, region, &response)))
 }
 
 fn describe_db_security_groups_xml(
@@ -5559,10 +5545,7 @@ fn delete_db_security_group(
         ));
     }
     let group = st.security_groups.remove(&identifier).unwrap();
-    Ok(Some(format!(
-        "<DBSecurityGroup>{}</DBSecurityGroup>",
-        security_group_xml(acct, region, &group)
-    )))
+    Ok(Some(security_group_xml(acct, region, &group)))
 }
 
 fn authorize_db_security_group_ingress(
@@ -5600,10 +5583,7 @@ fn authorize_db_security_group_ingress(
             .push((eg_name.clone(), eg_name, owner));
     }
     let updated = st.security_groups.get(&identifier).unwrap().clone();
-    Ok(Some(format!(
-        "<DBSecurityGroup>{}</DBSecurityGroup>",
-        security_group_xml(acct, region, &updated)
-    )))
+    Ok(Some(security_group_xml(acct, region, &updated)))
 }
 
 fn revoke_db_security_group_ingress(
@@ -5631,10 +5611,7 @@ fn revoke_db_security_group_ingress(
         }
     }
     let updated = st.security_groups.get(&identifier).unwrap().clone();
-    Ok(Some(format!(
-        "<DBSecurityGroup>{}</DBSecurityGroup>",
-        security_group_xml(acct, region, &updated)
-    )))
+    Ok(Some(security_group_xml(acct, region, &updated)))
 }
 
 
@@ -8434,10 +8411,7 @@ fn create_option_group(
     };
     let response = group.clone();
     st.option_groups.insert(lower, group);
-    Ok(Some(format!(
-        "<OptionGroup>{}</OptionGroup>",
-        option_group_xml(acct, region, &response)
-    )))
+    Ok(Some(option_group_xml(acct, region, &response)))
 }
 
 fn delete_option_group(
@@ -8455,10 +8429,7 @@ fn delete_option_group(
         ));
     }
     let group = st.option_groups.remove(&lower).unwrap();
-    Ok(Some(format!(
-        "<OptionGroup>{}</OptionGroup>",
-        option_group_xml(acct, region, &group)
-    )))
+    Ok(Some(option_group_xml(acct, region, &group)))
 }
 
 fn describe_option_groups_xml(
@@ -8546,10 +8517,7 @@ fn modify_option_group(
         }
     }
     let group = st.option_groups.get(&lower).unwrap().clone();
-    Ok(Some(format!(
-        "<OptionGroup>{}</OptionGroup>",
-        option_group_xml(acct, region, &group)
-    )))
+    Ok(Some(option_group_xml(acct, region, &group)))
 }
 
 fn copy_option_group(
@@ -8588,10 +8556,7 @@ fn copy_option_group(
     };
     let response = group.clone();
     st.option_groups.insert(target_id, group);
-    Ok(Some(format!(
-        "<OptionGroup>{}</OptionGroup>",
-        option_group_xml(acct, region, &response)
-    )))
+    Ok(Some(option_group_xml(acct, region, &response)))
 }
 
 fn describe_option_group_options_xml(engine_name: &str) -> Result<Body, RdsError> {
