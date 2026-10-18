@@ -85,9 +85,23 @@ impl MotoProxy {
         let headers_map = resp.headers().clone();
         let body_bytes = resp.bytes().await?;
 
-        // Parse headers
+        // Parse headers, dropping framing/hop-by-hop headers. The body may be
+        // re-serialized downstream (e.g. JSON parsed and rebuilt in Rust), so a
+        // forwarded Content-Length can mismatch the final bytes and stall
+        // clients waiting for phantom bytes.
+        const STRIP_HEADERS: [&str; 5] = [
+            "content-length",
+            "transfer-encoding",
+            "keep-alive",
+            "connection",
+            "proxy-authenticate",
+        ];
         let mut headers = HashMap::new();
         for (key, value) in headers_map.iter() {
+            let key_lower = key.as_str().to_lowercase();
+            if STRIP_HEADERS.contains(&key_lower.as_str()) {
+                continue;
+            }
             if let Ok(val) = value.to_str() {
                 headers.insert(key.to_string(), val.to_string());
             }
