@@ -1715,6 +1715,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rotocore"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "hex",
+ "md5",
+ "once_cell",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

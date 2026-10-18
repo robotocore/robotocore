@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/sqs", "crates/s3", "crates/dynamodb", "crates/sns", "crates/secretsmanager", "crates/kms", "crates/ssm", "crates/iam", "crates/lambda", "crates/cloudwatch-logs", "crates/events", "crates/kinesis", "crates/firehose", "crates/cloudwatch", "crates/ecr", "crates/ecs", "crates/stepfunctions"]
+members = ["rotocore", "crates/sqs", "crates/s3", "crates/dynamodb", "crates/sns", "crates/secretsmanager", "crates/kms", "crates/ssm", "crates/iam", "crates/lambda", "crates/cloudwatch-logs", "crates/events", "crates/kinesis", "crates/firehose", "crates/cloudwatch", "crates/ecr", "crates/ecs", "crates/stepfunctions"]
 resolver = "2"
 
 [workspace.package]
