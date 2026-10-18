@@ -947,7 +947,9 @@ pub fn apply_update(
         set_paths: Vec::new(),
         add_paths: Vec::new(),
     };
-    let item_view = Value::Object(attrs.clone());
+    // SET actions apply left to right, so each action must see the writes
+    // made by the previous ones (SET a = :one, b = a + :two).
+    let mut item_view = Value::Object(attrs.clone());
 
     for clause in clauses {
         match clause {
@@ -956,18 +958,21 @@ pub fn apply_update(
                     let val = eval_set_action(&item_view, &act)?;
                     set_path(attrs, &path, val.clone())?;
                     outcome.set_paths.push((path, val));
+                    item_view = Value::Object(attrs.clone());
                 }
             }
             UpdateClause::Remove(paths) => {
                 for path in paths {
                     remove_path(attrs, &path);
                 }
+                item_view = Value::Object(attrs.clone());
             }
             UpdateClause::Add(actions) => {
                 for (path, val) in actions {
                     let updated = add_to_attr(attrs.get_path(&path).cloned(), &val);
                     set_path(attrs, &path, updated.clone())?;
                     outcome.add_paths.push((path, updated));
+                    item_view = Value::Object(attrs.clone());
                 }
             }
             UpdateClause::Delete(actions) => {
@@ -975,6 +980,7 @@ pub fn apply_update(
                     let updated = delete_from_attr(attrs.get_path(&path).cloned(), &val)?;
                     set_path(attrs, &path, updated.clone())?;
                     outcome.add_paths.push((path, updated));
+                    item_view = Value::Object(attrs.clone());
                 }
             }
         }
@@ -1284,6 +1290,28 @@ mod tests {
         assert_eq!(attrs.get("count").cloned(), Some(json!({"N": "15"})));
         assert_eq!(outcome.set_paths.len(), 2);
     }
+
+    #[test]
+    fn test_update_sequential_set_sees_prior_writes() {
+        // AWS applies SET actions left to right: the second action sees the
+        // attribute written by the first.
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":one".to_string(), json!({"N": "1"}));
+        values.insert(":two".to_string(), json!({"N": "2"}));
+        apply_update(&mut attrs, "SET a = :one, b = a + :two", &names, &values).unwrap();
+        assert_eq!(attrs.get("a").cloned(), Some(json!({"N": "1"})));
+        assert_eq!(attrs.get("b").cloned(), Some(json!({"N": "3"})));
+        // And a chained overwrite too.
+        apply_update(&mut attrs, "SET a = a + :two, b = a", &names, &values).unwrap();
+        assert_eq!(attrs.get("a").cloned(), Some(json!({"N": "3"})));
+        assert_eq!(attrs.get("b").cloned(), Some(json!({"N": "3"})));
+    }
+
 
     #[test]
     fn test_update_add_delete_sets() {
