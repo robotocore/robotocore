@@ -35,10 +35,6 @@ impl IamHandler {
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
-        // The core query parser percent-decodes values but leaves form-encoded
-        // '+' untouched; in application/x-www-form-urlencoded '+' means space.
-        let mut req = req;
-        normalize_plus(&mut req.params);
         let op = req.operation.clone();
         self.dispatch(&req, &op)
     }
@@ -3175,20 +3171,6 @@ impl IamHandler {
 // =====================================================================
 // Free helper functions
 // =====================================================================
-
-/// Replace '+' with ' ' in all JSON string values (form encoding semantics).
-fn normalize_plus(v: &mut Value) {
-    match v {
-        Value::String(s) => *s = s.replace('+', " "),
-        Value::Array(a) => {
-            for x in a { normalize_plus(x); }
-        }
-        Value::Object(o) => {
-            for (_, x) in o { normalize_plus(x); }
-        }
-        _ => {}
-    }
-}
 
 /// Escape &, <, > for embedding a string in XML text content.
 fn xml_escape(s: &str) -> String {

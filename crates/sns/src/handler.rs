@@ -18,17 +18,11 @@ pub struct SnsHandler {
 
 // ---------- param helpers ----------
 
-/// Query-protocol values: percent-decoding already happened in the core parser,
-/// but `+` still means a space in form encoding.
-fn form_decode(s: &str) -> String {
-    s.replace('+', " ")
-}
-
 fn pstr(req: &AwsRequest, key: &str) -> Option<String> {
     req.params
         .get(key)
         .and_then(|v| v.as_str())
-        .map(form_decode)
+        .map(str::to_string)
 }
 
 fn parse_entry_attrs(req: &AwsRequest) -> HashMap<String, String> {
@@ -46,7 +40,7 @@ fn parse_entry_attrs(req: &AwsRequest) -> HashMap<String, String> {
             let val_key = format!("{}.value", base);
             if let Value::String(keyval) = v {
                 if let Some(Value::String(val)) = req.params.get(&val_key) {
-                    out.insert(form_decode(keyval), form_decode(val));
+                    out.insert(keyval.to_string(), val.to_string());
                 }
             }
         }
@@ -732,13 +726,13 @@ impl SnsHandler {
             .params
             .get("ActionName")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(form_decode)).collect())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
             .unwrap_or_default();
         let aws_account_ids: Vec<String> = req
             .params
             .get("AWSAccountId")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(form_decode)).collect())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
             .unwrap_or_default();
 
         let existing = topic.attr("Policy").unwrap_or_else(|| {
@@ -836,7 +830,7 @@ impl SnsHandler {
         if let Some(arr) = req.params.get("TagKeys").and_then(|v| v.as_array()) {
             for v in arr {
                 if let Some(s) = v.as_str() {
-                    keys.push(form_decode(s));
+                    keys.push(s.to_string());
                 }
             }
         }
@@ -1129,7 +1123,7 @@ impl SnsHandler {
             .params
             .get("attributes")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(form_decode)).collect())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
             .unwrap_or_default();
         let map = state.sms_attributes.read();
         let mut body = String::from("<attributes>");

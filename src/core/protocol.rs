@@ -101,6 +101,41 @@ impl ParsedResponse {
     }
 }
 
+/// Percent-decode one `application/x-www-form-urlencoded` token: `%XX`
+/// escapes plus `+` meaning space, in a single pass so a literal plus
+/// (encoded as `%2B`) survives and a raw `+` becomes a space.
+fn decode_form_value(input: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() + 1 && i + 2 < bytes.len() => {
+                let hex = &input[i + 1..i + 3];
+                match u8::from_str_radix(hex, 16) {
+                    Ok(v) => {
+                        out.push(v);
+                        i += 3;
+                    }
+                    Err(_) => {
+                        out.push(b'%');
+                        i += 1;
+                    }
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).map_err(|e| e.into())
+}
+
 /// Parse a query-protocol request (form-encoded parameters).
 pub fn parse_query_protocol(
     body: &[u8],
@@ -110,8 +145,8 @@ pub fn parse_query_protocol(
 
     for pair in body_str.split('&') {
         if let Some((key, value)) = pair.split_once('=') {
-            let key = urlencoding::decode(key)?.into_owned();
-            let value = urlencoding::decode(value)?.into_owned();
+            let key = decode_form_value(key)?;
+            let value = decode_form_value(value)?;
             raw_params.push((key, value));
         }
     }
