@@ -149,6 +149,18 @@ impl QueueAttributes {
     }
 }
 
+/// FIFO deduplication record: the original send's response fields. Kept for
+/// the 5-minute dedup window even after the original message is deleted, so
+/// a re-send with the same dedup id is suppressed (retract-pending) until
+/// the window expires.
+#[derive(Debug, Clone)]
+pub struct DedupEntry {
+    pub message_id: String,
+    pub md5_of_body: String,
+    pub sequence_number: Option<String>,
+    pub sent_at: u64, // timestamp of the first send, not refreshed on re-sends
+}
+
 /// A message move task (DeadLetterQueue redrive reversal).
 #[derive(Debug, Clone)]
 pub struct MoveTask {
@@ -176,8 +188,9 @@ pub struct Queue {
     pub attributes: QueueAttributes,
     pub messages: VecDeque<SqsMessage>,
     pub tags: parking_lot::RwLock<std::collections::HashMap<String, String>>,
-    /// Deduplication IDs seen on this FIFO queue -> (MessageId of original send, sent timestamp ms).
-    pub dedup_ids: std::collections::HashMap<String, (String, u64)>,
+    /// Deduplication IDs seen on this FIFO queue -> original send's record.
+    /// Entries live for the 5-minute dedup window from the first send.
+    pub dedup_ids: std::collections::HashMap<String, DedupEntry>,
     /// Monotonic sequence number counter for FIFO queues.
     pub next_sequence_number: u64,
 }
@@ -236,6 +249,13 @@ impl Queue {
     ///
     /// Per-group ordering is preserved by keeping messages in their slots;
     /// VisibilityTimeout=0 leaves the message available immediately.
+    ///
+    /// FIFO queues: a group with a message in flight is blocked, so the
+    /// group's later messages are skipped (head-of-line) while messages of
+    /// other groups may still be delivered (AWS semantics). A group whose
+    /// head is delayed (send delay) is likewise skipped. Long polls release
+    /// naturally: the caller's poll loop re-enters receive_messages every
+    /// 50ms, picking the group up once its message becomes visible again.
     pub fn receive_messages(
         &mut self,
         max_count: usize,
@@ -244,11 +264,36 @@ impl Queue {
         let mut result = Vec::new();
         let now_ms = (Utc::now().timestamp_millis()) as u64;
 
+        let fifo = self.attributes.fifo_queue;
+        let mut blocked_groups: std::collections::HashSet<String> = if fifo {
+            self.messages
+                .iter()
+                .filter(|m| m.is_inflight())
+                // Bridged messages may lack a group id; they behave as their
+                // own (unblocked) stream.
+                .filter_map(|m| m.attributes.get("MessageGroupId").cloned())
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
         for msg in self.messages.iter_mut() {
             if result.len() >= max_count {
                 break;
             }
+            if fifo {
+                if let Some(group) = msg.attributes.get("MessageGroupId") {
+                    if blocked_groups.contains(group) {
+                        continue;
+                    }
+                }
+            }
             if !msg.is_visible() {
+                if fifo {
+                    if let Some(group) = msg.attributes.get("MessageGroupId") {
+                        blocked_groups.insert(group.clone());
+                    }
+                }
                 continue;
             }
 

@@ -280,6 +280,7 @@ impl DefaultSqsHandler {
             .and_then(|v| v.as_object())
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
+        let md5_of_body = Self::md5_hash(body);
 
         let message = if queue.attributes.fifo_queue {
             let group_id = params
@@ -291,70 +292,110 @@ impl DefaultSqsHandler {
                     "The request must contain the parameter MessageGroupId.".to_string(),
                 )
             })?;
-            let explicit_dedup = params
+            let dedup_id = params
                 .get("MessageDeduplicationId")
                 .and_then(|v| v.as_str())
-                .map(String::from);
-            let dedup_id = explicit_dedup.unwrap_or_else(|| {
-                if queue.attributes.content_based_deduplication {
-                    format!("{:x}", md5::compute(body.as_bytes()))
-                } else {
-                    String::new()
-                }
-            });
+                .map(String::from)
+                // Content-based dedup only when no explicit id was given; a
+                // missing id is not a dedup key (an empty-string key would
+                // wrongly dedup every message on a FIFO queue without
+                // ContentBasedDeduplication).
+                .or_else(|| {
+                    if queue.attributes.content_based_deduplication {
+                        Some(format!("{:x}", md5::compute(body.as_bytes())))
+                    } else {
+                        None
+                    }
+                });
 
-            // Expire dedup entries older than 5 minutes, then check for a duplicate.
-            queue
-                .dedup_ids
-                .retain(|_, (_, ts)| now_ms.saturating_sub(*ts) < Self::DEDUP_INTERVAL_MS);
-            if let Some((original_id, _)) = queue.dedup_ids.get(&dedup_id) {
-                let original_id = original_id.clone();
-                // Duplicate: respond like the original send.
-                let original = queue
-                    .messages
-                    .iter()
-                    .find(|m| m.message_id == original_id)
-                    .cloned();
-                if let Some(orig) = original {
+            if let Some(dedup_id) = dedup_id {
+                // Expire dedup entries older than 5 minutes, then check for a
+                // duplicate. Entries are keyed by the first send and are NOT
+                // refreshed by re-sends: within the window the original
+                // message's response fields are returned, even if the message
+                // itself was already received and deleted (retract-pending).
+                queue.dedup_ids.retain(|_, entry| {
+                    now_ms.saturating_sub(entry.sent_at) < Self::DEDUP_INTERVAL_MS
+                });
+                if let Some(entry) = queue.dedup_ids.get(&dedup_id) {
                     return Ok(Some(PreparedMessage::Duplicate {
-                        message_id: orig.message_id,
-                        md5_of_body: orig.md5_of_body,
-                        sequence_number: orig.attributes.get("SequenceNumber").cloned(),
+                        message_id: entry.message_id.clone(),
+                        md5_of_body: entry.md5_of_body.clone(),
+                        sequence_number: entry.sequence_number.clone(),
                     }));
                 }
-                // Original already delivered/removed: accept as a fresh message.
-            }
-            let sequence_number = queue
-                .next_sequence_number
-                .checked_add(1)
-                .unwrap_or(1)
-                .to_string();
-            queue.next_sequence_number += 1;
-            let message_id = Uuid::new_v4().to_string();
-            queue
-                .dedup_ids
-                .insert(dedup_id, (message_id.clone(), now_ms));
 
-            let mut attrs_map = HashMap::new();
-            attrs_map.insert("MessageGroupId".to_string(), gid);
-            attrs_map.insert("SequenceNumber".to_string(), sequence_number);
-            SqsMessage {
-                message_id: message_id.clone(),
-                body: body.to_string(),
-                md5_of_body: Self::md5_hash(body),
-                receipt_handle: Self::generate_receipt_handle(&message_id, queue_url),
-                sent_timestamp: now_ms,
-                visibility_until: None,
-                receive_count: 0,
-                first_receive_timestamp: None,
-                attributes: attrs_map,
-                message_attributes,
-                available_at: if effective_delay > 0 {
-                    Some(now_ms + (effective_delay as u64 * 1000))
-                } else {
-                    None
-                },
-                deduplication_id: None,
+                let sequence_number = queue
+                    .next_sequence_number
+                    .checked_add(1)
+                    .unwrap_or(1)
+                    .to_string();
+                queue.next_sequence_number += 1;
+                let message_id = Uuid::new_v4().to_string();
+                queue.dedup_ids.insert(
+                    dedup_id,
+                    crate::models::DedupEntry {
+                        message_id: message_id.clone(),
+                        md5_of_body: md5_of_body.clone(),
+                        sequence_number: Some(sequence_number.clone()),
+                        sent_at: now_ms,
+                    },
+                );
+
+                let mut attrs_map = HashMap::new();
+                attrs_map.insert("MessageGroupId".to_string(), gid);
+                attrs_map.insert("SequenceNumber".to_string(), sequence_number);
+                let receipt_handle = Self::generate_receipt_handle(&message_id, queue_url);
+                SqsMessage {
+                    message_id,
+                    body: body.to_string(),
+                    md5_of_body,
+                    receipt_handle,
+                    sent_timestamp: now_ms,
+                    visibility_until: None,
+                    receive_count: 0,
+                    first_receive_timestamp: None,
+                    attributes: attrs_map,
+                    message_attributes,
+                    available_at: if effective_delay > 0 {
+                        Some(now_ms + (effective_delay as u64 * 1000))
+                    } else {
+                        None
+                    },
+                    deduplication_id: None,
+                }
+            } else {
+                // No dedup key: enqueue without consulting the dedup map.
+                let sequence_number = queue
+                    .next_sequence_number
+                    .checked_add(1)
+                    .unwrap_or(1)
+                    .to_string();
+                queue.next_sequence_number += 1;
+                let message_id = Uuid::new_v4().to_string();
+
+                let mut attrs_map = HashMap::new();
+                attrs_map.insert("MessageGroupId".to_string(), gid);
+                attrs_map.insert("SequenceNumber".to_string(), sequence_number);
+                let receipt_handle = Self::generate_receipt_handle(&message_id, queue_url);
+                SqsMessage {
+                    message_id,
+                    body: body.to_string(),
+                    md5_of_body,
+                    receipt_handle,
+                    sent_timestamp: now_ms,
+                    visibility_until: None,
+                    receive_count: 0,
+                    first_receive_timestamp: None,
+                    attributes: attrs_map,
+                    message_attributes,
+                    available_at: if effective_delay > 0 {
+                        Some(now_ms + (effective_delay as u64 * 1000))
+                    } else {
+                        None
+                    },
+                    deduplication_id: None,
+                }
             }
         } else {
             let message_id = Uuid::new_v4().to_string();
@@ -362,7 +403,7 @@ impl DefaultSqsHandler {
             SqsMessage {
                 message_id: message_id.clone(),
                 body: body.to_string(),
-                md5_of_body: Self::md5_hash(body),
+                md5_of_body: md5_of_body.clone(),
                 receipt_handle: Self::generate_receipt_handle(&message_id, queue_url),
                 sent_timestamp: now_ms,
                 visibility_until: None,
