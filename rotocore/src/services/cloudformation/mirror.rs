@@ -73,6 +73,9 @@ fn base_headers(account: &str, region: &str, service: &str) -> Vec<(String, Stri
         ("X-Amz-Date".to_string(), "20260101T000000Z".to_string()),
         ("X-Robotocore-Account".to_string(), account.to_string()),
         ("X-Robotocore-Region".to_string(), region.to_string()),
+        // Loopback calls are one-shot; keep-alive pooling wedges axum's
+        // blocking-thread interplay here, so close each connection.
+        ("Connection".to_string(), "close".to_string()),
     ]
 }
 

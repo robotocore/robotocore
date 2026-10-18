@@ -54,18 +54,14 @@ fn validation_error(message: impl Into<String>) -> CfnError {
 type OpResult = Result<Response, CfnError>;
 
 pub fn handle(req: &Request) -> Response {
-    eprintln!("[rotocore-cfn] dispatch enter {} account={} region={} body={}", req.operation, req.account, req.region, String::from_utf8_lossy(&req.body).chars().take(120).collect::<String>());
     let params = form_params(req);
     let action = param(&params, "Action").to_string();
     let account = account_str(req);
     let region = req.region.clone();
-    eprintln!("[rotocore-cfn] action={} resolution start", action);
-    let out = match handle_action(&action, &params, region.as_str(), &account) {
+    match handle_action(&action, &params, region.as_str(), &account) {
         Ok(response) => response,
         Err(e) => xml::error(&e.code, &e.message, e.status),
-    };
-    eprintln!("[rotocore-cfn] action={} complete status={}", action, out.status);
-    out
+    }
 }
 
 fn handle_action(action: &str, params: &HashMap<String, String>, region: &str, account: &str) -> OpResult {
@@ -2696,24 +2692,30 @@ fn describe_generated_template(
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     let name = param(params, "GeneratedTemplateName").to_string();
     with_store(account_num, region, |store| {
-        let gt = store
+        // Moto answers DescribeGeneratedTemplate with a synthesized record
+        // even for unknown names (never 404).
+        let gt_name = store
             .generated_templates
             .iter()
             .find(|g| g.name == name)
-            .ok_or_else(|| {
-                CfnError::new(
-                    "ResourceNotFoundException",
-                    format!("Generated template {name} not found"),
+            .map(|g| (g.id.clone(), g.created))
+            .unwrap_or_else(|| {
+                (
+                    format!(
+                        "arn:aws:cloudformation:{region}:{account}:generatedtemplate/{}",
+                        Uuid::new_v4()
+                    ),
+                    chrono::Utc::now().timestamp(),
                 )
-            })?;
+            });
         let result = json!({
-            "GeneratedTemplateId": gt.id,
-            "GeneratedTemplateName": gt.name,
+            "GeneratedTemplateId": gt_name.0,
+            "GeneratedTemplateName": name,
             "Status": "COMPLETE",
             "TemplateBody": "{}",
             "TotalWarnings": 0,
-            "CreationTime": xml::timestamp_from(gt.created),
-            "LastUpdatedTime": xml::timestamp_from(gt.created),
+            "CreationTime": xml::timestamp_from(gt_name.1),
+            "LastUpdatedTime": xml::timestamp_from(gt_name.1),
         });
         let _ = account;
         Ok(xml::ok(
@@ -2831,6 +2833,8 @@ fn stub_action(
         "ActivateOrganizationsAccess" | "DeactivateOrganizationsAccess" | "DeactivateType"
         | "DeregisterType" | "DeleteGeneratedTemplate" | "ExecuteStackRefactor"
         | "RecordHandlerProgress" | "SetTypeDefaultVersion" => Ok(xml::empty(action)),
+        // Moto-shaped: GetGeneratedTemplate always answers with a template.
+        "GetGeneratedTemplate" => Ok(xml::ok(action, "<Status>COMPLETE</Status><TemplateBody>{}</TemplateBody>")),
         "DescribePublisher" => Ok(xml::ok(
             action,
             "<PublisherId>000000000000</PublisherId><PublisherStatus>VERIFIED</PublisherStatus><IdentityProvider>AWS_Marketplace</IdentityProvider>",

@@ -97,7 +97,7 @@ pub fn param<'a>(params: &'a HashMap<String, String>, key: &str) -> &'a str {
 pub fn indexed_members(params: &HashMap<String, String>, base: &str, leaf: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 1;
-    while let Some(v) = params.get(&format!("{base}.{i}.{leaf}")) {
+    while let Some(v) = params.get(&format!("{base}.member.{i}.{leaf}")) {
         out.push(v.clone());
         i += 1;
     }
