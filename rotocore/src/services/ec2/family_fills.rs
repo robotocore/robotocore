@@ -488,5 +488,8 @@ pub fn create_fills(
             f.insert("Id".to_string(), Fill::S(id.to_string()));
         }
     }
+    if deleting {
+        f.insert("Return".to_string(), Fill::S("true".into()));
+    }
     f
 }

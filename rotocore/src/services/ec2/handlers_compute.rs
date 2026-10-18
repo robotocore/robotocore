@@ -2541,14 +2541,19 @@ fn create_launch_template_version(req: &Request, params: &P) -> Response {
         };
         state.launch_templates[pos].versions.push(v);
         state.launch_templates[pos].latest_version = number;
+        let lt = state.launch_templates[pos].clone();
+        let instance_type = params
+            .get("LaunchTemplateData.InstanceType")
+            .unwrap_or_default()
+            .to_string();
         ec2_xml(
             "CreateLaunchTemplateVersionResponse",
             &format!(
-                "<launchTemplateVersion>{}<launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName>{}<defaultVersion>false</defaultVersion></launchTemplateVersion>",
-                "",
-                xml_escape(&state.launch_templates[pos].id),
-                xml_escape(&state.launch_templates[pos].name),
-                String::new()
+                "<launchTemplateVersion><versionNumber>{}</versionNumber><launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName><launchTemplateData><instanceType>{}</instanceType></launchTemplateData><defaultVersion>false</defaultVersion></launchTemplateVersion>",
+                number,
+                xml_escape(&lt.id),
+                xml_escape(&lt.name),
+                xml_escape(instance_type.as_str())
             ),
         )
     })
@@ -2624,9 +2629,9 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
             {
                 continue;
             }
+            let it = super::handlers_misc::extract_lt_instance_type(v.data.as_str());
             items.push_str(&format!(
-                "<item>{}<versionNumber>{}</versionNumber><launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName>{}{}{}<createdBy>arn:aws:sts::{}:root</createdBy><createTime>{}</createTime>{}</item>",
-                "",
+                "<item><versionNumber>{}</versionNumber><launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName>{}{}{}<createdBy>arn:aws:sts::{}:root</createdBy><createTime>{}</createTime>{}<launchTemplateData>{}</launchTemplateData>{}</item>",
                 v.number,
                 xml_escape(&lt.id),
                 xml_escape(&lt.name),
@@ -2635,6 +2640,8 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
                 if v.number == lt.latest_version { "<latestVersion>true</latestVersion>" } else { "<latestVersion>false</latestVersion>" },
                 req.account,
                 xml_escape(&v.created),
+                String::new(),
+                it,
                 String::new()
             ));
         }

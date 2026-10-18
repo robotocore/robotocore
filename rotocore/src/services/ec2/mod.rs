@@ -319,3 +319,15 @@ pub fn dispatch(req: &Request) -> Response {
 
     handlers::route(req, &params)
 }
+
+/// The `<item>`-only fragment for a tag list (used inside shape-rendered
+/// `<tagSet>` wrappers, which the shape renderer adds itself).
+pub fn tags_inner(tags: &state::Tags) -> String {
+    let full = tags_xml(tags);
+    if let Some(start) = full.find("<tagSet>") {
+        if let Some(end) = full.rfind("</tagSet>") {
+            return full[start + "<tagSet>".len()..end].to_string();
+        }
+    }
+    String::new()
+}

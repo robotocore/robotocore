@@ -555,7 +555,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 tags.push((k, v));
             }
         }
-        let tags_xml_v = super::tags_xml(&tags);
+        let tags_xml_v = super::tags_inner(&tags);
         let id = next_placeholder_id(fam.id_prefix);
         // shape-driven first: botocore-exact root + member keys
         let fills = super::family_fills::create_fills(
@@ -571,7 +571,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             if let Some(xml) = super::shapes::render_list_response(
                 fam.create_op,
                 list_pykey_of(fam.create_op).as_str(),
-                &[fills],
+                &[fills.clone()],
                 "us-east-1",
             ) {
                 let inner = strip_op_root(&xml, fam.create_op);
@@ -589,7 +589,23 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 return Response::xml(200, xml.into_bytes());
             }
         }
-                // captured-template fallback
+        // single-object shape render for structure-out roots
+        if let Some(xml) = super::shapes::render_response(fam.create_op, &fills, "us-east-1") {
+            let inner = strip_op_root(&xml, fam.create_op);
+            state
+                .simple
+                .entry(fam.kind.to_string())
+                .or_default()
+                .push(Simple {
+                    id: id.clone(),
+                    kind: fam.kind.to_string(),
+                    item_xml: inner,
+                    tags,
+                    ..Default::default()
+                });
+            return Response::xml(200, xml.into_bytes());
+        }
+        // captured-template fallback
         let t = templates::TEMPLATES
             .binary_search_by_key(&fam.create_op, |x| x.0)
             .ok()
@@ -2160,4 +2176,15 @@ fn tags_xml_public(tags: &super::state::Tags) -> String {
 /// Re-derive Params from a request inside a closure-captured context.
 fn params_of(req: &Request) -> super::Params {
     super::Params::parse(req)
+}
+
+pub fn extract_lt_instance_type(data: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(data) {
+        Ok(v) => v
+            .get("InstanceType")
+            .and_then(|x| x.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        _ => String::new(),
+    }
 }

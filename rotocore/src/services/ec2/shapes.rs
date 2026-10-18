@@ -10,6 +10,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// A fill provided by the family handler for one python member key.
+#[derive(Clone)]
 pub enum Fill {
     /// Scalar value — rendered as `<wire>escaped</wire>`.
     S(String),
