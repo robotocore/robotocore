@@ -13,6 +13,7 @@ use crate::{Request, Response};
 
 pub mod cognito_idp;
 pub mod databrew;
+pub mod datasync;
 pub mod identitystore;
 pub mod ivs;
 pub mod mediapackage;
@@ -31,6 +32,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         return Some(resp);
     }
     if let Some(resp) = databrew::dispatch(req) {
+        return Some(resp);
+    }
+    if let Some(resp) = datasync::dispatch(req) {
         return Some(resp);
     }
     // No other service fully ported yet.
