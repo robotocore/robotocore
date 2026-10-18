@@ -977,7 +977,13 @@ pub fn apply_update(
             }
             UpdateClause::Delete(actions) => {
                 for (path, val) in actions {
-                    let updated = delete_from_attr(attrs.get_path(&path).cloned(), &val)?;
+                    let Some(updated) =
+                        delete_from_attr(attrs.get_path(&path).cloned(), &val)?
+                    else {
+                        // Attribute absent: DELETE is a no-op, nothing created.
+                        item_view = Value::Object(attrs.clone());
+                        continue;
+                    };
                     set_path(attrs, &path, updated.clone())?;
                     outcome.add_paths.push((path, updated));
                     item_view = Value::Object(attrs.clone());
@@ -1115,11 +1121,11 @@ fn add_to_attr(current: Option<Value>, val: &Value) -> Value {
     }
 }
 
-/// DELETE: set difference for SS/NS/BS.
-/// DELETE: set difference for SS/NS/BS. Treats a missing attribute as no-op.
-fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Value, String> {
+/// DELETE: set difference for SS/NS/BS. A missing attribute is a no-op
+/// (None): nothing is created or reported.
+fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Option<Value>, String> {
     let Some(cur) = current else {
-        return Ok(val.clone()); // attribute absent — nothing to delete from
+        return Ok(None); // attribute absent — nothing to delete from
     };
     let tag = type_of(&cur).unwrap_or("SS");
     if !matches!(tag, "SS" | "NS" | "BS") {
@@ -1140,7 +1146,7 @@ fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Value, String
     {
         out.retain(|e| !attr_eq(e, &needle));
     }
-    Ok(json!({ tag: out }))
+    Ok(Some(json!({ tag: out })))
 }
 
 fn merge_sets(cur: &Value, val: &Value) -> Value {
@@ -1310,6 +1316,31 @@ mod tests {
         apply_update(&mut attrs, "SET a = a + :two, b = a", &names, &values).unwrap();
         assert_eq!(attrs.get("a").cloned(), Some(json!({"N": "3"})));
         assert_eq!(attrs.get("b").cloned(), Some(json!({"N": "3"})));
+    }
+
+    #[test]
+    fn test_update_delete_missing_attribute_is_noop() {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}, "tags": {"SS": ["a", "b"]}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":d".to_string(), json!({"SS": ["a"]}));
+        // DELETE on an attribute that never exists must not create it.
+        let outcome = apply_update(
+            &mut attrs,
+            "DELETE tags :d, ghost :d",
+            &names,
+            &values,
+        )
+        .unwrap();
+        assert!(attrs.get("ghost").is_none());
+        assert_eq!(
+            attrs.get("tags").cloned(),
+            Some(json!({"SS": ["b"]}))
+        );
+        assert_eq!(outcome.add_paths.len(), 1, "only the existing attr reported");
     }
 
 
