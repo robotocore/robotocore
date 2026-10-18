@@ -81,13 +81,13 @@ struct JobRunRec {
     previous_run_id: Option<String>,
     status: String, // STARTING -> RUNNING -> SUCCEEDED (STOPPED on batch stop)
     arguments: Option<Value>,
-    allocated_capacity: Value,
-    max_capacity: Value,
-    timeout: Value,
-    worker_type: Value,
-    number_of_workers: Value,
-    security_configuration: Value,
-    notification_property: Value,
+    allocated_capacity: Option<Value>,
+    max_capacity: Option<Value>,
+    timeout: Option<Value>,
+    worker_type: Option<Value>,
+    number_of_workers: Option<Value>,
+    security_configuration: Option<Value>,
+    notification_property: Option<Value>,
 }
 
 #[derive(Default)]
@@ -95,6 +95,7 @@ struct JobRec {
     /// Extracted job attributes (moto's FakeJob fields). Null members are
     /// omitted when the job is serialized.
     job: Value,
+    created: f64,
     modified: f64,
     runs: Vec<JobRunRec>,
 }
@@ -552,6 +553,63 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
                 "ImportedBy": "AWS",
             }
         })),
+        // --- Crawlers ------------------------------------------------------
+        "CreateCrawler" => create_crawler(req, g, p),
+        "GetCrawler" => get_crawler(g, p),
+        "GetCrawlers" => get_crawlers(g),
+        "ListCrawlers" => list_crawlers(g),
+        "DeleteCrawler" => delete_crawler(g, p),
+        "StartCrawler" => start_crawler(g, p),
+        "StopCrawler" => stop_crawler(g, p),
+        "UpdateCrawler" => update_crawler(g, p),
+        "UpdateCrawlerSchedule" => update_crawler_schedule(g, p),
+        "StartCrawlerSchedule" | "StopCrawlerSchedule" => crawler_schedule_stub(g, p),
+        "BatchGetCrawlers" => batch_get_crawlers(g, p),
+        "GetCrawlerMetrics" => get_crawler_metrics(g, p),
+        "ListCrawls" => list_crawls(g, p),
+        // --- Jobs ----------------------------------------------------------
+        "CreateJob" => create_job(req, g, p),
+        "GetJob" => get_job(g, p),
+        "GetJobs" => get_jobs(g),
+        "UpdateJob" => update_job(g, p),
+        "DeleteJob" => delete_job(g, p),
+        "ListJobs" => list_jobs(g),
+        "StartJobRun" => start_job_run(g, p),
+        "GetJobRun" => try_resp!(get_job_run(g, p)),
+        "GetJobRuns" => try_resp!(get_job_runs(g, p)),
+        "BatchGetJobs" => batch_get_jobs(g, p),
+        "BatchStopJobRun" => try_resp!(batch_stop_job_run(req, g, p)),
+        "GetJobBookmark" | "ResetJobBookmark" => try_resp!(job_bookmark(g, p)),
+        "UpdateJobFromSourceControl" => update_job_from_source_control(g, p),
+        "UpdateSourceControlFromJob" => update_source_control_from_job(g, p),
+        // --- Tags ----------------------------------------------------------
+        "GetTags" => get_tags(g, p),
+        "TagResource" => tag_resource_op(g, p),
+        "UntagResource" => untag_resource_op(g, p),
+        // --- Triggers ------------------------------------------------------
+        "CreateTrigger" => create_trigger(req, g, p),
+        "GetTrigger" => get_trigger(g, p),
+        "GetTriggers" => get_triggers(g, p),
+        "ListTriggers" => list_triggers(g, p),
+        "BatchGetTriggers" => batch_get_triggers(g, p),
+        "StartTrigger" => try_resp!(start_trigger(g, p)),
+        "StopTrigger" => try_resp!(stop_trigger(g, p)),
+        "UpdateTrigger" => try_resp!(update_trigger(g, p)),
+        "DeleteTrigger" => try_resp!(delete_trigger(g, p)),
+        // --- Workflows -----------------------------------------------------
+        "CreateWorkflow" => create_workflow(req, g, p),
+        "GetWorkflow" => try_resp!(get_workflow(g, p)),
+        "ListWorkflows" => list_workflows(g),
+        "DeleteWorkflow" => delete_workflow(g, p),
+        "UpdateWorkflow" => try_resp!(update_workflow(g, p)),
+        "BatchGetWorkflows" => batch_get_workflows(g, p),
+        "StartWorkflowRun" => try_resp!(start_workflow_run(g, p)),
+        "GetWorkflowRun" => try_resp!(get_workflow_run(g, p)),
+        "GetWorkflowRuns" => try_resp!(get_workflow_runs(g, p)),
+        "StopWorkflowRun" => try_resp!(stop_workflow_run(g, p)),
+        "PutWorkflowRunProperties" => try_resp!(put_workflow_run_properties(g, p)),
+        "GetWorkflowRunProperties" => try_resp!(get_workflow_run_properties(g, p)),
+        "ResumeWorkflowRun" => try_resp!(resume_workflow_run(g, p)),
         // --- Everything else: deny by default (moto 501s too) ----------------
         _ => unimplemented(op),
     }
@@ -1991,5 +2049,1582 @@ mod tests {
         assert_eq!(r.status, 501);
         let b = body(&r);
         assert_eq!(b["__type"], "NotImplemented");
+    }
+}
+// ---------------------------------------------------------------------------
+// Crawlers
+// ---------------------------------------------------------------------------
+
+fn crawler_as_dict(rec: &CrawlerRec) -> Value {
+    let mut obj = json!({
+        "Name": rec.name,
+        "Role": rec.role,
+        "Targets": rec.targets,
+        "DatabaseName": rec.database_name,
+        "Description": rec.description,
+        "Classifiers": rec.classifiers,
+        "RecrawlPolicy": rec.recrawl_policy,
+        "SchemaChangePolicy": rec.schema_change_policy,
+        "LineageConfiguration": rec.lineage_configuration,
+        "State": crawler_status(rec),
+        "TablePrefix": rec.table_prefix,
+        "CrawlElapsedTime": 0,
+        "CreationTime": rec.created,
+        "LastUpdated": rec.created,
+        "Version": 1,
+        "Configuration": rec.configuration,
+        "CrawlerSecurityConfiguration": rec.crawler_security_configuration,
+    });
+    let base = obj.as_object_mut().unwrap();
+    if rec.schedule.as_str().map_or(false, |s| !s.is_empty()) {
+        base.insert(
+            "Schedule".into(),
+            json!({"ScheduleExpression": rec.schedule, "State": "SCHEDULED"}),
+        );
+    }
+    if let Some(last) = rec.crawls.last() {
+        base.insert(
+            "LastCrawl".into(),
+            json!({
+                "LogGroup": "/aws-glue/crawlers",
+                "LogStream": rec.name,
+                "MessagePrefix": last.crawl_id,
+                "StartTime": rec.created,
+                "Status": last.status,
+            }),
+        );
+    }
+    obj
+}
+
+/// moto's `FakeCrawler.status`: driven by the latest crawl record only.
+fn crawler_status(rec: &CrawlerRec) -> String {
+    match rec.crawls.last().map(|c| c.status.as_str()) {
+        Some("RUNNING") => "RUNNING".to_string(),
+        Some("STOPPING") => "STOPPING".to_string(),
+        _ => "READY".to_string(),
+    }
+}
+
+fn find_crawler_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut CrawlerRec, Response> {
+    let name = str_field(p, "Name");
+    g.crawlers
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Crawler {name} not found.")))
+}
+
+fn find_crawler<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut CrawlerRec, Response> {
+    let name = str_field(p, "Name");
+    g.crawlers
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Crawler {name} not found.")))
+}
+
+fn create_crawler(req: &Request, g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "Name");
+    if g.crawlers.contains_key(&name) {
+        return already_exists("Crawler already exists.");
+    }
+    let rec = CrawlerRec {
+        name: name.clone(),
+        role: p["Role"].clone(),
+        database_name: p["DatabaseName"].clone(),
+        description: p["Description"].clone(),
+        targets: p["Targets"].clone(),
+        schedule: p["Schedule"].clone(),
+        classifiers: p["Classifiers"].clone(),
+        table_prefix: p["TablePrefix"].clone(),
+        schema_change_policy: p["SchemaChangePolicy"].clone(),
+        recrawl_policy: p["RecrawlPolicy"].clone(),
+        lineage_configuration: p["LineageConfiguration"].clone(),
+        configuration: p["Configuration"].clone(),
+        crawler_security_configuration: p["CrawlerSecurityConfiguration"].clone(),
+        created: now_unix(),
+        crawls: Vec::new(),
+    };
+    let arn = arn_of(req, "crawler", &name);
+    tag_resource(g, &arn, p.get("Tags"));
+    g.crawlers.insert(name, rec);
+    empty_ok()
+}
+
+fn get_crawler(g: &mut GlueState, p: &Value) -> Response {
+    let rec = try_resp!(find_crawler(g, p));
+    ok(&json!({ "Crawler": crawler_as_dict(rec) }))
+}
+
+fn get_crawlers(g: &mut GlueState) -> Response {
+    let list: Vec<Value> = g.crawlers.values().map(crawler_as_dict).collect();
+    ok(&json!({ "Crawlers": list }))
+}
+
+fn list_crawlers(g: &mut GlueState) -> Response {
+    let names: Vec<Value> = g.crawlers.keys().map(|k| json!(k)).collect();
+    ok(&json!({ "CrawlerNames": names }))
+}
+
+fn delete_crawler(g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "Name");
+    if g.crawlers.remove(&name).is_none() {
+        return not_found(&format!("Crawler {name} not found."));
+    }
+    empty_ok()
+}
+
+fn start_crawler(g: &mut GlueState, p: &Value) -> Response {
+    let rec = try_resp!(find_crawler(g, p));
+    if rec.crawls.last().map_or(false, |c| c.status == "RUNNING") {
+        return err(
+            400,
+            "CrawlerRunningException",
+            &format!("Crawler with name {} has already started", rec.name),
+        );
+    }
+    rec.crawls.push(CrawlRec {
+        crawl_id: uuid4(),
+        status: "RUNNING".to_string(),
+    });
+    empty_ok()
+}
+
+fn stop_crawler(g: &mut GlueState, p: &Value) -> Response {
+    let rec = try_resp!(find_crawler(g, p));
+    let running = matches!(
+        rec.crawls.last().map(|c| c.status.as_str()),
+        Some("RUNNING")
+    );
+    if !running {
+        return err(
+            400,
+            "CrawlerNotRunningException",
+            &format!("Crawler with name {} isn't running", rec.name),
+        );
+    }
+    rec.crawls.last_mut().unwrap().status = "STOPPING".to_string();
+    empty_ok()
+}
+
+fn update_crawler(g: &mut GlueState, p: &Value) -> Response {
+    let rec = try_resp!(find_crawler(g, p));
+    for member in [
+        "Role",
+        "DatabaseName",
+        "Description",
+        "Targets",
+        "Schedule",
+        "Classifiers",
+        "TablePrefix",
+        "SchemaChangePolicy",
+        "RecrawlPolicy",
+        "LineageConfiguration",
+        "Configuration",
+        "CrawlerSecurityConfiguration",
+    ] {
+        if let Some(v) = p.get(member) {
+            match member {
+                "Role" => rec.role = v.clone(),
+                "DatabaseName" => rec.database_name = v.clone(),
+                "Description" => rec.description = v.clone(),
+                "Targets" => rec.targets = v.clone(),
+                "Schedule" => rec.schedule = v.clone(),
+                "Classifiers" => rec.classifiers = v.clone(),
+                "TablePrefix" => rec.table_prefix = v.clone(),
+                "SchemaChangePolicy" => rec.schema_change_policy = v.clone(),
+                "RecrawlPolicy" => rec.recrawl_policy = v.clone(),
+                "LineageConfiguration" => rec.lineage_configuration = v.clone(),
+                "Configuration" => rec.configuration = v.clone(),
+                "CrawlerSecurityConfiguration" => rec.crawler_security_configuration = v.clone(),
+                _ => {}
+            }
+        }
+    }
+    empty_ok()
+}
+
+fn update_crawler_schedule(g: &mut GlueState, p: &Value) -> Response {
+    // moto: `update_crawler_schedule` through the CrawlerName member.
+    let name = str_field(p, "CrawlerName");
+    let rec = g
+        .crawlers
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Crawler {name} not found.")));
+    let rec = try_resp!(rec);
+    if let Some(v) = p.get("Schedule") {
+        rec.schedule = v.clone();
+    }
+    empty_ok()
+}
+
+fn crawler_schedule_stub(g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "CrawlerName");
+    match g.crawlers.get(&name) {
+        Some(_) => empty_ok(),
+        None => not_found(&format!("Crawler {name} not found.")),
+    }
+}
+
+fn batch_get_crawlers(g: &mut GlueState, p: &Value) -> Response {
+    let wanted = str_list(&p["CrawlerNames"]);
+    let mut found = Vec::new();
+    let watch: Vec<String> = wanted.clone();
+    for (name, rec) in g.crawlers.iter() {
+        if watch.contains(name) {
+            found.push(crawler_as_dict(rec));
+        }
+    }
+    let found_names: Vec<String> = found.iter().map(|c| str_field(c, "Name")).collect();
+    let missing: Vec<Value> = wanted
+        .iter()
+        .filter(|n| !found_names.contains(n))
+        .map(|n| json!(n))
+        .collect();
+    ok(&json!({ "Crawlers": found, "CrawlersNotFound": missing }))
+}
+
+fn get_crawler_metrics(g: &mut GlueState, p: &Value) -> Response {
+    let wanted = p["CrawlerNameList"]
+        .as_array()
+        .map(|a| str_list(&p["CrawlerNameList"]));
+    let mut list = Vec::new();
+    for name in g.crawlers.keys() {
+        if let Some(wanted) = &wanted {
+            if !wanted.contains(name) {
+                continue;
+            }
+        }
+        list.push(json!({
+            "CrawlerName": name,
+            "TimeLeftSeconds": 0.0,
+            "StillEstimating": false,
+            "LastRuntimeSeconds": 0.0,
+            "MedianRuntimeSeconds": 0.0,
+            "TablesCreated": 0,
+            "TablesUpdated": 0,
+            "TablesDeleted": 0,
+        }));
+    }
+    ok(&json!({ "CrawlerMetricsList": list }))
+}
+
+fn list_crawls(g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "CrawlerName");
+    match g.crawlers.get(&name) {
+        None => not_found(&format!("Crawler entry with name {name} does not exist")),
+        Some(rec) => {
+            let list: Vec<Value> = rec
+                .crawls
+                .iter()
+                .map(|c| {
+                    json!({
+                        "CrawlId": c.crawl_id,
+                        "DPUHour": 100.0,
+                        "LogGroup": "/aws-glue/crawlers",
+                        "LogStream": rec.name,
+                        "MessagePrefix": c.crawl_id,
+                        "StartTime": rec.created,
+                        "State": "RUNNING",
+                    })
+                })
+                .collect();
+            ok(&json!({ "Crawls": list }))
+        }
+    }
+}
+// ---------------------------------------------------------------------------
+// Jobs + job runs + bookmarks
+// ---------------------------------------------------------------------------
+
+fn job_as_dict(rec: &JobRec) -> Value {
+    let mut obj = json!({
+        "Name": rec.job["Name"],
+        "CreatedOn": rec.created,
+        "LastModifiedOn": rec.modified,
+        "ExecutionProperty": rec.job["ExecutionProperty"],
+        "Command": rec.job["Command"],
+        "DefaultArguments": rec.job["DefaultArguments"],
+    });
+    let base = obj.as_object_mut().unwrap();
+    for member in [
+        "Description",
+        "LogUri",
+        "Role",
+        "NonOverridableArguments",
+        "Connections",
+        "MaxRetries",
+        "AllocatedCapacity",
+        "Timeout",
+        "MaxCapacity",
+        "WorkerType",
+        "NumberOfWorkers",
+        "SecurityConfiguration",
+        "NotificationProperty",
+        "GlueVersion",
+        "CodeGenConfigurationNodes",
+        "ExecutionClass",
+        "SourceControlDetails",
+    ] {
+        if !rec.job[member].is_null() {
+            base.insert(member.to_string(), nulls_dropped(&rec.job[member]));
+        }
+    }
+    for opt in ["ExecutionProperty", "Command", "DefaultArguments"] {
+        if base.get(opt).map_or(true, |v| v.is_null()) {
+            base.remove(opt);
+        }
+    }
+    obj
+}
+
+fn find_job_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut JobRec, Response> {
+    let name = str_field(p, "JobName");
+    g.jobs
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Job {name} not found.")))
+}
+
+fn create_job(req: &Request, g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "Name");
+    let mut job = Map::new();
+    for member in [
+        "Name",
+        "Description",
+        "LogUri",
+        "Role",
+        "ExecutionProperty",
+        "Command",
+        "DefaultArguments",
+        "NonOverridableArguments",
+        "Connections",
+        "MaxRetries",
+        "AllocatedCapacity",
+        "Timeout",
+        "MaxCapacity",
+        "SecurityConfiguration",
+        "NotificationProperty",
+        "GlueVersion",
+        "NumberOfWorkers",
+        "WorkerType",
+        "CodeGenConfigurationNodes",
+        "ExecutionClass",
+        "SourceControlDetails",
+    ] {
+        if let Some(v) = p.get(member) {
+            job.insert(member.to_string(), v.clone());
+        }
+    }
+    let arn = arn_of(req, "job", &name);
+    tag_resource(g, &arn, p.get("Tags"));
+    g.jobs.insert(
+        name.clone(),
+        JobRec {
+            job: Value::Object(job),
+            created: now_unix(),
+            modified: now_unix(),
+            runs: Vec::new(),
+        },
+    );
+    ok(&json!({ "Name": name }))
+}
+
+fn get_job(g: &mut GlueState, p: &Value) -> Response {
+    let rec = try_resp!(find_job_mut(g, p));
+    ok(&json!({ "Job": job_as_dict(rec) }))
+}
+
+fn get_jobs(g: &mut GlueState) -> Response {
+    let list: Vec<Value> = g.jobs.values().map(job_as_dict).collect();
+    ok(&json!({ "Jobs": list }))
+}
+
+fn list_jobs(g: &mut GlueState) -> Response {
+    // tag filtering (ListJobs Tags filter) is not exercised by the suites.
+    let names: Vec<Value> = g.jobs.keys().map(|k| json!(k)).collect();
+    ok(&json!({ "JobNames": names }))
+}
+
+fn update_job(g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "JobName");
+    let job_update = p["JobUpdate"].clone();
+    let rec = try_resp!(find_job_mut(g, p));
+    let mut job = rec.job.as_object().cloned().unwrap_or_default();
+    if let Some(u) = job_update.as_object() {
+        for (k, v) in u {
+            job.insert(k.clone(), nulls_dropped(v));
+        }
+    }
+    rec.job = Value::Object(job);
+    rec.modified = now_unix();
+    ok(&json!({ "JobName": name }))
+}
+
+fn delete_job(g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "JobName");
+    g.jobs.remove(&name);
+    ok(&json!({ "JobName": name }))
+}
+
+fn create_job_run_from(rec: &JobRec, p: &Value) -> JobRunRec {
+    JobRunRec {
+        id: format!("jr_{}", hex_n(64)),
+        previous_run_id: p["JobRunId"].as_str().map(str::to_string),
+        status: "SUCCEEDED".to_string(), // moto 'immediate' transitions
+        arguments: {
+            let mut args = Map::new();
+            for v in [rec.job["DefaultArguments"].clone(), p["Arguments"].clone()] {
+                if let Some(m) = v.as_object() {
+                    for (k, val) in m {
+                        args.insert(k.clone(), val.clone());
+                    }
+                }
+            }
+            let _ = &rec;
+            if args.is_empty() {
+                None
+            } else {
+                Some(Value::Object(args))
+            }
+        },
+        allocated_capacity: option_from_job_field(&rec.job, "AllocatedCapacity")
+            .or_else(|| p["AllocatedCapacity"].as_u64().map(Value::from)),
+        max_capacity: option_from_job_field(&rec.job, "MaxCapacity")
+            .or_else(|| p["MaxCapacity"].as_f64().map(Value::from)),
+        timeout: option_from_job_field(&rec.job, "Timeout")
+            .or_else(|| p["Timeout"].as_u64().map(Value::from)),
+        worker_type: option_from_job_field(&rec.job, "WorkerType").or_else(|| {
+            p["WorkerType"]
+                .as_str()
+                .map(str::to_string)
+                .map(Value::from)
+        }),
+        number_of_workers: option_from_job_field(&rec.job, "NumberOfWorkers")
+            .or_else(|| p["NumberOfWorkers"].as_u64().map(Value::from)),
+        security_configuration: p
+            .get("SecurityConfiguration")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .or_else(|| option_from_job_field(&rec.job, "SecurityConfiguration")),
+        notification_property: option_from_job_field(&p, "NotificationProperty")
+            .or_else(|| option_from_job_field(&rec.job, "NotificationProperty")),
+    }
+}
+
+/// Take a job-level member into an Option, flipping nulls to None.
+fn option_from_job_field(job: &Value, member: &str) -> Option<Value> {
+    match &job[member] {
+        Value::Null => None,
+        v => Some(v.clone()),
+    }
+}
+
+fn job_run_as_dict(run: &JobRunRec, job_name: &str) -> Value {
+    let mut obj = json!({
+        "Id": run.id,
+        "Attempt": 0,
+        "JobName": job_name,
+        "StartedOn": now_unix(),
+        "LastModifiedOn": now_unix(),
+        "CompletedOn": now_unix(),
+        "JobRunState": run.status,
+        "PredecessorRuns": [],
+        "ExecutionTime": 123,
+        "LogGroupName": "test/log",
+        "GlueVersion": "0.9",
+    });
+    let base = obj.as_object_mut().unwrap();
+    for (member, value) in [
+        ("Arguments", run.arguments.clone()),
+        ("AllocatedCapacity", run.allocated_capacity.clone()),
+        ("MaxCapacity", run.max_capacity.clone()),
+        ("NumberOfWorkers", run.number_of_workers.clone()),
+        ("WorkerType", run.worker_type.clone()),
+        ("NotificationProperty", run.notification_property.clone()),
+        ("SecurityConfiguration", run.security_configuration.clone()),
+        ("Timeout", run.timeout.clone()),
+    ] {
+        if let Some(v) = value {
+            if !v.is_null() {
+                base.insert(member.to_string(), nulls_dropped(&v));
+            }
+        }
+    }
+    if let Some(prev) = &run.previous_run_id {
+        base.insert("PreviousRunId".into(), json!(prev));
+    }
+    obj
+}
+
+fn start_job_run(g: &mut GlueState, p: &Value) -> Response {
+    let run = try_resp!(find_job_mut(g, p));
+    let name = str_field(&run.job, "Name");
+    let job_run = create_job_run_from(run, p);
+    let id = job_run.id.clone();
+    run.runs.push(job_run);
+    let _ = name;
+    ok(&json!({ "JobRunId": id }))
+}
+
+fn get_job_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_job_mut(g, p)?;
+    let run_id = str_field(p, "RunId");
+    match rec.runs.iter().find(|r| r.id == run_id) {
+        Some(run) => Ok(ok(&json!({
+            "JobRun": job_run_as_dict(run, &run_id_job_name(&rec.job)),
+        }))),
+        None => Err(not_found(&format!("Job run {run_id} not found."))),
+    }
+}
+
+fn run_id_job_name(job: &Value) -> String {
+    str_field(job, "Name")
+}
+
+fn get_job_runs(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_job_mut(g, p)?;
+    let job_name = str_field(&rec.job, "Name");
+    let list: Vec<Value> = rec
+        .runs
+        .iter()
+        .map(|r| job_run_as_dict(r, &job_name))
+        .collect();
+    Ok(ok(&json!({ "JobRuns": list })))
+}
+
+fn batch_get_jobs(g: &mut GlueState, p: &Value) -> Response {
+    let wanted = str_list(&p["JobNames"]);
+    let mut found = Vec::new();
+    for name in wanted.iter() {
+        if let Some(rec) = g.jobs.get(name) {
+            found.push(rec.job.clone());
+        }
+    }
+    let found_names: Vec<String> = found.iter().map(|j| str_field(j, "Name")).collect();
+    let missing: Vec<Value> = wanted
+        .iter()
+        .filter(|n| !found_names.contains(n))
+        .map(|n| json!(n))
+        .collect();
+    ok(&json!({ "Jobs": found, "JobsNotFound": missing }))
+}
+
+fn batch_stop_job_run(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let job_name = str_field(p, "JobName");
+    let rec = find_job_mut(g, p)?;
+    let mut successful = Vec::new();
+    let mut errors = Vec::new();
+    if p["JobRunIds"].as_array().unwrap_or(&Vec::new()).is_empty() {
+        let _ = req;
+    }
+    for run_id in str_list(&p["JobRunIds"]) {
+        let hit = rec
+            .runs
+            .iter_mut()
+            .find(|r| r.id == run_id)
+            .map(|r| r.status.clone());
+        match hit {
+            Some(ref status)
+                if ["STARTING", "RUNNING", "SUCCEEDED", "FAILED"].contains(&status.as_str()) =>
+            {
+                rec.runs.iter_mut().find(|r| r.id == run_id).unwrap().status =
+                    "STOPPED".to_string();
+                successful.push(json!({"JobName": job_name, "JobRunId": run_id}));
+            }
+            _ => errors.push(json!({
+                "JobName": job_name,
+                "JobRunId": run_id,
+                "ErrorDetail": {
+                    "ErrorCode": "EntityNotFoundException",
+                    "ErrorMessage": format!("Job run {run_id} not found"),
+                },
+            })),
+        }
+    }
+    Ok(ok(
+        &json!({ "SuccessfulSubmissions": successful, "Errors": errors }),
+    ))
+}
+
+fn job_bookmark(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_job_mut(g, p)?;
+    let name = str_field(p, "JobName");
+    Ok(ok(&json!({
+        "JobBookmarkEntry": {
+            "JobName": name,
+            "Version": 0,
+            "Run": 0,
+            "Attempt": 0,
+            "JobBookmark": "",
+        }
+    })))
+}
+
+fn update_job_from_source_control(g: &mut GlueState, p: &Value) -> Response {
+    let job_name = p["JobName"].as_str().map(str::to_string);
+    if let Some(name) = &job_name {
+        if !g.jobs.contains_key(name) {
+            return not_found(&format!("Job {name} not found."));
+        }
+    }
+    ok(&json!({ "JobName": job_name.unwrap_or_default() }))
+}
+
+fn update_source_control_from_job(g: &mut GlueState, p: &Value) -> Response {
+    let job_name = p["JobName"].as_str().map(str::to_string);
+    if let Some(name) = &job_name {
+        if !g.jobs.contains_key(name) {
+            return not_found(&format!("Job {name} not found."));
+        }
+    }
+    ok(&json!({ "JobName": job_name.unwrap_or_default() }))
+}
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+fn get_tags(g: &mut GlueState, p: &Value) -> Response {
+    let arn = str_field(p, "ResourceArn");
+    ok(&json!({ "Tags": get_tag_dict(g, &arn) }))
+}
+
+fn tag_resource_op(g: &mut GlueState, p: &Value) -> Response {
+    let arn = str_field(p, "ResourceArn");
+    tag_resource(g, &arn, p.get("TagsToAdd"));
+    empty_ok()
+}
+
+fn untag_resource_op(g: &mut GlueState, p: &Value) -> Response {
+    let arn = str_field(p, "ResourceArn");
+    if let Some(entry) = g.tags.get_mut(&arn) {
+        for key in str_list(&p["TagsToRemove"]) {
+            entry.remove(&key);
+        }
+    }
+    empty_ok()
+}
+
+// ---------------------------------------------------------------------------
+// Triggers
+// ---------------------------------------------------------------------------
+
+/// moto's `Action.as_dict`: only members the caller provided.
+fn action_as_dict(a: &Value) -> Value {
+    let mut obj = Map::new();
+    for member in [
+        "Arguments",
+        "CrawlerName",
+        "JobName",
+        "NotificationProperty",
+        "SecurityConfiguration",
+        "Timeout",
+    ] {
+        if let Some(v) = a.get(member) {
+            if !v.is_null() {
+                obj.insert(member.to_string(), v.clone());
+            }
+        }
+    }
+    Value::Object(obj)
+}
+
+fn find_trigger_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut TriggerRec, Response> {
+    let name = str_field(p, "Name");
+    g.triggers
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Trigger {name} not found.")))
+}
+
+fn trigger_as_dict(rec: &TriggerRec) -> Value {
+    let mut obj = json!({
+        "Name": rec.name,
+        "Type": rec.trigger_type,
+        "Actions": rec.actions.clone(),
+        "State": if rec.start_on_creation { "ACTIVATED" } else if rec.state_activated() { "ACTIVATED" } else { "CREATED" },
+    });
+    let base = obj.as_object_mut().unwrap();
+    if !rec.workflow_name.is_null() {
+        base.insert("WorkflowName".into(), rec.workflow_name.clone());
+    }
+    if rec.trigger_type == "SCHEDULED" {
+        base.insert("Schedule".into(), rec.schedule.clone());
+    }
+    if let Some(pred) = &rec.predicate {
+        base.insert("Predicate".into(), pred.clone());
+    }
+    if let Some(Value::String(desc)) = Some(rec.description.clone()) {
+        if !desc.is_empty() {
+            base.insert("Description".into(), json!(desc));
+        }
+    }
+    if !rec.event_batching_condition.is_null() {
+        base.insert(
+            "EventBatchingCondition".into(),
+            rec.event_batching_condition.clone(),
+        );
+    }
+    // Action dicts go through moto's Action.as_dict normalizer.
+    if let Some(actions) = base.get_mut("Actions").and_then(Value::as_array_mut) {
+        let normalized: Vec<Value> = actions
+            .iter()
+            .map(|a| {
+                if a.is_object() && !a.as_object().unwrap().is_empty() {
+                    action_as_dict(a)
+                } else {
+                    a.clone()
+                }
+            })
+            .collect();
+        *actions = normalized;
+    }
+    obj
+}
+
+impl TriggerRec {
+    fn state_activated(&self) -> bool {
+        false
+    }
+}
+
+fn create_trigger(req: &Request, g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "Name");
+    let trigger_type = str_field(p, "Type");
+    if trigger_type == "CONDITIONAL" && p["Predicate"].is_null() {
+        return invalid_input("Predicate cannot be null or empty");
+    }
+    let actions: Vec<Value> = p["Actions"]
+        .as_array()
+        .map(|a| a.iter().map(|v| action_as_dict(v)).collect())
+        .unwrap_or_default();
+    let rec = TriggerRec {
+        name: name.clone(),
+        workflow_name: p["WorkflowName"].clone(),
+        trigger_type: trigger_type.clone(),
+        schedule: p["Schedule"].clone(),
+        predicate: p["Predicate"].as_object().map(|o| {
+            let mut obj = Map::new();
+            obj.insert(
+                "Logical".into(),
+                o.get("Logical").cloned().unwrap_or(json!("AND")),
+            );
+            obj.insert(
+                "Conditions".into(),
+                o.get("Conditions").cloned().unwrap_or(json!([])),
+            );
+            Value::Object(obj)
+        }),
+        actions,
+        description: p["Description"].clone(),
+        start_on_creation: p["StartOnCreation"].as_bool().unwrap_or(false),
+        event_batching_condition: p["EventBatchingCondition"].clone(),
+    };
+    let arn = arn_of(req, "trigger", &name);
+    tag_resource(g, &arn, p.get("Tags"));
+    g.triggers.insert(name.clone(), rec);
+    ok(&json!({ "Name": name }))
+}
+
+fn get_trigger(g: &mut GlueState, p: &Value) -> Response {
+    let rec = try_resp!(find_trigger_mut(g, p));
+    ok(&json!({ "Trigger": trigger_as_dict(rec) }))
+}
+
+fn triggers_by_dependency(g: &GlueState, dependent_job: Option<&str>) -> Vec<String> {
+    match dependent_job {
+        Some(job) => g
+            .triggers
+            .iter()
+            .filter(|(_, t)| {
+                t.actions
+                    .iter()
+                    .any(|a| a["JobName"].as_str().map_or(false, |jn| jn == job))
+            })
+            .map(|(n, _)| n.clone())
+            .collect(),
+        None => g.triggers.keys().cloned().collect(),
+    }
+}
+
+fn get_triggers(g: &mut GlueState, p: &Value) -> Response {
+    let dependent = p["DependentJobName"].as_str().map(str::to_string);
+    let names = triggers_by_dependent(g, dependent.as_deref());
+    let list: Vec<Value> = names
+        .iter()
+        .filter_map(|n| g.triggers.get(n).map(trigger_as_dict))
+        .collect();
+    ok(&json!({ "Triggers": list }))
+}
+
+fn triggers_by_dependent(g: &GlueState, dependent: Option<&str>) -> Vec<String> {
+    match dependent {
+        Some(job) => g
+            .triggers
+            .iter()
+            .filter(|(_, t)| {
+                t.actions
+                    .iter()
+                    .any(|a| a["JobName"].as_str().map_or(false, |jn| jn == job))
+            })
+            .map(|(n, _)| n.clone())
+            .collect(),
+        None => g.triggers.keys().cloned().collect(),
+    }
+}
+
+fn list_triggers(g: &mut GlueState, p: &Value) -> Response {
+    let dependent = p["DependentJobName"].as_str().map(str::to_string);
+    let names = triggers_by_dependent(g, dependent.as_deref());
+    let list: Vec<Value> = names.into_iter().map(|n| json!(n)).collect();
+    ok(&json!({ "TriggerNames": list }))
+}
+
+fn batch_get_triggers(g: &mut GlueState, p: &Value) -> Response {
+    let wanted = str_list(&p["TriggerNames"]);
+    let mut found = Vec::new();
+    for name in wanted.iter() {
+        if let Some(rec) = g.triggers.get(name) {
+            found.push(trigger_as_dict(rec));
+        }
+    }
+    let found_names: Vec<String> = found.iter().map(|t| str_field(t, "Name")).collect();
+    let missing: Vec<Value> = wanted
+        .iter()
+        .filter(|n| !found_names.contains(n))
+        .map(|n| json!(n))
+        .collect();
+    ok(&json!({ "Triggers": found, "TriggersNotFound": missing }))
+}
+
+fn start_trigger(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_trigger_mut(g, p)?;
+    rec.start_on_creation = true;
+    let name = rec.name.clone();
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn stop_trigger(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_trigger_mut(g, p)?;
+    rec.start_on_creation = false;
+    let name = rec.name.clone();
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn update_trigger(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_trigger_mut(g, p)?;
+    let update = p["TriggerUpdate"].clone();
+    if let Some(u) = update.as_object() {
+        if let Some(v) = u.get("Description") {
+            rec.description = v.clone();
+        }
+        if let Some(v) = u.get("Schedule") {
+            rec.schedule = v.clone();
+        }
+        if let Some(v) = u.get("Actions") {
+            rec.actions = v
+                .as_array()
+                .map(|a| a.iter().map(action_as_dict).collect())
+                .unwrap_or_default();
+        }
+        if let Some(v) = u.get("Predicate") {
+            rec.predicate = v.as_object().map(|o| {
+                let mut obj = Map::new();
+                obj.insert(
+                    "Logical".into(),
+                    o.get("Logical").cloned().unwrap_or(json!("AND")),
+                );
+                obj.insert(
+                    "Conditions".into(),
+                    o.get("Conditions").cloned().unwrap_or(json!([])),
+                );
+                Value::Object(obj)
+            });
+        }
+        if let Some(v) = u.get("EventBatchingCondition") {
+            rec.event_batching_condition = v.clone();
+        }
+    }
+    let name = rec.name.clone();
+    Ok(ok(&json!({
+        "Trigger": {
+            "Name": name,
+        }
+    })))
+}
+
+fn delete_trigger(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.triggers.remove(&name).is_none() {
+        return Err(not_found(&format!("Trigger {name} not found.")));
+    }
+    Ok(ok(&json!({ "Name": name })))
+}
+
+// ---------------------------------------------------------------------------
+// Workflows + runs + run properties
+// ---------------------------------------------------------------------------
+
+fn find_workflow_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut WorkflowRec, Response> {
+    let name = str_field(p, "Name");
+    g.workflows
+        .get_mut(&name)
+        .ok_or_else(|| not_found("Entity not found"))
+}
+
+fn workflow_as_dict(rec: &WorkflowRec) -> Value {
+    let mut obj = json!({
+        "CreatedOn": rec.created,
+        "LastModifiedOn": rec.modified,
+        "Name": rec.name,
+    });
+    let base = obj.as_object_mut().unwrap();
+    if let Some(d) = rec.description.as_str() {
+        if !d.is_empty() {
+            base.insert("Description".into(), json!(d));
+        }
+    }
+    if let Some(map) = rec.default_run_properties.as_object() {
+        if !map.is_empty() {
+            base.insert(
+                "DefaultRunProperties".into(),
+                rec.default_run_properties.clone(),
+            );
+        }
+    }
+    match rec.max_concurrent_runs.as_i64() {
+        Some(n) if n > 0 => {
+            base.insert("MaxConcurrentRuns".into(), json!(n));
+        }
+        _ => {}
+    }
+    if let Some(last) = rec.runs.last() {
+        base.insert("LastRun".into(), workflow_run_as_dict(last, &rec.name));
+    }
+    obj
+}
+
+fn workflow_run_as_dict(run: &WorkflowRunRec, workflow_name: &str) -> Value {
+    let mut obj = json!({
+        "Name": workflow_name,
+        "WorkflowRunId": run.run_id,
+        "StartedOn": run.started,
+        "Status": run.status,
+    });
+    let base = obj.as_object_mut().unwrap();
+    if let Some(prev) = &run.previous_run_id {
+        base.insert("PreviousRunId".into(), json!(prev));
+    }
+    if !run.properties.is_empty() {
+        let mut map = Map::new();
+        for (k, v) in run.properties.iter() {
+            map.insert(k.clone(), json!(v));
+        }
+        base.insert("WorkflowRunProperties".into(), Value::Object(map));
+    }
+    obj
+}
+
+fn create_workflow(req: &Request, g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "Name");
+    let rec = WorkflowRec {
+        name: name.clone(),
+        default_run_properties: p["DefaultRunProperties"].clone(),
+        description: p["Description"].clone(),
+        max_concurrent_runs: p["MaxConcurrentRuns"].clone(),
+        created: now_unix(),
+        modified: now_unix(),
+        runs: Vec::new(),
+    };
+    let arn = arn_of(req, "workflow", &name);
+    tag_resource(g, &arn, p.get("Tags"));
+    g.workflows.insert(name.clone(), rec);
+    ok(&json!({ "Name": name }))
+}
+
+fn get_workflow(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    Ok(ok(&json!({ "Workflow": workflow_as_dict(rec) })))
+}
+
+fn list_workflows(g: &mut GlueState) -> Response {
+    let names: Vec<Value> = g.workflows.keys().map(|k| json!(k)).collect();
+    ok(&json!({ "Workflows": names }))
+}
+
+fn delete_workflow(g: &mut GlueState, p: &Value) -> Response {
+    let name = str_field(p, "Name");
+    g.workflows.remove(&name);
+    ok(&json!({ "Name": name }))
+}
+
+fn update_workflow(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    let rec = find_workflow_mut(g, p)?;
+    if let Some(v) = p.get("DefaultRunProperties") {
+        if !v.is_null() {
+            rec.default_run_properties = v.clone();
+        }
+    }
+    if let Some(v) = p.get("Description") {
+        if !v.is_null() {
+            rec.description = v.clone();
+        }
+    }
+    if let Some(v) = p.get("MaxConcurrentRuns") {
+        if !v.is_null() {
+            rec.max_concurrent_runs = v.clone();
+        }
+    }
+    rec.modified = now_unix();
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn batch_get_workflows(g: &mut GlueState, p: &Value) -> Response {
+    let wanted = str_list(&p["Names"]);
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for name in wanted.iter() {
+        match g.workflows.get(name) {
+            Some(rec) => found.push(workflow_as_dict(rec)),
+            None => missing.push(json!(name)),
+        }
+    }
+    ok(&json!({ "MissingWorkflows": missing, "Workflows": found }))
+}
+
+fn start_workflow_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let previous_run_id = rec.runs.last().map(|r| r.run_id.clone());
+    let mut properties: BTreeMap<String, String> = BTreeMap::new();
+    if let Some(defaults) = rec.default_run_properties.as_object() {
+        for (k, v) in defaults {
+            if let Some(s) = v.as_str() {
+                properties.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    if let Some(passed) = p["RunProperties"].as_object() {
+        for (k, v) in passed {
+            if let Some(s) = v.as_str() {
+                properties.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    let run = WorkflowRunRec {
+        run_id: format!("wr_{}", hex_n(64)),
+        previous_run_id,
+        properties,
+        status: "RUNNING".to_string(),
+        started: now_unix(),
+    };
+    let run_id = run.run_id.clone();
+    rec.runs.push(run);
+    Ok(ok(&json!({ "RunId": run_id })))
+}
+
+fn get_workflow_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let run_id = str_field(p, "RunId");
+    match rec.runs.iter().find(|r| r.run_id == run_id) {
+        Some(run) => {
+            let name = rec.name.clone();
+            Ok(ok(&json!({ "Run": workflow_run_as_dict(run, &name) })))
+        }
+        None => Err(not_found("Entity not found")),
+    }
+}
+
+fn get_workflow_runs(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let name = rec.name.clone();
+    let list: Vec<Value> = rec
+        .runs
+        .iter()
+        .map(|r| workflow_run_as_dict(r, &name))
+        .collect();
+    Ok(ok(&json!({ "Runs": list })))
+}
+
+fn stop_workflow_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let run_id = str_field(p, "RunId");
+    match rec.runs.iter_mut().find(|r| r.run_id == run_id) {
+        Some(run) => {
+            run.status = "STOPPING".to_string();
+            Ok(empty_ok())
+        }
+        None => Err(not_found("Entity not found")),
+    }
+}
+
+fn put_workflow_run_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let run_id = str_field(p, "RunId");
+    let run = rec
+        .runs
+        .iter_mut()
+        .find(|r| r.run_id == run_id)
+        .ok_or_else(|| not_found("Entity not found"))?;
+    if let Some(props) = p["RunProperties"].as_object() {
+        for (k, v) in props {
+            if let Some(s) = v.as_str() {
+                run.properties.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    Ok(empty_ok())
+}
+
+fn get_workflow_run_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let run_id = str_field(p, "RunId");
+    match rec.runs.iter().find(|r| r.run_id == run_id) {
+        Some(run) => {
+            let mut map = Map::new();
+            for (k, v) in run.properties.iter() {
+                map.insert(k.clone(), json!(v));
+            }
+            Ok(ok(&json!({ "RunProperties": Value::Object(map) })))
+        }
+        None => Err(not_found("Entity not found")),
+    }
+}
+
+fn resume_workflow_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_workflow_mut(g, p)?;
+    let run_id = str_field(p, "RunId");
+    let props: Vec<(String, String)> = match rec.runs.iter().find(|r| r.run_id == run_id) {
+        Some(run) => run
+            .properties
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        None => return Err(not_found("Entity not found")),
+    };
+    let new_run = WorkflowRunRec {
+        run_id: format!("wr_{}", hex_n(64)),
+        previous_run_id: Some(run_id),
+        properties: props.into_iter().collect(),
+        status: "RUNNING".to_string(),
+        started: now_unix(),
+    };
+    let new_id = new_run.run_id.clone();
+    rec.runs.push(new_run);
+    Ok(ok(&json!({ "RunId": new_id, "NodeIds": p["NodeIds"] })))
+}
+
+#[cfg(test)]
+mod family2_tests {
+    use super::*;
+    use bytes::Bytes;
+
+    fn req(op: &str, body_val: Value) -> Request {
+        Request {
+            service: "glue".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+            body: Bytes::from(serde_json::to_vec(&body_val).unwrap_or_default()),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    fn scope() -> u64 {
+        uuid::Uuid::new_v4().as_u128() as u64
+    }
+
+    fn d(acct: u64, op: &str, v: Value) -> Response {
+        let mut r = req(op, v);
+        r.account = acct;
+        dispatch(&r).unwrap()
+    }
+
+    fn body(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
+    }
+
+    fn err_code(resp: &Response) -> String {
+        body(resp)["__type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[test]
+    fn crawler_lifecycle_and_tags() {
+        let acct = scope();
+        let r = d(
+            acct,
+            "CreateCrawler",
+            json!({
+                "Name": "cr1", "Role": "r", "DatabaseName": "db",
+                "Targets": {"S3Targets": [{"Path": "s3://x"}]},
+                "Description": "desc", "TablePrefix": "dl_"
+            }),
+        );
+        assert_eq!(r.status, 200);
+        let b = body(&d(acct, "GetCrawler", json!({"Name": "cr1"})));
+        assert_eq!(b["Crawler"]["Name"], "cr1");
+        assert_eq!(b["Crawler"]["DatabaseName"], "db");
+        assert_eq!(b["Crawler"]["Description"], "desc");
+        assert_eq!(b["Crawler"]["State"], "READY");
+        assert_eq!(b["Crawler"]["TablePrefix"], "dl_");
+        assert!(b["Crawler"]["CreationTime"].as_f64().is_some());
+
+        assert_eq!(
+            err_code(&d(acct, "CreateCrawler", json!({"Name": "cr1"}))),
+            "AlreadyExistsException"
+        );
+
+        let arn = "arn:aws:glue:us-east-1:123456789012:crawler/cr1";
+        d(
+            acct,
+            "TagResource",
+            json!({"ResourceArn": arn, "TagsToAdd": {"env": "t", "team": "x"}}),
+        );
+        let b = body(&d(acct, "GetTags", json!({"ResourceArn": arn})));
+        assert_eq!(b["Tags"]["env"], "t");
+        d(
+            acct,
+            "UntagResource",
+            json!({"ResourceArn": arn, "TagsToRemove": ["env"]}),
+        );
+        let b = body(&d(acct, "GetTags", json!({"ResourceArn": arn})));
+        assert!(b["Tags"].get("env").is_none());
+        assert_eq!(b["Tags"]["team"], "x");
+
+        assert_eq!(d(acct, "StartCrawler", json!({"Name": "cr1"})).status, 200);
+        let b = body(&d(acct, "GetCrawler", json!({"Name": "cr1"})));
+        assert_eq!(b["Crawler"]["State"], "RUNNING");
+        assert_eq!(d(acct, "StopCrawler", json!({"Name": "cr1"})).status, 200);
+        let b = body(&d(acct, "GetCrawler", json!({"Name": "cr1"})));
+        assert_eq!(b["Crawler"]["State"], "STOPPING");
+
+        assert_eq!(
+            err_code(&d(acct, "StartCrawler", json!({"Name": "nocr"}))),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(acct, "StopCrawler", json!({"Name": "nocr"}))),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "StartCrawlerSchedule",
+                json!({"CrawlerName": "nocr"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        d(
+            acct,
+            "UpdateCrawler",
+            json!({"Name": "cr1", "Description": "upd"}),
+        );
+        let b = body(&d(acct, "GetCrawler", json!({"Name": "cr1"})));
+        assert_eq!(b["Crawler"]["Description"], "upd");
+
+        let b = body(&d(
+            acct,
+            "BatchGetCrawlers",
+            json!({"CrawlerNames": ["cr1", "m1"]}),
+        ));
+        assert_eq!(b["Crawlers"].as_array().unwrap().len(), 1);
+        assert_eq!(b["CrawlersNotFound"].as_array().unwrap().len(), 1);
+
+        let b = body(&d(acct, "GetCrawlerMetrics", json!({})));
+        assert_eq!(b["CrawlerMetricsList"][0]["CrawlerName"], "cr1");
+
+        assert_eq!(
+            err_code(&d(acct, "ListCrawls", json!({"CrawlerName": "nocr"}))),
+            "EntityNotFoundException"
+        );
+
+        d(acct, "DeleteCrawler", json!({"Name": "cr1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetCrawler", json!({"Name": "cr1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn job_lifecycle_runs_bookmarks_tags() {
+        let acct = scope();
+        d(
+            acct,
+            "CreateJob",
+            json!({
+                "Name": "job1", "Role": "r",
+                "Command": {"Name": "glueetl", "ScriptLocation": "s3://s.py"},
+                "MaxRetries": 3, "Timeout": 120, "MaxCapacity": 10.0,
+                "DefaultArguments": {"--x": "y"},
+                "Tags": {"env": "test"}
+            }),
+        );
+        let b = body(&d(acct, "GetJob", json!({"JobName": "job1"})));
+        assert_eq!(b["Job"]["Name"], "job1");
+        assert_eq!(b["Job"]["MaxRetries"], 3);
+        assert_eq!(b["Job"]["Timeout"], 120);
+        assert_eq!(b["Job"]["MaxCapacity"], 10.0);
+        assert_eq!(b["Job"]["DefaultArguments"]["--x"], "y");
+        assert!(b["Job"]["CreatedOn"].as_f64().is_some());
+
+        let job_arn = format!("arn:aws:glue:us-east-1:{}:job/job1", acct);
+        let b = body(&d(acct, "GetTags", json!({"ResourceArn": job_arn})));
+        assert_eq!(b["Tags"]["env"], "test");
+
+        d(acct, "StartJobRun", json!({"JobName": "job1"}));
+
+        let b = body(&d(acct, "GetJobRuns", json!({"JobName": "job1"})));
+        assert_eq!(b["JobRuns"].as_array().unwrap().len(), 1);
+        assert_eq!(b["JobRuns"][0]["JobName"], "job1");
+        let run_id = str_field(&b["JobRuns"][0], "Id");
+
+        let b = body(&d(
+            acct,
+            "GetJobRun",
+            json!({"JobName": "job1", "RunId": run_id.clone()}),
+        ));
+        assert_eq!(b["JobRun"]["JobRunState"], "SUCCEEDED");
+
+        let r1 = str_field(
+            &body(&d(acct, "StartJobRun", json!({"JobName": "job1"}))),
+            "JobRunId",
+        );
+        assert_ne!(r1, run_id);
+
+        let b = body(&d(acct, "GetJobBookmark", json!({"JobName": "job1"})));
+        assert!(b.get("JobBookmarkEntry").is_some());
+        let b = body(&d(acct, "ResetJobBookmark", json!({"JobName": "job1"})));
+        assert!(b.get("JobBookmarkEntry").is_some());
+
+        let b = body(&d(
+            acct,
+            "UpdateJob",
+            json!({"JobName": "job1", "JobUpdate": {"Description": "upd"}}),
+        ));
+        assert_eq!(b["JobName"], "job1");
+        let b = body(&d(acct, "GetJob", json!({"JobName": "job1"})));
+        assert_eq!(b["Job"]["Description"], "upd");
+
+        let b = body(&d(
+            acct,
+            "BatchGetJobs",
+            json!({"JobNames": ["job1", "none"]}),
+        ));
+        assert_eq!(b["Jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(b["JobsNotFound"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "BatchStopJobRun",
+                json!({"JobName": "none", "JobRunIds": ["x"]})
+            )),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(acct, "GetJobBookmark", json!({"JobName": "none"}))),
+            "EntityNotFoundException"
+        );
+        let b = body(&d(acct, "UpdateJobFromSourceControl", json!({})));
+        assert_eq!(b["JobName"], "");
+
+        let b = body(&d(acct, "ListJobs", json!({})));
+        assert!(b["JobNames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n == "job1"));
+
+        let b = body(&d(acct, "DeleteJob", json!({"JobName": "job1"})));
+        assert_eq!(b["JobName"], "job1");
+        assert_eq!(
+            err_code(&d(acct, "GetJob", json!({"JobName": "job1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn trigger_lifecycle() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateTrigger",
+            json!({
+                "Name": "tr1", "Type": "SCHEDULED", "Schedule": "cron(0 12 * * ? *)",
+                "Actions": [{"JobName": "jobA"}]
+            }),
+        ));
+        assert_eq!(b["Name"], "tr1");
+
+        let b = body(&d(acct, "GetTrigger", json!({"Name": "tr1"})));
+        assert_eq!(b["Trigger"]["Name"], "tr1");
+        assert_eq!(b["Trigger"]["Type"], "SCHEDULED");
+        assert_eq!(b["Trigger"]["Schedule"], "cron(0 12 * * ? *)");
+        assert_eq!(b["Trigger"]["Actions"][0]["JobName"], "jobA");
+        assert_eq!(b["Trigger"]["State"], "CREATED");
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "CreateTrigger",
+                json!({"Name": "tr2", "Type": "CONDITIONAL", "Actions": []})
+            )),
+            "InvalidInputException"
+        );
+        assert_eq!(
+            err_code(&d(acct, "GetTrigger", json!({"Name": "tr2"}))),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(acct, "StartTrigger", json!({"Name": "tr1"})));
+        assert_eq!(b["Name"], "tr1");
+        let b = body(&d(acct, "GetTrigger", json!({"Name": "tr1"})));
+        assert_eq!(b["Trigger"]["State"], "ACTIVATED");
+        let b = body(&d(acct, "StopTrigger", json!({"Name": "tr1"})));
+        assert_eq!(b["Name"], "tr1");
+
+        let b = body(&d(
+            acct,
+            "UpdateTrigger",
+            json!({"Name": "tr1", "TriggerUpdate": {"Description": "upd"}}),
+        ));
+        assert_eq!(b["Trigger"]["Name"], "tr1");
+        let b = body(&d(acct, "GetTrigger", json!({"Name": "tr1"})));
+        assert_eq!(b["Trigger"]["Description"], "upd");
+
+        let b = body(&d(acct, "GetTriggers", json!({})));
+        assert_eq!(b["Triggers"].as_array().unwrap().len(), 1);
+        let b = body(&d(acct, "GetTriggers", json!({"DependentJobName": "jobA"})));
+        assert_eq!(b["Triggers"].as_array().unwrap().len(), 1);
+        let b = body(&d(acct, "GetTriggers", json!({"DependentJobName": "nope"})));
+        assert_eq!(b["Triggers"].as_array().unwrap().len(), 0);
+
+        let b = body(&d(acct, "ListTriggers", json!({})));
+        assert_eq!(b["TriggerNames"], json!(["tr1"]));
+
+        let b = body(&d(
+            acct,
+            "BatchGetTriggers",
+            json!({"TriggerNames": ["tr1", "z"]}),
+        ));
+        assert_eq!(b["Triggers"].as_array().unwrap().len(), 1);
+        assert_eq!(b["TriggersNotFound"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "UpdateTrigger",
+                json!({"Name": "nond", "TriggerUpdate": {}})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(acct, "DeleteTrigger", json!({"Name": "tr1"})));
+        assert_eq!(b["Name"], "tr1");
+        assert_eq!(
+            err_code(&d(acct, "GetTrigger", json!({"Name": "tr1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn workflow_lifecycle_runs_and_properties() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateWorkflow",
+            json!({"Name": "wf1", "Description": "d"}),
+        ));
+        assert_eq!(b["Name"], "wf1");
+
+        let b = body(&d(acct, "GetWorkflow", json!({"Name": "wf1"})));
+        assert_eq!(b["Workflow"]["Name"], "wf1");
+        assert_eq!(b["Workflow"]["Description"], "d");
+
+        let b = body(&d(acct, "StartWorkflowRun", json!({"Name": "wf1"})));
+        let run_id = str_field(&b, "RunId");
+        assert!(run_id.starts_with("wr_"));
+
+        let b = body(&d(
+            acct,
+            "GetWorkflowRun",
+            json!({"Name": "wf1", "RunId": run_id.clone()}),
+        ));
+        assert_eq!(b["Run"]["Name"], "wf1");
+        assert_eq!(b["Run"]["WorkflowRunId"], run_id);
+        assert_eq!(b["Run"]["Status"], "RUNNING");
+
+        let b = body(&d(acct, "GetWorkflowRuns", json!({"Name": "wf1"})));
+        assert_eq!(b["Runs"].as_array().unwrap().len(), 1);
+
+        d(
+            acct,
+            "PutWorkflowRunProperties",
+            json!({"Name": "wf1", "RunId": run_id.clone(), "RunProperties": {"k1": "v1"}}),
+        );
+        let b = body(&d(
+            acct,
+            "GetWorkflowRunProperties",
+            json!({"Name": "wf1", "RunId": run_id.clone()}),
+        ));
+        assert_eq!(b["RunProperties"]["k1"], "v1");
+
+        d(
+            acct,
+            "StopWorkflowRun",
+            json!({"Name": "wf1", "RunId": run_id.clone()}),
+        );
+        let b = body(&d(
+            acct,
+            "GetWorkflowRun",
+            json!({"Name": "wf1", "RunId": run_id.clone()}),
+        ));
+        assert_eq!(b["Run"]["Status"], "STOPPING");
+
+        let b = body(&d(
+            acct,
+            "ResumeWorkflowRun",
+            json!({"Name": "wf1", "RunId": run_id, "NodeIds": ["n1"]}),
+        ));
+        assert!(str_field(&b, "RunId").starts_with("wr_"));
+
+        let b = body(&d(acct, "ListWorkflows", json!({})));
+        assert_eq!(b["Workflows"], json!(["wf1"]));
+
+        let b = body(&d(
+            acct,
+            "BatchGetWorkflows",
+            json!({"Names": ["wf1", "zz"]}),
+        ));
+        assert_eq!(b["Workflows"].as_array().unwrap().len(), 1);
+        assert_eq!(b["MissingWorkflows"].as_array().unwrap().len(), 1);
+
+        let b = body(&d(
+            acct,
+            "UpdateWorkflow",
+            json!({"Name": "wf1", "Description": "u"}),
+        ));
+        assert_eq!(b["Name"], "wf1");
+
+        d(acct, "DeleteWorkflow", json!({"Name": "wf1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetWorkflow", json!({"Name": "wf1"}))),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(acct, "StartWorkflowRun", json!({"Name": "wf1"}))),
+            "EntityNotFoundException"
+        );
+        assert!(
+            d(
+                acct,
+                "StopWorkflowRun",
+                json!({"Name": "wf1", "RunId": "wr_x"})
+            )
+            .status
+                >= 300
+        );
     }
 }
