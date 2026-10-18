@@ -1786,10 +1786,12 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chrono",
+ "hex",
  "http",
  "parking_lot",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "tracing",
  "uuid",
