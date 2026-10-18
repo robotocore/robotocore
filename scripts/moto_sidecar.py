@@ -420,6 +420,28 @@ def _mirror_delete_side(snapshot, account_id, region):
             logger.debug("mirror delete %s failed: %s", rtype, e)
 
 
+def _ec2_normalize_vpc_endpoint_types(backend):
+    """Moto crashes when a VPC endpoint was created without VpcEndpointType
+    ('NoneType' object has no attribute 'lower' in delete_vpc_endpoints).
+    AWS defaults such endpoints to Gateway type - set that before dispatch."""
+    try:
+        for vpe in (getattr(backend, "vpc_end_points", None) or {}).values():
+            if getattr(vpe, "vpc_endpoint_type", None) is None:
+                vpe.vpc_endpoint_type = "Gateway"
+    except Exception as e:  # noqa: BLE001
+        logger.debug("vpc endpoint type normalization failed: %s", e)
+
+
+_EC2_VPCE_ACTIONS = {
+    "DeleteVpcEndpoints",
+    "ModifyVpcEndpoint",
+    "DescribeVpcEndpoints",
+    "DescribeVpcEndpointConnections",
+    "DescribeVpcEndpointConnectionNotifications",
+    "DescribeVpcEndpointServiceConfigurations",
+}
+
+
 def _cfn_validate_template(params: dict, service: str) -> Response | None:
     """ValidateTemplate mirroring the Python provider's semantics."""
     template_body = params.get("TemplateBody") or ""
@@ -782,18 +804,19 @@ async def moto_handler(request: Request) -> Response:
 
     werkzeug_request = WerkzeugRawBodyRequest(environ, body)
 
-    # CloudFormation parity hooks: params dict for pre-dispatch interception.
-    cfn_backend = None
+    # Query-protocol params for pre-dispatch interception (form + query).
     params: dict = {}
+    for k, v in werkzeug_request.form.items():
+        params[k] = v
+    for k, v in parse_qsl(query, keep_blank_values=True):
+        params.setdefault(k, v)
+
+    cfn_backend = None
     if service in ("cloudformation",):
         try:
             cfn_backend = _moto_backend(service, account_id_from_headers, region)
         except Exception:  # noqa: BLE001
             cfn_backend = None
-        for k, v in werkzeug_request.form.items():
-            params[k] = v
-        for k, v in parse_qsl(query, keep_blank_values=True):
-            params.setdefault(k, v)
         try:
             pre = _cfn_pre_dispatch(service, params.get("Action", ""), params, cfn_backend)
         except Exception as e:  # noqa: BLE001
@@ -801,6 +824,14 @@ async def moto_handler(request: Request) -> Response:
             pre = None
         if pre is not None:
             return pre
+    elif service == "ec2":
+        if params.get("Action") in _EC2_VPCE_ACTIONS:
+            try:
+                _ec2_normalize_vpc_endpoint_types(
+                    _moto_backend("ec2", account_id_from_headers, region)
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.debug("ec2 pre-dispatch failed: %s", e)
 
     # Route to the correct Moto handler
     try:
