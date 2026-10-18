@@ -90,6 +90,18 @@ impl Val {
             _ => None,
         }
     }
+    fn opt_i64(&self) -> Option<i64> {
+        match self {
+            Val::S(s) if !s.is_empty() => s.parse().ok(),
+            _ => None,
+        }
+    }
+    fn s_or(&self, default: &str) -> String {
+        match self {
+            Val::S(s) if !s.is_empty() => s.clone(),
+            _ => default.to_string(),
+        }
+    }
 }
 
 /// Parse urlencoded key/value pairs into a nested tree.
@@ -422,7 +434,7 @@ pub struct EffectiveRefs {
     pub db_name: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DBCluster {
     /// Lowercased identifier (moto lowercases cluster identifiers).
     pub id: String,
@@ -432,7 +444,7 @@ pub struct DBCluster {
     pub engine_mode: String,
     pub status: String,
     /// moto: a fresh cluster reports "creating" once, then "available".
-    status_shown: std::cell::Cell<bool>,
+    status_shown: std::sync::atomic::AtomicBool,
     pub port: i64,
     pub master_username: Option<String>,
     pub allocated_storage: i64,
@@ -472,6 +484,53 @@ impl DBCluster {
     pub fn set_kms_key_id(mut self, key: Option<String>) -> Self {
         self.kms_key_id = key.unwrap_or_else(|| "default_kms_key_id".to_string());
         self
+    }
+}
+
+impl Clone for DBCluster {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            original_id: self.original_id.clone(),
+            engine: self.engine.clone(),
+            engine_version: self.engine_version.clone(),
+            engine_mode: self.engine_mode.clone(),
+            status: self.status.clone(),
+            status_shown: std::sync::atomic::AtomicBool::new(false),
+            port: self.port,
+            master_username: self.master_username.clone(),
+            allocated_storage: self.allocated_storage,
+            storage_type: self.storage_type.clone(),
+            storage_encrypted: self.storage_encrypted,
+            backup_retention_period: self.backup_retention_period,
+            auto_minor_version_upgrade: self.auto_minor_version_upgrade,
+            license_model: self.license_model.clone(),
+            preferred_backup_window: self.preferred_backup_window.clone(),
+            preferred_maintenance_window: self.preferred_maintenance_window.clone(),
+            parameter_group: self.parameter_group.clone(),
+            db_subnet_group_name: self.db_subnet_group_name.clone(),
+            publicly_accessible: self.publicly_accessible,
+            vpc_security_group_ids: self.vpc_security_group_ids.clone(),
+            deletion_protection: self.deletion_protection,
+            iam_auth: self.iam_auth,
+            option_group_name: self.option_group_name.clone(),
+            url_identifier: self.url_identifier.clone(),
+            hosted_zone_id: self.hosted_zone_id.clone(),
+            resource_id: self.resource_id.clone(),
+            tags: self.tags.clone(),
+            replication_source_identifier: self.replication_source_identifier.clone(),
+            read_replica_identifiers: self.read_replica_identifiers.clone(),
+            global_cluster_identifier: self.global_cluster_identifier.clone(),
+            backtrack_window: self.backtrack_window,
+            created: self.created,
+            copy_tags_to_snapshot: self.copy_tags_to_snapshot,
+            character_set_name: self.character_set_name.clone(),
+            database_name: self.database_name.clone(),
+            enabled_cloudwatch_logs_exports: self.enabled_cloudwatch_logs_exports.clone(),
+            associated_roles: self.associated_roles.clone(),
+            availability_zones: self.availability_zones.clone(),
+            kms_key_id: self.kms_key_id.clone(),
+        }
     }
 }
 
@@ -539,11 +598,8 @@ impl DBCluster {
     /// moto flips a fresh cluster's status to available after the first
     /// serialized status read ("creating" once, then "available").
     pub fn publish_status(&self) -> String {
-        if self.status == "creating" {
-            if self.status_shown.get() {
-                return "available".to_string();
-            }
-            self.status_shown.set(true);
+        use std::sync::atomic::Ordering;
+        if self.status == "creating" && !self.status_shown.swap(true, Ordering::SeqCst) {
             return "creating".to_string();
         }
         self.status.clone()
@@ -779,13 +835,27 @@ impl DBProxy {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProxyTarget {
     pub rds_resource_id: String,
     pub port: i64,
     pub r#type: String,
     /// First serialization reports REGISTERING (moto's `registering` flag).
-    pub registering: std::cell::Cell<bool>,
+    pub registering: std::sync::atomic::AtomicBool,
+}
+
+impl Clone for ProxyTarget {
+    fn clone(&self) -> Self {
+        use std::sync::atomic::Ordering;
+        Self {
+            rds_resource_id: self.rds_resource_id.clone(),
+            port: self.port,
+            r#type: self.r#type.clone(),
+            registering: std::sync::atomic::AtomicBool::new(
+                self.registering.load(Ordering::SeqCst),
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1969,7 +2039,8 @@ pub fn db_proxy_xml(acct: u64, region: &str, p: &DBProxy) -> String {
 }
 
 pub fn proxy_target_xml(t: &ProxyTarget) -> String {
-    let health = if t.registering.get() {
+    use std::sync::atomic::Ordering;
+    let health = if t.registering.swap(false, Ordering::SeqCst) {
         "REGISTERING"
     } else {
         "AVAILABLE"
@@ -2398,3 +2469,278 @@ pub fn db_log_file_entry(name: &str, last_written_millis: i64, size: i64) -> Str
         last_written_millis = last_written_millis,
     )
 }
+
+
+// ---------------------------------------------------------------------------
+// Handler helpers
+// ---------------------------------------------------------------------------
+
+fn lowercase_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_lowercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+fn effective_engine_version(st: &RdsState, db: &DBInstance) -> String {
+    match db.db_cluster_identifier.as_deref().and_then(|c| st.clusters.get(c)) {
+        Some(cl) => cl.engine_version.clone(),
+        None => db.engine_version.clone(),
+    }
+}
+
+/// Build a snapshot record the way moto's DBSnapshot init does.
+fn snapshot_from_db(db: &DBInstance, snapshot_id: &str, snapshot_type: &str, tags: &[Tag]) -> DBSnapshot {
+    DBSnapshot {
+        id: snapshot_id.to_lowercase(),
+        original_id: snapshot_id.to_string(),
+        source: db.clone(),
+        snapshot_type: snapshot_type.to_string(),
+        status: "available".to_string(),
+        tags: if tags.is_empty() && db.copy_tags_to_snapshot {
+            db.tags.clone()
+        } else {
+            tags.to_vec()
+        },
+        attributes_restore: Vec::new(),
+        created: Utc::now(),
+        original_created: Utc::now(),
+        kms_key_id: if db.storage_encrypted {
+            Some("default_kms_key_id".to_string())
+        } else {
+            None
+        },
+        encrypted: db.storage_encrypted,
+    }
+}
+
+/// The default parameter group name for an instance; creates it when absent.
+fn ensure_pg_for_instance(st: &mut RdsState, db: &DBInstance) -> String {
+    match &db.db_parameter_group_name {
+        Some(n) if !n.is_empty() => n.clone(),
+        _ => {
+            let version = effective_engine_version(st, db);
+            let cut = version.rfind('.').unwrap_or(version.len());
+            let family = format!("{}{}", db.engine, &version[..cut]);
+            let name = format!("default.{family}");
+            st.ensure_default_parameter_group(&name, &family);
+            name
+        }
+    }
+}
+
+/// Snapshot identifier moto auto-generates for the per-instance backup.
+fn auto_snapshot_id(identifier: &str) -> String {
+    let timestamp = Utc::now().format("%Y-%m-%d-%H-%M");
+    format!("rds:{identifier}-{timestamp}")
+}
+
+fn db_cluster_ref(p: &Params) -> Option<String> {
+    param(p, "DBClusterIdentifier").string().map(|s| s.to_lowercase())
+}
+
+
+// ---------------------------------------------------------------------------
+// Dispatch + response envelope + param accessors
+// ---------------------------------------------------------------------------
+
+/// Serialized `<{Op}Result>` inner XML; `None` renders no Result element.
+pub type Body = Option<String>;
+
+type Params = BTreeMap<String, Val>;
+
+fn param<'a>(p: &'a Params, name: &str) -> &'a Val {
+    p.get(name).unwrap_or(&Val::None)
+}
+
+fn p_str<'p>(p: &'p Params, name: &str) -> Option<&'p str> {
+    param(p, name).string()
+}
+
+fn p_string(p: &Params, name: &str) -> Option<String> {
+    param(p, name).string().map(|s| s.to_string())
+}
+
+fn p_bool(p: &Params, name: &str) -> Option<bool> {
+    param(p, name).opt_bool()
+}
+
+fn p_i64(p: &Params, name: &str) -> Option<i64> {
+    param(p, name).opt_i64()
+}
+
+fn p_f64(p: &Params, name: &str) -> Option<String> {
+    param(p, name).string().map(|s| s.to_string())
+}
+
+fn p_list(p: &Params, name: &str) -> Vec<String> {
+    param(p, name).list()
+}
+
+fn p_maps(p: &Params, name: &str) -> Vec<Vec<(String, String)>> {
+    param(p, name).map_list()
+}
+
+fn tags_param(p: &Params) -> Vec<Tag> {
+    let mut out = Vec::new();
+    for m in p_maps(p, "Tags") {
+        let mut key = None;
+        let mut value = None;
+        for (k, v) in m {
+            if k == "Key" {
+                key = Some(v);
+            } else if k == "Value" {
+                value = Some(v);
+            }
+        }
+        if let (Some(key), Some(value)) = (key, value) {
+            out.push(Tag { key, value });
+        }
+    }
+    out
+}
+
+fn body_of(p: &Params, name: &str, memb: &str) -> Vec<Vec<(String, String)>> {
+    let _ = memb;
+    p_maps(p, name)
+}
+
+fn request_id() -> String {
+    uuid::Uuid::new_v4()
+        .simple()
+        .to_string()
+        .to_uppercase()
+        .chars()
+        .take(27)
+        .collect()
+}
+
+fn response_xml(op: &str, inner: Option<String>) -> Response {
+    let mut body = match inner {
+        Some(s) => format!("<{op}Result>{s}</{op}Result>"),
+        None => String::new(),
+    };
+    let rid = request_id();
+    body.push_str(&format!(
+        "<ResponseMetadata><RequestId>{rid}</RequestId></ResponseMetadata>"
+    ));
+    let full = format!("<{op}Response xmlns=\"{XMLNS}\">{body}</{op}Response>");
+    Response::xml(200, full.into_bytes())
+}
+
+fn error_response(e: &RdsError) -> Response {
+    let rid = request_id();
+    let full = format!(
+        "<ErrorResponse xmlns=\"{XMLNS}\"><Error><Type>Sender</Type>\
+         <Code>{}</Code><Message>{}</Message></Error><RequestId>{rid}</RequestId></ErrorResponse>",
+        esc(&e.code),
+        esc(&e.message)
+    );
+    Response::xml(e.status, full.into_bytes())
+}
+
+/// Subnet ids relevant to subnet-group / proxy-shaped requests.
+fn relevant_subnet_ids(p: &Params) -> Vec<String> {
+    let mut relevant = p_list(p, "SubnetIds");
+    relevant.extend(p_list(p, "VpcSubnetIds"));
+    relevant.retain(|s| s.starts_with("subnet-"));
+    relevant
+}
+
+/// Best-effort EC2 subnet lookup through the local gateway so subnet groups
+/// and proxies can report the right VpcId; never fails the request.
+fn fetch_subnet_info(
+    req: &Request,
+    p: &Params,
+) -> BTreeMap<String, (Option<String>, Option<String>)> {
+    let ids = relevant_subnet_ids(p);
+    let mut out = BTreeMap::new();
+    if ids.is_empty() {
+        return out;
+    }
+    let host = req
+        .headers
+        .get("host")
+        .cloned()
+        .unwrap_or_else(|| "127.0.0.1:4567".to_string());
+    let mut body = String::from("Action=DescribeSubnets&Version=2016-11-15");
+    for (i, id) in ids.iter().enumerate() {
+        body.push_str("&SubnetIds.member.");
+        body.push_str(&(i + 1).to_string());
+        body.push('=');
+        body.push_str(id);
+    }
+    let auth = format!(
+        "AWS4-HMAC-SHA256 Credential={}/20240101/{}/ec2/aws4_request",
+        req.account,
+        req.region
+    );
+    let request = format!(
+        "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/x-www-form-urlencoded\r\n\
+         Authorization: {auth}\r\nX-Amz-Date: 20240101T000000Z\r\n\
+         Content-Length: {len}\r\nConnection: close\r\n\r\n{body}",
+        len = body.len(),
+    );
+    if let Ok(mut stream) = std::net::TcpStream::connect(&host) {
+        use std::io::Read;
+        let _ = std::io::Write::write_all(&mut stream, request.as_bytes());
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(3)));
+        let mut buf = String::new();
+        let _ = stream.read_to_string(&mut buf);
+        let body = buf.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(&buf);
+        for chunk in body.split("<item>") {
+            if let Some(id) = grab_tag(chunk, "subnetId") {
+                let vpc = grab_tag(chunk, "vpcId");
+                let az = grab_tag(chunk, "availabilityZone");
+                out.insert(id, (vpc, az));
+            }
+        }
+    }
+    out
+}
+
+fn grab_tag(text: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let start = text.find(&open)? + open.len();
+    let rest = &text[start..];
+    let end = rest.find(&format!("</{tag}>"))?;
+    Some(rest[..end].to_string())
+}
+
+/// Entry point: route an RDS op to its handler.
+pub fn dispatch(req: &Request) -> Option<Response> {
+    if req.service != "rds" {
+        return None;
+    }
+    let op = req.operation.trim().to_string();
+    let params = parse_params(req);
+    let subnet_info = fetch_subnet_info(req, &params);
+    let slots = store::slot::<RdsState>("rds");
+    let mut map = slots.write();
+    let key = (req.account, req.region.clone());
+    let state = map.entry(key).or_default();
+    match run_op(req, state, &op, &params, subnet_info) {
+        Ok(body) => Some(response_xml(&op, body)),
+        Err(e) => Some(error_response(&e)),
+    }
+}
+
+
+fn run_op(
+    req: &Request,
+    st: &mut RdsState,
+    op: &str,
+    p: &Params,
+    subnet_info: BTreeMap<String, (Option<String>, Option<String>)>,
+) -> Result<Body, RdsError> {
+    let _ = (req, p, subnet_info);
+    let _ = &mut *st;
+    Err(RdsError::new(
+        501,
+        "NotImplemented",
+        format!("The {} action has not been implemented", lowercase_first(op)),
+    ))
+}
+
+// __APPEND_MARKER__
