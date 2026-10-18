@@ -6,11 +6,13 @@
 
 pub mod azones;
 pub mod ec2b;
+pub mod family_fills;
 pub mod handlers;
 pub mod handlers_compute;
 pub mod handlers_misc;
 pub mod handlers_net;
 pub mod handlers_net2;
+pub mod shapes;
 pub mod state;
 pub mod templates;
 #[cfg(test)]
