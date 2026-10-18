@@ -85,6 +85,9 @@ impl MotoProxy {
 
         // Send the request
         let resp = proxy_req.send().await?;
+        if url.contains("automated-reasoning-policies") {
+            tracing::info!("moto-proxy forward: {} {} {}", req.method, url, req.query_string);
+        }
 
         let status = resp.status();
         let headers_map = resp.headers().clone();

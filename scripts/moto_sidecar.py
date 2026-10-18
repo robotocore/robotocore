@@ -959,7 +959,15 @@ async def moto_handler(request: Request) -> Response:
 
     # Build the Werkzeug environ
     method = request.method
-    path = request.url.path
+    # Prefer the raw (percent-encoded) path: Starlette's url.path decodes
+    # %2F to '/', which breaks moto's "[^/]+" route converters for ARN
+    # path params (bedrock policy ARNs, glacier vault names, ...). The
+    # Python gateway forwards raw_path for exactly this reason.
+    raw_path = getattr(request, "scope", {}).get("raw_path", b"")
+    if raw_path:
+        path = raw_path.decode("latin-1").split("?", 1)[0]
+    else:
+        path = request.url.path
     query = str(request.url.query)
 
     headers = dict(request.headers)
