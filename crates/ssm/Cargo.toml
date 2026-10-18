@@ -14,3 +14,5 @@ chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 tracing = "0.1"
 http = "1.0"
+sha2 = "0.10"
+hex = "0.4"

@@ -29,7 +29,7 @@ impl AwsResponse {
                 ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
                 ("server".to_string(), "robotocore".to_string()),
             ],
-            body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
+            body: serde_json::to_string(&strip_nulls(&body)).unwrap_or_else(|_| "{}".to_string()),
         }
     }
 
@@ -44,5 +44,23 @@ impl AwsResponse {
             ],
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
         }
+    }
+}
+
+/// Remove `null` object members the way moto's JSON serializer does.
+fn strip_nulls(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, v) in map {
+                if v.is_null() {
+                    continue;
+                }
+                out.insert(k.clone(), strip_nulls(v));
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(strip_nulls).collect()),
+        other => other.clone(),
     }
 }
