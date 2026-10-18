@@ -6,6 +6,16 @@
 
 use crate::{Request, Response};
 
+mod cloudtrail;
+mod config;
+mod elasticache;
+mod managedblockchain;
+mod opensearch;
+mod opensearchserverless;
+mod resourcegroupstaggingapi;
+mod route53resolver;
+mod sesv2;
+
 // Pending ports (stubs live in their modules but are not yet wired):
 // - ec2 (stub)
 // - elbv2 / elb (not yet ported; fall back to the moto sidecar)
@@ -57,6 +67,16 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "organizations" => organizations::dispatch(req),
         "rds" => Some(self::rds::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
+        "cloudtrail" => Some(cloudtrail::dispatch(req)),
+        "config" => Some(config::dispatch(req)),
+        "opensearch" => Some(opensearch::dispatch(req)),
+        "es" => Some(opensearch::dispatch(req)),
+        "elasticache" => Some(elasticache::dispatch(req)),
+        "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
+        "route53resolver" => Some(route53resolver::dispatch(req)),
+        "managedblockchain" => Some(managedblockchain::dispatch(req)),
+        "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
+        "sesv2" => Some(sesv2::dispatch(req)),
         _ => None,
     }
 }

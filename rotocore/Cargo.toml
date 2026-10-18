@@ -22,3 +22,6 @@ urlencoding = "2.1"
 # Sync HTTP loopback client for the resource mirror (CFN -> sibling services);
 # no TLS needed: the mirror only ever talks to the local host over http.
 ureq = { version = "2.10", default-features = false }
+# Cross-service reads (CreateTrail's S3-bucket existence check mirrors moto's
+# `s3_backends[...].get_bucket` probe via the s3 crate's state bridge).
+s3 = { path = "../crates/s3" }
