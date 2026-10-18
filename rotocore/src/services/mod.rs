@@ -16,11 +16,14 @@ pub mod securityhub;
 // - ec2 (stub)
 // - cloudformation (stub)
 
+mod rds;
+
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "inspector2" => Some(inspector2::dispatch(req)),
         "lakeformation" => Some(lakeformation::dispatch(req)),
         "macie2" => Some(macie2::dispatch(req)),
+        "rds" => Some(self::rds::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         _ => None,
     }
