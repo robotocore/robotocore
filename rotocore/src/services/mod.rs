@@ -12,6 +12,7 @@ use crate::{Request, Response};
 // - cloudformation (stub)
 
 pub mod identitystore;
+pub mod ivs;
 pub mod mediapackage;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
@@ -19,6 +20,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         return Some(resp);
     }
     if let Some(resp) = identitystore::dispatch(req) {
+        return Some(resp);
+    }
+    if let Some(resp) = ivs::dispatch(req) {
         return Some(resp);
     }
     // No other service fully ported yet.
