@@ -4704,4 +4704,231 @@ fn restore_db_cluster_to_point_in_time(
     }
 }
 
+
+// Global clusters ------------------------------------------------------------
+
+fn create_global_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if st.global_clusters.contains_key(&lower) {
+        return Err(RdsError::client400(
+            "GlobalClusterAlreadyExistsFault",
+            format!("Global Cluster {identifier} already exists."),
+        ));
+    }
+    let source_arn = p_string(p, "SourceDBClusterIdentifier");
+    let mut engine = p_string(p, "Engine");
+    let mut engine_version = p_string(p, "EngineVersion");
+    let mut attached_member: Option<String> = None;
+    if let Some(source) = source_arn {
+        let source_id = identifier_from_arn(&source).to_lowercase();
+        let cluster = match find_cluster(st, &source_id) {
+            Some(c) => c.clone(),
+            None => {
+                return Err(RdsError::not_found404(
+                    "DBClusterNotFoundFault",
+                    format!("DBCluster {source} not found."),
+                ))
+            }
+        };
+        if engine.is_some() {
+            return Err(RdsError::client400(
+                "InvalidParameterCombination",
+                "When creating global cluster from existing db cluster, value for engineName should not be specified since it will be inherited from source cluster",
+            ));
+        }
+        engine = Some(cluster.engine.clone());
+        engine_version = Some(cluster.engine_version.clone());
+        attached_member = Some(cluster.id.clone());
+    }
+    let engine = match engine {
+        Some(e) => e,
+        None => {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                "When creating standalone global cluster, value for engineName should be specified",
+            ))
+        }
+    };
+    let gc = GlobalCluster {
+        identifier: lower.clone(),
+        original_id: identifier.clone(),
+        unique_id: rand_lower(8),
+        engine: engine.clone(),
+        engine_version: engine_version
+            .unwrap_or_else(|| DBCluster::default_engine_version(&engine).to_string()),
+        storage_encrypted: p_bool(p, "StorageEncrypted").unwrap_or(false),
+        deletion_protection: p_bool(p, "DeletionProtection").unwrap_or(false),
+        members: attached_member.iter().map(|m| m.clone()).collect(),
+        status: "available".into(),
+        tags: tags_param(p),
+    };
+    if let Some(member) = &attached_member {
+        if let Some(cl) = st.clusters.get_mut(member) {
+            cl.global_cluster_identifier = Some(lower.clone());
+        }
+    }
+    let response = gc.clone();
+    st.global_clusters.insert(lower, gc);
+    Ok(Some(format!(
+        "<GlobalCluster>{}</GlobalCluster>",
+        global_cluster_xml(acct, &response, st)
+    )))
+}
+
+fn describe_global_clusters_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "GlobalClusterIdentifier").map(|s| s.to_lowercase());
+    let matched: Vec<&GlobalCluster> = st
+        .global_clusters
+        .values()
+        .filter(|g| match &filter {
+            Some(f) => g.identifier == *f,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for gc in &matched {
+        list.push_str(&global_cluster_xml(acct, gc, st));
+    }
+    Ok(Some(format!("<GlobalClusters>{list}</GlobalClusters>")))
+}
+
+fn delete_global_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.global_clusters.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "GlobalClusterNotFoundFault",
+            format!("Global Cluster {identifier} not found."),
+        ));
+    }
+    let gc = st.global_clusters.get(&lower).unwrap().clone();
+    if !gc.members.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidGlobalClusterStateFault",
+            format!("Global Cluster {} is not empty", gc.arn_for(acct)),
+        ));
+    }
+    st.global_clusters.remove(&lower);
+    Ok(Some(format!(
+        "<GlobalCluster>{}</GlobalCluster>",
+        global_cluster_xml(acct, &gc, st)
+    )))
+}
+
+fn modify_global_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.global_clusters.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "GlobalClusterNotFoundFault",
+            format!("Global Cluster {identifier} not found."),
+        ));
+    }
+    if let Some(v) = p_bool(p, "DeletionProtection") {
+        st.global_clusters.get_mut(&lower).unwrap().deletion_protection = v;
+    }
+    if let Some(v) = p_string(p, "EngineVersion") {
+        st.global_clusters.get_mut(&lower).unwrap().engine_version = v;
+    }
+    let mut renamed_from = lower.clone();
+    if let Some(new_name) = p_string(p, "NewGlobalClusterIdentifier") {
+        let new_lower = new_name.to_lowercase();
+        if let Some(mut gc) = st.global_clusters.remove(&lower) {
+            gc.identifier = new_lower.clone();
+            gc.original_id = new_name;
+            st.global_clusters.insert(new_lower.clone(), gc);
+        }
+        renamed_from = new_lower;
+    }
+    let gc = st.global_clusters.get(&renamed_from).unwrap().clone();
+    Ok(Some(format!(
+        "<GlobalCluster>{}</GlobalCluster>",
+        global_cluster_xml(acct, &gc, st)
+    )))
+}
+
+fn remove_from_global_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
+    let member = p_string(p, "DbClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    let member_id = identifier_from_arn(&member).to_lowercase();
+    let found = st.global_clusters.contains_key(&lower)
+        && st.clusters.contains_key(&member_id);
+    if found {
+        if let Some(gc) = st.global_clusters.get_mut(&lower) {
+            gc.members.retain(|m| *m != member_id);
+        }
+        if let Some(gc) = st.global_clusters.get(&lower) {
+            let gc = gc.clone();
+            return Ok(Some(format!(
+                "<GlobalCluster>{}</GlobalCluster>",
+                global_cluster_xml(acct, &gc, st)
+            )));
+        }
+    }
+    // moto swallows misses and returns an empty RemoveFromGlobalClusterResult
+    Ok(None)
+}
+
+fn failover_global_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
+    let target = p_string(p, "TargetDbClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.global_clusters.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "GlobalClusterNotFoundFault",
+            format!("Global Cluster {identifier} not found."),
+        ));
+    }
+    let target_id = identifier_from_arn(&target);
+    if let Some(cl) = st.clusters.get_mut(&target_id.to_lowercase()) {
+        cl.publicly_accessible = true;
+    }
+    let gc = st.global_clusters.get(&lower).unwrap().clone();
+    Ok(Some(format!(
+        "<GlobalCluster>{}</GlobalCluster>",
+        global_cluster_xml(acct, &gc, st)
+    )))
+}
+
+fn switchover_global_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    failover_global_cluster(st, acct, region, p)
+}
+
 // __APPEND_MARKER__
