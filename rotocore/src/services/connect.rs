@@ -974,6 +974,143 @@ fn handle(
         "TagResource" => op_tag_resource(st, param(params, "resourceArn"), body),
         "UntagResource" => op_untag_resource(st, param(params, "resourceArn"), query),
         "ListTagsForResource" => op_list_tags_for_resource(st, param(params, "resourceArn")),
+        // -- Agent statuses ------------------------------------------------
+        "CreateAgentStatus" => op_create_agent_status(st, param(params, "InstanceId"), body),
+        "DescribeAgentStatus" => op_describe_agent_status(
+            st,
+            param(params, "InstanceId"),
+            param(params, "AgentStatusId"),
+        ),
+        "UpdateAgentStatus" => op_update_agent_status(
+            st,
+            param(params, "InstanceId"),
+            param(params, "AgentStatusId"),
+            body,
+        ),
+        "ListAgentStatuses" => op_list_agent_statuses(st, param(params, "InstanceId")),
+        // -- Security profiles ----------------------------------------------
+        "CreateSecurityProfile" => {
+            op_create_security_profile(st, param(params, "InstanceId"), body)
+        }
+        "DescribeSecurityProfile" => op_describe_security_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "SecurityProfileId"),
+        ),
+        "UpdateSecurityProfile" => op_update_security_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "SecurityProfileId"),
+            body,
+        ),
+        "DeleteSecurityProfile" => op_delete_security_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "SecurityProfileId"),
+        ),
+        "ListSecurityProfiles" => op_list_security_profiles(st, param(params, "InstanceId")),
+        "ListSecurityProfilePermissions" => op_list_security_profile_permissions(
+            st,
+            param(params, "InstanceId"),
+            param(params, "SecurityProfileId"),
+        ),
+        "ListSecurityProfileApplications" => {
+            op_list_security_profile_applications(st, param(params, "InstanceId"))
+        }
+        // -- Users -----------------------------------------------------------
+        "CreateUser" => op_create_user(st, param(params, "InstanceId"), body),
+        "DescribeUser" => {
+            op_describe_user(st, param(params, "InstanceId"), param(params, "UserId"))
+        }
+        "UpdateUserIdentityInfo" => {
+            let user_id = param(params, "UserId");
+            let identity = match opt_val(body, "IdentityInfo") {
+                Some(v) => v,
+                None => return missing_body_param("IdentityInfo"),
+            };
+            op_update_user_field(st, param(params, "InstanceId"), user_id, |u| {
+                u["IdentityInfo"] = identity
+            })
+        }
+        "UpdateUserPhoneConfig" => {
+            let user_id = param(params, "UserId");
+            let config = match opt_val(body, "PhoneConfig") {
+                Some(v) => v,
+                None => return missing_body_param("PhoneConfig"),
+            };
+            op_update_user_field(st, param(params, "InstanceId"), user_id, |u| {
+                u["PhoneConfig"] = config
+            })
+        }
+        "UpdateUserRoutingProfile" => {
+            let user_id = param(params, "UserId");
+            let rp = match body_str(body, "RoutingProfileId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_update_user_field(st, param(params, "InstanceId"), user_id, |u| {
+                u["RoutingProfileId"] = json!(rp)
+            })
+        }
+        "UpdateUserSecurityProfiles" => {
+            let user_id = param(params, "UserId");
+            let ids = match opt_val(body, "SecurityProfileIds") {
+                Some(v) => v,
+                None => return missing_body_param("SecurityProfileIds"),
+            };
+            op_update_user_field(st, param(params, "InstanceId"), user_id, |u| {
+                u["SecurityProfileIds"] = ids
+            })
+        }
+        "UpdateUserHierarchy" => {
+            let user_id = param(params, "UserId");
+            let hierarchy = opt_val(body, "HierarchyGroupId");
+            op_update_user_field(
+                st,
+                param(params, "InstanceId"),
+                user_id,
+                |u| match hierarchy {
+                    Some(v) if !v.as_str().unwrap_or_default().is_empty() => {
+                        u["HierarchyGroupId"] = v;
+                    }
+                    _ => {
+                        u.as_object_mut().map(|m| m.remove("HierarchyGroupId"));
+                    }
+                },
+            )
+        }
+        "DeleteUser" => op_delete_user(st, param(params, "InstanceId"), param(params, "UserId")),
+        "ListUsers" => op_list_users(st, param(params, "InstanceId")),
+        // -- User hierarchy groups -------------------------------------------
+        "CreateUserHierarchyGroup" => {
+            op_create_user_hierarchy_group(st, param(params, "InstanceId"), body)
+        }
+        "DescribeUserHierarchyGroup" => op_describe_user_hierarchy_group(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HierarchyGroupId"),
+        ),
+        "DeleteUserHierarchyGroup" => op_delete_user_hierarchy_group(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HierarchyGroupId"),
+        ),
+        "UpdateUserHierarchyGroupName" => op_update_user_hierarchy_group_name(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HierarchyGroupId"),
+            body,
+        ),
+        "ListUserHierarchyGroups" => op_list_user_hierarchy_groups(st, param(params, "InstanceId")),
+        "DescribeUserHierarchyStructure" => op_describe_user_hierarchy_structure(
+            st,
+            param(params, "InstanceId"),
+            &req.region,
+            req.account,
+        ),
+        "UpdateUserHierarchyStructure" => {
+            op_update_user_hierarchy_structure(st, param(params, "InstanceId"))
+        }
         _ => op_not_implemented(op),
     }
 }
@@ -1608,6 +1745,620 @@ fn notfound_instance(instance_id: &str) -> Response {
 }
 
 // ---------------------------------------------------------------------------
+// Agent statuses
+// ---------------------------------------------------------------------------
+
+/// moto stamps `instance_arn.split(":")[3]` as the last-modified region.
+fn region_of(instance: &Value) -> String {
+    instance
+        .get("Arn")
+        .and_then(Value::as_str)
+        .and_then(|arn| arn.split(':').nth(3).map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn op_create_agent_status(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let state = match body_str(body, "State") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let agent_status_id = uuid::Uuid::new_v4().to_string();
+    let status_arn = format!(
+        "{}/agent-status/{agent_status_id}",
+        str_field(&instance, "Arn")
+    );
+    let mut out = Map::new();
+    out.insert("AgentStatusARN".into(), json!(status_arn.clone()));
+    out.insert("AgentStatusId".into(), json!(agent_status_id));
+    out.insert("Name".into(), json!(name));
+    out.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    out.insert("Type".into(), json!("CUSTOM"));
+    out.insert("State".into(), json!(state));
+    out.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    let last_modified = now_iso();
+    out.insert("LastModifiedTime".into(), json!(last_modified.clone()));
+    out.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    if let Some(order) = body.get("DisplayOrder").cloned() {
+        out.insert("DisplayOrder".into(), order);
+    }
+    st.agent_statuses
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(agent_status_id.clone(), Value::Object(out.clone()));
+    tag_resource(st, &status_arn, opt_val(body, "Tags"));
+    ok(Value::Object(out))
+}
+
+fn op_describe_agent_status(
+    st: &mut ConnectState,
+    instance_id: &str,
+    agent_status_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .agent_statuses
+        .get(instance_id)
+        .and_then(|m| m.get(agent_status_id))
+    {
+        Some(s) => ok(json!({"AgentStatus": s.clone()})),
+        None => not_found(format!(
+            "Agent status {agent_status_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_agent_status(
+    st: &mut ConnectState,
+    instance_id: &str,
+    agent_status_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let status = match st
+        .agent_statuses
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(agent_status_id))
+    {
+        Some(s) => s,
+        None => return not_found(format!("Agent status {agent_status_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        status["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        status["Description"] = desc;
+    }
+    if let Some(state) = opt_val(body, "State") {
+        status["State"] = state;
+    }
+    if let Some(order) = body.get("DisplayOrder") {
+        status["DisplayOrder"] = order.clone();
+    }
+    if body
+        .get("ResetOrderNumber")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        if let Some(m) = status.as_object_mut() {
+            m.remove("DisplayOrder");
+        }
+    }
+    status["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_list_agent_statuses(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let statuses = st.agent_statuses.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = statuses
+        .values()
+        .map(|s| {
+            let mut m = Map::new();
+            for (src, dst) in [
+                ("AgentStatusId", "Id"),
+                ("AgentStatusARN", "Arn"),
+                ("Name", "Name"),
+                ("Type", "Type"),
+                ("LastModifiedTime", "LastModifiedTime"),
+                ("LastModifiedRegion", "LastModifiedRegion"),
+            ] {
+                if let Some(v) = s.get(src) {
+                    m.insert(dst.to_string(), v.clone());
+                }
+            }
+            Value::Object(m)
+        })
+        .collect();
+    ok(json!({"AgentStatusSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Security profiles
+// ---------------------------------------------------------------------------
+
+fn op_create_security_profile(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "SecurityProfileName") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let sp_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/security-profile/{sp_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("Id".into(), json!(sp_id.clone()));
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("SecurityProfileName".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    // moto keeps perms/AC-tags off `to_dict` (list_permissions reads them).
+    stored.insert(
+        "__permissions".into(),
+        opt_val(body, "Permissions").unwrap_or_else(|| json!([])),
+    );
+    stored.insert(
+        "__allowed_access_control_tags".into(),
+        opt_val(body, "AllowedAccessControlTags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert(
+        "__tag_restricted_resources".into(),
+        opt_val(body, "TagRestrictedResources").unwrap_or_else(|| json!([])),
+    );
+    stored.insert(
+        "TagRestrictedResources".into(),
+        opt_val(body, "TagRestrictedResources").unwrap_or_else(|| json!([])),
+    );
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.security_profiles
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(sp_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"SecurityProfileId": sp_id, "SecurityProfileArn": arn}))
+}
+
+fn op_describe_security_profile(st: &mut ConnectState, instance_id: &str, sp_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .security_profiles
+        .get(instance_id)
+        .and_then(|m| m.get(sp_id))
+    {
+        Some(sp) => ok(json!({"SecurityProfile": sp.clone()})),
+        None => not_found(format!(
+            "Security profile {sp_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_security_profile(
+    st: &mut ConnectState,
+    instance_id: &str,
+    sp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let sp = match st
+        .security_profiles
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(sp_id))
+    {
+        Some(sp) => sp,
+        None => {
+            return not_found(format!("Security profile {sp_id} not found"));
+        }
+    };
+    if let Some(name) = opt_val(body, "SecurityProfileName") {
+        sp["SecurityProfileName"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        sp["Description"] = desc;
+    }
+    if let Some(permissions) = opt_val(body, "Permissions") {
+        sp["__permissions"] = permissions;
+    }
+    if let Some(tags) = opt_val(body, "AllowedAccessControlTags") {
+        sp["__allowed_access_control_tags"] = tags;
+    }
+    if let Some(resources) = opt_val(body, "TagRestrictedResources") {
+        sp["__tag_restricted_resources"] = resources;
+    }
+    sp["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_security_profile(st: &mut ConnectState, instance_id: &str, sp_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .security_profiles
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(sp_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Security profile {sp_id} not found")),
+    }
+}
+
+fn op_list_security_profiles(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let profiles = st.security_profiles.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = profiles
+        .values()
+        .map(|sp| {
+            json!({
+                "Id": sp["Id"],
+                "Arn": sp["Arn"],
+                "Name": sp["SecurityProfileName"],
+                "LastModifiedTime": sp["LastModifiedTime"],
+                "LastModifiedRegion": sp["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"SecurityProfileSummaryList": rows}))
+}
+
+fn op_list_security_profile_permissions(
+    st: &mut ConnectState,
+    instance_id: &str,
+    sp_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let perms = st
+        .security_profiles
+        .get(instance_id)
+        .and_then(|m| m.get(sp_id))
+        .and_then(|sp| sp.get("__permissions").cloned())
+        .unwrap_or_else(|| json!([]));
+    ok(json!({"Permissions": perms}))
+}
+
+fn op_list_security_profile_applications(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    ok(json!({"Applications": []}))
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+fn user_default_phone_config() -> Value {
+    json!({
+        "PhoneType": "SOFT_PHONE",
+        "AutoAccept": false,
+        "AfterContactWorkTimeLimit": 0,
+    })
+}
+
+fn op_create_user(st: &mut ConnectState, instance_id: &str, body: &Map<String, Value>) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let username = match body_str(body, "Username") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let security_profile_ids = match opt_val(body, "SecurityProfileIds") {
+        Some(v) => v,
+        None => return missing_body_param("SecurityProfileIds"),
+    };
+    let routing_profile_id = match body_str(body, "RoutingProfileId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/agent/{user_id}", str_field(&instance, "Arn"));
+    let mut user = Map::new();
+    user.insert("Id".into(), json!(user_id.clone()));
+    user.insert("Arn".into(), json!(arn.clone()));
+    user.insert("Username".into(), json!(username));
+    user.insert(
+        "IdentityInfo".into(),
+        opt_val(body, "IdentityInfo").unwrap_or_else(|| json!({})),
+    );
+    user.insert(
+        "PhoneConfig".into(),
+        opt_val(body, "PhoneConfig")
+            .filter(|v| !v.is_null())
+            .unwrap_or_else(user_default_phone_config),
+    );
+    user.insert("SecurityProfileIds".into(), security_profile_ids);
+    user.insert("RoutingProfileId".into(), json!(routing_profile_id));
+    user.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    user.insert("LastModifiedTime".into(), json!(now_iso()));
+    user.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    if let Some(dir_id) = opt_val(body, "DirectoryUserId").filter(|v| !v.is_null()) {
+        user.insert("DirectoryUserId".into(), dir_id);
+    }
+    if let Some(hg) = opt_val(body, "HierarchyGroupId").filter(|v| !v.is_null()) {
+        user.insert("HierarchyGroupId".into(), hg);
+    }
+    st.users
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(user_id.clone(), Value::Object(user));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"UserId": user_id, "UserArn": arn}))
+}
+
+fn op_describe_user(st: &mut ConnectState, instance_id: &str, user_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.users.get(instance_id).and_then(|m| m.get(user_id)) {
+        Some(u) => ok(json!({"User": u.clone()})),
+        None => not_found(format!(
+            "User {user_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_user_field(
+    st: &mut ConnectState,
+    instance_id: &str,
+    user_id: &str,
+    apply: impl FnOnce(&mut Value),
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let user = match st
+        .users
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(user_id))
+    {
+        Some(u) => u,
+        None => return not_found(format!("User {user_id} not found")),
+    };
+    apply(user);
+    user["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_user(st: &mut ConnectState, instance_id: &str, user_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .users
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(user_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("User {user_id} not found")),
+    }
+}
+
+fn op_list_users(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let users = st.users.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = users
+        .values()
+        .map(|u| {
+            json!({
+                "Id": u["Id"],
+                "Arn": u["Arn"],
+                "Username": u["Username"],
+            })
+        })
+        .collect();
+    ok(json!({"UserSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// User hierarchy groups + structure
+// ---------------------------------------------------------------------------
+
+fn op_create_user_hierarchy_group(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let group_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/agent-group/{group_id}", str_field(&instance, "Arn"));
+    let mut group = Map::new();
+    group.insert("Id".into(), json!(group_id.clone()));
+    group.insert("Arn".into(), json!(arn.clone()));
+    group.insert("Name".into(), json!(name));
+    group.insert("LevelId".into(), json!("1"));
+    group.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    group.insert("LastModifiedTime".into(), json!(now_iso()));
+    group.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.user_hierarchy_groups
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(group_id.clone(), Value::Object(group));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"HierarchyGroupId": group_id, "HierarchyGroupArn": arn}))
+}
+
+fn op_describe_user_hierarchy_group(
+    st: &mut ConnectState,
+    instance_id: &str,
+    group_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .user_hierarchy_groups
+        .get(instance_id)
+        .and_then(|m| m.get(group_id))
+    {
+        Some(g) => ok(json!({"HierarchyGroup": g.clone()})),
+        None => not_found(format!(
+            "Hierarchy group {group_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_delete_user_hierarchy_group(
+    st: &mut ConnectState,
+    instance_id: &str,
+    group_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .user_hierarchy_groups
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(group_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Hierarchy group {group_id} not found")),
+    }
+}
+
+fn op_update_user_hierarchy_group_name(
+    st: &mut ConnectState,
+    instance_id: &str,
+    group_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let group = match st
+        .user_hierarchy_groups
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(group_id))
+    {
+        Some(g) => g,
+        None => return not_found(format!("Hierarchy group {group_id} not found")),
+    };
+    group["Name"] = json!(name);
+    group["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_list_user_hierarchy_groups(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let groups = st.user_hierarchy_groups.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = groups
+        .values()
+        .map(|g| {
+            json!({
+                "Id": g["Id"],
+                "Arn": g["Arn"],
+                "Name": g["Name"],
+                "LastModifiedTime": g["LastModifiedTime"],
+                "LastModifiedRegion": g["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"UserHierarchyGroupSummaryList": rows}))
+}
+
+fn op_describe_user_hierarchy_structure(
+    st: &mut ConnectState,
+    instance_id: &str,
+    region: &str,
+    account: u64,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let level = |n: u32, name: &str| {
+        let arn = format!(
+            "arn:aws:connect:{region}:{account}:instance/{instance_id}/agent-group-type/level-{n}"
+        );
+        json!({"Id": n.to_string(), "Arn": arn, "Name": name})
+    };
+    ok(json!({
+        "HierarchyStructure": {
+            "LevelOne": level(1, "Organization"),
+            "LevelTwo": level(2, "Division"),
+            "LevelThree": level(3, "Department"),
+            "LevelFour": level(4, "Team"),
+            "LevelFive": level(5, "Agent"),
+        }
+    }))
+}
+
+fn op_update_user_hierarchy_structure(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 
@@ -2042,6 +2793,334 @@ mod tests {
 
     fn url_encoded(arn: &str) -> String {
         arn.replace(':', "%3A").replace('/', "%2F")
+    }
+
+    // -- Agent statuses --------------------------------------------------------
+
+    #[test]
+    fn agent_status_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/agent-status/{id}"),
+            json!({"Name": "Available", "State": "ENABLED", "Description": "d"}),
+            "",
+        );
+        let created = body_of(&create);
+        let sid = created["AgentStatusId"].as_str().unwrap().to_string();
+        assert_eq!(sid.len(), 36);
+        assert!(created["AgentStatusARN"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/agent-status/{sid}")));
+
+        let desc = request("GET", &format!("/agent-status/{id}/{sid}"), json!({}), "");
+        let agent_status = body_of(&desc);
+        let status = &agent_status["AgentStatus"];
+        assert_eq!(status["Name"], "Available");
+        assert_eq!(status["State"], "ENABLED");
+        assert_eq!(status["Type"], "CUSTOM");
+        assert_eq!(status["Description"], "d");
+
+        let listed = request("GET", &format!("/agent-status/{id}"), json!({}), "");
+        let summary = body_of(&listed);
+        let rows = summary["AgentStatusSummaryList"].as_array().unwrap();
+        assert_eq!(rows[0]["Id"], sid.as_str());
+        assert_eq!(rows[0]["Name"], "Available");
+
+        let update = request(
+            "POST",
+            &format!("/agent-status/{id}/{sid}"),
+            json!({"Name": "Busy", "State": "DISABLED"}),
+            "",
+        );
+        assert_eq!(status_of(&update), 200);
+        let desc = request("GET", &format!("/agent-status/{id}/{sid}"), json!({}), "");
+        let updated = body_of(&desc);
+        assert_eq!(updated["AgentStatus"]["Name"], "Busy");
+        assert_eq!(updated["AgentStatus"]["State"], "DISABLED");
+
+        let missing = request("GET", &format!("/agent-status/{id}/fake"), json!({}), "");
+        assert_eq!(status_of(&missing), 404);
+    }
+
+    // -- Security profiles -----------------------------------------------------
+
+    #[test]
+    fn security_profile_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/security-profiles/{id}"),
+            json!({"SecurityProfileName": "Agent", "Permissions": ["p-1"]}),
+            "",
+        );
+        let created = body_of(&create);
+        let sp_id = created["SecurityProfileId"].as_str().unwrap().to_string();
+        assert!(created["SecurityProfileArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/security-profile/{sp_id}")));
+
+        let desc = request(
+            "GET",
+            &format!("/security-profiles/{id}/{sp_id}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let sp = &described["SecurityProfile"];
+        assert_eq!(sp["SecurityProfileName"], "Agent");
+        // moto's to_dict omits Permissions (list_security_profile_permissions
+        // is the only reader).
+        assert!(sp.get("Permissions").is_none());
+
+        let perms = request(
+            "GET",
+            &format!("/security-profiles-permissions/{id}/{sp_id}"),
+            json!({}),
+            "",
+        );
+        let perm_body = body_of(&perms);
+        assert_eq!(perm_body["Permissions"][0], "p-1");
+
+        let listed = request(
+            "GET",
+            &format!("/security-profiles-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["SecurityProfileSummaryList"][0]["Name"], "Agent");
+
+        let delete = request(
+            "DELETE",
+            &format!("/security-profiles/{id}/{sp_id}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&delete), 200);
+        let missing = request(
+            "GET",
+            &format!("/security-profiles/{id}/{sp_id}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&missing), 404);
+
+        // applications list exists but moto always returns []
+        let apps = request(
+            "GET",
+            &format!("/security-profiles-applications/{id}/{sp_id}"),
+            json!({}),
+            "",
+        );
+        // moto 404s: the profile is gone -> ResourceNotFound translated by list
+        assert_eq!(apps.status, 200);
+        assert!(body_of(&apps)["Applications"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .is_empty());
+    }
+
+    // -- Users -----------------------------------------------------------------
+
+    #[test]
+    fn user_lifecycle_and_updates() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/users/{id}"),
+            json!({"Username": "agent-1", "SecurityProfileIds": ["sp-1"], "RoutingProfileId": "rp-1"}),
+            "",
+        );
+        let created = body_of(&create);
+        let user_id = created["UserId"].as_str().unwrap().to_string();
+        assert!(created["UserArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/agent/{user_id}")));
+
+        let desc = request("GET", &format!("/users/{id}/{user_id}"), json!({}), "");
+        let described = body_of(&desc);
+        let user = &described["User"];
+        assert_eq!(user["Username"], "agent-1");
+        assert_eq!(user["RoutingProfileId"], "rp-1");
+        assert_eq!(user["PhoneConfig"]["PhoneType"], "SOFT_PHONE");
+        assert_eq!(user["PhoneConfig"]["AutoAccept"], false);
+        assert_eq!(user["IdentityInfo"], serde_json::json!({}));
+
+        let upd = request(
+            "POST",
+            &format!("/users/{id}/{user_id}/routing-profile"),
+            json!({"RoutingProfileId": "rp-2"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let upd2 = request(
+            "POST",
+            &format!("/users/{id}/{user_id}/identity-info"),
+            json!({"IdentityInfo": {"FirstName": "Ann"}}),
+            "",
+        );
+        assert_eq!(status_of(&upd2), 200);
+        let upd3 = request(
+            "POST",
+            &format!("/users/{id}/{user_id}/security-profiles"),
+            json!({"SecurityProfileIds": ["sp-2"]}),
+            "",
+        );
+        assert_eq!(status_of(&upd3), 200);
+        let upd4 = request(
+            "POST",
+            &format!("/users/{id}/{user_id}/hierarchy"),
+            json!({"HierarchyGroupId": "hg-1"}),
+            "",
+        );
+        assert_eq!(status_of(&upd4), 200);
+        let desc = request("GET", &format!("/users/{id}/{user_id}"), json!({}), "");
+        let described = body_of(&desc);
+        let user = &described["User"];
+        assert_eq!(user["RoutingProfileId"], "rp-2");
+        assert_eq!(user["IdentityInfo"]["FirstName"], "Ann");
+        assert_eq!(user["SecurityProfileIds"][0], "sp-2");
+        assert_eq!(user["HierarchyGroupId"], "hg-1");
+
+        // clearing hierarchy removes the field (moto params.get(None))
+        let upd5 = request(
+            "POST",
+            &format!("/users/{id}/{user_id}/hierarchy"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&upd5), 200);
+        let desc = request("GET", &format!("/users/{id}/{user_id}"), json!({}), "");
+        let described = body_of(&desc);
+        assert!(described["User"]["HierarchyGroupId"].is_null());
+
+        let listed = request("GET", &format!("/users-summary/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["UserSummaryList"][0]["Username"], "agent-1");
+
+        let delete = request("DELETE", &format!("/users/{id}/{user_id}"), json!({}), "");
+        assert_eq!(status_of(&delete), 200);
+        let missing = request("GET", &format!("/users/{id}/{user_id}"), json!({}), "");
+        assert_eq!(status_of(&missing), 404);
+
+        // phone config update (explicit body value)
+        let create2 = request(
+            "PUT",
+            &format!("/users/{id}"),
+            json!({"Username": "u2", "SecurityProfileIds": [], "RoutingProfileId": "rp-1"}),
+            "",
+        );
+        let created2 = body_of(&create2);
+        let uid2 = created2["UserId"].as_str().unwrap().to_string();
+        let upd = request(
+            "POST",
+            &format!("/users/{id}/{uid2}/phone-config"),
+            json!({"PhoneConfig": {"PhoneType": "DESK_PHONE"}}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let desc = request("GET", &format!("/users/{id}/{uid2}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["User"]["PhoneConfig"]["PhoneType"], "DESK_PHONE");
+    }
+
+    #[test]
+    fn user_hierarchy_group_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/user-hierarchy-groups/{id}"),
+            json!({"Name": "team-a"}),
+            "",
+        );
+        let created = body_of(&create);
+        let gid = created["HierarchyGroupId"].as_str().unwrap().to_string();
+        assert!(created["HierarchyGroupArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/agent-group/{gid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/user-hierarchy-groups/{id}/{gid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let group = &described["HierarchyGroup"];
+        assert_eq!(group["Name"], "team-a");
+        assert_eq!(group["LevelId"], "1");
+
+        let upd = request(
+            "POST",
+            &format!("/user-hierarchy-groups/{id}/{gid}/name"),
+            json!({"Name": "team-b"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let desc = request(
+            "GET",
+            &format!("/user-hierarchy-groups/{id}/{gid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(described["HierarchyGroup"]["Name"], "team-b");
+
+        let listed = request(
+            "GET",
+            &format!("/user-hierarchy-groups-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        assert_eq!(
+            list_body["UserHierarchyGroupSummaryList"][0]["Name"],
+            "team-b"
+        );
+
+        let structure = request(
+            "GET",
+            &format!("/user-hierarchy-structure/{id}"),
+            json!({}),
+            "",
+        );
+        let structure_body = body_of(&structure);
+        assert_eq!(
+            structure_body["HierarchyStructure"]["LevelOne"]["Name"],
+            "Organization"
+        );
+        assert_eq!(
+            structure_body["HierarchyStructure"]["LevelFive"]["Name"],
+            "Agent"
+        );
+
+        let update_structure = request(
+            "POST",
+            &format!("/user-hierarchy-structure/{id}"),
+            json!({"HierarchyStructure": {}}),
+            "",
+        );
+        assert_eq!(status_of(&update_structure), 200);
+
+        let delete = request(
+            "DELETE",
+            &format!("/user-hierarchy-groups/{id}/{gid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&delete), 200);
+        let missing = request(
+            "GET",
+            &format!("/user-hierarchy-groups/{id}/{gid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&missing), 404);
     }
 
     // -- deny-by-default -----------------------------------------------------
