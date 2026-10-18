@@ -17,6 +17,7 @@ pub mod datasync;
 pub mod identitystore;
 pub mod ivs;
 pub mod mediapackage;
+pub mod organizations;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     if let Some(resp) = mediapackage::dispatch(req) {
@@ -35,6 +36,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         return Some(resp);
     }
     if let Some(resp) = datasync::dispatch(req) {
+        return Some(resp);
+    }
+    if let Some(resp) = organizations::dispatch(req) {
         return Some(resp);
     }
     // No other service fully ported yet.

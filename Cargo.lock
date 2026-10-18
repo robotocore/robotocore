@@ -1719,6 +1719,7 @@ dependencies = [
 name = "rotocore"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bytes",
  "chrono",
  "hex",
