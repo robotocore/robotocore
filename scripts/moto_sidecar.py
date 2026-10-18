@@ -366,6 +366,22 @@ async def moto_handler(request: Request) -> Response:
             resp_body = None
 
         headers_dict = dict(resp_headers) if resp_headers else {}
+        # Moto handlers don't set Content-Type on their response headers; the
+        # response dict is XML. Match the previous behavior (and the default
+        # the Python gateway applies) so the bridge doesn't misread XML as
+        # JSON. Explicit moto Content-Type wins.
+        content_type = None
+        for k in headers_dict:
+            if k.lower() == "content-type":
+                content_type = headers_dict[k]
+                break
+        if content_type is None:
+            content_type = "application/xml"
+        clean_headers = {
+            k: v
+            for k, v in headers_dict.items()
+            if k.lower() not in ("content-length", "content-type")
+        }
         is_head = method == "HEAD"
         # For HEAD requests the content-length is object metadata; for other
         # methods drop it and let Starlette recompute to avoid h11 framing
@@ -373,13 +389,11 @@ async def moto_handler(request: Request) -> Response:
         if is_head:
             clean_headers = headers_dict
             resp_body = None
-        else:
-            clean_headers = {
-                k: v for k, v in headers_dict.items() if k.lower() != "content-length"
-            }
+            content_type = "application/xml"
         return Response(
             content=resp_body,
             status_code=status_code,
+            media_type=content_type,
             headers=clean_headers,
         )
     except NotImplementedError as e:
