@@ -6,13 +6,22 @@
 
 use crate::{Request, Response};
 
+pub mod inspector2;
+pub mod lakeformation;
+pub mod macie2;
+pub mod securityhub;
+
 // Pending ports (stubs live in their modules but are not yet wired):
 // - acm (stub)
 // - ec2 (stub)
 // - cloudformation (stub)
 
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        "inspector2" => Some(inspector2::dispatch(req)),
+        "lakeformation" => Some(lakeformation::dispatch(req)),
+        "macie2" => Some(macie2::dispatch(req)),
+        "securityhub" => Some(securityhub::dispatch(req)),
+        _ => None,
+    }
 }
