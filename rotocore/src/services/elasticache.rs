@@ -690,9 +690,8 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                 .get("SnapshotRetentionLimit")
                 .and_then(|n| n.parse::<i64>().ok());
             let updated = with_scope_guard(&slot, req, |st| {
-                let Some(c) = st.clusters.iter_mut().find(|c| c.id == id) else {
-                    return None;
-                };
+                let c = st.clusters.iter_mut().find(|c| c.id == id)?;
+
                 if let Some(r) = retention {
                     c.snapshot_retention = r;
                 }
