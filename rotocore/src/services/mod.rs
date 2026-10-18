@@ -8,6 +8,7 @@ use crate::{Request, Response};
 
 mod cloudtrail;
 mod managedblockchain;
+mod opensearchserverless;
 mod resourcegroupstaggingapi;
 mod route53resolver;
 
@@ -19,6 +20,7 @@ mod route53resolver;
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
+        "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
         "route53resolver" => Some(route53resolver::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
