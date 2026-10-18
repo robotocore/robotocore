@@ -3195,14 +3195,20 @@ impl IamHandler {
 
     fn list_server_certificates(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account);
-        let mut names: Vec<String> = state.server_certs.read().keys().cloned().collect();
-        names.sort();
+        // Clone under one lock: a concurrent delete could otherwise remove an
+        // entry between collecting the names and the per-name lookup.
+        let mut certs: Vec<Arc<ServerCert>> = state
+            .server_certs
+            .read()
+            .values()
+            .cloned()
+            .collect();
+        certs.sort_by(|a, b| a.name.cmp(&b.name));
         let mut body = String::from("<ServerCertificateMetadataList>");
-        for name in &names {
-            let cert = state.server_certs.read().get(name).cloned().unwrap();
+        for cert in &certs {
             body.push_str(&format!(
                 "<member>{}</member>",
-                self.server_cert_metadata_xml(&cert, req.account)
+                self.server_cert_metadata_xml(cert, req.account)
             ));
         }
         body.push_str("</ServerCertificateMetadataList><IsTruncated>false</IsTruncated>");
@@ -3266,27 +3272,23 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let body = get_param(req, "CertificateBody").unwrap_or_default();
         let state = self.get_state(req.account);
-        if state.get_user(&username).is_none() {
-            return err(
-                404,
-                "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username),
-            );
-        }
+        let user = match state.get_user(&username) {
+            Some(u) => u,
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The user with name {} cannot be found.", username),
+                )
+            }
+        };
         let cert = SigningCert {
             certificate_id: random_id("ASCA"),
             body,
             status: "Active".to_string(),
             upload_date: now_iso(),
         };
-        state
-            .users
-            .read()
-            .get(&username)
-            .unwrap()
-            .signing_certs
-            .write()
-            .push(cert.clone());
+        user.signing_certs.write().push(cert.clone());
         AwsResponse::xml(200, "UploadSigningCertificate", format!(
             "<Certificate><UserName>{}</UserName><CertificateId>{}</CertificateId><CertificateBody>{}</CertificateBody><Status>{}</Status><UploadDate>{}</UploadDate></Certificate>",
             xml_escape(username.as_str()),
