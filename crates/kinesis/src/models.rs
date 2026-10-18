@@ -56,6 +56,12 @@ impl Shard {
         }
     }
 
+    /// Drain this shard's stored records (used by SplitShard to carry
+    /// records into the successor shards, like moto re-fires them).
+    pub fn take_records(&self) -> Vec<KinesisRecord> {
+        self.records.lock().drain(..).collect()
+    }
+
     /// Store a record on this shard, returning the assigned sequence number.
     pub fn put_record(&self, shard_id: &str, partition_key: String, data: Vec<u8>) -> KinesisRecord {
         let mut counter = self.sequence_counter.lock();
@@ -170,18 +176,12 @@ impl KinesisStream {
         }
     }
 
-    /// Hash a partition key onto the 128-bit space (MD5-like spreading).
+    /// Hash a partition key onto the 128-bit space.
     pub fn hash_key(key: &str) -> u128 {
-        // Two independent 64-bit passes make a stable 128-bit spread; the
-        // exact algorithm only needs to distribute keys across shard ranges.
-        let mut h1: u64 = 0xcbf29ce484222325;
-        let mut h2: u64 = 0x9e3779b97f4a7c15;
-        for b in key.as_bytes() {
-            h1 ^= *b as u64;
-            h1 = h1.wrapping_mul(0x100000001b3);
-            h2 = (h2 ^ (*b as u64)).wrapping_mul(0x2545F4914F6CDD1D).rotate_left(13);
-        }
-        ((h1 as u128) << 64) | (h2 as u128)
+        // AWS uses MD5 of the partition key: the full 128-bit digest read as
+        // one big-endian integer. Matches moto and the Python twin.
+        let digest = md5::compute(key.as_bytes());
+        u128::from_be_bytes(digest.into())
     }
 
     /// Select the shard covering a hash value (falls back to the first shard).

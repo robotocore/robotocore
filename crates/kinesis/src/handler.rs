@@ -380,19 +380,28 @@ impl KinesisHandler {
             (Some(a), Some(b)) => (a, b),
             _ => return AwsResponse::error(400, "ResourceNotFoundException", "Shard not found"),
         };
-        let next = stream.shards.read().len() as u32;
+        let mut shards = stream.shards.write();
+        // Same guarded allocation as split_shard: compute from the held
+        // write guard to avoid a self-deadlock on re-acquire.
+        let next = shards
+            .iter()
+            .filter_map(|s| s.shard_id.rsplit('-').next())
+            .filter_map(|n| n.trim_start_matches('0').parse::<u32>().ok())
+            .max()
+            .unwrap_or(0)
+            + 1;
         let merged = Arc::new(Shard::new(
             format!("shardId-{next:012}"),
             s1.hash_key_start.min(s2.hash_key_start),
             s1.hash_key_end.max(s2.hash_key_end),
         ));
-        let mut shards = stream.shards.write();
         shards.retain(|s| s.shard_id != s1.shard_id && s.shard_id != s2.shard_id);
         shards.push(merged);
         AwsResponse::json(200, json!({}))
     }
 
-    fn split_shard(&self, req: &AwsRequest) -> AwsResponse {
+    
+fn split_shard(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("StreamName").and_then(|v| v.as_str()).unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let stream = match state.get_stream(name) {
@@ -411,11 +420,30 @@ impl KinesisHandler {
         } else {
             new_hash.parse::<u128>().unwrap_or(0)
         };
-        let next = stream.shards.read().len() as u32;
-        let shard1 = Arc::new(Shard::new(format!("shardId-{next:012}"), target.hash_key_start, mid.saturating_sub(1)));
-        let shard2 = Arc::new(Shard::new(format!("shardId-{:012}", u64::from(next) + 1), mid, target.hash_key_end));
         let mut shards = stream.shards.write();
+        // Allocate the successor shard ids numerically greater than every
+        // existing id (moto's scheme) — computed from the already-held write
+        // guard: a second RwLock acquire here would self-deadlock.
+        let next = shards
+            .iter()
+            .filter_map(|s| s.shard_id.rsplit('-').next())
+            .filter_map(|n| n.trim_start_matches('0').parse::<u32>().ok())
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let shard1 = Arc::new(Shard::new(format!("shardId-{next:012}"), target.hash_key_start, mid.saturating_sub(1)));
+        let shard2 = Arc::new(Shard::new(format!("shardId-{:012}", next + 1), mid, target.hash_key_end));
         shards.retain(|s| s.shard_id != target.shard_id);
+        // Records already stored here land on the shard that covers their
+        // partition hash after the split (moto re-fires records post-split).
+        for r in target.take_records() {
+            let h = KinesisStream::hash_key(&r.partition_key);
+            if h < mid {
+                shard1.put_record(&shard1.shard_id, r.partition_key.clone(), r.data.clone());
+            } else {
+                shard2.put_record(&shard2.shard_id, r.partition_key.clone(), r.data.clone());
+            }
+        }
         shards.push(shard1);
         shards.push(shard2);
         AwsResponse::json(200, json!({}))

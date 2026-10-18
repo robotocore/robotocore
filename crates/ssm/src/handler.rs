@@ -356,7 +356,7 @@ impl SsmHandler {
         let state = self.get_state(req.account, &req.region);
         match state.resolve_parameter(&name) {
             Ok(Some((param, version))) => {
-                let resp = version.response_object(&param.name, with_decryption, Some(&req.region));
+                let resp = version.response_object(&param.name, with_decryption, Some(&req.region), req.account);
                 AwsResponse::json(200, json!({ "Parameter": resp }))
             }
             Ok(None) => AwsResponse::error(400, "ParameterNotFound",
@@ -381,7 +381,7 @@ impl SsmHandler {
         for name in &names {
             match state.resolve_parameter(&strip_arn_prefix(name, &req.region, req.account)) {
                 Ok(Some((p, v))) => {
-                    found.push(v.response_object(&p.name, with_decryption, Some(&req.region)));
+                    found.push(v.response_object(&p.name, with_decryption, Some(&req.region), req.account));
                 }
                 Ok(None) | Err(_) => invalid.push(name.clone()),
             }
@@ -442,10 +442,18 @@ impl SsmHandler {
         let entries = state.parameters.read();
         let mut result = Vec::new();
         for (name, param) in entries.iter() {
-            if path != "/" && !name.starts_with(&prefix) {
-                continue;
-            }
-            let rest = &name[prefix.len()..];
+            // Use strip_prefix so a multi-byte first character can never split
+            // a UTF-8 boundary (byte-index slicing would panic), and accept
+            // both "/name" and bare "name" for the root path.
+            let rest = if path == "/" {
+                Some(name.strip_prefix('/').unwrap_or(name))
+            } else {
+                name.strip_prefix(&prefix)
+            };
+            let rest = match rest {
+                Some(r) => r,
+                None => continue,
+            };
             if !recursive && rest.contains('/') {
                 continue;
             }
@@ -453,7 +461,7 @@ impl SsmHandler {
             if !matches_parameter_filters(&version, name, filters.as_ref()) {
                 continue;
             }
-            result.push(version.response_object(name, with_decryption, Some(&req.region)));
+            result.push(version.response_object(name, with_decryption, Some(&req.region), req.account));
         }
         let (page, next_token) = page_slice(&result, token, max_results);
         AwsResponse::json(200, json!({ "Parameters": page, "NextToken": next_token }))
@@ -472,7 +480,7 @@ impl SsmHandler {
             if !matches_parameter_filters(&version, name, filters.as_ref()) {
                 continue;
             }
-            result.push(version.describe_response_object(name, false, false));
+            result.push(version.describe_response_object(name, false, false, req.account));
         }
         let (page, next_token) = page_slice(&result, token, max_results);
         AwsResponse::json(200, json!({ "Parameters": page, "NextToken": next_token }))
@@ -496,7 +504,7 @@ impl SsmHandler {
         };
         let history = param.versions.read().clone();
         let list: Vec<Value> = history.iter()
-            .map(|v| v.describe_response_object(&param.name, with_decryption, true))
+            .map(|v| v.describe_response_object(&param.name, with_decryption, true, req.account))
             .collect();
         let (page, next_token) = page_slice(&list, token, max_results);
         AwsResponse::json(200, json!({ "Parameters": page, "NextToken": next_token }))
@@ -685,6 +693,7 @@ impl SsmHandler {
             return AwsResponse::error(400, "DocumentAlreadyExists", "The specified document already exists.");
         }
         let doc = Arc::new(Document {
+            owner: req.account,
             name: name.clone(),
             version: "1".into(),
             version_name: req.params.get("VersionName").and_then(|v| v.as_str()).map(String::from),
@@ -812,6 +821,7 @@ impl SsmHandler {
             }
         }
         let new_doc = Arc::new(Document {
+            owner: req.account,
             name: name.clone(),
             version: new_version.clone(),
             version_name: req.params.get("VersionName").and_then(|v| v.as_str()).map(String::from),

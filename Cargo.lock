@@ -1077,6 +1077,7 @@ dependencies = [
  "bytes",
  "chrono",
  "http",
+ "md5",
  "parking_lot",
  "serde",
  "serde_json",

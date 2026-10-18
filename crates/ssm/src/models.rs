@@ -65,7 +65,7 @@ impl ParamVersion {
     }
 
     /// Shape returned by GetParameter / GetParameters / GetParametersByPath.
-    pub fn response_object(&self, name: &str, decrypt: bool, region: Option<&str>) -> Value {
+    pub fn response_object(&self, name: &str, decrypt: bool, region: Option<&str>, account: u64) -> Value {
         let mut r = json!({
             "Name": name,
             "Type": self.parameter_type,
@@ -76,7 +76,8 @@ impl ParamVersion {
             "Tier": self.tier,
         });
         if let Some(region) = region {
-            r["ARN"] = json!(format!("arn:aws:ssm:{region}:123456789012:parameter/{name}"));
+            let label = name.strip_prefix('/').unwrap_or(name);
+            r["ARN"] = json!(format!("arn:aws:ssm:{region}:{account}:parameter/{label}"));
         }
         r
     }
@@ -87,8 +88,9 @@ impl ParamVersion {
         name: &str,
         decrypt: bool,
         include_labels: bool,
+        account: u64,
     ) -> Value {
-        let mut r = self.response_object(name, decrypt, None);
+        let mut r = self.response_object(name, decrypt, None, account);
         r["LastModifiedUser"] = json!("N/A");
         if let Some(d) = &self.description {
             if !d.is_empty() {
@@ -161,6 +163,7 @@ pub struct AccountPermission {
 
 #[derive(Debug, Clone)]
 pub struct Document {
+    pub owner: u64,
     pub name: String,
     pub version: String,
     pub version_name: Option<String>,
@@ -213,7 +216,7 @@ impl Document {
             "Hash": self.hash(),
             "HashType": "Sha256",
             "Name": self.name,
-            "Owner": "123456789012",
+            "Owner": self.owner.to_string(),
             "CreatedDate": fmt_dt(&self.created),
             "Status": self.status,
             "DocumentVersion": self.version,
@@ -242,7 +245,7 @@ impl Document {
     pub fn list_describe(&self, tags: Option<Value>) -> Value {
         let mut base = json!({
             "Name": self.name,
-            "Owner": "123456789012",
+            "Owner": self.owner.to_string(),
             "DocumentVersion": self.version,
             "DocumentType": self.document_type,
             "SchemaVersion": self.schema_version,
@@ -988,8 +991,14 @@ impl SsmState {
     }
 
     pub fn document_tags(&self, name: &str) -> Value {
-        let tags = self.document_tags.read()
-            .get(name)
+        // Tags for documents live in the shared resource_tags table
+        // (add_tag("Document", ...)); the old document_tags table had no
+        // writers, which left CreateDocument's Tags echo reading empty.
+        let tags = self
+            .resource_tags
+            .read()
+            .get("Document")
+            .and_then(|m| m.get(name))
             .map(|m| {
                 m.iter()
                     .map(|(k, v)| json!({ "Key": k, "Value": v }))
