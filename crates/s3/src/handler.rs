@@ -154,6 +154,66 @@ fn parse_copy_source(value: &str) -> (String, String, Option<String>) {
 /// A listing content row: `(key, etag, size, last_modified, storage_class)`.
 pub type ListingRow = (String, String, usize, u64, String);
 
+/// CRC-32 (IEEE), required for AWS event-stream framing.
+pub fn crc32(data: &[u8]) -> u32 {
+    const fn make_table() -> [u32; 256] {
+        let mut table = [0u32; 256];
+        let mut i = 0;
+        while i < 256 {
+            let mut c = i as u32;
+            let mut k = 0;
+            while k < 8 {
+                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+                k += 1;
+            }
+            table[i] = c;
+            i += 1;
+        }
+        table
+    }
+    static TABLE: [u32; 256] = make_table();
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in data {
+        crc = TABLE[((crc ^ b as u32) & 0xFF) as usize] ^ (crc >> 8);
+    }
+    crc ^ 0xFFFF_FFFF
+}
+
+/// Encode a single AWS event-stream message frame.
+fn event_stream_frame(event_type: &str, content_type: Option<&str>, payload: &[u8]) -> Vec<u8> {
+    let mut headers = Vec::new();
+    let mut push_header = |name: &str, value: &[u8], vtype: u8| {
+        headers.push(name.len() as u8);
+        headers.extend_from_slice(name.as_bytes());
+        headers.push(vtype);
+        // STRING (0x07) and BYTE_ARRAY (0x06) values carry a 2-byte BE length.
+        headers.extend_from_slice(&(value.len() as u16).to_be_bytes());
+        headers.extend_from_slice(value);
+    };
+    push_header(":message-type", b"event", 0x07);
+    push_header(":event-type", event_type.as_bytes(), 0x07);
+    if let Some(ct) = content_type {
+        push_header(":content-type", ct.as_bytes(), 0x07);
+    }
+
+    let headers_len = headers.len() as u32;
+    let total_len = (12 + headers.len() + payload.len() + 4) as u32;
+
+    let mut prelude = Vec::with_capacity(8);
+    prelude.extend_from_slice(&total_len.to_be_bytes());
+    prelude.extend_from_slice(&headers_len.to_be_bytes());
+    let prelude_crc = crc32(&prelude);
+
+    let mut message = Vec::with_capacity(total_len as usize);
+    message.extend_from_slice(&prelude);
+    message.extend_from_slice(&prelude_crc.to_be_bytes());
+    message.extend_from_slice(&headers);
+    message.extend_from_slice(payload);
+    let message_crc = crc32(&message);
+    message.extend_from_slice(&message_crc.to_be_bytes());
+    message
+}
+
 fn encode_token(key: &str) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key)
 }
@@ -443,11 +503,7 @@ impl S3Handler {
             "RenameObject" => self.rename_object(&req),
             "UpdateObjectEncryption" => self.update_object_encryption(&req),
             "WriteGetObjectResponse" => AwsResponse::no_content(200),
-            "SelectObjectContent" => AwsResponse::error(
-                501,
-                "NotImplemented",
-                "The select_object_content action has not been implemented",
-            ),
+            "SelectObjectContent" => self.select_object_content(&req),
             other => AwsResponse::error(
                 400,
                 "NotImplemented",
@@ -2934,6 +2990,148 @@ impl S3Handler {
             });
         }
         rules
+    }
+
+    // ------------------------------------------------------------------
+    // SelectObjectContent (AWS event-stream wire format)
+    // ------------------------------------------------------------------
+
+    fn select_object_content(&self, req: &AwsRequest) -> AwsResponse {
+        let (bucket_name, key) = Self::bucket_and_key(req);
+        let state = self.get_state(req.account, &req.region);
+        let bucket = match Self::bucket_or_404(&state, &bucket_name) {
+            Ok(b) => b,
+            Err(e) => return e,
+        };
+
+        let body = String::from_utf8_lossy(&req.body).to_string();
+        let expression = xml_text(&body, "Expression").unwrap_or_default();
+        let expression_type = xml_text(&body, "ExpressionType").unwrap_or_default();
+        if expression_type != "SQL" {
+            return AwsResponse::error(
+                400,
+                "InvalidRequest",
+                "Only SQL expressions are supported",
+            );
+        }
+
+        let file_header_info = xml_text(&body, "FileHeaderInfo")
+            .unwrap_or_else(|| "NONE".to_string());
+
+        let records_payload = {
+            let objects = bucket.objects.read();
+            let obj = match objects.get(&key).and_then(|e| {
+                if e.is_live() {
+                    e.versions.first().cloned()
+                } else {
+                    None
+                }
+            }) {
+                Some(v) => v,
+                None => {
+                    return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                }
+            };
+            match Self::run_sql_select(
+                &String::from_utf8_lossy(&obj.data),
+                &expression,
+                &file_header_info,
+            ) {
+                Some(out) => out.into_bytes(),
+                None => {
+                    return AwsResponse::error(
+                        400,
+                        "UnsupportedSQLOperation",
+                        "The provided SQL expression is not supported",
+                    )
+                }
+            }
+        };
+
+        // Frame the response as an AWS event stream: a Records event followed
+        // by an End event.
+        let mut frames = event_stream_frame("Records", Some("application/octet-stream"), &records_payload);
+        frames.extend_from_slice(&event_stream_frame("End", None, b""));
+
+        AwsResponse::binary(200, frames, "application/vnd.amazon.eventstream")
+    }
+
+    /// Minimal CSV SELECT: `SELECT *|col[,col]* FROM s3object [anything]`.
+    fn run_sql_select(
+        data: &str,
+        expression: &str,
+        file_header_info: &str,
+    ) -> Option<String> {
+        let normalized = expression.split_whitespace().collect::<Vec<_>>().join(" ");
+        let rest = normalized
+            .strip_prefix("SELECT ")
+            .or_else(|| normalized.strip_prefix("select "))?;
+        let from_pos = rest.find(" FROM ")?;
+        let columns_part = rest[..from_pos].trim();
+        if !rest[from_pos + 6..].starts_with("s3object") {
+            return None;
+        }
+
+        let lines: Vec<&str> = data.lines().collect();
+        if lines.is_empty() {
+            return Some(String::new());
+        }
+
+        let mut all: Vec<Vec<String>> = lines
+            .iter()
+            .map(|l| l.split(',').map(|c| c.trim().to_string()).collect())
+            .collect();
+
+        let header: Vec<String> = if file_header_info.eq_ignore_ascii_case("USE") {
+            all.remove(0)
+        } else {
+            all.first()
+                .map(|c| (0..c.len()).map(|i| format!("_{}", i + 1)).collect())
+                .unwrap_or_default()
+        };
+
+        let select_all = columns_part == "*";
+        let wanted: Vec<String> = if select_all {
+            header.clone()
+        } else {
+            columns_part
+                .split(',')
+                .map(|c| c.trim().trim_matches('"').to_string())
+                .collect()
+        };
+
+        // Header names only exist with FileHeaderInfo=USE; otherwise fall
+        // back to selecting all columns.
+        let mut selected: Vec<Option<usize>> = Vec::new();
+        for want in &wanted {
+            let idx = header
+                .iter()
+                .position(|h| h.eq_ignore_ascii_case(want));
+            selected.push(idx);
+        }
+        if selected.iter().any(|v| v.is_none()) && !select_all {
+            return None;
+        }
+
+        let mut out = String::new();
+        if !select_all && file_header_info.eq_ignore_ascii_case("USE") {
+            out.push_str(&wanted.join(","));
+            out.push('\n');
+        }
+        for row in all {
+            if select_all {
+                out.push_str(&row.join(","));
+                out.push('\n');
+            } else {
+                let cells: Vec<String> = selected
+                    .iter()
+                    .map(|idx| idx.map_or(String::new(), |i| row.get(i).cloned().unwrap_or_default()))
+                    .collect();
+                out.push_str(&cells.join(","));
+                out.push('\n');
+            }
+        }
+        Some(out)
     }
 
     // ------------------------------------------------------------------
