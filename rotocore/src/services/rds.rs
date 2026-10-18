@@ -3001,4 +3001,242 @@ fn create_automated_snapshot(
     }
 }
 
+
+// DB instance describe/modify/delete/lifecycle -------------------------------
+
+fn describe_db_instances_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBInstanceIdentifier");
+    let matched: Vec<&DBInstance> = match &filter {
+        Some(rid) => {
+            let lower = rid.to_lowercase();
+            let found: Vec<&DBInstance> =
+                st.databases.values().filter(|d| d.id == lower).collect();
+            if found.is_empty() {
+                return Err(RdsError::not_found404(
+                    "DBInstanceNotFound",
+                    format!("DBInstance {rid} not found."),
+                ));
+            }
+            found
+        }
+        None => st.databases.values().collect(),
+    };
+    let mut list = String::new();
+    for db in &matched {
+        list.push_str(&db_instance_xml(st, acct, region, db));
+    }
+    Ok(Some(format!("<DBInstances>{list}</DBInstances>")))
+}
+
+/// Apply ModifyDBInstance kwargs (moto `database.update(**db_kwargs)`).
+fn apply_instance_update(db: &mut DBInstance, p: &Params) {
+    if let Some(v) = p_string(p, "DBInstanceClass") {
+        db.db_instance_class = v;
+    }
+    if let Some(v) = p_string(p, "EngineVersion") {
+        db.engine_version = v;
+    }
+    if let Some(v) = p_string(p, "AllocatedStorage") {
+        if let Ok(n) = v.parse::<i64>() {
+            db.allocated_storage = n;
+        }
+    }
+    if let Some(v) = p_string(p, "MaxAllocatedStorage") {
+        if let Ok(n) = v.parse::<i64>() {
+            db.max_allocated_storage = Some(n);
+        }
+    }
+    if let Some(v) = p_string(p, "BackupRetentionPeriod") {
+        if let Ok(n) = v.parse::<i64>() {
+            db.backup_retention_period = n;
+        }
+    }
+    if let Some(v) = p_string(p, "PreferredBackupWindow") {
+        db.preferred_backup_window = v;
+    }
+    if let Some(v) = p_string(p, "PreferredMaintenanceWindow") {
+        db.preferred_maintenance_window = v.to_lowercase();
+    }
+    if let Some(v) = p_bool(p, "MultiAZ") {
+        db.multi_az = v;
+    }
+    if let Some(v) = p_string(p, "AvailabilityZone") {
+        db.availability_zone = v;
+    }
+    if let Some(v) = p_string(p, "DBParameterGroupName") {
+        db.db_parameter_group_name = Some(v);
+    }
+    if let Some(v) = p_string(p, "OptionGroupName") {
+        db.option_group_name = v;
+        db.option_group_supplied = true;
+    }
+    if let Some(v) = p_string(p, "DBSubnetGroupName") {
+        db.db_subnet_group_name = Some(v);
+    }
+    if let Some(v) = p_string(p, "MasterUsername") {
+        db.master_username = Some(v);
+    }
+    if let Some(v) = p_bool(p, "CopyTagsToSnapshot") {
+        db.copy_tags_to_snapshot = v;
+    }
+    if let Some(v) = p_string(p, "StorageType") {
+        db.storage_type = v;
+    }
+    if let Some(v) = p_bool(p, "StorageEncrypted") {
+        db.storage_encrypted = v;
+    }
+    if let Some(v) = p_string(p, "LicenseModel") {
+        db.license_model = v;
+    }
+    if let Some(v) = p_bool(p, "AutoMinorVersionUpgrade") {
+        db.auto_minor_version_upgrade = v;
+    }
+    if let Some(v) = p_bool(p, "DeletionProtection") {
+        db.deletion_protection = v;
+    }
+    if let Some(v) = p_string(p, "CACertificateIdentifier") {
+        db.ca_certificate_identifier = v;
+    }
+    if let Some(v) = p_i64(p, "Port") {
+        db.port = v;
+    }
+    if let Some(v) = p_string(p, "CharacterSetName") {
+        db.character_set_name = Some(v);
+    }
+}
+
+fn modify_db_instance(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.databases.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBInstanceNotFound",
+            format!("DBInstance {identifier} not found."),
+        ));
+    }
+    if let Some(group) = p_string(p, "DBParameterGroupName") {
+        if !st.db_parameter_groups.contains_key(&group.to_lowercase()) {
+            return Err(RdsError::not_found404(
+                "DBParameterGroupNotFound",
+                format!("DB Parameter Group {group} not found."),
+            ));
+        }
+    }
+    if let Some(v) = p_string(p, "MasterUserPassword") {
+        if v.len() < 8 {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                "The parameter MasterUserPassword is not a valid password because it is shorter than 8 characters.",
+            ));
+        }
+    }
+    if p_bool(p, "RotateMasterUserPassword").unwrap_or(false)
+        && !p_bool(p, "ApplyImmediately").unwrap_or(false)
+    {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "You must specify apply immediately when rotating the master user password.",
+        ));
+    }
+    let new_id = p_string(p, "NewDBInstanceIdentifier");
+    {
+        let db = st.databases.get_mut(&id).unwrap();
+        apply_instance_update(db, p);
+    }
+    let mut renamed_to: Option<String> = None;
+    if let Some(new_id) = new_id {
+        RdsError::check_db_identifier(&new_id)?;
+        let lower = new_id.to_lowercase();
+        if lower != id && st.databases.contains_key(&lower) {
+            return Err(RdsError::client400(
+                "DBInstanceAlreadyExists",
+                format!("DBInstance {new_id} already exists"),
+            ));
+        }
+        if let Some(mut db) = st.databases.remove(&id) {
+            db.id = lower.clone();
+            db.original_id = new_id;
+            st.databases.insert(lower.clone(), db);
+            renamed_to = Some(lower);
+        }
+    }
+    let lookup = renamed_to.unwrap_or_else(|| id.clone());
+    match st.databases.get(&lookup) {
+        Some(found) => Ok(Some(db_instance_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+fn delete_db_instance(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    let db = match st.databases.get(&id) {
+        Some(db) => db.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    if db.deletion_protection {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "Cannot delete protected DB Instance, please disable deletion protection and try again.",
+        ));
+    }
+    let skip_final = p_bool(p, "SkipFinalSnapshot").unwrap_or(false);
+    if let Some(final_snap) = p_string(p, "FinalDBSnapshotIdentifier") {
+        RdsError::check_snapshot_identifier(&final_snap, "FinalDBSnapshotIdentifier")?;
+        if !skip_final {
+            let snapshot = snapshot_from_db(&db, &final_snap, "manual", &[]);
+            let snap_id = snapshot.id.clone();
+            st.database_snapshots.insert(snap_id, snapshot);
+        }
+    }
+    st.databases.remove(&id);
+    if db.is_replica {
+        if let Some(src) = &db.source_db_instance_identifier {
+            if let Some(src_db) = st.databases.get_mut(&src.to_lowercase()) {
+                src_db.replicas.retain(|r| *r != db.id);
+            }
+        }
+    }
+    if p_bool(p, "DeleteAutomatedBackups").unwrap_or(true) {
+        let auto_ids: Vec<String> = st
+            .database_snapshots
+            .iter()
+            .filter(|(_, snap)| snap.snapshot_type == "automated" && snap.source.id == db.id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for snap_id in auto_ids {
+            st.database_snapshots.remove(&snap_id);
+        }
+    }
+    let response_db = DBInstance {
+        status: "deleting".to_string(),
+        ..db
+    };
+    Ok(Some(db_instance_xml(st, acct, region, &response_db)))
+}
+
+fn create_manual_snapshot(db: &DBInstance, snapshot_id: &str, tags: &[Tag]) -> DBSnapshot {
+    snapshot_from_db(db, snapshot_id, "manual", tags)
+}
+
 // __APPEND_MARKER__
