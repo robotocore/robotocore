@@ -531,6 +531,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
+ "sqs",
  "thiserror",
  "tracing",
  "uuid",
