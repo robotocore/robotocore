@@ -10,7 +10,6 @@ use axum::{
     Router,
 };
 use http_body_util::BodyExt;
-use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;

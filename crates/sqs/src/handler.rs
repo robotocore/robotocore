@@ -5,7 +5,6 @@ use crate::models::{MoveTask, Queue, SqsMessage, SqsStore};
 use crate::protocol::{AwsRequest, AwsResponse, SqsHandler};
 use chrono::Utc;
 use md5;
-use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};

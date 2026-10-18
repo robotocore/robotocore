@@ -4,8 +4,7 @@
 //! All other AWS service requests are proxied to the Python Moto sidecar
 //! running on localhost.
 
-use bytes::Bytes;
-use http::{HeaderMap, Method, StatusCode};
+use http::Method;
 use std::collections::HashMap;
 use std::sync::Arc;
 

@@ -1772,7 +1772,6 @@ mod tests {
             }),
         )))
         .clone();
-        let seq = put["SequenceNumber"].as_str().unwrap().to_string();
         let shard_id = put["ShardId"].as_str().unwrap().to_string();
 
         let iter = parse_body(&handler.handle(make_req(

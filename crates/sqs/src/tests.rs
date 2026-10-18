@@ -358,7 +358,7 @@ fn test_list_queues() {
     let create_req1 = make_request("CreateQueue", json!({"QueueName": "queue-a"}));
     let create_resp1 = handler.handle(create_req1);
     let created: Value = serde_json::from_str(&create_resp1.body).expect("Invalid JSON");
-    let expected_url = created["QueueUrl"].as_str().expect("Missing QueueUrl");
+    let _expected_url = created["QueueUrl"].as_str().expect("Missing QueueUrl");
     handler.handle(make_request("CreateQueue", json!({"QueueName": "queue-b"})));
 
     let list_req = make_request("ListQueues", json!({}));

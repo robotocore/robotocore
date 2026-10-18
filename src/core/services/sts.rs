@@ -370,8 +370,7 @@ fn handle_decode_aws_account_id(
 fn handle_get_access_key_last_used(
     _req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    let body = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
+    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetAccessKeyLastUsedResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
     <GetAccessKeyLastUsedResult>
         <AccessKeyLastUsed>
@@ -383,9 +382,8 @@ fn handle_get_access_key_last_used(
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
-</GetAccessKeyLastUsedResponse>"#
-    );
-    Ok(xml_response(&body))
+</GetAccessKeyLastUsedResponse>"#;
+    Ok(xml_response(body))
 }
 
 /// Helper: build a ParsedResponse from raw XML.
@@ -411,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_get_caller_identity() {
-        let mut params = HashMap::new();
+        let params = HashMap::new();
         let req = ParsedRequest {
             service: "sts".to_string(),
             operation: "GetCallerIdentity".to_string(),
