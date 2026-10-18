@@ -99,6 +99,7 @@ impl SqsServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         }
     }
 }
@@ -171,11 +172,14 @@ impl S3ServiceHandler {
         for (k, v) in resp.headers {
             headers.insert(k, v);
         }
+        // S3 bodies are arbitrary bytes; carry them losslessly via raw_bytes
+        // (lossy UTF-8 re-encoding corrupted binary objects in transit).
         ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
             body: serde_json::Value::Null,
-            raw: Some(String::from_utf8_lossy(&resp.body).to_string()),
+            raw: None,
+            raw_bytes: Some(resp.body),
         }
     }
 }
@@ -243,6 +247,7 @@ impl DynamoDbServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         }
     }
 }
@@ -286,6 +291,7 @@ impl SnsServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         }
     }
 }
@@ -329,6 +335,7 @@ impl SmServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         }
     }
 }
@@ -371,6 +378,7 @@ impl ServiceHandler for KmsServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -402,6 +410,7 @@ impl ServiceHandler for SsmServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -434,6 +443,7 @@ impl ServiceHandler for IamServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -469,6 +479,7 @@ impl ServiceHandler for LambdaServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -500,6 +511,7 @@ impl ServiceHandler for LogsServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -531,6 +543,7 @@ impl ServiceHandler for EventsServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -562,6 +575,7 @@ impl ServiceHandler for KinesisServiceHandler {
             headers,
             body: serde_json::Value::Null,
             raw: Some(resp.body),
+            raw_bytes: None,
         })
     }
 }
@@ -575,7 +589,7 @@ impl ServiceHandler for FirehoseServiceHandler {
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body) })
+        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
     }
 }
 
@@ -588,7 +602,7 @@ impl ServiceHandler for CloudWatchServiceHandler {
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body) })
+        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
     }
 }
 
@@ -601,7 +615,7 @@ impl ServiceHandler for EcrServiceHandler {
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body) })
+        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
     }
 }
 
@@ -614,7 +628,7 @@ impl ServiceHandler for EcsServiceHandler {
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body) })
+        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
     }
 }
 
@@ -627,7 +641,7 @@ impl ServiceHandler for StepFunctionsServiceHandler {
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body) })
+        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
     }
 }
 
@@ -1316,13 +1330,20 @@ fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) ->
 
     let request_id = Uuid::new_v4().to_string();
 
-    let body_str = if let Some(raw) = resp.raw {
+    // Arbitrary bytes first (binary objects, event streams), then
+    // pre-serialized string bodies, then protocol encoding.
+    let body: axum::body::Body = if let Some(bytes) = resp.raw_bytes {
+        axum::body::Body::from(bytes)
+    } else if let Some(raw) = resp.raw {
         // Pre-serialized body: send verbatim (e.g. native JSON-protocol services).
-        raw
-    } else if service == "sts" {
-        serialize_query_response(&resp.body, operation, &request_id)
+        axum::body::Body::from(raw)
     } else {
-        serde_json::to_string(&resp.body).unwrap_or_else(|_| "{}".to_string())
+        let body_str = if service == "sts" {
+            serialize_query_response(&resp.body, operation, &request_id)
+        } else {
+            serde_json::to_string(&resp.body).unwrap_or_else(|_| "{}".to_string())
+        };
+        axum::body::Body::from(body_str)
     };
 
     let mut headers_map = axum::http::HeaderMap::new();
@@ -1336,7 +1357,9 @@ fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) ->
     headers_map.insert("server", HeaderValue::from_static("robotocore"));
     headers_map.insert("x-robotocore-request-id", HeaderValue::from_str(&request_id).unwrap());
 
-    (resp.status, headers_map, body_str).into_response()
+    let mut response = Response::builder().status(resp.status).body(body).unwrap();
+    *response.headers_mut() = headers_map;
+    response
 }
 
 /// Build an error response.

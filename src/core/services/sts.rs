@@ -45,6 +45,7 @@ pub async fn handle_sts_request(
 </ErrorResponse>"#,
                 req.operation
             )),
+            raw_bytes: None,
         }),
     }
 }
@@ -79,6 +80,7 @@ fn handle_get_caller_identity(
         },
         body,
         raw: None,
+        raw_bytes: None,
     })
 }
 
@@ -111,6 +113,7 @@ fn handle_get_access_key_info(
         },
         body,
         raw: None,
+        raw_bytes: None,
     })
 }
 
@@ -368,6 +371,7 @@ fn xml_response(body: &str) -> ParsedResponse {
         },
         body: json!({}),
         raw: Some(body.to_string()),
+        raw_bytes: None,
     }
 }
 

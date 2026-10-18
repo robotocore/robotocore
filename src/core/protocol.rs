@@ -38,6 +38,9 @@ pub struct ParsedResponse {
     /// Optional pre-serialized body. When set, it is sent verbatim,
     /// bypassing query-XML/JSON encoding (used by JSON-protocol services).
     pub raw: Option<String>,
+    /// Optional arbitrary-byte body (binary payloads, XML event streams).
+    /// When set, takes precedence over `raw` and is sent verbatim.
+    pub raw_bytes: Option<Vec<u8>>,
 }
 
 impl ParsedResponse {
@@ -55,6 +58,7 @@ impl ParsedResponse {
             },
             body,
             raw: None,
+            raw_bytes: None,
         }
     }
 
@@ -66,6 +70,7 @@ impl ParsedResponse {
             headers,
             body: Value::Null,
             raw: Some(body),
+            raw_bytes: None,
         }
     }
 
@@ -97,6 +102,7 @@ impl ParsedResponse {
             },
             body,
             raw: None,
+            raw_bytes: None,
         }
     }
 }

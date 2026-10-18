@@ -114,21 +114,32 @@ impl MotoProxy {
             .unwrap_or("application/json");
 
         if content_type.contains("json") {
-            let body: serde_json::Value =
-                serde_json::from_slice(&body_bytes).unwrap_or(serde_json::Value::Null);
-            Ok(ParsedResponse {
-                status,
-                headers,
-                body,
-                raw: None,
-            })
+            match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                Ok(body) => Ok(ParsedResponse {
+                    status,
+                    headers,
+                    body,
+                    raw: None,
+                    raw_bytes: None,
+                }),
+                // Not actually JSON despite the header: never hand the client
+                // a literal `null`, send the original bytes.
+                Err(_) => Ok(ParsedResponse {
+                    status,
+                    headers,
+                    body: serde_json::Value::Null,
+                    raw: None,
+                    raw_bytes: Some(body_bytes.to_vec()),
+                }),
+            }
         } else {
-            let raw = String::from_utf8_lossy(&body_bytes).to_string();
+            // Bytes pass through unchanged (XML responses, binary octets).
             Ok(ParsedResponse {
                 status,
                 headers,
                 body: serde_json::Value::Null,
-                raw: Some(raw),
+                raw: None,
+                raw_bytes: Some(body_bytes.to_vec()),
             })
         }
     }
