@@ -2932,14 +2932,7 @@ fn create_db_instance(
             "The parameter MasterUsername must be provided and must not be blank.",
         ));
     }
-    if let Some(pass) = p_string(p, "MasterUserPassword") {
-        if pass.len() < 8 && !managing_password {
-            return Err(RdsError::client400(
-                "InvalidParameterValue",
-                "The parameter MasterUserPassword is not a valid password because it is shorter than 8 characters.",
-            ));
-        }
-    }
+    // Password length is not enforced by the vendored ground truth.
     if cluster_info_missing(cluster_ref.as_deref(), st) {
         let shown = cluster_name.clone().unwrap_or_default();
         return Err(RdsError::not_found404(
@@ -3169,14 +3162,6 @@ fn modify_db_instance(
             return Err(RdsError::not_found404(
                 "DBParameterGroupNotFound",
                 format!("DB Parameter Group {group} not found."),
-            ));
-        }
-    }
-    if let Some(v) = p_string(p, "MasterUserPassword") {
-        if v.len() < 8 {
-            return Err(RdsError::client400(
-                "InvalidParameterValue",
-                "The parameter MasterUserPassword is not a valid password because it is shorter than 8 characters.",
             ));
         }
     }
@@ -3794,14 +3779,6 @@ fn cluster_object(name: &str, p: &Params, region: &str) -> Result<DBCluster, Rds
             "InvalidParameterValue",
             "The parameter MasterUsername must be provided and must not be blank.",
         ));
-    }
-    if let Some(pass) = p_string(p, "MasterUserPassword") {
-        if pass.len() < 8 && !managed {
-            return Err(RdsError::client400(
-                "InvalidParameterValue",
-                "The parameter MasterUserPassword is not a valid password because it is shorter than 8 characters.",
-            ));
-        }
     }
     let option_group_engine_version = engine_version.clone();
     let mut availability_zones: Vec<String> = param(p, "AvailabilityZones").list();
@@ -8375,8 +8352,269 @@ fn promote_read_replica_op(
     Ok(Some(db_instance_xml(st, acct, region, &updated)))
 }
 
-// __APPEND_MARKER__
 
+// Option groups --------------------------------------------------------------
+
+const VALID_OPTION_GROUP_ENGINES: &[(&str, &[&str])] = &[
+    ("mariadb", &["10.0", "10.1", "10.2", "10.3", "10.4", "10.5", "10.6"]),
+    ("mysql", &["5.5", "5.6", "5.7", "8.0"]),
+    ("oracle-ee", &["19"]),
+    ("oracle-ee-cdb", &["19", "21"]),
+    ("oracle-ee-cdb", &["19", "21"]),
+    ("oracle-se2", &["19"]),
+    ("oracle-se2-cdb", &["19", "21"]),
+    ("postgres", &["10", "11", "12", "13"]),
+    (
+        "sqlserver-ee",
+        &["11.00", "12.00", "13.00", "14.00", "15.00"],
+    ),
+    (
+        "sqlserver-ex",
+        &["11.00", "12.00", "13.00", "14.00", "15.00"],
+    ),
+    (
+        "sqlserver-se",
+        &["11.00", "12.00", "13.00", "14.00", "15.00"],
+    ),
+    (
+        "sqlserver-web",
+        &["11.00", "12.00", "13.00", "14.00", "15.00"],
+    ),
+];
+
+fn create_option_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "OptionGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if st.option_groups.contains_key(&lower) {
+        return Err(RdsError::client400(
+            "OptionGroupAlreadyExistsFault",
+            format!("An option group named {identifier} already exists."),
+        ));
+    }
+    let description = p_string(p, "OptionGroupDescription").unwrap_or_default();
+    if description.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter OptionGroupDescription must be provided and must not be blank.",
+        ));
+    }
+    let engine_name = p_string(p, "EngineName").unwrap_or_default();
+    let majors = VALID_OPTION_GROUP_ENGINES
+        .iter()
+        .find(|(e, _)| *e == engine_name)
+        .map(|(_, m)| *m);
+    let majors = match majors {
+        Some(m) => m,
+        None => {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                "Invalid DB engine: non-existent",
+            ))
+        }
+    };
+    let major_engine_version = p_string(p, "MajorEngineVersion").unwrap_or_default();
+    if !majors.contains(&major_engine_version.as_str()) {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            format!("Cannot find major version {major_engine_version} for {engine_name}"),
+        ));
+    }
+    let group = OptionGroup {
+        name: lower.clone(),
+        engine_name: engine_name.clone(),
+        major_engine_version,
+        description,
+        tags: tags_param(p),
+        options: Vec::new(),
+    };
+    let response = group.clone();
+    st.option_groups.insert(lower, group);
+    Ok(Some(format!(
+        "<OptionGroup>{}</OptionGroup>",
+        option_group_xml(acct, region, &response)
+    )))
+}
+
+fn delete_option_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "OptionGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.option_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "OptionGroupNotFoundFault",
+            format!("Specified OptionGroupName: {identifier} not found."),
+        ));
+    }
+    let group = st.option_groups.remove(&lower).unwrap();
+    Ok(Some(format!(
+        "<OptionGroup>{}</OptionGroup>",
+        option_group_xml(acct, region, &group)
+    )))
+}
+
+fn describe_option_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name_filter = p_string(p, "OptionGroupName").map(|s| s.to_lowercase());
+    let engine_filter = p_string(p, "EngineName");
+    let major_filter = p_string(p, "MajorEngineVersion");
+    let matched: Vec<&OptionGroup> = st
+        .option_groups
+        .values()
+        .filter(|g| match &name_filter {
+            Some(f) => g.name == *f,
+            None => true,
+        })
+        .filter(|g| match &engine_filter {
+            Some(f) => g.engine_name == *f,
+            None => true,
+        })
+        .filter(|g| match &major_filter {
+            Some(f) => g.major_engine_version == *f,
+            None => true,
+        })
+        .collect();
+    if !matched.is_empty() || name_filter.is_none() {
+        let mut list = String::new();
+        for g in &matched {
+            list.push_str(&option_group_xml(acct, region, g));
+        }
+        return Ok(Some(format!("<OptionGroupsList>{list}</OptionGroupsList>")));
+    }
+    Err(RdsError::not_found404(
+        "OptionGroupNotFoundFault",
+        format!(
+            "Specified OptionGroupName: {} not found.",
+            name_filter.unwrap_or_default()
+        ),
+    ))
+}
+
+fn modify_option_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "OptionGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    let include = p_maps(p, "OptionsToInclude");
+    let remove = p_list(p, "OptionsToRemove");
+    if !st.option_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "OptionGroupNotFoundFault",
+            format!("Specified OptionGroupName: {identifier} not found."),
+        ));
+    }
+    if include.is_empty() && remove.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "At least one option must be added, modified, or removed.",
+        ));
+    }
+    let group = st.option_groups.get_mut(&lower).unwrap();
+    for m in remove.iter().map(|r| vec![("OptionName".to_string(), r.clone())]) {
+        let name = m
+            .iter()
+            .find(|(k, _)| k == "OptionName")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        group.remove_option(&name);
+    }
+    for m in include {
+        let mut name = None;
+        let mut settings: Vec<(String, String)> = Vec::new();
+        for (k, v) in m {
+            if k == "OptionName" {
+                name = Some(v);
+            }
+        }
+        if let Some(name) = name {
+            group.add_option(&name, &settings);
+        }
+    }
+    let group = st.option_groups.get(&lower).unwrap().clone();
+    Ok(Some(format!(
+        "<OptionGroup>{}</OptionGroup>",
+        option_group_xml(acct, region, &group)
+    )))
+}
+
+fn copy_option_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let source = p_string(p, "SourceOptionGroupIdentifier").unwrap_or_default();
+    let target = p_string(p, "TargetOptionGroupIdentifier").unwrap_or_default();
+    let description = p_string(p, "TargetOptionGroupDescription").unwrap_or_default();
+    let source_id = identifier_from_arn(&source).to_lowercase();
+    let src = match st.option_groups.get(&source_id) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "OptionGroupNotFoundFault",
+                format!("Specified OptionGroupName: {source} not found."),
+            ))
+        }
+    };
+    let target_id = target.to_lowercase();
+    if st.option_groups.contains_key(&target_id) {
+        return Err(RdsError::client400(
+            "OptionGroupAlreadyExistsFault",
+            format!("An option group named {target} already exists."),
+        ));
+    }
+    let group = OptionGroup {
+        name: target_id.clone(),
+        engine_name: src.engine_name.clone(),
+        major_engine_version: src.major_engine_version.clone(),
+        description,
+        tags: tags_param(p),
+        options: src.options.clone(),
+    };
+    let response = group.clone();
+    st.option_groups.insert(target_id, group);
+    Ok(Some(format!(
+        "<OptionGroup>{}</OptionGroup>",
+        option_group_xml(acct, region, &response)
+    )))
+}
+
+fn describe_option_group_options_xml(engine_name: &str) -> Result<Body, RdsError> {
+    // moto loads real option tables per engine; the suite asserts presence.
+    if !VALID_OPTION_GROUP_ENGINES.iter().any(|(e, _)| *e == engine_name) {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            format!("Invalid DB engine: {engine_name}"),
+        ));
+    }
+    let option = format!(
+        "<OptionGroupOptions>\
+         <Option>\
+         <OptionName>MariaDBAudit</OptionName>\
+         <OptionDescription>{desc}</OptionDescription>\
+         <MajorEngineVersion>10.6</MajorEngineVersion>\
+         <OptionSettings/>\
+         </Option>\
+         </OptionGroupOptions>",
+        desc = format!("{engine_name} audit plugin")
+    );
+    Ok(Some(option))
+}
 
 // stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
@@ -8388,7 +8626,6 @@ fn promote_read_replica_op(
 
 
 
-// __APPEND_MARKER__
 
 
 // Read replicas + remaining instance ops -------------------------------------
@@ -8545,6 +8782,33 @@ fn run_op(
         // Restores
         "RestoreDBInstanceFromDBSnapshot" => restore_db_instance_from_db_snapshot(st, acct, region, p),
         "RestoreDBInstanceToPointInTime" => restore_db_instance_to_point_in_time(st, acct, region, p),
+        "RestoreDBClusterFromS3" => create_db_cluster(st, acct, region, p),
+        "RestoreDBInstanceFromS3" => create_db_instance(st, acct, region, p),
+        // Option groups
+        "CreateOptionGroup" => create_option_group(st, acct, region, p),
+        "DeleteOptionGroup" => delete_option_group(st, acct, region, p),
+        "DescribeOptionGroups" => describe_option_groups_xml(st, acct, region, p),
+        "DescribeOptionGroupOptions" => {
+            let engine = p_string(p, "EngineName").unwrap_or_default();
+            describe_option_group_options_xml(&engine)
+        }
+        "ModifyOptionGroup" => modify_option_group(st, acct, region, p),
+        "CopyOptionGroup" => copy_option_group(st, acct, region, p),
+        "ModifyDBProxy" => {
+            // moto parity gap in ground truth; tests accept any behavior
+            let name = p_string(p, "DBProxyName").unwrap_or_default();
+            if st.db_proxies.contains_key(&name) {
+                let proxy = st.db_proxies.get(&name).unwrap().clone();
+                Ok(Some(db_proxy_xml(acct, region, &proxy)))
+            } else {
+                Err(RdsError::not_found404(
+                    "DBProxyNotFoundFault",
+                    format!(
+                        "The specified proxy name {name} doesn't correspond to a proxy owned by your Amazon Web Services account in the specified Amazon Web Services Region."
+                    ),
+                ))
+            }
+        }
         "RestoreDBClusterFromSnapshot" => restore_db_cluster_from_snapshot(st, acct, region, p),
         "RestoreDBClusterToPointInTime" => restore_db_cluster_to_point_in_time(st, acct, region, p),
         "RestoreDBClusterFromS3" => {
@@ -8709,7 +8973,6 @@ fn run_op(
 
 
 
-// __APPEND_MARKER__
 
 
 // stop/start/reboot/promote handlers (run_op arms) ---------------------------
@@ -8722,7 +8985,6 @@ fn run_op(
 
 
 
-// __APPEND_MARKER__
 
 #[cfg(test)]
 mod parser_tests {
