@@ -1000,4 +1000,63 @@ mod tests {
             json!("big")
         );
     }
+
+    #[test]
+    fn test_choice_nested_and_rules() {
+        let handler = StepfunctionsHandler::new();
+        let definition = json!({
+            "StartAt": "ChoiceState",
+            "States": {
+                "ChoiceState": {
+                    "Type": "Choice",
+                    "Choices": [{
+                        "And": [
+                            {"Variable": "$.a", "StringEquals": "1"},
+                            {"Variable": "$.b", "NumericEquals": 2},
+                        ],
+                        "Next": "Both",
+                    }],
+                    "Default": "Small",
+                },
+                "Both": {"Type": "Pass", "Result": "both", "End": true},
+                "Small": {"Type": "Pass", "Result": "small", "End": true},
+            }
+        })
+        .to_string();
+        handler.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "choice-nested-sm",
+                "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                "definition": definition
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:choice-nested-sm",
+                "input": "{\"a\": \"1\", \"b\": 2}"
+            }),
+        ));
+        let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
+        for _ in 0..50 {
+            let exec = handler
+                .get_state(123456789012, "us-east-1")
+                .get_execution(&arn)
+                .unwrap();
+            if !exec.is_running() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let desc = body(&handler.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
+        assert_eq!(desc["status"], "SUCCEEDED");
+        assert_eq!(
+            serde_json::from_str::<Value>(desc["output"].as_str().unwrap()).unwrap(),
+            json!("both")
+        );
+    }
 }
