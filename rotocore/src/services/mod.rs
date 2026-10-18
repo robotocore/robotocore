@@ -10,6 +10,7 @@ pub mod acm;
 pub mod cloudformation;
 pub mod comprehend;
 pub mod ec2;
+pub mod polly;
 pub mod sagemaker;
 pub mod transcribe;
 
@@ -18,6 +19,7 @@ pub mod transcribe;
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "comprehend" => Some(comprehend::dispatch(req)),
+        "polly" => Some(polly::dispatch(req)),
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "transcribe" => Some(transcribe::dispatch(req)),
         _ => None,
