@@ -79,6 +79,16 @@ def main():
         os.makedirs(code_dir, exist_ok=True)
         safe_extract(os.path.join(work, "code.zip"), code_dir)
 
+        # Unpack each layerN.zip into layerN/ so its python/ subtree (or
+        # package dirs) lands there and the sys.path scan below finds it.
+        for layer_zip in sorted(
+            p for p in os.listdir(work)
+            if p.startswith("layer") and p.endswith(".zip")
+        ):
+            dest = os.path.join(work, layer_zip[:-4])
+            os.makedirs(dest, exist_ok=True)
+            safe_extract(os.path.join(work, layer_zip), dest)
+
         sys.path.insert(0, code_dir)
         for layer_name in sorted(
             p for p in os.listdir(work)
@@ -489,6 +499,62 @@ mod tests {
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "ValueError");
         assert_eq!(payload["errorMessage"], "boom");
+    }
+
+    /// Zip an existing directory tree (one entry per file, paths relative
+    /// to the root) with python's zipfile, like a real layer package.
+    fn make_zip_dir(root: &std::path::Path, out: &std::path::Path) -> Vec<u8> {
+        let snippet = "import os, sys, zipfile\nroot, out = sys.argv[1], sys.argv[2]\nwith zipfile.ZipFile(out, 'w') as zf:\n    for dirpath, _, files in os.walk(root):\n        for f in files:\n            p = os.path.join(dirpath, f)\n            zf.write(p, os.path.relpath(p, root))\n";
+        let result = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(root.as_os_str())
+            .arg(out.as_os_str())
+            .stdin(Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(
+            result.status.success(),
+            "zip dir maker failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        fs::read(out).unwrap()
+    }
+
+    #[test]
+    fn test_layers_extracted_and_importable() {
+        // A layer zip with python/laymod.py; the handler imports it. Before
+        // the shim extracted layers this raised ModuleNotFoundError.
+        let laydir =
+            std::env::temp_dir().join(format!("lam-lay-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(laydir.join("python")).unwrap();
+        fs::write(
+            laydir.join("python").join("laymod.py"),
+            "def val():\n    return 'from-layer'\n",
+        )
+        .unwrap();
+        let zpath = laydir.parent().unwrap().join("lay.zip");
+        let layer_zip = make_zip_dir(&laydir, &zpath);
+
+        let code = "import laymod\ndef handler(e, c):\n    return {'val': laymod.val()}\n";
+        let zip = make_zip(code);
+        let res = execute_python(
+            &zip,
+            &[layer_zip],
+            "lambda_function.handler",
+            r#"{}"#,
+            "test-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["val"], json!("from-layer"));
     }
 
     #[test]
