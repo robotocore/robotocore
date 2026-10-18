@@ -16,6 +16,9 @@ jobs:
     name: "Parity harness (rust-only)"
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      RUST_PORT: "4566"
+      LOG_PREFIX: parity
     steps:
       - uses: actions/checkout@v6
         with:

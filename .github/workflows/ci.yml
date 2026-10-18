@@ -72,6 +72,11 @@ jobs:
     name: "compat: rust-only parity gate"
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      # parity.py re-derives the server from these (it kills/restarts the rust
+      # server itself; RUST_PORT must match what the start script bound).
+      RUST_PORT: "4566"
+      LOG_PREFIX: ci
     steps:
       - uses: actions/checkout@v6
         with:
