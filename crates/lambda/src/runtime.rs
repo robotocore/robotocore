@@ -14,7 +14,6 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
-use std::sync::OnceLock;
 
 /// Result of executing a function handler.
 pub struct ExecResult {
@@ -26,22 +25,7 @@ pub struct ExecResult {
     pub logs: String,
 }
 
-fn shim_path() -> PathBuf {
-    let dir = std::env::temp_dir().join("robotocore-lambda-exec");
-    static INIT: OnceLock<()> = OnceLock::new();
-    INIT.get_or_init(|| {
-        let _ = fs::create_dir_all(&dir);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-        }
-        if let Ok(mut f) = fs::File::create(dir.join("lambda_shim.py")) {
-            let _ = f.write_all(SHIM_PY.as_bytes());
-        }
-    });
-    dir.join("lambda_shim.py")
-}
+
 
 const SHIM_PY: &str = r#"#!/usr/bin/env python3
 """robotocore Lambda shim: unpack code, import handler, call it, emit result JSON."""
@@ -227,7 +211,10 @@ pub fn execute_python(
         let _ = fs::write(work.join(format!("layer{}.zip", i)), layer);
     }
 
-    let shim = shim_path();
+    let shim = work.join("lambda_shim.py");
+    if fs::write(&shim, SHIM_PY).is_err() {
+        return missing_runtime_result("failed to write handler shim");
+    }
     let mut cmd = std::process::Command::new(find_python3());
     cmd.arg(shim)
         .arg(work.as_os_str())
