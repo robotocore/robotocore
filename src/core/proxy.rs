@@ -44,8 +44,15 @@ impl MotoProxy {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        // Send to the sidecar root - the service is identified by the header
-        let url = format!("{}/", self.base_url);
+        // Preserve the request path + query: rest-json services are bound by
+        // path in moto's URL maps (X-Amz-Target JSON services bind "/"), so
+        // forwarding must mirror the in-process moto bridge, which dispatches
+        // on the original URI.
+        let mut url = format!("{}{}", self.base_url, req.path);
+        if !req.query_string.is_empty() {
+            url.push('?');
+            url.push_str(&req.query_string);
+        }
 
         // Build the proxy request
         let mut proxy_req = self
@@ -59,13 +66,11 @@ impl MotoProxy {
         // Forward relevant headers
         for (key, value) in &req.headers {
             let key_lower = key.to_lowercase();
+            // x-amzn-* covers IoT principal headers (x-amzn-iot-principal).
             if key_lower.starts_with("x-amz-")
+                || key_lower.starts_with("x-amzn-")
                 || key_lower == "authorization"
                 || key_lower == "content-type"
-                || key_lower == "x-amz-target"
-                || key_lower == "x-amz-date"
-                || key_lower == "x-amz-security-token"
-                || key_lower == "x-amz-content-sha256"
             {
                 proxy_req = proxy_req.header(key.as_str(), value.as_str());
             }
