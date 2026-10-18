@@ -6,6 +6,7 @@
 
 use crate::{Request, Response};
 
+pub mod macie2;
 pub mod securityhub;
 
 // Pending ports (stubs live in their modules but are not yet wired):
@@ -15,6 +16,7 @@ pub mod securityhub;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
+        "macie2" => Some(macie2::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         _ => None,
     }
