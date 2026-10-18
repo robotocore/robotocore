@@ -699,10 +699,12 @@ impl LambdaHandler {
         }
         let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
         if !is_python {
-            // Non-python runtimes are not executed by this backend.
+            // Non-python runtimes have no executor in this backend; mirror
+            // the ground-truth shape: 200 response with function-error
+            // header Runtime.InvalidRuntime and a null payload.
             return Ok(runtime::ExecResult {
-                payload: String::new(),
-                function_error: None,
+                payload: "null".to_string(),
+                function_error: Some("Runtime.InvalidRuntime".to_string()),
                 logs: String::new(),
             });
         }
@@ -2489,6 +2491,59 @@ mod tests {
         ));
         assert_eq!(resp.status, 400, "body: {}", resp.body);
         assert!(resp.body.contains("NoSuchBucket"), "body: {}", resp.body);
+    }
+
+    /// Build a minimal (python-zipfile) deployment package for handler tests.
+    fn make_code_zip(code: &str) -> Vec<u8> {
+        let dir =
+            std::env::temp_dir().join(format!("lam-hzip-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zpath = dir.join("t.zip");
+        let snippet = "import io, sys, zipfile\nbuf = io.BytesIO()\nze = zipfile.ZipFile(buf, 'w')\nze.writestr('index.js', sys.argv[2])\nze.close()\nopen(sys.argv[1], 'wb').write(buf.getvalue())\n";
+        let result = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(zpath.as_os_str())
+            .arg(code)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(result.status.success(), "zip maker failed");
+        let z = std::fs::read(&zpath).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        z
+    }
+
+    #[test]
+    fn test_non_python_runtime_invoke_is_error_shaped() {
+        let zip_b64 = base64::engine::general_purpose::STANDARD
+            .encode(make_code_zip("exports.handler = async (e) => ({ok: true})"));
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({
+                "FunctionName": "node-fn",
+                "Runtime": "nodejs20.x",
+                "Handler": "index.handler",
+                "Code": {"ZipFile": zip_b64}
+            }),
+            "/2015-03-31/functions",
+        ));
+        let mut req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/node-fn/invocations",
+        );
+        req.headers.insert(
+            "x-amz-invocation-type".to_string(),
+            "RequestResponse".to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, "null");
+        assert!(resp.headers.iter().any(|(k, v)| {
+            k.eq_ignore_ascii_case("x-amz-function-error") && v == "Runtime.InvalidRuntime"
+        }));
     }
 
     #[test]
