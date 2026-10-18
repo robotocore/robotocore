@@ -441,6 +441,128 @@ _EC2_VPCE_ACTIONS = {
     "DescribeVpcEndpointServiceConfigurations",
 }
 
+# ---------------------------------------------------------------------------
+# EC2 placement groups.
+#
+# Moto has no Create/Describe/DeletePlacementGroup support while the Python
+# ground truth (native EC2 provider) does; keep a small in-process store and
+# answer these ops directly, mirroring the Python provider's XML shape.
+# ---------------------------------------------------------------------------
+_pg_store: dict = {}
+
+
+def _pg_partitioner(account_id: str, region: str) -> dict:
+    return _pg_store.setdefault((account_id, region), {})
+
+
+_EC2_PG_ACTIONS = {"CreatePlacementGroup", "DescribePlacementGroups", "DeletePlacementGroup"}
+
+
+def _ec2_placement_groups(action: str, params: dict, account_id: str, region: str) -> Response:
+    import uuid
+
+    rid = str(uuid.uuid4())
+    store = _pg_partitioner(account_id, region)
+    name = params.get("GroupName", "")
+
+    if action == "CreatePlacementGroup":
+        strategy = (params.get("Strategy") or "cluster").lower()
+        count = params.get("PartitionCount") or params.get("SpreadLevel")
+        pg = {
+            "groupName": name,
+            "strategy": strategy,
+            "state": "available",
+            "groupId": f"pg-{uuid.uuid4().hex[:16]}",
+        }
+        if count:
+            key = "partitionCount" if strategy == "partition" else "spreadLevel"
+            pg[key] = count
+        if name in store:
+            return _error_response(
+                "ec2", "InvalidPlacementGroup.Duplicate",
+                f"The placement group '{name}' already exists", 409,
+            )
+        store[name] = pg
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CreatePlacementGroupResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">\n'
+            f"    <requestId>{rid}</requestId>\n"
+            "    <return>true</return>\n"
+            "    <placementGroup>\n"
+            + "".join(f"        <{k}>{v}</{k}>\n" for k, v in pg.items())
+            + "    </placementGroup>\n"
+            "</CreatePlacementGroupResponse>"
+        )
+        return Response(content=body, status_code=200, media_type="application/xml")
+
+    if action == "DescribePlacementGroups":
+        # The wire key is GroupName.1 (botocore serialization) but be lenient
+        # and accept GroupNames.* spellings as well.
+        wanted = [
+            v
+            for k, v in params.items()
+            if k.startswith("GroupName") and k != "GroupName"
+        ]
+        groups = [g for n, g in store.items() if not wanted or n in wanted]
+        items = "".join(
+            "        <item>\n"
+            + "".join(f"            <{k}>{v}</{k}>\n" for k, v in g.items())
+            + "        </item>\n"
+            for g in groups
+        )
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<DescribePlacementGroupsResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">\n'
+            f"    <requestId>{rid}</requestId>\n"
+            "    <placementGroupSet>\n"
+            + items
+            + "    </placementGroupSet>\n"
+            "</DescribePlacementGroupsResponse>"
+        )
+        return Response(content=body, status_code=200, media_type="application/xml")
+
+    # DeletePlacementGroup
+    if name in store:
+        store.pop(name)
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<DeletePlacementGroupResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">\n'
+            f"    <requestId>{rid}</requestId>\n"
+            "    <return>true</return>\n"
+            "</DeletePlacementGroupResponse>"
+        )
+        return Response(content=body, status_code=200, media_type="application/xml")
+    return _error_response(
+        "ec2", "InvalidGroup.NotFound", f"The placement group '{name}' was not found", 404,
+    )
+
+
+def _ec2_fill_detach_params(werkzeug_request, params: dict, backend) -> None:
+    """DetachVolume may come with only VolumeId (as real SDKs sometimes do).
+    Moto's dispatch requires InstanceId/Device; recover them from the
+    volume's current attachment like the native Python provider does."""
+    if not isinstance(backend, object) or backend is None:
+        return
+    if params.get("Action") != "DetachVolume" or params.get("InstanceId"):
+        return
+    try:
+        vol = backend.get_volume(params.get("VolumeId", ""))
+        att = getattr(vol, "attachment", None)
+        if att is None:
+            return
+        new_items = [
+            (k, v) for k, v in (werkzeug_request._form_cache or {}).items(multi=True)
+        ]
+        new_items.append(("InstanceId", att.instance.id))
+        if getattr(att, "device", None):
+            new_items.append(("Device", att.device))
+        werkzeug_request._form_cache = ImmutableMultiDict(new_items)
+        params["InstanceId"] = att.instance.id
+        if getattr(att, "device", None):
+            params["Device"] = att.device
+    except Exception as e:  # noqa: BLE001
+        logger.debug("detach param fill failed: %s", e)
+
 
 def _cfn_validate_template(params: dict, service: str) -> Response | None:
     """ValidateTemplate mirroring the Python provider's semantics."""
@@ -825,13 +947,26 @@ async def moto_handler(request: Request) -> Response:
         if pre is not None:
             return pre
     elif service == "ec2":
-        if params.get("Action") in _EC2_VPCE_ACTIONS:
+        action = params.get("Action", "")
+        if action in _EC2_VPCE_ACTIONS:
             try:
                 _ec2_normalize_vpc_endpoint_types(
                     _moto_backend("ec2", account_id_from_headers, region)
                 )
             except Exception as e:  # noqa: BLE001
                 logger.debug("ec2 pre-dispatch failed: %s", e)
+        if action in _EC2_PG_ACTIONS:
+            return _ec2_placement_groups(
+                action, params, account_id_from_headers, region
+            )
+        if action == "DetachVolume":
+            try:
+                _ec2_fill_detach_params(
+                    werkzeug_request, params,
+                    _moto_backend("ec2", account_id_from_headers, region),
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.debug("ec2 detach fill failed: %s", e)
 
     # Route to the correct Moto handler
     try:
