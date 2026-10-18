@@ -771,17 +771,8 @@ impl LambdaHandler {
                 }
                 if req.header("x-amz-log-type").unwrap_or("None") == "Tail" && !res.logs.is_empty()
                 {
-                    let log_tail: String = res
-                        .logs
-                        .chars()
-                        .rev()
-                        .take(4096)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .collect();
-                    let encoded =
-                        base64::engine::general_purpose::STANDARD.encode(log_tail.as_bytes());
+                    let log_tail = tail_utf8(&res.logs, 4096);
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(log_tail);
                     extra.push(("x-amz-log-result", encoded));
                 }
                 AwsResponse::raw_with_headers(200, "application/json", res.payload.clone(), &extra)
@@ -2351,6 +2342,19 @@ fn epoch_now() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// Last `max` BYTES of `s`, snapped forward to a UTF-8 char boundary so the
+/// tail never ends in a partial multi-byte code point.
+fn tail_utf8(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut start = s.len() - max;
+    while !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
 fn decode_zip(v: Option<&Value>) -> Vec<u8> {
     match v {
         Some(Value::String(s)) => decode_b64(s),
@@ -2544,6 +2548,23 @@ mod tests {
         assert!(resp.headers.iter().any(|(k, v)| {
             k.eq_ignore_ascii_case("x-amz-function-error") && v == "Runtime.InvalidRuntime"
         }));
+    }
+
+    #[test]
+    fn test_tail_utf8_bytes_boundary() {
+        // 100 × 'é' = 200 bytes; an odd cap cuts mid code point and must
+        // snap forward to the next boundary.
+        let s = "é".repeat(100);
+        let tail = tail_utf8(&s, 149);
+        assert_eq!(tail.len(), 148); // snapped from 149 up to 2-byte alignment
+        assert!(tail.chars().all(|c| c == 'é'));
+        assert_eq!(tail, &s[52..]); // the final 74 code points (148 bytes)
+        // Short strings pass through whole.
+        assert_eq!(tail_utf8("abc", 10), "abc");
+        // ASCII walks back exactly to the cap.
+        assert_eq!(tail_utf8(&"x".repeat(10), 4), "xxxx");
+        // An even cap on a 2-byte-wide string is already a boundary.
+        assert_eq!(tail_utf8(&s, 150).len(), 150);
     }
 
     #[test]
