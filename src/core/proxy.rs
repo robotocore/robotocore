@@ -121,6 +121,17 @@ impl MotoProxy {
             .map(|s| s.as_str())
             .unwrap_or("application/json");
 
+        // Byte-faithful passthrough: moto responses carry exact formatting
+        // (pretty-printed JSON the suites byte-compare) and JSON protocol
+        // clients parse the body themselves, so never re-serialize here.
+        Ok(ParsedResponse {
+            status,
+            headers,
+            body: serde_json::Value::Null,
+            raw: None,
+            raw_bytes: Some(body_bytes.to_vec()),
+        })
+        /*
         if content_type.contains("json") {
             match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
                 Ok(body) => Ok(ParsedResponse {
@@ -150,5 +161,6 @@ impl MotoProxy {
                 raw_bytes: Some(body_bytes.to_vec()),
             })
         }
+        */
     }
 }
