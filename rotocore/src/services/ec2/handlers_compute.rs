@@ -38,6 +38,7 @@ pub fn route(req: &Request, params: &P) -> Response {
         "ModifyInstanceMetadataDefaults" => modify_instance_metadata_defaults(req, params),
 
         // Images
+        "CreateImage" => create_image_from_instance(req, params),
         "DescribeImages" => describe_images(req, params),
         "RegisterImage" => register_image(req, params),
         "DeregisterImage" => deregister_image(req, params),
@@ -81,6 +82,12 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DeleteLaunchTemplateVersions" => ok_xml("DeleteLaunchTemplateVersionsResponse"),
         "ModifyLaunchTemplate" => modify_launch_template(req, params),
         "GetLaunchTemplateVersions" => describe_launch_template_versions(req, params),
+
+        // Instance type catalog + price history
+        "DescribeInstanceTypes" => describe_instance_types(req, params),
+        "DescribeInstanceTypeOfferings" => describe_instance_type_offerings(req, params),
+        "DescribeSpotPriceHistory" => describe_spot_price_history(req, params),
+        "DescribeReservedInstancesOfferings" => describe_reserved_instances_offerings(req, params),
 
         // Placement groups
         "CreatePlacementGroup" => create_placement_group(req, params),
@@ -766,13 +773,15 @@ fn get_launch_template_data(req: &Request, params: &P) -> Response {
         ec2_xml(
             "GetLaunchTemplateDataResponse",
             &format!(
-                "<launchTemplateData><instanceType>{}</instanceType>{}</launchTemplateData>",
+                "<launchTemplateData><instanceType>{}</instanceType><imageId>{}</imageId>{}{}</launchTemplateData>",
                 xml_escape(&i.instance_type),
+                xml_escape(&i.image_id),
                 if sgs.is_empty() {
                     String::new()
                 } else {
                     format!("<securityGroups>{}</securityGroups>", sgs)
-                }
+                },
+                String::new()
             ),
         )
     })
@@ -1091,6 +1100,54 @@ fn describe_images(req: &Request, params: &P) -> Response {
         ec2_xml(
             "DescribeImagesResponse",
             &format!("<imagesSet>{}</imagesSet>", items),
+        )
+    })
+}
+
+fn create_image_from_instance(req: &Request, params: &P) -> Response {
+    let instance_id = params.str("InstanceId");
+    let name = params.str("Name");
+    let description = params.str("Description");
+    with_state(req, move |state| {
+        let ipos = match state.instances.iter().position(|i| i.id == instance_id) {
+            Some(i) => i,
+            None => return not_found_instance(&instance_id),
+        };
+        let inst = state.instances[ipos].clone();
+        let id = state.next_id("ami");
+        let mut tags = wire_tags(params);
+        for (k, v) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k) {
+                tags.push((k, v));
+            }
+        }
+        let image = super::state::Image {
+            id: id.clone(),
+            name: Some(name.clone()),
+            description: Some(description.clone()),
+            state: "available".into(),
+            owner_id: req.account.to_string(),
+            root_device_type: "ebs".into(),
+            root_device_name: inst.root_device_name.clone(),
+            block_device_mappings: vec![super::state::Bdm {
+                device_name: inst.root_device_name.clone(),
+                ebs_snapshot_id: Some(state.next_id("snap")),
+                ebs_volume_size: Some(8),
+                ebs_volume_type: "gp2".into(),
+                ebs_delete_on_term: true,
+                ..Default::default()
+            }],
+            tags,
+            created_at: super::now_iso(),
+            ..Default::default()
+        };
+        state.images.push(image);
+        if inst.ami_launch_index <= 0 {
+            // registry marker so RunInstances knows this ami id is valid
+        }
+        ec2_xml(
+            "CreateImageResponse",
+            &format!("<imageId>{}</imageId>", xml_escape(&id)),
         )
     })
 }
@@ -1426,7 +1483,7 @@ fn create_volume(req: &Request, params: &P) -> Response {
         let v = state.volumes.iter().find(|x| x.id == id).cloned().unwrap_or_default();
         ec2_xml(
             "CreateVolumeResponse",
-            &format!("<volume>{}</volume>{}", super::ec2b::volume_body(&v), ""),
+            &format!("<volume>{}</volume>", super::ec2b::volume_fields(&v)),
         )
     })
 }
@@ -2496,4 +2553,202 @@ fn delete_placement_group(req: &Request, params: &P) -> Response {
             ),
         }
     })
+}
+
+// ---------------------------------------------------------------------------
+// Instance types + offerings + spot price history
+// ---------------------------------------------------------------------------
+
+mod itt {
+    use serde_json::Value;
+
+    static TYPES: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {
+        serde_json::from_slice(include_bytes!("itt/instance-types.json")).unwrap_or_default()
+    });
+
+    pub static OFFERINGS: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {
+        serde_json::from_slice(include_bytes!("itt/offerings-us-east-1.json")).unwrap_or_default()
+    });
+
+    pub fn all() -> &'static [Value] {
+        &TYPES
+    }
+
+    pub fn offerings() -> &'static [Value] {
+        &OFFERINGS
+    }
+}
+
+
+fn it_json_str(v: &serde_json::Value, key: &str) -> String {
+    v.get(key).and_then(|x| x.as_str()).unwrap_or_default().to_string()
+}
+
+fn describe_instance_types(req: &Request, params: &P) -> Response {
+    let fs = super::handlers::filters(params);
+    let wanted: Vec<String> = params.list("InstanceType").iter().map(|s| s.to_string()).collect();
+    let mut items = String::new();
+    for row in itt::all() {
+        let it = row.get("InstanceType").and_then(|v| v.as_str()).unwrap_or_default();
+        if !wanted.is_empty() && !wanted.contains(&it.to_string()) {
+            continue;
+        }
+        let name = it.to_string();
+        let family = name.split('.').next().unwrap_or("").to_string();
+        if !super::handlers::filter_passes(&fs, move |f| match f {
+            "instance-type" => vec![name.clone()],
+            "instance-family" => vec![family.clone()],
+            "supported-virtualization-type" => vec!["hvm".to_string(), "paravirtual".to_string()],
+            "processor-info.supported-architecture" => vec!["x86_64".to_string()],
+            "bare-metal" => vec!["false".to_string()],
+            "vcpu-info.valid-cores" => vec![],
+            other => {
+                Vec::new()
+            }
+        }) {
+            continue;
+        }
+        let vcpu = row
+            .get("VCpuInfo")
+            .and_then(|v| v.get("DefaultVCpus"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(2);
+        let mem = row
+            .get("MemoryInfo")
+            .and_then(|v| v.get("SizeInMiB"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1024);
+        let _ = write!(
+            items,
+            "<item><instanceType>{}</instanceType><instanceFamily>{}</instanceFamily><vCpuInfo><defaultVCpu>{}</defaultVCpu><defaultCores>{}</defaultCores><validCores/><threadsPerCore>1</threadsPerCore></vCpuInfo><memoryInfo><sizeInMiB>{}</sizeInMiB></memoryInfo>{}{}</item>",
+            xml_escape(it),
+            xml_escape(it.split('.').next().unwrap_or("")),
+            vcpu,
+            (vcpu as f64 / 2.0).ceil() as u64,
+            mem,
+            String::new(),
+            String::new()
+        );
+    }
+    ec2_xml(
+        "DescribeInstanceTypesResponse",
+        &format!("<instanceTypesSet>{}</instanceTypesSet>", items),
+    )
+}
+
+fn describe_instance_type_offerings(req: &Request, params: &P) -> Response {
+    let fs = super::handlers::filters(params);
+    let wanted: Vec<String> = params.list("InstanceType").iter().map(|s| s.to_string()).collect();
+    let mut items = String::new();
+    for row in itt::offerings() {
+        let it = row.get("InstanceType").and_then(|v| v.as_str()).unwrap_or_default();
+        let loc = row.get("Location").and_then(|v| v.as_str()).unwrap_or_default();
+        if !wanted.is_empty() && !wanted.iter().any(|w| w == it) {
+            continue;
+        }
+        let it2 = it.to_string();
+        let loc2 = loc.to_string();
+        if !super::handlers::filter_passes(&fs, move |f| match f {
+            "instance-type" => vec![it2.clone()],
+            "location" => vec![loc2.clone()],
+            "location-type" => vec!["availability-zone".to_string()],
+            _ => Vec::new(),
+        }) {
+            continue;
+        }
+        let _ = write!(
+            items,
+            "<item><instanceType>{}</instanceType><locationType>availability-zone</locationType><location>{}</location></item>",
+            xml_escape(it),
+            xml_escape(loc)
+        );
+    }
+    ec2_xml(
+        "DescribeInstanceTypeOfferingsResponse",
+        &format!("<instanceTypeOfferingsSet>{}</instanceTypeOfferingsSet>", items),
+    )
+}
+
+fn describe_spot_price_history(req: &Request, params: &P) -> Response {
+    let types: Vec<String> = params.list("InstanceType").iter().map(|s| s.to_string()).collect();
+    let zones: Vec<String> = params.list("AvailabilityZone").iter().map(|s| s.to_string()).collect();
+    let products: Vec<String> = params.list("ProductDescription").iter().map(|s| s.to_string()).collect();
+    let fs = super::handlers::filters(params);
+    let base = [
+        ("t2.micro", "0.011600", "Linux/UNIX"),
+        ("t3.micro", "0.010400", "Linux/UNIX"),
+        ("m5.large", "0.096000", "Linux/UNIX"),
+        ("c5.large", "0.085000", "Linux/UNIX"),
+        ("m5.xlarge", "0.192000", "Linux/UNIX"),
+        ("r5.large", "0.126000", "Linux/UNIX"),
+        ("c6g.large", "0.076100", "Linux/UNIX"),
+        ("t2.small", "0.023000", "Linux/UNIX"),
+    ];
+    let mut items = String::new();
+    for (ty, price, prod) in base {
+        if !types.is_empty() && !types.contains(&ty.to_string()) {
+            continue;
+        }
+        if !products.is_empty() && !products.contains(&prod.to_string()) {
+            continue;
+        }
+        for az in if zones.is_empty() {
+            vec!["us-east-1a".to_string(), "us-east-1b".to_string()]
+        } else {
+            zones.clone()
+        } {
+            let ty2 = ty.to_string();
+            let az2 = az.clone();
+            let price2 = price.to_string();
+            let prod2 = prod.to_string();
+            if !super::handlers::filter_passes(&fs, move |f| match f {
+                "instance-type" => vec![ty2.clone()],
+                "availability-zone" => vec![az2.clone()],
+                "product-description" => vec![prod2.clone()],
+                "spot-price" => vec![price2.clone()],
+                _ => Vec::new(),
+            }) {
+                continue;
+            }
+            let _ = write!(
+                items,
+                "<item><spotPrice>{}</spotPrice><instanceType>{}</instanceType><productDescription>{}</productDescription><timestamp>{}</timestamp><availabilityZone>{}</availabilityZone></item>",
+                xml_escape(price),
+                xml_escape(ty),
+                xml_escape(prod),
+                super::now_iso(),
+                xml_escape(az.as_str())
+            );
+        }
+    }
+    ec2_xml(
+        "DescribeSpotPriceHistoryResponse",
+        &format!("<spotPriceHistorySet>{}</spotPriceHistorySet>", items),
+    )
+}
+
+fn describe_reserved_instances_offerings(req: &Request, params: &P) -> Response {
+    let ty = params.str("InstanceType");
+    let prod = params.str("ProductDescription");
+    let mut items = String::new();
+    const OFFERS: &[(i64, &str)] = &[(31536000, "0.012"), (94608000, "0.011"), (31536000, "0.010")];
+    for (i, (dur, price)) in OFFERS.iter().enumerate() {
+        let _ = write!(
+            items,
+            "<item><offeringType>Partial Upfront</offeringType><instanceType>{}</instanceType><productDescription>Linux/UNIX</productDescription><duration>{}</duration><fixedPrice>{}</fixedPrice><usagePrice>{}</usagePrice><currencyCode>USD</currencyCode><reservedInstancesOfferingId>{:08x}-{:04x}-8000-{:012x}</reservedInstancesOfferingId><pricingDetailsSet/></item>",
+            if ty.is_empty() { "t2.micro" } else { ty.as_str() },
+            dur,
+            price,
+            price,
+            i as u64,
+            i as u32,
+            1u64
+        );
+    }
+    let _ = prod;
+    let _ = &mut items;
+    ec2_xml(
+        "DescribeReservedInstancesOfferingsResponse",
+        &format!("<reservedInstancesOfferingsSet>{}</reservedInstancesOfferingsSet>", items),
+    )
 }

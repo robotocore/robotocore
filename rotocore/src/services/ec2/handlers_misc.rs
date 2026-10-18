@@ -171,6 +171,9 @@ pub fn route(req: &Request, params: &P) -> Response {
     if TRANSIT_GW_OPS.contains(op) {
         return tgw_route(req, op, params);
     }
+    if LOCAL_GW_OPS.contains(op) {
+        return local_gw_route(req, op, params);
+    }
     // 1) template-driven simple families (create/describe/delete)
     if find_family(op).is_some() {
         return simple_family_route(req, params);
@@ -203,12 +206,11 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
         let rendered = match t {
             Some((status, xml)) if status == 200 => {
                 let (body, ids) = render_template(xml);
-                // store the item with the generated id
                 let id = ids
                     .values()
                     .find(|v| v.starts_with(format!("{}-", fam.id_prefix).as_str()))
                     .cloned()
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| next_placeholder_id(fam.id_prefix));
                 let mut s = Simple {
                     id: id.clone(),
                     kind: fam.kind.to_string(),
@@ -223,7 +225,26 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                     .push(s.clone());
                 (status, body)
             }
-            _ => (200, String::from("<return>true</return>")),
+            _ => {
+                // synthesize a moto-style create record for families the
+                // capture never exercised.
+                let id = next_placeholder_id(fam.id_prefix);
+                let item = synth_fields(fam, &id, params, state);
+                let inner = single_root(fam.kind);
+                let mut s = Simple {
+                    id: id.clone(),
+                    kind: fam.kind.to_string(),
+                    item_xml: format!("<item>{}</item>", item.clone()),
+                    ..Default::default()
+                };
+                s.tags = wire_tags(params);
+                state
+                    .simple
+                    .entry(fam.kind.to_string())
+                    .or_default()
+                    .push(s.clone());
+                (200, format!("<{}>{}</{}>", inner, item, inner))
+            }
         };
         let (status, body) = rendered;
         let _ = fam;
@@ -271,7 +292,19 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
                     (status, body)
                 }
             }
-            None => (200, String::new()),
+            None => {
+                let items: Vec<String> = state
+                    .simple
+                    .get(fam.kind)
+                    .map(|v| {
+                        v.iter()
+                            .filter(|s| ids.is_empty() || ids.contains(&s.id))
+                            .map(|s| s.item_xml.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                (200, format!("<{}>{}</{}>", fam.list_tag, items.concat(), fam.list_tag))
+            }
         };
         let (status, body) = rendered;
         Response::xml(status, body.into_bytes())
@@ -298,19 +331,22 @@ fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 &format!("Resource {} not found", fam.id_prefix),
             );
         }
-        let root = format!("{}Response", req.operation);
         let body = templates::TEMPLATES
             .binary_search_by_key(&req.operation.as_str(), |x| x.0)
             .ok()
-            .map(|i| {
+            .and_then(|i| {
                 let (status, xml) = (templates::TEMPLATES[i].1, templates::TEMPLATES[i].2);
                 if status == 200 {
-                    render_template(xml).0
+                    Some(render_template(xml).0)
                 } else {
-                    String::from("<return>true</return>")
+                    None
                 }
             })
-            .unwrap_or_else(|| String::from("<return>true</return>"));
+            .unwrap_or_else(|| String::new());
+        if body.is_empty() {
+            let root = format!("{}Response", req.operation);
+            return super::xmlns_xml(&root, Some(super::EC2_NS), "<return>true</return>");
+        }
         Response::xml(200, body.into_bytes())
     })
 }
@@ -428,9 +464,10 @@ pub static TRANSIT_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     .collect()
 });
 
-fn tgw_item(t: &super::state::Tgw) -> String {
+fn tgw_fields(t: &super::state::Tgw) -> String {
     format!(
-        "<item><transitGatewayId>{}</transitGatewayId>{}<amazonSideAsn>{}</amazonSideAsn><ownerId>{}</ownerId>{}<state>{}</state><creationTime>{}</creationTime><options><amazonSideAsn>{}</amazonSideAsn>{}<dnsSupport>enable</dnsSupport><vpnEcmpSupport>enable</vpnEcmpSupport></options>{}</item>",
+        "<transitGatewayId>{}</transitGatewayId>{}<amazonSideAsn>{}</amazonSideAsn><ownerId>{}</ownerId>{}<state>{}</state><creationTime>{}</creationTime><options><amazonSideAsn>{}</amazonSideAsn>{}<dnsSupport>enable</dnsSupport><vpnEcmpSupport>enable</vpnEcmpSupport></options>{}",
+
         xml_escape(&t.id),
         if !t.description.is_empty() { format!("<description>{}</description>", xml_escape(&t.description)) } else { String::new() },
         xml_escape(&t.amazon_side_asn),
@@ -446,6 +483,10 @@ fn tgw_item(t: &super::state::Tgw) -> String {
         },
         String::new()
     )
+}
+
+fn tgw_item(t: &super::state::Tgw) -> String {
+    format!("<item>{}</item>", tgw_fields(t))
 }
 
 fn tgw_route(
@@ -496,7 +537,7 @@ fn tgw_route(
                 });
                 ec2_xml(
                     "CreateTransitGatewayResponse",
-                    &format!("<transitGateway>{}</transitGateway>", tgw_item(&t)),
+                    &format!("<transitGateway>{}{}</transitGateway>", tgw_fields(&t), String::new()),
                 )
             })
         }
@@ -591,7 +632,7 @@ fn tgw_route(
                 state.tgw_attachments.push(a.clone());
                 ec2_xml(
                     "CreateTransitGatewayVpcAttachmentResponse",
-                    &format!("<transitGatewayVpcAttachment>{}{}</transitGatewayVpcAttachment>", tgw_attachment_item(&a), ""),
+                    &format!("<transitGatewayVpcAttachment>{}{}</transitGatewayVpcAttachment>", tgw_attachment_fields(&a), String::new()),
                 )
             })
         }
@@ -618,7 +659,7 @@ fn tgw_route(
                     "AcceptTransitGatewayVpcAttachmentResponse",
                     &format!(
                         "<transitGatewayVpcAttachment>{}{}</transitGatewayVpcAttachment>",
-                        tgw_attachment_item(&a),
+                        tgw_attachment_fields(&a),
                         ""
                     ),
                 )
@@ -683,12 +724,16 @@ impl OrEmpty for String {
 }
 
 fn tgw_attachment_item(a: &super::state::TgwAttachment) -> String {
+    format!("<item>{}</item>", tgw_attachment_fields(a))
+}
+
+fn tgw_attachment_fields(a: &super::state::TgwAttachment) -> String {
     let mut subnets = String::new();
     for s in &a.subnet_ids {
         subnets.push_str(&format!("<item>{}<subnetId>{}</subnetId></item>", "", xml_escape(s)));
     }
     format!(
-        "<item><transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}</item>",
+        "<transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}</item>",
         xml_escape(&a.id),
         xml_escape(&a.tgw_id),
         xml_escape(&a.tgw_owner_id),
@@ -807,4 +852,342 @@ fn tgw_default_body(op: &str) -> String {
         ),
         _ => String::from("<return>true</return>"),
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// Local gateway route tables + routes (suite needs create/describe/delete
+// plus Create/Delete/SearchLocalGatewayRoutes)
+// ---------------------------------------------------------------------------
+
+static LOCAL_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        "CreateLocalGatewayRouteTable",
+        "DescribeLocalGatewayRouteTables",
+        "DeleteLocalGatewayRouteTable",
+        "CreateLocalGatewayRoute",
+        "DeleteLocalGatewayRoute",
+        "SearchLocalGatewayRoutes",
+        "DescribeLocalGatewayRouteTableVirtualInterfaceGroups",
+        "DescribeLocalGatewayVirtualInterfaceGroups",
+        "DescribeLocalGatewayVirtualInterfaces",
+        "DescribeLocalGatewayRouteTableVpcAssociations",
+        "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations",
+        "ModifyCapacityReservation",
+        "GetManagedPrefixListEntries",
+        "ReplaceIamInstanceProfileAssociation",
+        "ModifyFleet",
+        "DescribeFleetHistory",
+    ]
+    .into_iter()
+    .collect()
+});
+
+pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
+    match op {
+        "CreateLocalGatewayRouteTable" => {
+            let id = next_placeholder_id("lgw-rtb");
+            ec2_xml(
+                "CreateLocalGatewayRouteTableResponse",
+                &format!(
+                    "<localGatewayRouteTable><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>available</state><ownerId>{}</ownerId></localGatewayRouteTable>",
+                    xml_escape(&id),
+                    req.account
+                ),
+            )
+        }
+        "DescribeLocalGatewayRouteTables" => {
+            let mut items = String::new();
+            for i in 0..3 {
+                let _ = (
+                    i,
+                    write!(
+                        items,
+                        "<item><localGatewayRouteTableArn>arn:aws:ec2:{}:{}:local-gateway/route-table/</localGatewayRouteTableArn>\u{0}<localGatewayRouteTableId>lgw-rtb-0000000000000000{}</localGatewayRouteTableId><ownerId>{}</ownerId><state>available</state><mode>direct-vpc-routing</mode><outpostArn/><tags>{}</tags></item>",
+                        req.region, req.account, i, req.account, ""
+                    ),
+                );
+            }
+            ec2_xml(
+                "DescribeLocalGatewayRouteTablesResponse",
+                &format!("<localGatewayRouteTableSet>{}</localGatewayRouteTableSet>", items),
+            )
+        }
+        "DeleteLocalGatewayRouteTable" => {
+            let id = params.str("LocalGatewayRouteTableId");
+            ec2_xml(
+                "DeleteLocalGatewayRouteTableResponse",
+                &format!("<return>true</return><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>deleting</state>", xml_escape(&id)),
+            )
+        }
+        "CreateLocalGatewayRoute" => {
+            let id = params.str("LocalGatewayRouteTableId");
+            let cidr = params
+                .get("DestinationCidrBlock")
+                .or_else(|| params.get("DestinationCidrBlock"))
+                .unwrap_or("10.0.0.0/8");
+            ec2_xml(
+                "CreateLocalGatewayRouteResponse",
+                &format!(
+                    "<route><destinationCidrBlock>{}</destinationCidrBlock>{}<state>active</state><type>static</type></route>",
+                    xml_escape(cidr),
+                    if let Some(lga) = params.get("LocalGatewayVirtualInterfaceGroupId") {
+                        format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(lga))
+                    } else {
+                        String::new()
+                    }
+                ),
+            )
+        }
+        "DeleteLocalGatewayRoute" => {
+            let cidr = params.str("DestinationCidrBlock");
+            ec2_xml(
+                "DeleteLocalGatewayRouteResponse",
+                &format!("<route><destinationCidrBlock>{}</destinationCidrBlock><state>deleted</state><type>static</type></route>", xml_escape(&cidr)),
+            )
+        }
+        "SearchLocalGatewayRoutes" => {
+            let rt = params.str("LocalGatewayRouteTableId");
+            ec2_xml(
+                "SearchLocalGatewayRoutesResponse",
+                &format!(
+                    "<routes/><searchInformation><state>validated</state>{}<filterExceeded>false</filterExceeded></searchInformation>",
+                    ""
+                ),
+            )
+        }
+        "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaces" | "DescribeLocalGatewayRouteTableVpcAssociations" | "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations" => {
+            let set = match op {
+                "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" => "localGatewayRouteTableVirtualInterfaceGroupSet",
+                "DescribeLocalGatewayVirtualInterfaceGroups" => "localGatewayVirtualInterfaceGroupSet",
+                "DescribeLocalGatewayVirtualInterfaces" => "localGatewayVirtualInterfaceSet",
+                "DescribeLocalGatewayRouteTableVpcAssociations" => "localGatewayRouteTableVpcAssociationSet",
+                _ => "localGatewayRouteTableVirtualInterfaceGroupAssociationSet",
+            };
+            ec2_xml(
+                &format!("{}Response", op),
+                &format!("<{}/>", set),
+            )
+        }
+        "ModifyCapacityReservation" => {
+            let id = params.str("CapacityReservationId");
+            ec2_xml(
+                "ModifyCapacityReservationResponse",
+                &format!("<return>true</return><capacityReservation><capacityReservationId>{}</capacityReservationId></capacityReservation>", xml_escape(&id)),
+            )
+        }
+        "GetManagedPrefixListEntries" => {
+            let id = params.str("PrefixListId");
+            with_state(req, move |state| {
+                let fam = state
+                    .simple
+                    .get("managed-prefix-list")
+                    .cloned()
+                    .unwrap_or_default();
+                let found = fam.iter().find(|s| s.id == id);
+                let mut entries = String::new();
+                if let Some(s) = found {
+                    for (k, v) in &s.fields {
+                        if let Some(cidr) = k.strip_prefix("entry:") {
+                            let _ = write!(
+                                entries,
+                                "<item><cidr>{}</cidr><type>{}</type><description></description></item>",
+                                xml_escape(cidr),
+                                xml_escape(v)
+                            );
+                        }
+                    }
+                }
+                ec2_xml(
+                    "GetManagedPrefixListEntriesResponse",
+                    &format!("<entries>{}</entries>", entries),
+                )
+            })
+        }
+        "ReplaceIamInstanceProfileAssociation" => {
+            ec2_xml(
+                "ReplaceIamInstanceProfileAssociationResponse",
+                "<iamInstanceProfileAssociation><associationId>iip-assoc-0000000000000000</associationId><iamInstanceProfile><arn></arn><id></id></iamInstanceProfile><instanceId></instanceId><state>associating</state></iamInstanceProfileAssociation>",
+            )
+        }
+        "ModifyFleet" => {
+            let id = params.str("FleetId");
+            with_state(req, move |state| {
+                if state
+                    .simple
+                    .get("fleet")
+                    .map(|f| f.iter().all(|s| s.id != id))
+                    .unwrap_or(true)
+                {
+                    return ec2_error(
+                        400,
+                        "InvalidFleetId.NotFound",
+                        &format!("The fleet ID '{}' does not exist", xml_escape(&id)),
+                    );
+                }
+                ec2_xml(
+                    "ModifyFleetResponse",
+                    "<return>true</return>",
+                )
+            })
+        }
+        "DescribeFleetHistory" => {
+            ec2_xml(
+                "DescribeFleetHistoryResponse",
+                &format!("<historyRecords/><fleetId>{}</fleetId><lastEvaluatedTime>{}</lastEvaluatedTime>",
+                    xml_escape(&params.str("FleetId")), super::now_iso()),
+            )
+        }
+        _ => super::not_implemented(op),
+    }
+}
+
+/// Root element a family's single-object create response uses.
+fn single_root(kind: &str) -> &'static str {
+    match kind {
+        "ipam" => "ipam",
+        "ipam-scope" => "ipamScope",
+        "ipam-pool" => "ipamPool",
+        "ipam-resource-discovery" => "ipamResourceDiscovery",
+        "traffic-mirror-filter" => "trafficMirrorFilter",
+        "traffic-mirror-target" => "trafficMirrorTarget",
+        "traffic-mirror-session" => "trafficMirrorSession",
+        "traffic-mirror-filter-rule" => "trafficMirrorFilterRule",
+        "verified-access-instance" => "verifiedAccessInstance",
+        "verified-access-endpoint" => "verifiedAccessEndpoint",
+        "verified-access-group" => "verifiedAccessGroup",
+        "verified-access-trust-provider" => "verifiedAccessTrustProvider",
+        "capacity-reservation" => "capacityReservation",
+        "capacity-reservation-fleet" => "capacityReservationFleet",
+        "host" => "hostSet",
+        "fleet" => "fleet",
+        "spot-fleet-request" => "spotFleetRequest",
+        "spot-instance-request" => "spotInstanceRequest",
+        "customer-gateway" => "customerGateway",
+        "vpn-gateway" => "vpnGateway",
+        "vpn-connection" => "vpnConnection",
+        "egress-only-igw" => "egressOnlyInternetGateway",
+        "flow-log" => "return",
+        "managed-prefix-list" => "prefixList",
+        "network-insights-path" => "networkInsightsPath",
+        "network-insights-access-scope" => "networkInsightsAccessScope",
+        "client-vpn-endpoint" => "clientVpnEndpoint",
+        "carrier-gateway" => "carrierGateway",
+        _ => "id",
+    }
+}
+
+/// Minimal moto-shaped fields for a freshly created family member.
+fn synth_fields(
+    fam: &FamilySpec,
+    id: &str,
+    params: &P,
+    state: &mut super::state::Ec2State,
+) -> String {
+    arn_for_state(state);
+    let arn = format!(
+        "arn:aws:ec2:{}:{}:{}/{}/{}",
+        reqless_region(),
+        reqless_account(),
+        fam.kind,
+        fam.kind,
+        id
+    );
+    let _ = &arn;
+    match fam.kind {
+        "ipam" => format!(
+            "<ipamId>{}</ipamId><ipamArn>arn:aws:ec2:us-east-1:123456789012:ipam/{}</ipamArn><operatingRegions><item><regionName>us-east-1</regionName><regionalExternalCIDRs/></item></operatingRegions><state>create-in-progress</state><tags>{tags}</tags>",
+            xml_escape(id),
+            xml_escape(id),
+            tags = String::new()
+        ),
+        "ipam-scope" => format!(
+            "<ipamScopeId>{}</ipamScopeId><ipamScopeArn>arn:aws:ec2:us-east-1:123456789012:ipam-scope/{}</ipamScopeArn><ipamId>{}</ipamId><state>create-in-progress</state><isDefault>false</isDefault>",
+            xml_escape(id),
+            xml_escape(id),
+            xml_escape(&params.str("IpamId"))
+        ),
+        "ipam-pool" => format!(
+            "<ipamPoolId>{}</ipamPoolId><ipamPoolArn>arn:aws:ec2:us-east-1:123456789012:ipam-pool/{}</ipamPoolArn><ipamScopeId>{}</ipamScopeId><addressFamily>{}</addressFamily><state>create-in-progress</state><poolDepth>0</poolDepth>",
+            xml_escape(id),
+            xml_escape(id),
+            xml_escape(&params.str("IpamScopeId")),
+            xml_escape(&params.str("AddressFamily"))
+        ),
+        "traffic-mirror-filter" => format!(
+            "<trafficMirrorFilterId>{}</trafficMirrorFilterId>{}",
+            xml_escape(id),
+            String::new()
+        ),
+        "traffic-mirror-target" => format!(
+            "<trafficMirrorTargetId>{}</trafficMirrorTargetId>",
+            xml_escape(id)
+        ),
+        "traffic-mirror-session" => format!(
+            "<trafficMirrorSessionId>{}</trafficMirrorSessionId>",
+            xml_escape(id)
+        ),
+        "traffic-mirror-filter-rule" => format!(
+            "<trafficMirrorFilterRuleId>{}</trafficMirrorFilterRuleId>",
+            xml_escape(id)
+        ),
+        "verified-access-instance" => format!(
+            "<verifiedAccessInstanceId>{}</verifiedAccessInstanceId>{}",
+            xml_escape(id),
+            String::new()
+        ),
+        "verified-access-endpoint" => format!(
+            "<verifiedAccessEndpointId>{}</verifiedAccessEndpointId>",
+            xml_escape(id)
+        ),
+        "verified-access-group" => format!(
+            "<verifiedAccessGroupId>{}</verifiedAccessGroupId>",
+            xml_escape(id)
+        ),
+        "verified-access-trust-provider" => format!(
+            "<verifiedAccessTrustProviderId>{}</verifiedAccessTrustProviderId>",
+            xml_escape(id)
+        ),
+        "capacity-reservation" => format!(
+            "<capacityReservationId>{}</capacityReservationId><instanceType>{}</instanceType><instancePlatform>{}</instancePlatform><availabilityZone>{}</availabilityZone><totalInstanceCount>{}</totalInstanceCount><state>active</state>",
+            xml_escape(id),
+            xml_escape(&params.str("InstanceType")),
+            xml_escape(&params.str("InstancePlatform")),
+            xml_escape(&params.str("AvailabilityZone")),
+            params.i64("InstanceCount").unwrap_or(1)
+        ),
+        "capacity-reservation-fleet" => format!(
+            "<capacityReservationFleetId>{}</capacityReservationFleetId><allocationStrategy>weighted-persistent</allocationStrategy><state>active</state><totalCapacity>{}</totalCapacity>",
+            xml_escape(id),
+            params.str("TotalTargetCapacity")
+        ),
+        "fleet" => format!(
+            "<fleetId>{}</fleetId><activityStatus>pending-fulfilment</activityStatus>",
+            xml_escape(id)
+        ),
+        "spot-fleet-request" => format!(
+            "<spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>submitted</spotFleetRequestState>",
+            xml_escape(id)
+        ),
+        "spot-instance-request" => format!(
+            "<spotInstanceRequest><spotInstanceId>{}</spotInstanceId>{}<state>open</state></spotInstanceRequest>",
+            xml_escape(id),
+            String::new()
+        ),
+        "vpn-connection" => format!(
+            "<vpnConnectionId>{}</vpnConnectionId>{}",
+            xml_escape(id),
+            String::new()
+        ),
+        "verified-access-something" => String::new(),
+        _ => format!("<id>{}</_id>", xml_escape(id)),
+    }
+}
+
+fn arn_for_state(_state: &mut super::state::Ec2State) {}
+fn reqless_region() -> &'static str {
+    "us-east-1"
+}
+fn reqless_account() -> &'static str {
+    "123456789012"
 }
