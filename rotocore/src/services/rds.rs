@@ -2603,6 +2603,42 @@ fn auto_snapshot_id(identifier: &str) -> String {
     format!("rds:{identifier}-{timestamp}")
 }
 
+/// Random ids a fresh cluster needs: url_identifier, hosted_zone, resource.
+fn new_cluster_ids() -> (String, String, String) {
+    (
+        rand_lower(12),
+        format!("T{}", rand_upper(13)),
+        format!("cluster-{}", rand_upper(26)),
+    )
+}
+
+/// Capture a cluster snapshot the way moto's DBClusterSnapshot init does.
+fn cluster_snapshot_from(
+    cluster: &DBCluster,
+    snapshot_id: &str,
+    snapshot_type: &str,
+    tags: &[Tag],
+) -> DBClusterSnapshot {
+    DBClusterSnapshot {
+        id: snapshot_id.to_lowercase(),
+        original_id: snapshot_id.to_string(),
+        cluster: cluster.clone(),
+        snapshot_type: snapshot_type.to_string(),
+        status: "available".to_string(),
+        tags: {
+            if tags.is_empty() && cluster.copy_tags_to_snapshot {
+                cluster.tags.clone()
+            } else {
+                tags.to_vec()
+            }
+        },
+        attributes_restore: Vec::new(),
+        created: Utc::now(),
+        encrypted: cluster.storage_encrypted,
+        kms_key_id: cluster.kms_key_id.clone(),
+    }
+}
+
 fn db_cluster_ref(p: &Params) -> Option<String> {
     param(p, "DBClusterIdentifier").string().map(|s| s.to_lowercase())
 }
@@ -3501,5 +3537,376 @@ fn find_cluster<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBCluster>
 fn find_instance<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBInstance> {
     st.databases.get(&identifier.to_lowercase())
 }
+
+
+// Tags -----------------------------------------------------------------------
+
+/// moto parses the arn to (resource_type, resource_id); automated snapshots
+/// ride `rds:{db}:{id}` instead of the snapshot:{id} form.
+enum TagTarget {
+    Instance(String),
+    Cluster(String),
+    ParamGroup(String),
+    ClusterParamGroup(String),
+    OptionGroup(String),
+    SecurityGroup(String),
+    SubnetGroup(String),
+    Snapshot(String),
+    ClusterSnapshot(String),
+    Proxy(String),
+    EventSubscription(String),
+    Unknown,
+}
+
+fn parse_resource_arn(arn: &str) -> TagTarget {
+    let parts: Vec<&str> = arn.split(':').collect();
+    if !(arn.starts_with("arn:aws:rds:") && parts.len() >= 7) {
+        return TagTarget::Unknown;
+    }
+    let rtype = parts[5];
+    let rname = parts[6];
+    let lower = rname.to_lowercase();
+    match rtype {
+        "db" => TagTarget::Instance(lower),
+        "cluster" => TagTarget::Cluster(lower),
+        "pg" => TagTarget::ParamGroup(lower),
+        "cluster-pg" => TagTarget::ClusterParamGroup(lower),
+        "og" => TagTarget::OptionGroup(lower),
+        "secgrp" => TagTarget::SecurityGroup(lower),
+        "subgrp" => TagTarget::SubnetGroup(lower),
+        "snapshot" => TagTarget::Snapshot(lower),
+        "cluster-snapshot" => TagTarget::ClusterSnapshot(lower),
+        "db-proxy" => TagTarget::Proxy(rname.to_string()),
+        "es" => TagTarget::EventSubscription(lower),
+        "rds" => TagTarget::Snapshot(parts.last().unwrap_or(&"").to_lowercase()),
+        _ => TagTarget::Unknown,
+    }
+}
+
+fn list_tags_for_tags_resource(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let arn = p_string(p, "ResourceName").unwrap_or_default();
+    let tags = match parse_resource_arn(&arn) {
+        TagTarget::Instance(id) => find_instance(st, &id).map(|d| d.tags.clone()),
+        TagTarget::Cluster(id) => find_cluster(st, &id).map(|c| c.tags.clone()),
+        TagTarget::ParamGroup(id) => {
+            st.db_parameter_groups.get(&id).map(|g| g.tags.clone())
+        }
+        TagTarget::ClusterParamGroup(id) => {
+            st.db_cluster_parameter_groups.get(&id).map(|g| g.tags.clone())
+        }
+        TagTarget::OptionGroup(id) => st.option_groups.get(&id).map(|g| g.tags.clone()),
+        TagTarget::SecurityGroup(id) => st.security_groups.get(&id).map(|g| g.tags.clone()),
+        TagTarget::SubnetGroup(id) => st.subnet_groups.get(&id).map(|g| g.tags.clone()),
+        TagTarget::Snapshot(id) => find_snapshot(st, &id).map(|s| s.tags.clone()),
+        TagTarget::ClusterSnapshot(id) => {
+            find_cluster_snapshot(st, &id).map(|s| s.tags.clone())
+        }
+        TagTarget::Proxy(id) => st.db_proxies.get(&id).map(|g| g.tags.clone()),
+        TagTarget::EventSubscription(id) => {
+            st.event_subscriptions.get(&id).map(|g| g.tags.clone())
+        }
+        TagTarget::Unknown => None,
+    }
+    .unwrap_or_default();
+    let mut out = String::from("<TagList>");
+    for t in &tags {
+        out.push_str(&format!(
+            "<Tag><Key>{}</Key><Value>{}</Value></Tag>",
+            esc(&t.key),
+            esc(&t.value)
+        ));
+    }
+    out.push_str("</TagList>");
+    Ok(Some(out))
+}
+
+fn add_tags_to_tags_resource(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let arn = p_string(p, "ResourceName").unwrap_or_default();
+    let tags = tags_param(p);
+    let lower = arn.split(':').nth(6).unwrap_or("").to_lowercase();
+    match parse_resource_arn(&arn) {
+        TagTarget::Instance(id) => add_tags_to(&mut st.databases, &id, tags),
+        TagTarget::Cluster(id) => add_tags_to(&mut st.clusters, &id, tags),
+        TagTarget::ParamGroup(id) => add_tags_to(&mut st.db_parameter_groups, &id, tags),
+        TagTarget::ClusterParamGroup(id) => {
+            add_tags_to(&mut st.db_cluster_parameter_groups, &id, tags)
+        }
+        TagTarget::OptionGroup(id) => add_tags_to(&mut st.option_groups, &id, tags),
+        TagTarget::SecurityGroup(id) => add_tags_to(&mut st.security_groups, &id, tags),
+        TagTarget::SubnetGroup(id) => add_tags_to(&mut st.subnet_groups, &id, tags),
+        TagTarget::Snapshot(id) => add_tags_to(&mut st.database_snapshots, &id, tags),
+        TagTarget::ClusterSnapshot(id) => add_tags_to(&mut st.cluster_snapshots, &id, tags),
+        TagTarget::Proxy(id) => add_tags_to(&mut st.db_proxies, &id, tags),
+        TagTarget::EventSubscription(id) => {
+            add_tags_to(&mut st.event_subscriptions, &id, tags)
+        }
+        TagTarget::Unknown => {}
+    }
+    let _ = lower;
+    Ok(None)
+}
+
+fn remove_tags_from_tags_resource(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let arn = p_string(p, "ResourceName").unwrap_or_default();
+    let keys: Vec<String> = p_list(p, "TagKeys");
+    match parse_resource_arn(&arn) {
+        TagTarget::Instance(id) => remove_tags_from(&mut st.databases, &id, &keys),
+        TagTarget::Cluster(id) => remove_tags_from(&mut st.clusters, &id, &keys),
+        TagTarget::ParamGroup(id) => remove_tags_from(&mut st.db_parameter_groups, &id, &keys),
+        TagTarget::ClusterParamGroup(id) => {
+            remove_tags_from(&mut st.db_cluster_parameter_groups, &id, &keys)
+        }
+        TagTarget::OptionGroup(id) => remove_tags_from(&mut st.option_groups, &id, &keys),
+        TagTarget::SecurityGroup(id) => remove_tags_from(&mut st.security_groups, &id, &keys),
+        TagTarget::SubnetGroup(id) => remove_tags_from(&mut st.subnet_groups, &id, &keys),
+        TagTarget::Snapshot(id) => remove_tags_from(&mut st.database_snapshots, &id, &keys),
+        TagTarget::ClusterSnapshot(id) => {
+            remove_tags_from(&mut st.cluster_snapshots, &id, &keys)
+        }
+        TagTarget::Proxy(id) => remove_tags_from(&mut st.db_proxies, &id, &keys),
+        TagTarget::EventSubscription(id) => {
+            remove_tags_from(&mut st.event_subscriptions, &id, &keys)
+        }
+        TagTarget::Unknown => {}
+    }
+    Ok(None)
+}
+
+trait Tagged {
+    fn current_tags(&self) -> Vec<Tag>;
+    fn set_tags(&mut self, tags: Vec<Tag>);
+}
+
+macro_rules! impl_tagged {
+    ($($t:ty),*) => {$(
+        impl Tagged for $t {
+            fn current_tags(&self) -> Vec<Tag> {
+                self.tags.clone()
+            }
+            fn set_tags(&mut self, tags: Vec<Tag>) {
+                self.tags = tags;
+            }
+        }
+    )*};
+}
+
+impl_tagged!(DBInstance);
+impl_tagged!(DBCluster);
+impl_tagged!(DBParameterGroup);
+impl_tagged!(DBClusterParameterGroup);
+impl_tagged!(OptionGroup);
+impl_tagged!(DBSecurityGroup);
+impl_tagged!(DBSubnetGroup);
+impl_tagged!(DBSnapshot);
+impl_tagged!(DBClusterSnapshot);
+impl_tagged!(DBProxy);
+impl_tagged!(EventSubscription);
+
+fn add_tags_to<T: Tagged>(
+    map: &mut BTreeMap<String, T>,
+    id: &str,
+    tags: Vec<Tag>,
+) {
+    let lower = id.to_lowercase();
+    if let Some(entry) = map.get_mut(&lower) {
+        let mut updated = entry.current_tags();
+        updated.retain(|t| !tags.iter().any(|n| n.key == t.key));
+        updated.extend(tags);
+        entry.set_tags(updated);
+    }
+}
+
+fn remove_tags_from<T: Tagged>(
+    map: &mut BTreeMap<String, T>,
+    id: &str,
+    keys: &[String],
+) {
+    let lower = id.to_lowercase();
+    if let Some(entry) = map.get_mut(&lower) {
+        let kept: Vec<Tag> = entry
+            .current_tags()
+            .into_iter()
+            .filter(|t| !keys.contains(&t.key))
+            .collect();
+        entry.set_tags(kept);
+    }
+}
+
+
+// Clusters -------------------------------------------------------------------
+
+fn cluster_object(name: &str, p: &Params, region: &str) -> Result<DBCluster, RdsError> {
+    let engine = p_string(p, "Engine").unwrap_or_default();
+    if !DBCluster::valid_engine(&engine) {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            format!("Engine '{engine}' is not supported to satisfy constraint: Member must satisfy enum value set: [aurora-mysql, aurora-postgresql, mysql, neptune, postgres]", engine = engine),
+        ));
+    }
+    let engine_mode = p_string(p, "EngineMode").unwrap_or_else(|| "provision".into());
+    let engine_version = p_string(p, "EngineVersion")
+        .unwrap_or_else(|| DBCluster::default_engine_version(&engine).to_string());
+    let storage_type = p_string(p, "StorageType")
+        .unwrap_or_else(|| DBCluster::default_storage_type(p_i64(p, "Iops")).into());
+    let (url_id, hz, resource) = new_cluster_ids();
+    let backtrack_window = match p_i64(p, "BacktrackWindow") {
+        Some(w) => {
+            if engine == "aurora-mysql" {
+                if (0..=259200).contains(&w) {
+                    w
+                } else {
+                    return Err(RdsError::client400(
+                        "InvalidParameterValue",
+                        format!("The specified value ({w}) is not a valid Backtrack Window. Allowed values are within the range of 0 to 259200"),
+                    ));
+                }
+            } else {
+                return Err(RdsError::client400(
+                    "InvalidParameterValue",
+                    "Backtrack is not enabled for the postgres engine.",
+                ));
+            }
+        }
+        None => 0,
+    };
+    let managed = p_bool(p, "ManageMasterUserPassword").unwrap_or(false);
+    let global_id = p_string(p, "GlobalClusterIdentifier").map(|s| s.to_lowercase());
+    let user = if global_id.is_some() || engine == "neptune" {
+        None
+    } else {
+        Some(p_string(p, "MasterUsername").unwrap_or_default())
+    };
+    if user.is_none() && !managed && engine != "neptune" && global_id.is_none() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The parameter MasterUsername must be provided and must not be blank.",
+        ));
+    }
+    if let Some(pass) = p_string(p, "MasterUserPassword") {
+        if pass.len() < 8 && !managed {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                "The parameter MasterUserPassword is not a valid password because it is shorter than 8 characters.",
+            ));
+        }
+    }
+    let option_group_engine_version = engine_version.clone();
+    let mut availability_zones: Vec<String> = param(p, "AvailabilityZones").list();
+    if availability_zones.is_empty() {
+        availability_zones = vec![format!("{region}a"), format!("{region}b"), format!("{region}c")];
+    }
+    Ok(DBCluster {
+        id: name.to_lowercase(),
+        original_id: name.to_string(),
+        engine: engine.clone(),
+        engine_version,
+        engine_mode,
+        status: "creating".into(),
+        status_shown: std::sync::atomic::AtomicBool::new(false),
+        port: p_i64(p, "Port").unwrap_or_else(|| DBCluster::default_port(&engine)),
+        master_username: user,
+        allocated_storage: p_i64(p, "AllocatedStorage").unwrap_or_else(|| {
+            DBCluster::default_allocated_storage(&engine, &storage_type)
+        }),
+        storage_type,
+        storage_encrypted: p_bool(p, "StorageEncrypted").unwrap_or(false),
+        backup_retention_period: p_i64(p, "BackupRetentionPeriod").unwrap_or(1),
+        auto_minor_version_upgrade: p_bool(p, "AutoMinorVersionUpgrade").unwrap_or(true),
+        license_model: p_string(p, "LicenseModel")
+            .unwrap_or_else(|| "general-public-license".into()),
+        preferred_backup_window: p_string(p, "PreferredBackupWindow")
+            .unwrap_or_else(|| "01:37-02:07".into()),
+        preferred_maintenance_window: p_string(p, "PreferredMaintenanceWindow")
+            .unwrap_or_else(|| "wed:02:40-wed:03:10".into()),
+        parameter_group: p_string(p, "DBClusterParameterGroupName").unwrap_or_else(|| {
+            if p_string(p, "Engine").as_deref() == Some("neptune") {
+                "default.neptune1.3".into()
+            } else {
+                "default.aurora8.0".into()
+            }
+        }),
+        db_subnet_group_name: p_string(p, "DBSubnetGroupName")
+            .unwrap_or_else(|| "default".into()),
+        publicly_accessible: p_bool(p, "PubliclyAccessible").unwrap_or(false),
+        vpc_security_group_ids: p_list(p, "VpcSecurityGroupIds"),
+        deletion_protection: p_bool(p, "DeletionProtection").unwrap_or(false),
+        iam_auth: p_bool(p, "EnableIAMDatabaseAuthentication").unwrap_or(false),
+        option_group_name: DBCluster::compute_default_option_group(
+            &engine,
+            &option_group_engine_version,
+        ),
+        url_identifier: url_id,
+        hosted_zone_id: hz,
+        resource_id: resource,
+        tags: tags_param(p),
+        replication_source_identifier: p_string(p, "ReplicationSourceIdentifier"),
+        read_replica_identifiers: Vec::new(),
+        global_cluster_identifier: global_id,
+        backtrack_window,
+        created: Utc::now(),
+        copy_tags_to_snapshot: p_bool(p, "CopyTagsToSnapshot").unwrap_or(false),
+        character_set_name: p_string(p, "CharacterSetName"),
+        database_name: p_string(p, "DatabaseName"),
+        enabled_cloudwatch_logs_exports: p_list(p, "EnableCloudwatchLogsExports"),
+        associated_roles: Vec::new(),
+        availability_zones,
+        kms_key_id: p_string(p, "KmsKeyId").unwrap_or_else(|| "default_kms_key_id".into()),
+    })
+}
+
+fn create_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let cluster = cluster_object(&identifier, p, region)?;
+    let id = cluster.id.clone();
+    st.clusters.insert(id.clone(), cluster);
+    // Register into a global cluster when requested (moto adds the member).
+    if let Some(gc_id) = p_string(p, "GlobalClusterIdentifier") {
+        let key = gc_id.to_lowercase();
+        if st.global_clusters.contains_key(&key) {
+            let member_id = id.clone();
+            let is_first = st
+                .global_clusters
+                .get(&key)
+                .map(|gc| gc.members.is_empty())
+                .unwrap_or(false);
+            if let Some(gc) = st.global_clusters.get_mut(&key) {
+                if !gc.members.contains(&member_id) {
+                    gc.members.push(member_id.clone());
+                }
+            }
+            if let Some(cl) = st.clusters.get_mut(&member_id) {
+                cl.global_cluster_identifier = Some(key);
+                let _ = is_first;
+            }
+        }
+    }
+    // moto saves an automated cluster snapshot on creation.
+    let timestamp = Utc::now().format("%Y-%m-%d-%H-%M");
+    let snap_id = format!("rds:{}-{}", id, timestamp);
+    if let Some(cl) = st.clusters.get(&id).cloned() {
+        let snap = cluster_snapshot_from(&cl, &snap_id, "automated", &[]);
+        st.cluster_snapshots.insert(snap.id.clone(), snap);
+    }
+    let _ = (acct, region);
+    match st.clusters.get(&id) {
+        Some(found) => Ok(Some(db_cluster_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
 
 // __APPEND_MARKER__
