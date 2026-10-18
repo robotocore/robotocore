@@ -12,6 +12,7 @@ pub mod comprehend;
 pub mod ec2;
 pub mod polly;
 pub mod sagemaker;
+pub mod support;
 pub mod transcribe;
 
 /// Dispatch a routed request to its service backend, or `None` when the
@@ -21,6 +22,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "comprehend" => Some(comprehend::dispatch(req)),
         "polly" => Some(polly::dispatch(req)),
         "sagemaker" => Some(sagemaker::dispatch(req)),
+        "support" => Some(support::dispatch(req)),
         "transcribe" => Some(transcribe::dispatch(req)),
         _ => None,
     }
