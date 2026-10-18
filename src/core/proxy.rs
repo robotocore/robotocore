@@ -52,8 +52,7 @@ impl MotoProxy {
         let mut proxy_req = self
             .client
             .request(
-                Method::from_bytes(req.method.as_bytes())
-                    .unwrap_or(Method::POST),
+                Method::from_bytes(req.method.as_bytes()).unwrap_or(Method::POST),
                 &url,
             )
             .header("x-robotocore-service", &req.service);

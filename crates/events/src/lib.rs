@@ -15,8 +15,18 @@ pub struct DefaultEventsHandler {
 }
 
 impl DefaultEventsHandler {
-    pub fn new() -> Self { Self { inner: handler::EventsHandler::new() } }
-    pub fn handle(&self, req: AwsRequest) -> AwsResponse { self.inner.handle(req) }
+    pub fn new() -> Self {
+        Self {
+            inner: handler::EventsHandler::new(),
+        }
+    }
+    pub fn handle(&self, req: AwsRequest) -> AwsResponse {
+        self.inner.handle(req)
+    }
 }
 
-impl Default for DefaultEventsHandler { fn default() -> Self { Self::new() } }
+impl Default for DefaultEventsHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}

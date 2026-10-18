@@ -314,7 +314,11 @@ fn tokenize_expression(expr: &str) -> Vec<String> {
     tokens
 }
 
-fn eval_sum(tokens: &[String], pos: &mut usize, data: &BTreeMap<String, Value>) -> Option<Vec<f64>> {
+fn eval_sum(
+    tokens: &[String],
+    pos: &mut usize,
+    data: &BTreeMap<String, Value>,
+) -> Option<Vec<f64>> {
     let mut left = eval_product(tokens, pos, data)?;
     while *pos < tokens.len() && (tokens[*pos] == "+" || tokens[*pos] == "-") {
         let op = tokens[*pos].clone();
@@ -402,18 +406,28 @@ fn zip_values(left: &[f64], right: &[f64], op: &str) -> Vec<f64> {
     left.iter()
         .zip(right.iter())
         .map(|(a, b)| apply(*a, *b))
-        .chain(left.iter().skip(right.len()).map(|&a| apply(a, 0.0)).take(0))
+        .chain(
+            left.iter()
+                .skip(right.len())
+                .map(|&a| apply(a, 0.0))
+                .take(0),
+        )
         .collect()
 }
 
 impl CloudwatchHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
     }
 
     fn get_state(&self, account: u64, region: &str) -> CloudwatchState {
         let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_default().clone()
+        states
+            .entry((account, region.to_string()))
+            .or_default()
+            .clone()
     }
 
     /// View of request params: raw JSON object with flattened query-protocol
@@ -453,7 +467,9 @@ impl CloudwatchHandler {
     }
 
     /// (ActionPrefix, AlarmNamePrefix, AlarmNames, StateValue) filters.
-    fn alarm_filters(params: &Value) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
+    fn alarm_filters(
+        params: &Value,
+    ) -> (Option<String>, Option<String>, Vec<String>, Option<String>) {
         (
             as_str(params.get("ActionPrefix")),
             as_str(params.get("AlarmNamePrefix")),
@@ -529,14 +545,17 @@ impl CloudwatchHandler {
             "DeleteInsightRules" => self.rule_list_action(&req, RuleListAction::Delete),
             "DisableInsightRules" => self.rule_list_action(&req, RuleListAction::Disable),
             "EnableInsightRules" => self.rule_list_action(&req, RuleListAction::Enable),
-            "GetInsightRuleReport" => AwsResponse::json(200, json!({
-                "KeyLabels": [],
-                "AggregationStatistic": "Sum",
-                "AggregateValue": 0.0,
-                "ApproximateUniqueCount": 0,
-                "Contributors": [],
-                "MetricDatapoints": []
-            })),
+            "GetInsightRuleReport" => AwsResponse::json(
+                200,
+                json!({
+                    "KeyLabels": [],
+                    "AggregationStatistic": "Sum",
+                    "AggregateValue": 0.0,
+                    "ApproximateUniqueCount": 0,
+                    "Contributors": [],
+                    "MetricDatapoints": []
+                }),
+            ),
             "PutManagedInsightRules" => AwsResponse::json(200, json!({ "Failures": [] })),
             "ListManagedInsightRules" => AwsResponse::json(200, json!({ "ManagedRules": [] })),
             "PutMetricStream" => self.put_metric_stream(&req),
@@ -545,10 +564,13 @@ impl CloudwatchHandler {
             "StartMetricStreams" => self.set_stream_state(&req, "running"),
             "StopMetricStreams" => self.set_stream_state(&req, "stopped"),
             "ListMetricStreams" => self.list_metric_streams(&req),
-            "GetMetricWidgetImage" => AwsResponse::json(200, json!({
-                "MetricWidgetImage":
-                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-            })),
+            "GetMetricWidgetImage" => AwsResponse::json(
+                200,
+                json!({
+                    "MetricWidgetImage":
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                }),
+            ),
             "DescribeAlarmContributors" => {
                 AwsResponse::json(200, json!({ "AlarmContributors": [] }))
             }
@@ -662,10 +684,13 @@ impl CloudwatchHandler {
                 "Dimensions": dims_json(&md.dimensions),
             }));
         }
-        AwsResponse::json(200, json!({
-            "Metrics": out,
-            "NextToken": Value::Null
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "Metrics": out,
+                "NextToken": Value::Null
+            }),
+        )
     }
 
     fn get_metric_statistics(&self, req: &AwsRequest) -> AwsResponse {
@@ -704,10 +729,13 @@ impl CloudwatchHandler {
         filtered.sort_by_key(|md| md.timestamp);
 
         if filtered.is_empty() || (statistics.is_empty() && ext_stats.is_empty()) {
-            return AwsResponse::json(200, json!({
-                "Label": metric_name,
-                "Datapoints": []
-            }));
+            return AwsResponse::json(
+                200,
+                json!({
+                    "Label": metric_name,
+                    "Datapoints": []
+                }),
+            );
         }
 
         let period_ms = period * 1000;
@@ -772,10 +800,13 @@ impl CloudwatchHandler {
             }
             bucket_start = bucket_end;
         }
-        AwsResponse::json(200, json!({
-            "Label": metric_name,
-            "Datapoints": datapoints
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "Label": metric_name,
+                "Datapoints": datapoints
+            }),
+        )
     }
 
     fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
@@ -799,10 +830,7 @@ impl CloudwatchHandler {
                 namespace: field_str(&metric, "Namespace"),
                 metric_name: field_str(&metric, "MetricName"),
                 dimensions: dims_from_value(metric.get("Dimensions")),
-                period: stat_obj
-                    .get("Period")
-                    .and_then(as_f64)
-                    .unwrap_or(60.0) as i64,
+                period: stat_obj.get("Period").and_then(as_f64).unwrap_or(60.0) as i64,
                 stat: field_str_or(&stat_obj, "Stat", "Average"),
             };
             source.collect(&metrics, &mut collected);
@@ -853,10 +881,13 @@ impl CloudwatchHandler {
                 "StatusCode": "Complete"
             }));
         }
-        AwsResponse::json(200, json!({
-            "MetricDataResults": results,
-            "Messages": []
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "MetricDataResults": results,
+                "Messages": []
+            }),
+        )
     }
 
     // ---- alarms ----
@@ -866,7 +897,10 @@ impl CloudwatchHandler {
         if name.is_empty() {
             return AwsResponse::error(400, "ValidationError", "AlarmName is required");
         }
-        let arn = format!("arn:aws:cloudwatch:{}:{}:alarm:{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:cloudwatch:{}:{}:alarm:{}",
+            req.region, req.account, name
+        );
         let now = default_ts_str();
         let mut alarm = json!({
             "AlarmName": name,
@@ -939,30 +973,43 @@ impl CloudwatchHandler {
         let alarm_types = str_list(&req.params, "AlarmTypes");
         let state = self.get_state(req.account, &req.region);
         let (action_prefix, name_prefix, names, state_filter) = Self::alarm_filters(&req.params);
-        let want_metric =
-            alarm_types.is_empty() || alarm_types.iter().any(|t| t == "MetricAlarm");
+        let want_metric = alarm_types.is_empty() || alarm_types.iter().any(|t| t == "MetricAlarm");
         let want_composite = alarm_types.iter().any(|t| t == "CompositeAlarm");
 
         let composite_items: Vec<Value> = if want_composite {
-            let composites: Vec<Value> =
-                state.composite_alarms.read().values().cloned().collect();
-            Self::filter_alarms(composites, &action_prefix, &name_prefix, &names, &state_filter)
+            let composites: Vec<Value> = state.composite_alarms.read().values().cloned().collect();
+            Self::filter_alarms(
+                composites,
+                &action_prefix,
+                &name_prefix,
+                &names,
+                &state_filter,
+            )
         } else {
             vec![]
         };
 
         let metric_items: Vec<Value> = if want_metric {
             let alarm_values: Vec<Value> = state.alarms.read().values().cloned().collect();
-            Self::filter_alarms(alarm_values, &action_prefix, &name_prefix, &names, &state_filter)
+            Self::filter_alarms(
+                alarm_values,
+                &action_prefix,
+                &name_prefix,
+                &names,
+                &state_filter,
+            )
         } else {
             vec![]
         };
 
-        AwsResponse::json(200, json!({
-            "MetricAlarms": metric_items,
-            "CompositeAlarms": composite_items,
-            "NextToken": Value::Null
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "MetricAlarms": metric_items,
+                "CompositeAlarms": composite_items,
+                "NextToken": Value::Null
+            }),
+        )
     }
 
     fn delete_alarms(&self, req: &AwsRequest) -> AwsResponse {
@@ -992,8 +1039,7 @@ impl CloudwatchHandler {
         let items: Vec<Value> = alarms
             .values()
             .filter(|a| {
-                field_str(a, "Namespace") == namespace
-                    && field_str(a, "MetricName") == metric_name
+                field_str(a, "Namespace") == namespace && field_str(a, "MetricName") == metric_name
             })
             .filter(|a| {
                 if dims.is_empty() {
@@ -1012,10 +1058,13 @@ impl CloudwatchHandler {
             })
             .cloned()
             .collect();
-        AwsResponse::json(200, json!({
-            "MetricAlarms": items,
-            "NextToken": Value::Null
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "MetricAlarms": items,
+                "NextToken": Value::Null
+            }),
+        )
     }
 
     fn set_alarm_state(&self, req: &AwsRequest) -> AwsResponse {
@@ -1026,7 +1075,8 @@ impl CloudwatchHandler {
         let alarm = alarms.get_mut(&name).or_else(|| composites.get_mut(&name));
         match alarm {
             Some(alarm) => {
-                let value = as_str(req.params.get("StateValue")).unwrap_or_else(|| "OK".to_string());
+                let value =
+                    as_str(req.params.get("StateValue")).unwrap_or_else(|| "OK".to_string());
                 if value != "OK" && value != "ALARM" && value != "INSUFFICIENT_DATA" {
                     return AwsResponse::error(400, "ValidationError",
                         &format!("1 validation error detected: Value '{value}' at 'stateValue' failed to satisfy constraint: Member must satisfy enum value set: [INSUFFICIENT_DATA, ALARM, OK]"));
@@ -1041,8 +1091,11 @@ impl CloudwatchHandler {
                 alarm["StateUpdatedTimestamp"] = json!(default_ts_str());
                 AwsResponse::json(200, json!({}))
             }
-            None => AwsResponse::error(400, "ResourceNotFoundException",
-                &format!("Alarm {name} not found")),
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Alarm {name} not found"),
+            ),
         }
     }
 
@@ -1077,7 +1130,10 @@ impl CloudwatchHandler {
         if rule.is_empty() {
             return AwsResponse::error(400, "ValidationError", "AlarmRule is required");
         }
-        let arn = format!("arn:aws:cloudwatch:{}:{}:alarm:{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:cloudwatch:{}:{}:alarm:{}",
+            req.region, req.account, name
+        );
         let alarm = json!({
             "AlarmName": name.clone(),
             "AlarmArn": arn,
@@ -1104,8 +1160,11 @@ impl CloudwatchHandler {
         let name = str_param(&req.params, "DashboardName");
         let body = str_param(&req.params, "DashboardBody");
         if serde_json::from_str::<Value>(&body).is_err() {
-            return AwsResponse::error(400, "InvalidParameterValue",
-                "The value of DashboardBody must be valid JSON");
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValue",
+                "The value of DashboardBody must be valid JSON",
+            );
         }
         let state = self.get_state(req.account, &req.region);
         let entry = json!({
@@ -1124,13 +1183,19 @@ impl CloudwatchHandler {
         let state = self.get_state(req.account, &req.region);
         let found = state.dashboards.read().get(&name).cloned();
         match found {
-            Some(entry) => AwsResponse::json(200, json!({
-                "DashboardName": entry.get("DashboardName").cloned().unwrap_or(json!(name)),
-                "DashboardArn": entry.get("DashboardArn").cloned().unwrap_or(Value::Null),
-                "DashboardBody": entry.get("DashboardBody").cloned().unwrap_or(Value::Null)
-            })),
-            None => AwsResponse::error(400, "ResourceNotFound",
-                &format!("Dashboard {name} does not exist")),
+            Some(entry) => AwsResponse::json(
+                200,
+                json!({
+                    "DashboardName": entry.get("DashboardName").cloned().unwrap_or(json!(name)),
+                    "DashboardArn": entry.get("DashboardArn").cloned().unwrap_or(Value::Null),
+                    "DashboardBody": entry.get("DashboardBody").cloned().unwrap_or(Value::Null)
+                }),
+            ),
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFound",
+                &format!("Dashboard {name} does not exist"),
+            ),
         }
     }
 
@@ -1140,9 +1205,7 @@ impl CloudwatchHandler {
         let dashboards = state.dashboards.read();
         let entries: Vec<Value> = dashboards
             .values()
-            .filter(|d| {
-                prefix.is_empty() || field_str(d, "DashboardName").starts_with(&prefix)
-            })
+            .filter(|d| prefix.is_empty() || field_str(d, "DashboardName").starts_with(&prefix))
             .map(|d| {
                 json!({
                     "DashboardName": d.get("DashboardName").cloned().unwrap_or(Value::Null),
@@ -1161,8 +1224,11 @@ impl CloudwatchHandler {
         let mut dashboards = state.dashboards.write();
         for name in &names {
             if !dashboards.contains_key(name) {
-                return AwsResponse::error(400, "ResourceNotFound",
-                    &format!("Dashboard {name} does not exist"));
+                return AwsResponse::error(
+                    400,
+                    "ResourceNotFound",
+                    &format!("Dashboard {name} does not exist"),
+                );
             }
         }
         for name in &names {
@@ -1338,8 +1404,10 @@ impl CloudwatchHandler {
         if name.is_empty() {
             return AwsResponse::error(400, "ValidationError", "Name is required");
         }
-        let arn =
-            format!("arn:aws:cloudwatch:{}:{}:metric-stream/{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:cloudwatch:{}:{}:metric-stream/{}",
+            req.region, req.account, name
+        );
         let now = default_ts_str();
         let stream = json!({
             "Arn": arn.clone(),
@@ -1372,8 +1440,11 @@ impl CloudwatchHandler {
         let found = state.metric_streams.read().get(&name).cloned();
         match found {
             Some(stream) => AwsResponse::json(200, stream),
-            None => AwsResponse::error(400, "ResourceNotFoundException",
-                &format!("MetricStream {name} does not exist")),
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("MetricStream {name} does not exist"),
+            ),
         }
     }
 
@@ -1424,8 +1495,11 @@ impl CloudwatchHandler {
         let found = state.mute_rules.read().get(&name).cloned();
         match found {
             Some(rule) => AwsResponse::json(200, rule),
-            None => AwsResponse::error(400, "ResourceNotFoundException",
-                &format!("Mute rule {name} does not exist")),
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Mute rule {name} does not exist"),
+            ),
         }
     }
 
@@ -1438,7 +1512,9 @@ impl CloudwatchHandler {
 }
 
 impl Default for CloudwatchHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -1465,20 +1541,26 @@ mod tests {
     #[test]
     fn test_put_and_list_metrics_with_dimensions() {
         let handler = CloudwatchHandler::new();
-        handler.handle(make_req("PutMetricData", json!({
-            "Namespace": "NS",
-            "MetricData": [
-                {"MetricName": "Req", "Value": 1.0,
-                 "Dimensions": [{"Name": "Env", "Value": "prod"}]},
-                {"MetricName": "Req", "Value": 2.0,
-                 "Dimensions": [{"Name": "Env", "Value": "staging"}]}
-            ]
-        })));
-        let resp = handler.handle(make_req("ListMetrics", json!({
-            "Namespace": "NS",
-            "MetricName": "Req",
-            "Dimensions": [{"Name": "Env", "Value": "prod"}]
-        })));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [
+                    {"MetricName": "Req", "Value": 1.0,
+                     "Dimensions": [{"Name": "Env", "Value": "prod"}]},
+                    {"MetricName": "Req", "Value": 2.0,
+                     "Dimensions": [{"Name": "Env", "Value": "staging"}]}
+                ]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "ListMetrics",
+            json!({
+                "Namespace": "NS",
+                "MetricName": "Req",
+                "Dimensions": [{"Name": "Env", "Value": "prod"}]
+            }),
+        ));
         let body = parse(&resp);
         let metrics = body["Metrics"].as_array().unwrap();
         assert_eq!(metrics.len(), 1);
@@ -1491,20 +1573,26 @@ mod tests {
         let start = chrono::Utc::now();
         let now = start.to_rfc3339();
         let end = (start + chrono::Duration::minutes(5)).to_rfc3339();
-        handler.handle(make_req("PutMetricData", json!({
-            "Namespace": "NS",
-            "MetricData": [
-                {"MetricName": "Lat", "Value": 10.0, "Timestamp": now},
-                {"MetricName": "Lat", "Value": 20.0, "Timestamp": now},
-                {"MetricName": "Lat", "Value": 30.0, "Timestamp": now}
-            ]
-        })));
-        let resp = handler.handle(make_req("GetMetricStatistics", json!({
-            "Namespace": "NS", "MetricName": "Lat",
-            "StartTime": now, "EndTime": end,
-            "Period": 300, "Statistics": ["Average"],
-            "ExtendedStatistics": ["p50", "p99"]
-        })));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [
+                    {"MetricName": "Lat", "Value": 10.0, "Timestamp": now},
+                    {"MetricName": "Lat", "Value": 20.0, "Timestamp": now},
+                    {"MetricName": "Lat", "Value": 30.0, "Timestamp": now}
+                ]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "GetMetricStatistics",
+            json!({
+                "Namespace": "NS", "MetricName": "Lat",
+                "StartTime": now, "EndTime": end,
+                "Period": 300, "Statistics": ["Average"],
+                "ExtendedStatistics": ["p50", "p99"]
+            }),
+        ));
         let body = parse(&resp);
         let dps = body["Datapoints"].as_array().unwrap();
         assert_eq!(dps.len(), 1);
@@ -1527,12 +1615,15 @@ mod tests {
                 "Timestamp": now
             }]
         })));
-        let resp = handler.handle(make_req("GetMetricStatistics", json!({
-            "Namespace": "NS", "MetricName": "Agg",
-            "StartTime": now, "EndTime": end,
-            "Period": 300,
-            "Statistics": ["Average", "Sum", "SampleCount"]
-        })));
+        let resp = handler.handle(make_req(
+            "GetMetricStatistics",
+            json!({
+                "Namespace": "NS", "MetricName": "Agg",
+                "StartTime": now, "EndTime": end,
+                "Period": 300,
+                "Statistics": ["Average", "Sum", "SampleCount"]
+            }),
+        ));
         let body = parse(&resp);
         let dp = &body["Datapoints"][0];
         assert_eq!(dp["SampleCount"], 10.0);
@@ -1546,23 +1637,35 @@ mod tests {
     #[test]
     fn test_alarm_state_and_actions() {
         let handler = CloudwatchHandler::new();
-        handler.handle(make_req("PutMetricAlarm", json!({
-            "AlarmName": "a", "Namespace": "NS", "MetricName": "M",
-            "ComparisonOperator": "GreaterThanThreshold",
-            "EvaluationPeriods": 1, "Threshold": 5.0, "Statistic": "Average"
-        })));
-        handler.handle(make_req("SetAlarmState", json!({
-            "AlarmName": "a", "StateValue": "ALARM", "StateReason": "testing"
-        })));
-        let desc = handler.handle(make_req("DescribeAlarms", json!({
-            "AlarmNames": ["a"], "AlarmTypes": ["MetricAlarm"]
-        })));
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "a", "Namespace": "NS", "MetricName": "M",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "EvaluationPeriods": 1, "Threshold": 5.0, "Statistic": "Average"
+            }),
+        ));
+        handler.handle(make_req(
+            "SetAlarmState",
+            json!({
+                "AlarmName": "a", "StateValue": "ALARM", "StateReason": "testing"
+            }),
+        ));
+        let desc = handler.handle(make_req(
+            "DescribeAlarms",
+            json!({
+                "AlarmNames": ["a"], "AlarmTypes": ["MetricAlarm"]
+            }),
+        ));
         let body = parse(&desc);
         let alarm = &body["MetricAlarms"][0];
         assert_eq!(alarm["StateValue"], "ALARM");
         assert_eq!(alarm["StateReason"], "testing");
 
-        handler.handle(make_req("DisableAlarmActions", json!({ "AlarmNames": ["a"] })));
+        handler.handle(make_req(
+            "DisableAlarmActions",
+            json!({ "AlarmNames": ["a"] }),
+        ));
         let desc2 = handler.handle(make_req("DescribeAlarms", json!({ "AlarmNames": ["a"] })));
         assert_eq!(parse(&desc2)["MetricAlarms"][0]["ActionsEnabled"], false);
     }
@@ -1570,32 +1673,47 @@ mod tests {
     #[test]
     fn test_composite_alarm_describe_alarms() {
         let handler = CloudwatchHandler::new();
-        handler.handle(make_req("PutCompositeAlarm", json!({
-            "AlarmName": "comp", "AlarmRule": r#"ALARM("child")"#
-        })));
-        let desc = handler.handle(make_req("DescribeAlarms", json!({
-            "AlarmTypes": ["CompositeAlarm"]
-        })));
+        handler.handle(make_req(
+            "PutCompositeAlarm",
+            json!({
+                "AlarmName": "comp", "AlarmRule": r#"ALARM("child")"#
+            }),
+        ));
+        let desc = handler.handle(make_req(
+            "DescribeAlarms",
+            json!({
+                "AlarmTypes": ["CompositeAlarm"]
+            }),
+        ));
         let body = parse(&desc);
         assert_eq!(body["CompositeAlarms"].as_array().unwrap().len(), 1);
         assert_eq!(body["MetricAlarms"].as_array().unwrap().len(), 0);
-        assert_eq!(body["CompositeAlarms"][0]["StateValue"], "INSUFFICIENT_DATA");
+        assert_eq!(
+            body["CompositeAlarms"][0]["StateValue"],
+            "INSUFFICIENT_DATA"
+        );
     }
 
     #[test]
     fn test_metric_stream_lifecycle() {
         let handler = CloudwatchHandler::new();
-        let put = handler.handle(make_req("PutMetricStream", json!({
-            "Name": "stream",
-            "FirehoseArn": "arn:aws:firehose:us-east-1:123456789012:deliverystream/t",
-            "RoleArn": "arn:aws:iam::123456789012:role/t",
-            "OutputFormat": "json",
-            "IncludeFilters": [{"Namespace": "AWS/EC2"}]
-        })));
+        let put = handler.handle(make_req(
+            "PutMetricStream",
+            json!({
+                "Name": "stream",
+                "FirehoseArn": "arn:aws:firehose:us-east-1:123456789012:deliverystream/t",
+                "RoleArn": "arn:aws:iam::123456789012:role/t",
+                "OutputFormat": "json",
+                "IncludeFilters": [{"Namespace": "AWS/EC2"}]
+            }),
+        ));
         let body = parse(&put);
         assert!(body["Arn"].as_str().unwrap().contains("stream"));
 
-        handler.handle(make_req("StopMetricStreams", json!({ "Names": ["stream"] })));
+        handler.handle(make_req(
+            "StopMetricStreams",
+            json!({ "Names": ["stream"] }),
+        ));
         let got = handler.handle(make_req("GetMetricStream", json!({ "Name": "stream" })));
         assert_eq!(parse(&got)["State"], "stopped");
 
@@ -1603,6 +1721,11 @@ mod tests {
         assert_eq!(parse(&list)["Entries"].as_array().unwrap().len(), 1);
 
         handler.handle(make_req("DeleteMetricStream", json!({ "Name": "stream" })));
-        assert_eq!(handler.handle(make_req("GetMetricStream", json!({ "Name": "stream" }))).status, 400);
+        assert_eq!(
+            handler
+                .handle(make_req("GetMetricStream", json!({ "Name": "stream" })))
+                .status,
+            400
+        );
     }
 }

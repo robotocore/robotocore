@@ -178,9 +178,7 @@ impl KmsHandler {
             if let Some(arr) = tags.as_array() {
                 // Tags store is keyed by key id (shared with TagResource).
                 let mut all_tags = state.tags.write();
-                let entry = all_tags
-                    .entry(key.key_id.clone())
-                    .or_default();
+                let entry = all_tags.entry(key.key_id.clone()).or_default();
                 for tag in arr {
                     let k = tag
                         .get("TagKey")
@@ -252,7 +250,10 @@ impl KmsHandler {
         );
         meta.insert("RotationPeriodInDays".into(), json!(365));
         if let Some(ts) = *key.last_rotation_ms.read() {
-            meta.insert("OnDemandRotationStartDate".into(), json!(ts as f64 / 1000.0));
+            meta.insert(
+                "OnDemandRotationStartDate".into(),
+                json!(ts as f64 / 1000.0),
+            );
         }
         if key.key_state.read().as_str() == "PendingDeletion" {
             meta.insert(
@@ -555,12 +556,7 @@ impl KmsHandler {
     fn list_resource_tags(&self, req: &AwsRequest) -> AwsResponse {
         let key_id = pstr(req, "KeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let tags = state
-            .tags
-            .read()
-            .get(&key_id)
-            .cloned()
-            .unwrap_or_default();
+        let tags = state.tags.read().get(&key_id).cloned().unwrap_or_default();
         let tags_list: Vec<Value> = tags
             .iter()
             .map(|(k, v)| json!({ "TagKey": k, "TagValue": v.as_str().unwrap_or("") }))
@@ -1411,7 +1407,7 @@ fn ec_public_der(secret: &p256::SecretKey) -> Vec<u8> {
 
 /// Sign `message` with the key's material using the requested algorithm.
 fn sign_raw(key: &Key, algo: &str, message: &[u8]) -> Result<Vec<u8>, AwsResponse> {
-    use rsa::signature::{Signer, SignatureEncoding};
+    use rsa::signature::{SignatureEncoding, Signer};
     if key.key_usage != "SIGN_VERIFY" {
         return Err(AwsResponse::error(
             400,
@@ -1427,23 +1423,29 @@ fn sign_raw(key: &Key, algo: &str, message: &[u8]) -> Result<Vec<u8>, AwsRespons
         };
         let sig = match algo {
             "RSASSA_PKCS1_V1_5_SHA_256" => {
-                rsa::pkcs1v15::SigningKey::<Sha256>::new(priv_key.clone()).sign(message).to_bytes()
+                rsa::pkcs1v15::SigningKey::<Sha256>::new(priv_key.clone())
+                    .sign(message)
+                    .to_bytes()
             }
             "RSASSA_PKCS1_V1_5_SHA_384" => {
-                rsa::pkcs1v15::SigningKey::<Sha384>::new(priv_key.clone()).sign(message).to_bytes()
+                rsa::pkcs1v15::SigningKey::<Sha384>::new(priv_key.clone())
+                    .sign(message)
+                    .to_bytes()
             }
             "RSASSA_PKCS1_V1_5_SHA_512" => {
-                rsa::pkcs1v15::SigningKey::<Sha512>::new(priv_key.clone()).sign(message).to_bytes()
+                rsa::pkcs1v15::SigningKey::<Sha512>::new(priv_key.clone())
+                    .sign(message)
+                    .to_bytes()
             }
-            "RSASSA_PSS_SHA_256" => {
-                rsa::pss::SigningKey::<Sha256>::new(priv_key.clone()).sign(message).to_bytes()
-            }
-            "RSASSA_PSS_SHA_384" => {
-                rsa::pss::SigningKey::<Sha384>::new(priv_key.clone()).sign(message).to_bytes()
-            }
-            "RSASSA_PSS_SHA_512" => {
-                rsa::pss::SigningKey::<Sha512>::new(priv_key.clone()).sign(message).to_bytes()
-            }
+            "RSASSA_PSS_SHA_256" => rsa::pss::SigningKey::<Sha256>::new(priv_key.clone())
+                .sign(message)
+                .to_bytes(),
+            "RSASSA_PSS_SHA_384" => rsa::pss::SigningKey::<Sha384>::new(priv_key.clone())
+                .sign(message)
+                .to_bytes(),
+            "RSASSA_PSS_SHA_512" => rsa::pss::SigningKey::<Sha512>::new(priv_key.clone())
+                .sign(message)
+                .to_bytes(),
             other => {
                 return Err(AwsResponse::error(
                     400,
@@ -1699,10 +1701,12 @@ mod tests {
         let body: Value = serde_json::from_str(&enc.body).unwrap();
         let blob = body["CiphertextBlob"].as_str().unwrap().to_string();
 
-        let dec = handler
-            .handle(make_req("Decrypt", json!({"CiphertextBlob": blob})));
+        let dec = handler.handle(make_req("Decrypt", json!({"CiphertextBlob": blob})));
         let body: Value = serde_json::from_str(&dec.body).unwrap();
-        assert_eq!(body["Plaintext"].as_str().unwrap(), B64.encode(b"cipher me"));
+        assert_eq!(
+            body["Plaintext"].as_str().unwrap(),
+            B64.encode(b"cipher me")
+        );
     }
 
     #[test]
@@ -1836,15 +1840,21 @@ mod tests {
         ));
         assert_eq!(upd.status, 200);
 
-        handler
-            .handle(make_req("DeleteCustomKeyStore", json!({"CustomKeyStoreId": id})));
-        let desc2 = handler
-            .handle(make_req("DescribeCustomKeyStores", json!({"CustomKeyStoreId": id})));
+        handler.handle(make_req(
+            "DeleteCustomKeyStore",
+            json!({"CustomKeyStoreId": id}),
+        ));
+        let desc2 = handler.handle(make_req(
+            "DescribeCustomKeyStores",
+            json!({"CustomKeyStoreId": id}),
+        ));
         let d2: Value = serde_json::from_str(&desc2.body).unwrap();
         assert_eq!(d2["CustomKeyStores"].as_array().unwrap().len(), 0);
 
-        let again = handler
-            .handle(make_req("DeleteCustomKeyStore", json!({"CustomKeyStoreId": id})));
+        let again = handler.handle(make_req(
+            "DeleteCustomKeyStore",
+            json!({"CustomKeyStoreId": id}),
+        ));
         assert!(again.body.contains("CustomKeyStoreNotFoundException"));
     }
 
@@ -1885,8 +1895,7 @@ mod tests {
             "DeleteImportedKeyMaterial",
             json!({"KeyId": key_id}),
         ));
-        let desc = handler
-            .handle(make_req("DescribeKey", json!({"KeyId": key_id})));
+        let desc = handler.handle(make_req("DescribeKey", json!({"KeyId": key_id})));
         assert!(desc.body.contains("PendingImport"));
     }
 }

@@ -35,7 +35,11 @@ impl MetricDatum {
     /// The average of aggregated statistics (for percentiles).
     pub fn agg_average(&self) -> Option<f64> {
         self.stats.map(|s| {
-            if s.sample_count > 0.0 { s.sum / s.sample_count } else { 0.0 }
+            if s.sample_count > 0.0 {
+                s.sum / s.sample_count
+            } else {
+                0.0
+            }
         })
     }
 
@@ -46,7 +50,11 @@ impl MetricDatum {
         for a in aggs {
             let count = a.sample_count.max(0.0) as usize;
             if count > 0 {
-                let avg = if a.sample_count > 0.0 { a.sum / a.sample_count } else { 0.0 };
+                let avg = if a.sample_count > 0.0 {
+                    a.sum / a.sample_count
+                } else {
+                    0.0
+                };
                 out.extend(std::iter::repeat_n(avg, count));
             }
         }
@@ -84,5 +92,7 @@ impl CloudwatchState {
 }
 
 impl Default for CloudwatchState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -13,8 +13,18 @@ pub struct DefaultKinesisHandler {
 }
 
 impl DefaultKinesisHandler {
-    pub fn new() -> Self { Self { inner: handler::KinesisHandler::new() } }
-    pub fn handle(&self, req: AwsRequest) -> AwsResponse { self.inner.handle(req) }
+    pub fn new() -> Self {
+        Self {
+            inner: handler::KinesisHandler::new(),
+        }
+    }
+    pub fn handle(&self, req: AwsRequest) -> AwsResponse {
+        self.inner.handle(req)
+    }
 }
 
-impl Default for DefaultKinesisHandler { fn default() -> Self { Self::new() } }
+impl Default for DefaultKinesisHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}

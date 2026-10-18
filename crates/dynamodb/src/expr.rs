@@ -170,8 +170,14 @@ pub fn attr_eq(a: &Value, b: &Value) -> bool {
 fn attr_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
     match (type_of(a)?, type_of(b)?) {
         ("S", "S") | ("B", "B") => {
-            let av = a.as_object().and_then(|o| o.values().next()).and_then(|v| v.as_str())?;
-            let bv = b.as_object().and_then(|o| o.values().next()).and_then(|v| v.as_str())?;
+            let av = a
+                .as_object()
+                .and_then(|o| o.values().next())
+                .and_then(|v| v.as_str())?;
+            let bv = b
+                .as_object()
+                .and_then(|o| o.values().next())
+                .and_then(|v| v.as_str())?;
             Some(av.cmp(bv))
         }
         ("N", "N") => as_number(a)?.partial_cmp(&as_number(b)?),
@@ -194,8 +200,14 @@ fn size_of(val: &Value) -> Option<f64> {
             .next()
             .and_then(|v| v.as_array())
             .map(|a| a.len() as f64),
-        "L" => val.get("L").and_then(|v| v.as_array()).map(|a| a.len() as f64),
-        "M" => val.get("M").and_then(|v| v.as_object()).map(|m| m.len() as f64),
+        "L" => val
+            .get("L")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len() as f64),
+        "M" => val
+            .get("M")
+            .and_then(|v| v.as_object())
+            .map(|m| m.len() as f64),
         _ => None,
     }
 }
@@ -438,7 +450,9 @@ impl<'a> Parser<'a> {
         let arg1 = self.parse_operand()?;
         match self.next() {
             Some(Tok::RParen) => match fname.as_str() {
-                "attribute_exists" => Ok(Cond::AttrExists(arg1.path().unwrap_or(&[]).to_vec(), true)),
+                "attribute_exists" => {
+                    Ok(Cond::AttrExists(arg1.path().unwrap_or(&[]).to_vec(), true))
+                }
                 "attribute_not_exists" => {
                     Ok(Cond::AttrExists(arg1.path().unwrap_or(&[]).to_vec(), false))
                 }
@@ -504,14 +518,17 @@ fn eval_cond(cond: &Cond, item: &Value) -> bool {
             }
         }
         Cond::Between(v, lo, hi) => {
-            let (Some(v), Some(lo), Some(hi)) =
-                (v.resolve_opt(item), lo.resolve_opt(item), hi.resolve_opt(item))
-            else {
+            let (Some(v), Some(lo), Some(hi)) = (
+                v.resolve_opt(item),
+                lo.resolve_opt(item),
+                hi.resolve_opt(item),
+            ) else {
                 return false;
             };
             match (attr_cmp(&v, &lo), attr_cmp(&v, &hi)) {
                 (Some(a), Some(b)) => {
-                    !matches!(a, std::cmp::Ordering::Less) && !matches!(b, std::cmp::Ordering::Greater)
+                    !matches!(a, std::cmp::Ordering::Less)
+                        && !matches!(b, std::cmp::Ordering::Greater)
                 }
                 _ => false,
             }
@@ -520,8 +537,11 @@ fn eval_cond(cond: &Cond, item: &Value) -> bool {
             let Some(v) = v.resolve_opt(item) else {
                 return false;
             };
-            list.iter()
-                .any(|o| o.resolve_opt(item).map(|x| attr_eq(&v, &x)).unwrap_or(false))
+            list.iter().any(|o| {
+                o.resolve_opt(item)
+                    .map(|x| attr_eq(&v, &x))
+                    .unwrap_or(false)
+            })
         }
         Cond::AttrExists(segs, exists) => {
             let found = lookup(item, segs).is_some();
@@ -567,7 +587,9 @@ fn as_str_val(v: &Value) -> Option<String> {
 
 /// Compare a raw set element against an untyped scalar of a given DynamoDB type.
 fn scalars_match(set_kind: Option<&str>, raw: &Value, needle_scalar: Option<&Value>) -> bool {
-    let Some(needle_scalar) = needle_scalar else { return false };
+    let Some(needle_scalar) = needle_scalar else {
+        return false;
+    };
     match (set_kind, needle_scalar) {
         (Some("SS"), Value::String(s)) => raw.as_str() == Some(s.as_str()),
         (Some("NS"), Value::Number(n)) => {
@@ -588,15 +610,14 @@ fn contains_val(container: &Value, needle: &Value) -> bool {
             .is_some_and(|s| as_str_val(needle).is_some_and(|n| s.contains(&n))),
         Some("SS") | Some("NS") | Some("BS") => {
             // Set elements are raw scalars; the needle is a typed value.
-            let typed = needle
-                .as_object()
-                .and_then(|o| o.values().next());
+            let typed = needle.as_object().and_then(|o| o.values().next());
             container
                 .as_object()
                 .and_then(|o| o.values().next())
                 .and_then(|v| v.as_array())
                 .map(|arr| {
-                    arr.iter().any(|e| scalars_match(type_of(container), e, typed))
+                    arr.iter()
+                        .any(|e| scalars_match(type_of(container), e, typed))
                 })
                 .unwrap_or(false)
         }
@@ -779,7 +800,9 @@ impl<'a> UpdateParser<'a> {
                 .get(&v)
                 .cloned()
                 .ok_or_else(|| format!("unknown expression attribute value {v}")),
-            other => Err(format!("expected expression attribute value, found {other:?}")),
+            other => Err(format!(
+                "expected expression attribute value, found {other:?}"
+            )),
         }
     }
 
@@ -961,9 +984,9 @@ pub fn apply_update(
 
 fn eval_set_action(item: &Value, a: &SetAction) -> Result<Value, String> {
     match a {
-        SetAction::Val(op) => {
-            op.resolve(item).map_err(|_| "operand could not be resolved".to_string())
-        }
+        SetAction::Val(op) => op
+            .resolve(item)
+            .map_err(|_| "operand could not be resolved".to_string()),
         SetAction::IfNotExists(target, rhs) => {
             if lookup(item, target).is_some() {
                 Ok(lookup(item, target).cloned().unwrap_or(Value::Null))
@@ -1055,16 +1078,30 @@ fn nested_map_mut<'m>(
 fn add_to_attr(current: Option<Value>, val: &Value) -> Value {
     match (current, type_of(val)) {
         (Some(cur), Some("N")) if type_of(&cur) == Some("N") => {
-            let a = cur.get("N").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok());
-            let b = val.get("N").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok());
+            let a = cur
+                .get("N")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok());
+            let b = val
+                .get("N")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok());
             fmt_num(a.unwrap_or(0.0) + b.unwrap_or(0.0))
         }
         (Some(cur), Some("SS")) if type_of(&cur) == Some("SS") => merge_sets(&cur, val),
         (Some(cur), Some("NS")) if type_of(&cur) == Some("NS") => merge_sets(&cur, val),
         (Some(cur), Some("BS")) if type_of(&cur) == Some("BS") => merge_sets(&cur, val),
         (Some(cur), Some("L")) if type_of(&cur) == Some("L") => {
-            let mut out = cur.get("L").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-            let add = val.get("L").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let mut out = cur
+                .get("L")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let add = val
+                .get("L")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
             out.extend(add);
             json!({ "L": out })
         }
@@ -1102,8 +1139,18 @@ fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Value, String
 
 fn merge_sets(cur: &Value, val: &Value) -> Value {
     let tag = type_of(cur).unwrap_or("SS");
-    let mut out = cur.as_object().and_then(|o| o.values().next()).and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let add = val.as_object().and_then(|o| o.values().next()).and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let mut out = cur
+        .as_object()
+        .and_then(|o| o.values().next())
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let add = val
+        .as_object()
+        .and_then(|o| o.values().next())
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     for e in add {
         if !out.iter().any(|x| attr_eq(x, &e)) {
             out.push(e);
@@ -1192,21 +1239,13 @@ mod tests {
         values.insert(":lo".to_string(), json!({"N": "3"}));
         values.insert(":hi".to_string(), json!({"N": "7"}));
         values.insert(":pk".to_string(), json!({"S": "u"}));
-        assert!(eval_condition(
-            "pk = :pk AND #k BETWEEN :lo AND :hi",
-            &it,
-            &names,
-            &values
-        )
-        .unwrap());
+        assert!(
+            eval_condition("pk = :pk AND #k BETWEEN :lo AND :hi", &it, &names, &values).unwrap()
+        );
         values.insert(":lo".to_string(), json!({"N": "8"}));
-        assert!(!eval_condition(
-            "pk = :pk AND #k BETWEEN :lo AND :hi",
-            &it,
-            &names,
-            &values
-        )
-        .unwrap());
+        assert!(
+            !eval_condition("pk = :pk AND #k BETWEEN :lo AND :hi", &it, &names, &values).unwrap()
+        );
     }
 
     #[test]
@@ -1323,9 +1362,17 @@ mod tests {
         let names = HashMap::new();
         let mut values: Values = HashMap::new();
         values.insert(":new".to_string(), json!({"L": [{"S": "b"}, {"S": "c"}]}));
-        apply_update(&mut attrs, "SET vals = list_append(vals, :new)", &names, &values)
-            .unwrap();
+        apply_update(
+            &mut attrs,
+            "SET vals = list_append(vals, :new)",
+            &names,
+            &values,
+        )
+        .unwrap();
         let vals = attrs.get("vals").cloned().unwrap();
-        assert_eq!(vals.get("L").and_then(|v| v.as_array()).map(|a| a.len()), Some(3));
+        assert_eq!(
+            vals.get("L").and_then(|v| v.as_array()).map(|a| a.len()),
+            Some(3)
+        );
     }
 }

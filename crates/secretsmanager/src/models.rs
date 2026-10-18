@@ -41,7 +41,10 @@ pub struct Secret {
 
 impl Secret {
     pub fn new(name: String, account: u64, region: String) -> Self {
-        let arn = format!("arn:aws:secretsmanager:{}:{}:secret:{}", region, account, name);
+        let arn = format!(
+            "arn:aws:secretsmanager:{}:{}:secret:{}",
+            region, account, name
+        );
         Self {
             name,
             arn,
@@ -62,7 +65,11 @@ impl Secret {
     }
 
     pub fn get_version(&self, stage: &str) -> Option<SecretVersion> {
-        self.versions.read().values().find(|v| v.stages.iter().any(|s| s == stage)).cloned()
+        self.versions
+            .read()
+            .values()
+            .find(|v| v.stages.iter().any(|s| s == stage))
+            .cloned()
     }
 
     /// Version looked up by version id.

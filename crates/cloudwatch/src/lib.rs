@@ -13,13 +13,17 @@ pub struct DefaultCloudwatchHandler {
 
 impl DefaultCloudwatchHandler {
     pub fn new() -> Self {
-        Self { inner: handler::CloudwatchHandler::new() }
-}
+        Self {
+            inner: handler::CloudwatchHandler::new(),
+        }
+    }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
-}
+    }
 }
 
 impl Default for DefaultCloudwatchHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -80,16 +80,12 @@ impl DynamoDbHandler {
             "UpdateGlobalTableSettings" => self.update_global_table_settings(&req),
             "DescribeTableReplicaAutoScaling" => self.describe_table_replica_auto_scaling(&req),
             "UpdateTableReplicaAutoScaling" => self.update_table_replica_auto_scaling(&req),
-            "EnableKinesisStreamingDestination" => {
-                self.modify_kinesis_destination(&req, "ACTIVE")
-            }
+            "EnableKinesisStreamingDestination" => self.modify_kinesis_destination(&req, "ACTIVE"),
             "DisableKinesisStreamingDestination" => {
                 self.modify_kinesis_destination(&req, "DISABLED")
             }
             "UpdateKinesisStreamingDestination" => self.update_kinesis_destination(&req),
-            "DescribeKinesisStreamingDestination" => {
-                self.describe_kinesis_destination(&req)
-            }
+            "DescribeKinesisStreamingDestination" => self.describe_kinesis_destination(&req),
             "ListContributorInsights" => {
                 AwsResponse::json(200, json!({ "ContributorInsightsSummaries": [] }))
             }
@@ -180,7 +176,9 @@ impl DynamoDbHandler {
                             .and_then(|p| p.get("NonKeyAttributes"))
                             .and_then(|n| n.as_array())
                             .map(|a| {
-                                a.iter().filter_map(|x| x.as_str().map(String::from)).collect()
+                                a.iter()
+                                    .filter_map(|x| x.as_str().map(String::from))
+                                    .collect()
                             })
                             .unwrap_or_default();
                         Some(crate::models::IndexDefinition {
@@ -196,7 +194,9 @@ impl DynamoDbHandler {
     }
 
     fn create_table(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or_default().to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or_default()
+            .to_string();
         if table_name.is_empty() {
             return AwsResponse::error(400, "ValidationException", "TableName is required");
         }
@@ -211,8 +211,7 @@ impl DynamoDbHandler {
         }
 
         let key_schema = Self::parse_key_schema(req.params.get("KeySchema"));
-        let attribute_definitions =
-            Self::parse_attr_defs(req.params.get("AttributeDefinitions"));
+        let attribute_definitions = Self::parse_attr_defs(req.params.get("AttributeDefinitions"));
         let billing_mode = param_str(&req.params, "BillingMode")
             .unwrap_or("PROVISIONED")
             .to_string();
@@ -260,7 +259,9 @@ impl DynamoDbHandler {
     }
 
     fn delete_table(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or_default().to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         match state.delete_table(&table_name) {
             Some(table) => AwsResponse::json(
@@ -279,7 +280,9 @@ impl DynamoDbHandler {
     }
 
     fn describe_table(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or_default().to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         match state.get_table(&table_name) {
             Some(table) => Self::describe_table_response(req, &table, 200, "Table"),
@@ -362,7 +365,9 @@ impl DynamoDbHandler {
     }
 
     fn update_table(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or_default().to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let Some(table) = state.get_table(&table_name) else {
             return AwsResponse::error(
@@ -374,8 +379,14 @@ impl DynamoDbHandler {
 
         let mut provisioned: Option<Value> = None;
         if let Some(pt) = req.params.get("ProvisionedThroughput") {
-            let rcu = pt.get("ReadCapacityUnits").and_then(|v| v.as_i64()).unwrap_or(0);
-            let wcu = pt.get("WriteCapacityUnits").and_then(|v| v.as_i64()).unwrap_or(0);
+            let rcu = pt
+                .get("ReadCapacityUnits")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let wcu = pt
+                .get("WriteCapacityUnits")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             *table.provisioned_rcu.write() = rcu;
             *table.provisioned_wcu.write() = wcu;
             provisioned = Some(json!({"ReadCapacityUnits": rcu, "WriteCapacityUnits": wcu}));
@@ -416,7 +427,11 @@ impl DynamoDbHandler {
                     .get("Projection")
                     .and_then(|p| p.get("NonKeyAttributes"))
                     .and_then(|n| n.as_array())
-                    .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let idx = crate::models::IndexDefinition {
                     name: create
@@ -435,7 +450,10 @@ impl DynamoDbHandler {
             }
             if let Some(delete) = update.get("Delete") {
                 if let Some(name) = delete.get("IndexName").and_then(|v| v.as_str()) {
-                    table.global_secondary_indexes.write().retain(|g| g.name != name);
+                    table
+                        .global_secondary_indexes
+                        .write()
+                        .retain(|g| g.name != name);
                 }
             }
         }
@@ -486,7 +504,9 @@ fn get_values(req: &AwsRequest) -> Values {
 }
 
 fn now_timestamp() -> String {
-    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.6f+00:00").to_string()
+    chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S%.6f+00:00")
+        .to_string()
 }
 
 fn format_created_at(ts: u64) -> String {
@@ -522,9 +542,13 @@ fn parse_arn_table(arn: &str) -> Option<(String, Option<String>)> {
     if let Some((_, rest)) = arn.split_once(":table/") {
         let parts: Vec<&str> = rest.split('/').collect();
         if !parts.first()?.is_empty() {
-            let index = parts
-                .get(1)
-                .and_then(|seg| if *seg == "index" { rest.split('/').nth(2).map(String::from) } else { None });
+            let index = parts.get(1).and_then(|seg| {
+                if *seg == "index" {
+                    rest.split('/').nth(2).map(String::from)
+                } else {
+                    None
+                }
+            });
             return Some((parts[0].to_string(), index));
         }
     }
@@ -549,7 +573,9 @@ impl DynamoDbHandler {
     }
 
     fn resolve_table(&self, req: &AwsRequest) -> (DynamoDbState, Result<Arc<Table>, AwsResponse>) {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         match state.get_table(&table_name) {
             Some(table) => (state, Ok(table)),
@@ -690,7 +716,11 @@ impl DynamoDbHandler {
         };
 
         let existing = table.items.read().get(&key).map(|i| i.attributes.clone());
-        if let Err(e) = Self::check_condition(req, expr_str(req.params.get("ConditionExpression")), existing.as_ref()) {
+        if let Err(e) = Self::check_condition(
+            req,
+            expr_str(req.params.get("ConditionExpression")),
+            existing.as_ref(),
+        ) {
             return e;
         }
 
@@ -755,7 +785,12 @@ impl DynamoDbHandler {
                 add_paths: Vec::new(),
             })
         } else {
-            expr_engine::apply_update(&mut new_attrs, update_expr, &get_names(req), &get_values(req))
+            expr_engine::apply_update(
+                &mut new_attrs,
+                update_expr,
+                &get_names(req),
+                &get_values(req),
+            )
         };
         let outcome = match outcome_result {
             Ok(o) => o,
@@ -763,10 +798,7 @@ impl DynamoDbHandler {
         };
 
         let stored: AttrMap = map_to_attrmap(new_attrs.clone());
-        table
-            .items
-            .write()
-            .insert(key, Arc::new(Item::new(stored)));
+        table.items.write().insert(key, Arc::new(Item::new(stored)));
 
         let old_value = old_attrs
             .clone()
@@ -815,7 +847,9 @@ impl DynamoDbHandler {
             Err(e) => return e,
         };
 
-        let index_name = param_str(&req.params, "IndexName").unwrap_or("").to_string();
+        let index_name = param_str(&req.params, "IndexName")
+            .unwrap_or("")
+            .to_string();
         let key_cond = expr_str(req.params.get("KeyConditionExpression")).unwrap_or("");
         let forward = req
             .params
@@ -830,7 +864,14 @@ impl DynamoDbHandler {
         };
         let _ = (_index, &table);
         let (sort_attr, index_projection) = index_context(&table, &index_name);
-        Self::run_scan_or_query(req, &table, key_cond, sort_attr.as_deref(), forward_reverse(forward), index_projection)
+        Self::run_scan_or_query(
+            req,
+            &table,
+            key_cond,
+            sort_attr.as_deref(),
+            forward_reverse(forward),
+            index_projection,
+        )
     }
 
     fn scan(&self, req: &AwsRequest) -> AwsResponse {
@@ -840,7 +881,9 @@ impl DynamoDbHandler {
             Err(e) => return e,
         };
 
-        let index_name = param_str(&req.params, "IndexName").unwrap_or("").to_string();
+        let index_name = param_str(&req.params, "IndexName")
+            .unwrap_or("")
+            .to_string();
         // Fails the request when the named index does not exist.
         let _index = match resolve_index(&table, &index_name) {
             Ok(i) => i,
@@ -848,7 +891,14 @@ impl DynamoDbHandler {
         };
         let _ = (_index, &table);
         let (sort_attr, index_projection) = index_context(&table, &index_name);
-        Self::run_scan_or_query(req, &table, "", sort_attr.as_deref(), false, index_projection)
+        Self::run_scan_or_query(
+            req,
+            &table,
+            "",
+            sort_attr.as_deref(),
+            false,
+            index_projection,
+        )
     }
 
     fn run_scan_or_query(
@@ -863,9 +913,19 @@ impl DynamoDbHandler {
         let values = get_values(req);
         let filter = expr_str(req.params.get("FilterExpression")).unwrap_or("");
         let projection = expr_str(req.params.get("ProjectionExpression")).unwrap_or("");
-        let select = param_str(&req.params, "Select").unwrap_or("ALL_ATTRIBUTES").to_string();
-        let limit = req.params.get("Limit").and_then(|v| v.as_u64()).map(|v| v as usize);
-        let esk = req.params.get("ExclusiveStartKey").and_then(|v| v.as_object()).cloned();
+        let select = param_str(&req.params, "Select")
+            .unwrap_or("ALL_ATTRIBUTES")
+            .to_string();
+        let limit = req
+            .params
+            .get("Limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let esk = req
+            .params
+            .get("ExclusiveStartKey")
+            .and_then(|v| v.as_object())
+            .cloned();
 
         let names_for_sort = names.clone();
         let items = table.items.read();
@@ -888,8 +948,8 @@ impl DynamoDbHandler {
         if !key_cond.trim().is_empty() {
             let mut filtered = Vec::new();
             for (item, _) in candidates {
-                let ok = expr_engine::eval_condition(key_cond, &item, &names, &values)
-                    .unwrap_or(false);
+                let ok =
+                    expr_engine::eval_condition(key_cond, &item, &names, &values).unwrap_or(false);
                 if ok {
                     filtered.push((item.clone(), value_to_map(&item)));
                 }
@@ -901,10 +961,7 @@ impl DynamoDbHandler {
         let base_sort = table.range_key().map(|k| k.attribute_name.clone());
         let base_hash = table.hash_key().map(|k| k.attribute_name.clone());
         let sk = sort_attr.map(String::from).or_else(|| base_sort.clone());
-        let cmp_segment = |a: &Value,
-                           b: &Value,
-                           attr: &str|
-         -> std::cmp::Ordering {
+        let cmp_segment = |a: &Value, b: &Value, attr: &str| -> std::cmp::Ordering {
             let av = expr_engine::lookup(a, &[attr.to_string()]);
             let bv = expr_engine::lookup(b, &[attr.to_string()]);
             match (av, bv) {
@@ -918,7 +975,9 @@ impl DynamoDbHandler {
                 _ => std::cmp::Ordering::Equal,
             }
         };
-        let sort_key_fn = |a: &(Value, Map<String, Value>), b: &(Value, Map<String, Value>)| -> std::cmp::Ordering {
+        let sort_key_fn = |a: &(Value, Map<String, Value>),
+                           b: &(Value, Map<String, Value>)|
+         -> std::cmp::Ordering {
             if let Some(sk) = &sk {
                 let ord = cmp_segment(&a.0, &b.0, sk);
                 if ord != std::cmp::Ordering::Equal {
@@ -944,8 +1003,11 @@ impl DynamoDbHandler {
         // ExclusiveStartKey: start after that item.
         if let Some(esk) = esk {
             let matching = candidates.iter().position(|(_, m)| {
-                esk.iter()
-                    .all(|(k, v)| m.get(k).map(|mv| expr_engine::attr_eq(mv, v)).unwrap_or(false))
+                esk.iter().all(|(k, v)| {
+                    m.get(k)
+                        .map(|mv| expr_engine::attr_eq(mv, v))
+                        .unwrap_or(false)
+                })
             });
             if let Some(pos) = matching {
                 candidates = candidates.split_off(pos + 1);
@@ -1022,21 +1084,34 @@ fn value_to_map(v: &Value) -> Map<String, Value> {
     v.as_object().cloned().unwrap_or_default()
 }
 
-
 fn dyn_cmp(a: &Value, b: &Value) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     match (expr_engine::type_of(a), expr_engine::type_of(b)) {
         (Some("N"), Some("N")) => {
-            let an = a.get("N").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok());
-            let bn = b.get("N").and_then(|v| v.as_str()).and_then(|s| s.parse::<f64>().ok());
+            let an = a
+                .get("N")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok());
+            let bn = b
+                .get("N")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<f64>().ok());
             match (an, bn) {
                 (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
                 _ => Ordering::Equal,
             }
         }
         (Some("S"), Some("S")) | (Some("B"), Some("B")) => {
-            let av = a.as_object().and_then(|o| o.values().next()).and_then(|v| v.as_str()).unwrap_or("");
-            let bv = b.as_object().and_then(|o| o.values().next()).and_then(|v| v.as_str()).unwrap_or("");
+            let av = a
+                .as_object()
+                .and_then(|o| o.values().next())
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let bv = b
+                .as_object()
+                .and_then(|o| o.values().next())
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             av.cmp(bv)
         }
         _ => a.to_string().cmp(&b.to_string()),
@@ -1085,10 +1160,7 @@ fn index_of(table: &Table, name: &str) -> Option<crate::models::IndexDefinition>
         })
 }
 
-fn index_context(
-    table: &Table,
-    index_name: &str,
-) -> (Option<String>, Option<Vec<Vec<String>>>) {
+fn index_context(table: &Table, index_name: &str) -> (Option<String>, Option<Vec<Vec<String>>>) {
     let Some(index) = index_of(table, index_name) else {
         if index_name.is_empty() {
             return (None, None);
@@ -1169,7 +1241,11 @@ fn op_values(op: &Value) -> Values {
 impl DynamoDbHandler {
     fn batch_get_item(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let request_items = req.params.get("RequestItems").cloned().unwrap_or(Value::Null);
+        let request_items = req
+            .params
+            .get("RequestItems")
+            .cloned()
+            .unwrap_or(Value::Null);
         let mut responses = Map::new();
 
         if let Some(obj) = request_items.as_object() {
@@ -1178,9 +1254,7 @@ impl DynamoDbHandler {
                     return AwsResponse::error(
                         400,
                         "ResourceNotFoundException",
-                        &format!(
-                            "Requested resource not found: Table: {table_name} not found"
-                        ),
+                        &format!("Requested resource not found: Table: {table_name} not found"),
                     );
                 };
                 let names: Names = spec
@@ -1198,16 +1272,28 @@ impl DynamoDbHandler {
                     .map(String::from);
 
                 let mut found: Vec<Value> = Vec::new();
-                for key_json in spec.get("Keys").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
-                    let key_attrs: Map<String, Value> = key_json.as_object().cloned().unwrap_or_default();
-                    let Some(key) = item_key(&table, &key_attrs) else { continue };
+                for key_json in spec
+                    .get("Keys")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default()
+                {
+                    let key_attrs: Map<String, Value> =
+                        key_json.as_object().cloned().unwrap_or_default();
+                    let Some(key) = item_key(&table, &key_attrs) else {
+                        continue;
+                    };
                     let items = table.items.read();
-                    let Some(item) = items.get(&key).cloned() else { continue };
+                    let Some(item) = items.get(&key).cloned() else {
+                        continue;
+                    };
                     drop(items);
                     let item_json = map_to_value(&item.attributes);
                     let projected = match &projection {
                         Some(p) => match expr_engine::parse_projection(p, &names) {
-                            Ok(paths) => Value::Object(expr_engine::project_item(&item_json, &paths)),
+                            Ok(paths) => {
+                                Value::Object(expr_engine::project_item(&item_json, &paths))
+                            }
                             Err(e) => return AwsResponse::error(400, "ValidationException", &e),
                         },
                         None => item_json,
@@ -1226,7 +1312,11 @@ impl DynamoDbHandler {
 
     fn batch_write_item(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let request_items = req.params.get("RequestItems").cloned().unwrap_or(Value::Null);
+        let request_items = req
+            .params
+            .get("RequestItems")
+            .cloned()
+            .unwrap_or(Value::Null);
 
         if let Some(obj) = request_items.as_object() {
             for (table_name, writes) in obj {
@@ -1241,7 +1331,9 @@ impl DynamoDbHandler {
                     if let Some(item_json) = write.pointer("/PutRequest/Item").cloned() {
                         let attrs: Map<String, Value> =
                             item_json.as_object().cloned().unwrap_or_default();
-                        let Some(key) = item_key(&table, &attrs) else { continue };
+                        let Some(key) = item_key(&table, &attrs) else {
+                            continue;
+                        };
                         table
                             .items
                             .write()
@@ -1302,18 +1394,19 @@ impl DynamoDbHandler {
             let (op_name, op) = match ["Put", "Update", "Delete", "ConditionCheck"]
                 .iter()
                 .find_map(|k| entry.get(k).map(|o| (*k, Some(o))))
-                {
-                    Some((k, Some(o))) => (k, o),
-                    _ => {
-                        return AwsResponse::error(
-                            400,
-                            "ValidationException",
-                            "TransactItems can only contain one of Put, Update, Delete or ConditionCheck",
-                        )
-                    }
-                };
+            {
+                Some((k, Some(o))) => (k, o),
+                _ => return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "TransactItems can only contain one of Put, Update, Delete or ConditionCheck",
+                ),
+            };
             let table_name = param_str(op, "TableName").unwrap_or("").to_string();
-            let table = match self.get_state(req.account, &req.region).get_table(&table_name) {
+            let table = match self
+                .get_state(req.account, &req.region)
+                .get_table(&table_name)
+            {
                 Some(t) => t,
                 None => {
                     return AwsResponse::error(
@@ -1356,7 +1449,11 @@ impl DynamoDbHandler {
                     match check {
                         Ok(()) => {
                             cancellation.push(None);
-                            puts.push(PendingPut { table, key, attrs: attrs_to_map(&attrs) });
+                            puts.push(PendingPut {
+                                table,
+                                key,
+                                attrs: attrs_to_map(&attrs),
+                            });
                         }
                         Err(_) => {
                             failed = true;
@@ -1476,7 +1573,12 @@ impl DynamoDbHandler {
         }
         for upd in updates {
             let mut new_attrs: Map<String, Value> = {
-                let cur = upd.table.items.read().get(&upd.key).map(|i| i.attributes.clone());
+                let cur = upd
+                    .table
+                    .items
+                    .read()
+                    .get(&upd.key)
+                    .map(|i| i.attributes.clone());
                 match cur {
                     Some(m) => m.into_iter().collect(),
                     None => upd.key_attrs.clone(),
@@ -1577,9 +1679,11 @@ impl DynamoDbHandler {
             }
         };
         let existing = table.items.read().get(&key).map(|i| i.attributes.clone());
-        if let Err(e) =
-            Self::check_condition(req, expr_str(req.params.get("ConditionExpression")), existing.as_ref())
-        {
+        if let Err(e) = Self::check_condition(
+            req,
+            expr_str(req.params.get("ConditionExpression")),
+            existing.as_ref(),
+        ) {
             return e;
         }
         AwsResponse::json(200, json!({}))
@@ -1593,7 +1697,9 @@ impl DynamoDbHandler {
 impl DynamoDbHandler {
     fn execute_statement(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let statement = param_str(&req.params, "Statement").unwrap_or("").to_string();
+        let statement = param_str(&req.params, "Statement")
+            .unwrap_or("")
+            .to_string();
         let parameters: Vec<Value> = req
             .params
             .get("Parameters")
@@ -1617,7 +1723,10 @@ impl DynamoDbHandler {
             .cloned()
             .unwrap_or_default()
         {
-            let statement = entry.get("Statement").and_then(|v| v.as_str()).unwrap_or("");
+            let statement = entry
+                .get("Statement")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match partiql_run(&state, statement, &[]) {
                 Ok(Some(items)) => {
                     let mut obj = Map::new();
@@ -1643,7 +1752,10 @@ impl DynamoDbHandler {
             .cloned()
             .unwrap_or_default()
         {
-            let statement = entry.get("Statement").and_then(|v| v.as_str()).unwrap_or("");
+            let statement = entry
+                .get("Statement")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match partiql_run(&state, statement, &[]) {
                 Ok(Some(items)) => {
                     let mut obj = Map::new();
@@ -1694,7 +1806,10 @@ fn substitute_params(stmt: &str, params: &[Value]) -> String {
 /// value.
 fn literal_to_attr(raw: &str, params: &[Value]) -> Value {
     let raw = raw.trim();
-    if let Some(num) = raw.strip_prefix("__W3PARAM_").and_then(|r| r.strip_suffix("__")) {
+    if let Some(num) = raw
+        .strip_prefix("__W3PARAM_")
+        .and_then(|r| r.strip_suffix("__"))
+    {
         let idx: usize = num.parse().unwrap_or(usize::MAX);
         return params.get(idx).cloned().unwrap_or(json!({"NULL": true}));
     }
@@ -1765,16 +1880,27 @@ fn parse_where(where_clause: &str, params: &[Value]) -> Option<Vec<PartiQlCond>>
         let eq = clause.find('=');
         let ne = clause.find("<>");
         let (attr_raw, rest_raw, negated) = match (eq, ne) {
-            (Some(e), Some(n)) if n < e => {
-                (clause[..n].trim().to_string(), clause[n + 2..].trim().to_string(), true)
-            }
-            (Some(e), _) => (clause[..e].trim().to_string(), clause[e + 1..].trim().to_string(), false),
-            (None, Some(n)) => {
-                (clause[..n].trim().to_string(), clause[n + 2..].trim().to_string(), true)
-            }
+            (Some(e), Some(n)) if n < e => (
+                clause[..n].trim().to_string(),
+                clause[n + 2..].trim().to_string(),
+                true,
+            ),
+            (Some(e), _) => (
+                clause[..e].trim().to_string(),
+                clause[e + 1..].trim().to_string(),
+                false,
+            ),
+            (None, Some(n)) => (
+                clause[..n].trim().to_string(),
+                clause[n + 2..].trim().to_string(),
+                true,
+            ),
             (None, None) => return None,
         };
-        let attr = attr_raw.trim_matches(|c| c == '"' || c == '`').trim().to_string();
+        let attr = attr_raw
+            .trim_matches(|c| c == '"' || c == '`')
+            .trim()
+            .to_string();
         let segments: Vec<String> = attr.split('.').map(String::from).collect();
         conds.push(PartiQlCond {
             attr: segments,
@@ -1834,13 +1960,7 @@ fn partiql_run(
 ) -> Result<Option<Vec<Value>>, AwsResponse> {
     let stmt = substitute_params(statement, parameters);
     let head = stmt.split_whitespace().next().unwrap_or("").to_uppercase();
-    let invalid = || {
-        AwsResponse::error(
-            400,
-            "ValidationException",
-            "Invalid PartiQL statement",
-        )
-    };
+    let invalid = || AwsResponse::error(400, "ValidationException", "Invalid PartiQL statement");
     match head.as_str() {
         "SELECT" | "INSERT" | "UPDATE" | "DELETE" => {}
         _ => return Err(invalid()),
@@ -1866,7 +1986,6 @@ fn partiql_run(
         _ => Vec::new(),
     };
 
-
     match head.as_str() {
         "SELECT" => {
             let mut items: Vec<Value> = Vec::new();
@@ -1884,12 +2003,15 @@ fn partiql_run(
             };
             let raw = stmt[value_pos + "VALUE".len()..].trim();
             let converted = raw.replace('\'', "\"");
-            let parsed: Value =
-                serde_json::from_str(&converted).map_err(|_| invalid())?;
+            let parsed: Value = serde_json::from_str(&converted).map_err(|_| invalid())?;
             let attrs: Map<String, Value> = parsed
                 .as_object()
                 .cloned()
-                .map(|m| m.into_iter().map(|(k, v)| (k, scalar_to_attr(&v))).collect())
+                .map(|m| {
+                    m.into_iter()
+                        .map(|(k, v)| (k, scalar_to_attr(&v)))
+                        .collect()
+                })
                 .ok_or_else(invalid)?;
             let key = item_key(&table, &attrs).ok_or_else(invalid)?;
             table
@@ -1921,7 +2043,9 @@ fn partiql_run(
                 let Some(eq) = assignment.find('=') else {
                     return Err(invalid());
                 };
-                let attr = assignment[..eq].trim().trim_matches(|c| c == '"' || c == '`');
+                let attr = assignment[..eq]
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '`');
                 let segs: Vec<String> = attr.split('.').map(String::from).collect();
                 let value = literal_to_attr(assignment[eq + 1..].trim(), parameters);
                 assignments.push((segs, value));
@@ -1931,7 +2055,8 @@ fn partiql_run(
             for (key, item) in items.iter() {
                 let item_value = map_to_value(&item.attributes);
                 if where_matches(&item_value, &conds) {
-                    let mut map: Map<String, Value> = item_value.as_object().cloned().unwrap_or_default();
+                    let mut map: Map<String, Value> =
+                        item_value.as_object().cloned().unwrap_or_default();
                     for (segs, val) in &assignments {
                         let _ = expr_engine::set_path(&mut map, segs, val.clone());
                     }
@@ -2059,7 +2184,11 @@ impl DynamoDbHandler {
         match state.get_table(table_name) {
             Some(table) => {
                 let enabled = *table.ttl_enabled.read();
-                let status = if *table.ttl_enabled.read() { "ENABLED" } else { "DISABLED" };
+                let status = if *table.ttl_enabled.read() {
+                    "ENABLED"
+                } else {
+                    "DISABLED"
+                };
                 let mut desc = json!({ "TimeToLiveStatus": status });
                 if enabled {
                     desc.as_object_mut().unwrap().insert(
@@ -2080,9 +2209,20 @@ impl DynamoDbHandler {
             Some(t) => t,
             None => return Self::not_found_table(table_name),
         };
-        let spec = req.params.get("TimeToLiveSpecification").cloned().unwrap_or(Value::Null);
-        let enabled = spec.get("Enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-        let attr = spec.get("AttributeName").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let spec = req
+            .params
+            .get("TimeToLiveSpecification")
+            .cloned()
+            .unwrap_or(Value::Null);
+        let enabled = spec
+            .get("Enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let attr = spec
+            .get("AttributeName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if enabled && attr.is_empty() {
             return AwsResponse::error(
                 400,
@@ -2103,7 +2243,11 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn continuous_backups_body(table: &Table) -> Value {
-        let pitr = if *table.pitr_enabled.read() { "ENABLED" } else { "DISABLED" };
+        let pitr = if *table.pitr_enabled.read() {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        };
         json!({
             "ContinuousBackupsDescription": {
                 "ContinuousBackupsStatus": "ENABLED",
@@ -2214,7 +2358,9 @@ impl DynamoDbHandler {
                 .collect();
             let backup = Backup {
                 arn: arn.clone(),
-                name: param_str(&req.params, "BackupName").unwrap_or("").to_string(),
+                name: param_str(&req.params, "BackupName")
+                    .unwrap_or("")
+                    .to_string(),
                 table_name: table.name.clone(),
                 status: "AVAILABLE".to_string(),
                 backup_type: "USER".to_string(),
@@ -2241,7 +2387,10 @@ impl DynamoDbHandler {
         let arn = param_str(&req.params, "BackupArn").unwrap_or("");
         let state = self.get_state(req.account, &req.region);
         let backups = state.backups.read();
-        let Some(b) = backups.iter().find(|b| b.arn == arn && b.status == "AVAILABLE") else {
+        let Some(b) = backups
+            .iter()
+            .find(|b| b.arn == arn && b.status == "AVAILABLE")
+        else {
             return AwsResponse::error(
                 400,
                 "BackupNotFoundException",
@@ -2267,7 +2416,12 @@ impl DynamoDbHandler {
         let summaries: Vec<Value> = backups
             .iter()
             .filter(|b| b.status == "AVAILABLE")
-            .filter(|b| table_filter.as_deref().map(|t| b.table_name == t).unwrap_or(true))
+            .filter(|b| {
+                table_filter
+                    .as_deref()
+                    .map(|t| b.table_name == t)
+                    .unwrap_or(true)
+            })
             .map(|b| Self::backup_summary(b))
             .collect();
         AwsResponse::json(200, json!({ "BackupSummaries": summaries }))
@@ -2300,12 +2454,18 @@ impl DynamoDbHandler {
     }
 
     fn restore_table_from_backup(&self, req: &AwsRequest) -> AwsResponse {
-        let target = param_str(&req.params, "TargetTableName").unwrap_or("").to_string();
+        let target = param_str(&req.params, "TargetTableName")
+            .unwrap_or("")
+            .to_string();
         let arn = param_str(&req.params, "BackupArn").unwrap_or("");
         let state = self.get_state(req.account, &req.region);
         let backup = {
             let backups = state.backups.read();
-            match backups.iter().find(|b| b.arn == arn && b.status == "AVAILABLE").cloned() {
+            match backups
+                .iter()
+                .find(|b| b.arn == arn && b.status == "AVAILABLE")
+                .cloned()
+            {
                 Some(b) => b,
                 None => {
                     return AwsResponse::error(
@@ -2319,7 +2479,7 @@ impl DynamoDbHandler {
         if state.get_table(&target).is_some() {
             return AwsResponse::error(
                 400,
-        "ResourceAlreadyExistsException",
+                "ResourceAlreadyExistsException",
                 &format!("Table already exists: {target}"),
             );
         }
@@ -2357,8 +2517,12 @@ impl DynamoDbHandler {
     }
 
     fn restore_table_to_point_in_time(&self, req: &AwsRequest) -> AwsResponse {
-        let source_name = param_str(&req.params, "SourceTableName").unwrap_or("").to_string();
-        let target = param_str(&req.params, "TargetTableName").unwrap_or("").to_string();
+        let source_name = param_str(&req.params, "SourceTableName")
+            .unwrap_or("")
+            .to_string();
+        let target = param_str(&req.params, "TargetTableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let Some(source) = state.get_table(&source_name) else {
             return Self::not_found_table(&source_name);
@@ -2411,7 +2575,9 @@ impl DynamoDbHandler {
     }
 
     fn create_global_table(&self, req: &AwsRequest) -> AwsResponse {
-        let name = param_str(&req.params, "GlobalTableName").unwrap_or("").to_string();
+        let name = param_str(&req.params, "GlobalTableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         {
             let gts = state.global_tables.read();
@@ -2429,7 +2595,11 @@ impl DynamoDbHandler {
             .and_then(|v| v.as_array())
             .map(|a| {
                 a.iter()
-                    .filter_map(|r| r.get("RegionName").and_then(|s| s.as_str()).map(String::from))
+                    .filter_map(|r| {
+                        r.get("RegionName")
+                            .and_then(|s| s.as_str())
+                            .map(String::from)
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -2493,13 +2663,19 @@ impl DynamoDbHandler {
             a.get("GlobalTableName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
-                .cmp(b.get("GlobalTableName").and_then(|v| v.as_str()).unwrap_or(""))
+                .cmp(
+                    b.get("GlobalTableName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                )
         });
         AwsResponse::json(200, json!({ "GlobalTables": tables }))
     }
 
     fn update_global_table(&self, req: &AwsRequest) -> AwsResponse {
-        let name = param_str(&req.params, "GlobalTableName").unwrap_or("").to_string();
+        let name = param_str(&req.params, "GlobalTableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let mut gts = state.global_tables.write();
         let Some(gt) = gts.get_mut(&name) else {
@@ -2518,7 +2694,10 @@ impl DynamoDbHandler {
             .unwrap_or_default()
         {
             if let Some(create) = update.get("Create") {
-                let region = create.get("RegionName").and_then(|v| v.as_str()).unwrap_or("");
+                let region = create
+                    .get("RegionName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if gt.replication_group.iter().any(|r| r == region) {
                     return AwsResponse::error(
                         400,
@@ -2550,7 +2729,9 @@ impl DynamoDbHandler {
     }
 
     fn delete_global_table(&self, req: &AwsRequest) -> AwsResponse {
-        let name = param_str(&req.params, "GlobalTableName").unwrap_or("").to_string();
+        let name = param_str(&req.params, "GlobalTableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let mut gts = state.global_tables.write();
         let Some(gt) = gts.remove(&name) else {
@@ -2599,14 +2780,18 @@ impl DynamoDbHandler {
     }
 
     fn update_global_table_settings(&self, req: &AwsRequest) -> AwsResponse {
-        let name = param_str(&req.params, "GlobalTableName").unwrap_or("").to_string();
+        let name = param_str(&req.params, "GlobalTableName")
+            .unwrap_or("")
+            .to_string();
         // Moto does not implement this operation; the suite only asserts the
         // echo of GlobalTableName. Keep permissive validation-free behavior.
         AwsResponse::json(200, json!({ "GlobalTableName": name }))
     }
 
     fn describe_table_replica_auto_scaling(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         match state.get_table(&table_name) {
             Some(_) => AwsResponse::json(
@@ -2638,8 +2823,12 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn modify_kinesis_destination(&self, req: &AwsRequest, status: &str) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
-        let stream_arn = param_str(&req.params, "StreamArn").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
+        let stream_arn = param_str(&req.params, "StreamArn")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let table = match state.get_table(&table_name) {
             Some(t) => t,
@@ -2666,8 +2855,12 @@ impl DynamoDbHandler {
     }
 
     fn update_kinesis_destination(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
-        let stream_arn = param_str(&req.params, "StreamArn").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
+        let stream_arn = param_str(&req.params, "StreamArn")
+            .unwrap_or("")
+            .to_string();
         let precision = req
             .params
             .pointer("/UpdateKinesisStreamingConfiguration/ApproximateCreationDateTimePrecision")
@@ -2679,10 +2872,7 @@ impl DynamoDbHandler {
             None => return Self::not_found_table(&table_name),
         };
         let mut dests = table.kinesis_destinations.write();
-        if let Some(dest) = dests
-            .iter_mut()
-            .find(|d| d.stream_arn == stream_arn)
-        {
+        if let Some(dest) = dests.iter_mut().find(|d| d.stream_arn == stream_arn) {
             dest.precision = precision.clone();
         } else {
             dests.push(KinesisDestination {
@@ -2700,7 +2890,9 @@ impl DynamoDbHandler {
     }
 
     fn describe_kinesis_destination(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let table = match state.get_table(&table_name) {
             Some(t) => t,
@@ -2734,7 +2926,9 @@ impl DynamoDbHandler {
     // ------------------------------------------------------------------
 
     fn describe_contributor_insights(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let table = match state.get_table(&table_name) {
             Some(t) => t,
@@ -2761,7 +2955,9 @@ impl DynamoDbHandler {
     }
 
     fn update_contributor_insights(&self, req: &AwsRequest) -> AwsResponse {
-        let table_name = param_str(&req.params, "TableName").unwrap_or("").to_string();
+        let table_name = param_str(&req.params, "TableName")
+            .unwrap_or("")
+            .to_string();
         let action = param_str(&req.params, "ContributorInsightsAction").unwrap_or("");
         let state = self.get_state(req.account, &req.region);
         let table = match state.get_table(&table_name) {
@@ -2808,7 +3004,10 @@ impl DynamoDbHandler {
             return AwsResponse::error(
                 400,
                 "PointInTimeRecoveryUnavailableException",
-                &format!("Point in time recovery is not enabled for table '{}'", table.name),
+                &format!(
+                    "Point in time recovery is not enabled for table '{}'",
+                    table.name
+                ),
             );
         }
         let format = param_str(&req.params, "ExportFormat")
@@ -2917,9 +3116,7 @@ impl DynamoDbHandler {
                 return AwsResponse::error(
                     400,
                     "PolicyNotFoundException",
-                    &format!(
-                        "Resource-based policy not found for the provided ResourceArn: {arn}"
-                    ),
+                    &format!("Resource-based policy not found for the provided ResourceArn: {arn}"),
                 )
             }
         };
@@ -2969,7 +3166,6 @@ impl DynamoDbHandler {
     }
 }
 
-
 // ----------------------------------------------------------------------
 // Shared small helpers
 // ----------------------------------------------------------------------
@@ -2994,7 +3190,6 @@ mod tests {
             body: Bytes::new(),
         }
     }
-
 
     #[test]
     fn test_create_list_describe_delete() {
@@ -3109,4 +3304,3 @@ mod tests {
         assert_eq!(body["Attributes"]["v"], json!({"S": "zzz"}));
     }
 }
-

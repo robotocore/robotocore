@@ -26,7 +26,9 @@ pub struct FirehoseState {
 
 impl FirehoseState {
     pub fn new() -> Self {
-        Self { resources: Arc::new(RwLock::new(HashMap::new())) }
+        Self {
+            resources: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<DeliveryStream> {
@@ -49,5 +51,7 @@ impl FirehoseState {
 }
 
 impl Default for FirehoseState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

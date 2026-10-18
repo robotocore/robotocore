@@ -20,7 +20,9 @@ pub struct EcrHandler {
 
 impl Default for EcrHandler {
     fn default() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
     }
 }
 
@@ -31,7 +33,10 @@ impl EcrHandler {
 
     fn get_state(&self, account: u64, region: &str) -> EcrState {
         let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_default().clone()
+        states
+            .entry((account, region.to_string()))
+            .or_default()
+            .clone()
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
@@ -81,12 +86,17 @@ impl EcrHandler {
             "CreateRepositoryCreationTemplate" => self.create_repository_creation_template(&req),
             "DeleteRepositoryCreationTemplate" => self.delete_repository_creation_template(&req),
             "UpdateRepositoryCreationTemplate" => self.update_repository_creation_template(&req),
-            "DescribeRepositoryCreationTemplates" => self.describe_repository_creation_templates(&req),
+            "DescribeRepositoryCreationTemplates" => {
+                self.describe_repository_creation_templates(&req)
+            }
             "GetAccountSetting" => self.get_account_setting(&req),
             "PutAccountSetting" => self.put_account_setting(&req),
             "DescribeImageReplicationStatus" => self.describe_image_replication_status(&req),
-            other => AwsResponse::error(400, "InvalidAction",
-                &format!("Could not find operation {}", other)),
+            other => AwsResponse::error(
+                400,
+                "InvalidAction",
+                &format!("Could not find operation {}", other),
+            ),
         }
     }
 
@@ -98,16 +108,24 @@ impl EcrHandler {
         let name = match req.params.get("repositoryName").and_then(|v| v.as_str()) {
             Some(n) if !n.is_empty() => n.to_string(),
             _ => {
-                return AwsResponse::error(400, "InvalidParameterException",
-                    "Invalid parameter at 'repositoryName' failed to satisfy constraint")
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterException",
+                    "Invalid parameter at 'repositoryName' failed to satisfy constraint",
+                )
             }
         };
         let state = self.get_state(req.account, &req.region);
         let mut repos = state.repositories.write();
         if repos.contains_key(&name) {
-            return AwsResponse::error(400, "RepositoryAlreadyExistsException",
-                &format!("The repository with name '{}' already exists in the registry with id '{}'",
-                    name, req.account));
+            return AwsResponse::error(
+                400,
+                "RepositoryAlreadyExistsException",
+                &format!(
+                    "The repository with name '{}' already exists in the registry with id '{}'",
+                    name, req.account
+                ),
+            );
         }
         let repo = json!({
             "repositoryArn": format!("arn:aws:ecr:{}:{}:repository/{}", req.region, req.account, name),
@@ -127,7 +145,13 @@ impl EcrHandler {
         });
         if let Some(tags) = req.params.get("tags").and_then(|v| v.as_array()).cloned() {
             if !tags.is_empty() {
-                state.tags.write().insert(repo["repositoryArn"].as_str().unwrap_or_default().to_string(), tags);
+                state.tags.write().insert(
+                    repo["repositoryArn"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                    tags,
+                );
             }
         }
         repos.insert(name.clone(), repo.clone());
@@ -135,8 +159,16 @@ impl EcrHandler {
     }
 
     fn delete_repository(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let force = req.params.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let force = req
+            .params
+            .get("force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let state = self.get_state(req.account, &req.region);
         {
             let repos = state.repositories.read();
@@ -145,7 +177,9 @@ impl EcrHandler {
             }
         }
         if !force {
-            let has_images = state.images.read()
+            let has_images = state
+                .images
+                .read()
                 .get(name)
                 .map(|v| !v.is_empty())
                 .unwrap_or(false);
@@ -160,16 +194,25 @@ impl EcrHandler {
         state.repository_policies.write().remove(name);
         state.lifecycle_policies.write().remove(name);
         state.scanning_configs.write().remove(name);
-        state.tags.write().remove(repo["repositoryArn"].as_str().unwrap_or_default());
+        state
+            .tags
+            .write()
+            .remove(repo["repositoryArn"].as_str().unwrap_or_default());
         AwsResponse::json(200, json!({ "repository": repo }))
     }
 
     fn describe_repositories(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let repos = state.repositories.read();
-        let names: Vec<String> = req.params.get("repositoryNames")
+        let names: Vec<String> = req
+            .params
+            .get("repositoryNames")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         for n in &names {
@@ -182,24 +225,48 @@ impl EcrHandler {
         // Python provider layers index-based `nextToken` on top.
         let mut all: Vec<Value> = repos.values().cloned().collect();
         all.sort_by(|a, b| {
-            let na = a.get("repositoryName").and_then(|v| v.as_str()).unwrap_or("");
-            let nb = b.get("repositoryName").and_then(|v| v.as_str()).unwrap_or("");
+            let na = a
+                .get("repositoryName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let nb = b
+                .get("repositoryName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             na.cmp(nb)
         });
         if !names.is_empty() {
-            all.retain(|r| names.iter().any(|n| n == r.get("repositoryName").and_then(|v| v.as_str()).unwrap_or("")));
+            all.retain(|r| {
+                names.iter().any(|n| {
+                    n == r
+                        .get("repositoryName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                })
+            });
         }
 
-        let max_results = req.params.get("maxResults").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        let next_token = req.params.get("nextToken").and_then(|v| v.as_str()).unwrap_or("");
+        let max_results = req
+            .params
+            .get("maxResults")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let next_token = req
+            .params
+            .get("nextToken")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let start_idx: usize = next_token.parse().unwrap_or(0).min(all.len());
         let remaining = &all[start_idx..];
         if max_results > 0 && remaining.len() > max_results {
             let page: Vec<Value> = remaining[..max_results].to_vec();
-            AwsResponse::json(200, json!({
-                "repositories": page,
-                "nextToken": (start_idx + max_results).to_string(),
-            }))
+            AwsResponse::json(
+                200,
+                json!({
+                    "repositories": page,
+                    "nextToken": (start_idx + max_results).to_string(),
+                }),
+            )
         } else {
             AwsResponse::json(200, json!({ "repositories": remaining, "failures": [] }))
         }
@@ -219,9 +286,21 @@ impl EcrHandler {
     }
 
     fn put_image(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let manifest = req.params.get("imageManifest").and_then(|v| v.as_str()).unwrap_or_default();
-        let tag: Option<String> = req.params.get("imageTag").and_then(|v| v.as_str()).map(String::from);
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let manifest = req
+            .params
+            .get("imageManifest")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let tag: Option<String> = req
+            .params
+            .get("imageTag")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -231,17 +310,31 @@ impl EcrHandler {
             Err(_) => return AwsResponse::error(400, "InvalidParameterException",
                 "Invalid parameter at 'ImageManifest' failed to satisfy constraint: 'Invalid JSON syntax'"),
         };
-        let media_type = req.params.get("imageManifestMediaType")
+        let media_type = req
+            .params
+            .get("imageManifestMediaType")
             .and_then(|v| v.as_str())
             .map(String::from)
-            .or_else(|| parsed.get("mediaType").and_then(|v| v.as_str()).map(String::from))
+            .or_else(|| {
+                parsed
+                    .get("mediaType")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
             .unwrap_or_default();
-        let size = parsed.get("config").and_then(|c| c.get("size")).and_then(|v| v.as_i64());
+        let size = parsed
+            .get("config")
+            .and_then(|c| c.get("size"))
+            .and_then(|v| v.as_i64());
         // moto derives the digest from the joined layer digests of the manifest.
-        let digest = req.params.get("imageDigest")
-            .and_then(|v| v.as_str()).map(String::from)
+        let digest = req
+            .params
+            .get("imageDigest")
+            .and_then(|v| v.as_str())
+            .map(String::from)
             .unwrap_or_else(|| {
-                let joined = parsed.get("layers")
+                let joined = parsed
+                    .get("layers")
                     .and_then(|l| l.as_array())
                     .map(|arr| {
                         arr.iter()
@@ -261,13 +354,18 @@ impl EcrHandler {
         // Two images are "the same" when their manifest strings match (moto).
         let existing_manifest_idx = repo_images.iter().position(|img| img.manifest == manifest);
         let tag_in_use_idx = match tag.as_deref() {
-            Some(t) => repo_images.iter().position(|img| img.tags.contains(&t.to_string())),
+            Some(t) => repo_images
+                .iter()
+                .position(|img| img.tags.contains(&t.to_string())),
             None => None,
         };
 
-        let repo_immutable = state.repositories.read()
+        let repo_immutable = state
+            .repositories
+            .read()
             .get(name)
-            .and_then(|r| r.get("imageTagMutability")).and_then(|m| m.as_str())
+            .and_then(|r| r.get("imageTagMutability"))
+            .and_then(|m| m.as_str())
             == Some("IMMUTABLE");
 
         match existing_manifest_idx {
@@ -317,7 +415,11 @@ impl EcrHandler {
     }
 
     fn list_images(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -337,13 +439,21 @@ impl EcrHandler {
     }
 
     fn describe_images(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
         let repo_images = images_of(&state, name);
-        let image_ids = req.params.get("imageIds").and_then(|v| v.as_array()).cloned();
+        let image_ids = req
+            .params
+            .get("imageIds")
+            .and_then(|v| v.as_array())
+            .cloned();
         let selected: Vec<&EcrImage> = match image_ids {
             None => repo_images.iter().collect(),
             Some(ids) => {
@@ -363,12 +473,19 @@ impl EcrHandler {
                 out
             }
         };
-        let details: Vec<Value> = selected.iter().map(|img| self.image_detail(req, img)).collect();
+        let details: Vec<Value> = selected
+            .iter()
+            .map(|img| self.image_detail(req, img))
+            .collect();
         AwsResponse::json(200, json!({ "imageDetails": details }))
     }
 
     fn batch_get_image(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -376,16 +493,29 @@ impl EcrHandler {
         let repo_images = images_of(&state, name);
         let mut out_images: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
-        for id in req.params.get("imageIds").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
+        for id in req
+            .params
+            .get("imageIds")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+        {
             let tag = id.get("imageTag").and_then(|v| v.as_str());
             let digest = id.get("imageDigest").and_then(|v| v.as_str());
-            let matches: Vec<&EcrImage> = repo_images.iter().filter(|img| {
-                (digest.map(|d| img.digest == d).unwrap_or(false))
-                    || (tag.map(|t| img.tags.iter().any(|x| x == t)).unwrap_or(false))
-            }).collect();
+            let matches: Vec<&EcrImage> = repo_images
+                .iter()
+                .filter(|img| {
+                    (digest.map(|d| img.digest == d).unwrap_or(false))
+                        || (tag
+                            .map(|t| img.tags.iter().any(|x| x == t))
+                            .unwrap_or(false))
+                })
+                .collect();
             if matches.is_empty() {
                 let mut image_id = json!({});
-                if let Some(t) = tag { image_id["imageTag"] = json!(t); }
+                if let Some(t) = tag {
+                    image_id["imageTag"] = json!(t);
+                }
                 failures.push(json!({
                     "imageId": image_id,
                     "failureCode": "ImageNotFound",
@@ -407,7 +537,11 @@ impl EcrHandler {
     }
 
     fn batch_delete_image(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -417,9 +551,21 @@ impl EcrHandler {
         {
             let mut images = state.images.write();
             let repo_images = images.entry(name.to_string()).or_insert_with(Vec::new);
-            for id in req.params.get("imageIds").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
-                let tag = id.get("imageTag").and_then(|v| v.as_str()).map(String::from);
-                let digest = id.get("imageDigest").and_then(|v| v.as_str()).map(String::from);
+            for id in req
+                .params
+                .get("imageIds")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+            {
+                let tag = id
+                    .get("imageTag")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let digest = id
+                    .get("imageDigest")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 if tag.is_none() && digest.is_none() {
                     failures.push(json!({
                         "imageId": {},
@@ -444,10 +590,13 @@ impl EcrHandler {
                         Some(idx) => {
                             let img = repo_images.remove(idx);
                             if img.tags.is_empty() {
-                                deleted.push(json!({ "imageDigest": img.digest, "imageTag": Value::Null }));
+                                deleted.push(
+                                    json!({ "imageDigest": img.digest, "imageTag": Value::Null }),
+                                );
                             } else {
                                 for t in img.tags.iter().rev() {
-                                    deleted.push(json!({ "imageDigest": img.digest, "imageTag": t }));
+                                    deleted
+                                        .push(json!({ "imageDigest": img.digest, "imageTag": t }));
                                 }
                             }
                         }
@@ -455,10 +604,15 @@ impl EcrHandler {
                     }
                 } else {
                     // Tag matching may leave sibling tags behind.
-                    match repo_images.iter().position(|img| img.tags.contains(tag.as_ref().unwrap())) {
+                    match repo_images
+                        .iter()
+                        .position(|img| img.tags.contains(tag.as_ref().unwrap()))
+                    {
                         Some(idx) => {
                             let t = tag.clone().unwrap();
-                            deleted.push(json!({ "imageDigest": repo_images[idx].digest, "imageTag": t }));
+                            deleted.push(
+                                json!({ "imageDigest": repo_images[idx].digest, "imageTag": t }),
+                            );
                             repo_images[idx].tags.retain(|x| *x != t);
                             if repo_images[idx].tags.is_empty() {
                                 repo_images.remove(idx);
@@ -477,32 +631,55 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn batch_check_layer(&self, req: &AwsRequest) -> AwsResponse {
-        let repo_name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
-        let digests = req.params.get("layerDigests").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-        let layers: Vec<Value> = digests.iter().map(|d| json!({
-            "layerDigest": d,
-            "layerAvailability": "UNAVAILABLE",
-            "repositoryName": repo_name,
-            "registryId": req.account.to_string(),
-        })).collect();
+        let repo_name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let digests = req
+            .params
+            .get("layerDigests")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let layers: Vec<Value> = digests
+            .iter()
+            .map(|d| {
+                json!({
+                    "layerDigest": d,
+                    "layerAvailability": "UNAVAILABLE",
+                    "repositoryName": repo_name,
+                    "registryId": req.account.to_string(),
+                })
+            })
+            .collect();
         AwsResponse::json(200, json!({ "layers": layers, "failures": [] }))
     }
 
     fn get_authorization_token(&self, req: &AwsRequest) -> AwsResponse {
-        let registry_ids: Vec<String> = req.params.get("registryIds")
+        let registry_ids: Vec<String> = req
+            .params
+            .get("registryIds")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .filter(|v: &Vec<String>| !v.is_empty())
             .unwrap_or_else(|| vec![req.account.to_string()]);
-        let auth_data: Vec<Value> = registry_ids.iter().map(|id| {
-            let token = base64::engine::general_purpose::STANDARD
-                .encode(format!("AWS:{}-auth-token", id));
-            json!({
-                "authorizationToken": token,
-                "expiresAt": 1420070400i64,
-                "proxyEndpoint": format!("https://{}.dkr.ecr.{}.amazonaws.com", id, req.region),
+        let auth_data: Vec<Value> = registry_ids
+            .iter()
+            .map(|id| {
+                let token = base64::engine::general_purpose::STANDARD
+                    .encode(format!("AWS:{}-auth-token", id));
+                json!({
+                    "authorizationToken": token,
+                    "expiresAt": 1420070400i64,
+                    "proxyEndpoint": format!("https://{}.dkr.ecr.{}.amazonaws.com", id, req.region),
+                })
             })
-        }).collect();
+            .collect();
         AwsResponse::json(200, json!({ "authorizationData": auth_data }))
     }
 
@@ -511,10 +688,15 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn list_tags(&self, req: &AwsRequest) -> AwsResponse {
-        let (arn, repo_name) = match parse_repo_arn(req.params.get("resourceArn").and_then(|v| v.as_str())) {
+        let (arn, repo_name) = match parse_repo_arn(
+            req.params.get("resourceArn").and_then(|v| v.as_str()),
+        ) {
             Some(v) => v,
-            None => return AwsResponse::error(400, "InvalidParameterException",
-                "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'"),
+            None => return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'",
+            ),
         };
         let state = match self.require_repository(req, &repo_name) {
             Ok(s) => s,
@@ -525,21 +707,34 @@ impl EcrHandler {
     }
 
     fn tag_resource(&self, req: &AwsRequest) -> AwsResponse {
-        let (arn, repo_name) = match parse_repo_arn(req.params.get("resourceArn").and_then(|v| v.as_str())) {
+        let (arn, repo_name) = match parse_repo_arn(
+            req.params.get("resourceArn").and_then(|v| v.as_str()),
+        ) {
             Some(v) => v,
-            None => return AwsResponse::error(400, "InvalidParameterException",
-                "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'"),
+            None => return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'",
+            ),
         };
         let state = match self.require_repository(req, &repo_name) {
             Ok(s) => s,
             Err(e) => return e,
         };
-        let tags: Vec<Value> = req.params.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let mut all_tags = state.tags.write();
         let entry = all_tags.entry(arn.to_string()).or_insert_with(Vec::new);
         for tag in tags {
             let key = tag.get("Key").and_then(|k| k.as_str()).unwrap_or_default();
-            if let Some(slot) = entry.iter_mut().find(|t| t.get("Key").and_then(|k| k.as_str()) == Some(key)) {
+            if let Some(slot) = entry
+                .iter_mut()
+                .find(|t| t.get("Key").and_then(|k| k.as_str()) == Some(key))
+            {
                 *slot = tag;
             } else {
                 entry.push(tag);
@@ -549,23 +744,35 @@ impl EcrHandler {
     }
 
     fn untag_resource(&self, req: &AwsRequest) -> AwsResponse {
-        let (arn, repo_name) = match parse_repo_arn(req.params.get("resourceArn").and_then(|v| v.as_str())) {
+        let (arn, repo_name) = match parse_repo_arn(
+            req.params.get("resourceArn").and_then(|v| v.as_str()),
+        ) {
             Some(v) => v,
-            None => return AwsResponse::error(400, "InvalidParameterException",
-                "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'"),
+            None => return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Invalid parameter at 'resourceArn' failed to satisfy constraint: 'Invalid ARN'",
+            ),
         };
         let state = match self.require_repository(req, &repo_name) {
             Ok(s) => s,
             Err(e) => return e,
         };
-        let keys: Vec<String> = req.params.get("tagKeys")
+        let keys: Vec<String> = req
+            .params
+            .get("tagKeys")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let mut all_tags = state.tags.write();
         if let Some(tags) = all_tags.get_mut(arn) {
             tags.retain(|t| {
-                t.get("Key").and_then(|k| k.as_str())
+                t.get("Key")
+                    .and_then(|k| k.as_str())
                     .map(|k| !keys.iter().any(|x| x == k))
                     .unwrap_or(true)
             });
@@ -578,7 +785,12 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn put_image_scanning_config(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let config = scan_on_push_config(req.params.get("imageScanningConfiguration"));
         let state = match self.require_repository(req, &name) {
             Ok(s) => s,
@@ -587,16 +799,28 @@ impl EcrHandler {
         if let Some(repo) = state.repositories.write().get_mut(&name) {
             repo["imageScanningConfiguration"] = config.clone();
         }
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "repositoryName": name,
-            "imageScanningConfiguration": config,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "repositoryName": name,
+                "imageScanningConfiguration": config,
+            }),
+        )
     }
 
     fn put_image_tag_mutability(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let mutability = req.params.get("imageTagMutability").and_then(|v| v.as_str()).unwrap_or("MUTABLE");
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let mutability = req
+            .params
+            .get("imageTagMutability")
+            .and_then(|v| v.as_str())
+            .unwrap_or("MUTABLE");
         let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -604,15 +828,22 @@ impl EcrHandler {
         if let Some(repo) = state.repositories.write().get_mut(&name) {
             repo["imageTagMutability"] = json!(mutability);
         }
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "repositoryName": name,
-            "imageTagMutability": mutability,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "repositoryName": name,
+                "imageTagMutability": mutability,
+            }),
+        )
     }
 
     fn get_repository_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -631,22 +862,42 @@ impl EcrHandler {
     }
 
     fn set_repository_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let policy = req.params.get("policyText").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let policy = req
+            .params
+            .get("policyText")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
         };
-        state.repository_policies.write().insert(name.clone(), policy.clone());
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "repositoryName": name,
-            "policyText": policy,
-        }))
+        state
+            .repository_policies
+            .write()
+            .insert(name.clone(), policy.clone());
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "repositoryName": name,
+                "policyText": policy,
+            }),
+        )
     }
 
     fn delete_repository_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -669,22 +920,42 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn put_lifecycle_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let policy = req.params.get("lifecyclePolicyText").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let policy = req
+            .params
+            .get("lifecyclePolicyText")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = match self.require_repository(req, &name) {
             Ok(s) => s,
             Err(e) => return e,
         };
-        state.lifecycle_policies.write().insert(name.clone(), policy.clone());
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "repositoryName": name,
-            "lifecyclePolicyText": policy,
-        }))
+        state
+            .lifecycle_policies
+            .write()
+            .insert(name.clone(), policy.clone());
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "repositoryName": name,
+                "lifecyclePolicyText": policy,
+            }),
+        )
     }
 
     fn get_lifecycle_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -704,7 +975,11 @@ impl EcrHandler {
     }
 
     fn delete_lifecycle_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -724,13 +999,20 @@ impl EcrHandler {
     }
 
     fn start_lifecycle_policy_preview(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
         };
-        let policy = req.params.get("lifecyclePolicyText")
-            .and_then(|v| v.as_str()).map(String::from)
+        let policy = req
+            .params
+            .get("lifecyclePolicyText")
+            .and_then(|v| v.as_str())
+            .map(String::from)
             .or_else(|| state.lifecycle_policies.read().get(name).cloned());
         match policy {
             Some(p) => AwsResponse::json(200, json!({
@@ -746,7 +1028,11 @@ impl EcrHandler {
     }
 
     fn get_lifecycle_policy_preview(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -773,32 +1059,52 @@ impl EcrHandler {
     fn describe_registry(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let replication = state.replication_configuration.read().clone();
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "replicationConfiguration": replication,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "replicationConfiguration": replication,
+            }),
+        )
     }
 
     fn put_registry_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let policy = req.params.get("policyText").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let policy = req
+            .params
+            .get("policyText")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         *state.registry_policy.write() = Some(policy.clone());
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "policyText": policy,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "policyText": policy,
+            }),
+        )
     }
 
     fn get_registry_policy(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let found_policy = state.registry_policy.read().clone();
         match found_policy {
-            Some(policy) => AwsResponse::json(200, json!({
-                "registryId": req.account.to_string(),
-                "policyText": policy,
-            })),
-            None => AwsResponse::error(400, "RegistryPolicyNotFoundException",
-                &format!("Registry policy does not exist in the registry with id '{}'", req.account)),
+            Some(policy) => AwsResponse::json(
+                200,
+                json!({
+                    "registryId": req.account.to_string(),
+                    "policyText": policy,
+                }),
+            ),
+            None => AwsResponse::error(
+                400,
+                "RegistryPolicyNotFoundException",
+                &format!(
+                    "Registry policy does not exist in the registry with id '{}'",
+                    req.account
+                ),
+            ),
         }
     }
 
@@ -806,26 +1112,42 @@ impl EcrHandler {
         let state = self.get_state(req.account, &req.region);
         let removed_policy = state.registry_policy.write().take();
         match removed_policy {
-            Some(policy) => AwsResponse::json(200, json!({
-                "registryId": req.account.to_string(),
-                "policyText": policy,
-            })),
-            None => AwsResponse::error(400, "RegistryPolicyNotFoundException",
-                &format!("Registry policy does not exist in the registry with id '{}'", req.account)),
+            Some(policy) => AwsResponse::json(
+                200,
+                json!({
+                    "registryId": req.account.to_string(),
+                    "policyText": policy,
+                }),
+            ),
+            None => AwsResponse::error(
+                400,
+                "RegistryPolicyNotFoundException",
+                &format!(
+                    "Registry policy does not exist in the registry with id '{}'",
+                    req.account
+                ),
+            ),
         }
     }
 
     fn get_registry_scanning(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let config = state.registry_scanning_configuration.read().clone();
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "scanningConfiguration": config,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "scanningConfiguration": config,
+            }),
+        )
     }
 
     fn put_registry_scanning(&self, req: &AwsRequest) -> AwsResponse {
-        let scan_type = req.params.get("scanType").and_then(|v| v.as_str()).unwrap_or("BASIC");
+        let scan_type = req
+            .params
+            .get("scanType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("BASIC");
         let rules = req.params.get("rules").cloned().unwrap_or(json!([]));
         let state = self.get_state(req.account, &req.region);
         {
@@ -839,11 +1161,20 @@ impl EcrHandler {
             }
             if let Some(rules_arr) = rules.as_array() {
                 for rule in rules_arr {
-                    let freq = rule.get("scanFrequency").and_then(|v| v.as_str()).unwrap_or("MANUAL");
-                    for repo_filter in rule.get("repositoryFilters")
-                        .and_then(|f| f.as_array()).cloned().unwrap_or_default()
+                    let freq = rule
+                        .get("scanFrequency")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("MANUAL");
+                    for repo_filter in rule
+                        .get("repositoryFilters")
+                        .and_then(|f| f.as_array())
+                        .cloned()
+                        .unwrap_or_default()
                     {
-                        let filter = repo_filter.get("filter").and_then(|f| f.as_str()).unwrap_or_default();
+                        let filter = repo_filter
+                            .get("filter")
+                            .and_then(|f| f.as_str())
+                            .unwrap_or_default();
                         for (repo, cfg) in configs.iter_mut() {
                             if repo_filter_matches(filter, repo) {
                                 cfg["scanFrequency"] = json!(freq);
@@ -854,22 +1185,35 @@ impl EcrHandler {
                 }
             }
         }
-        AwsResponse::json(200, json!({
-            "registryScanningConfiguration": { "scanType": scan_type, "rules": rules },
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryScanningConfiguration": { "scanType": scan_type, "rules": rules },
+            }),
+        )
     }
 
     fn batch_get_scanning_config(&self, req: &AwsRequest) -> AwsResponse {
-        let names: Vec<String> = req.params.get("repositoryNames")
+        let names: Vec<String> = req
+            .params
+            .get("repositoryNames")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut configs: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         for n in &names {
             if state.repositories.read().contains_key(n) {
-                configs.push(scanning_config(req, n, state.scanning_configs.read().get(n).cloned()));
+                configs.push(scanning_config(
+                    req,
+                    n,
+                    state.scanning_configs.read().get(n).cloned(),
+                ));
             } else {
                 failures.push(json!({
                     "repositoryName": n,
@@ -878,11 +1222,18 @@ impl EcrHandler {
                 }));
             }
         }
-        AwsResponse::json(200, json!({ "scanningConfigurations": configs, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "scanningConfigurations": configs, "failures": failures }),
+        )
     }
 
     fn put_replication_configuration(&self, req: &AwsRequest) -> AwsResponse {
-        let config = req.params.get("replicationConfiguration").cloned().unwrap_or(json!({"rules": []}));
+        let config = req
+            .params
+            .get("replicationConfiguration")
+            .cloned()
+            .unwrap_or(json!({"rules": []}));
         if let Some(rules) = config.get("rules").and_then(|r| r.as_array()) {
             if rules.len() > 1 {
                 return AwsResponse::error(400, "ValidationException", "This feature is disabled");
@@ -894,10 +1245,13 @@ impl EcrHandler {
     }
 
     fn get_signing_configuration(&self, req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "signingConfiguration": { "rules": [] },
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "signingConfiguration": { "rules": [] },
+            }),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -905,8 +1259,18 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn create_pull_through_cache_rule(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let url = req.params.get("upstreamRegistryUrl").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let prefix = req
+            .params
+            .get("ecrRepositoryPrefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let url = req
+            .params
+            .get("upstreamRegistryUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let mut rules = state.pull_through_cache_rules.write();
         if rules.contains_key(&prefix) {
@@ -927,7 +1291,11 @@ impl EcrHandler {
     }
 
     fn delete_pull_through_cache_rule(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or_default();
+        let prefix = req
+            .params
+            .get("ecrRepositoryPrefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut rules = state.pull_through_cache_rules.write();
         match rules.remove(prefix) {
@@ -939,7 +1307,12 @@ impl EcrHandler {
     }
 
     fn update_pull_through_cache_rule(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let prefix = req
+            .params
+            .get("ecrRepositoryPrefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let mut rules = state.pull_through_cache_rules.write();
         match rules.get_mut(prefix.as_str()) {
@@ -965,36 +1338,67 @@ impl EcrHandler {
     }
 
     fn describe_pull_through_cache_rules(&self, req: &AwsRequest) -> AwsResponse {
-        let prefixes: Vec<String> = req.params.get("ecrRepositoryPrefixes")
+        let prefixes: Vec<String> = req
+            .params
+            .get("ecrRepositoryPrefixes")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let mut all: Vec<Value> = state.pull_through_cache_rules.read().values().cloned().collect();
+        let mut all: Vec<Value> = state
+            .pull_through_cache_rules
+            .read()
+            .values()
+            .cloned()
+            .collect();
         all.sort_by(|a, b| {
-            let ka = a.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or("");
-            let kb = b.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or("");
+            let ka = a
+                .get("ecrRepositoryPrefix")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let kb = b
+                .get("ecrRepositoryPrefix")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             ka.cmp(kb)
         });
         if !prefixes.is_empty() {
-            all.retain(|r| prefixes.iter().any(|p| p == r.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or("")));
+            all.retain(|r| {
+                prefixes.iter().any(|p| {
+                    p == r
+                        .get("ecrRepositoryPrefix")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                })
+            });
         }
         AwsResponse::json(200, json!({ "pullThroughCacheRules": all }))
     }
 
     fn validate_pull_through_cache_rule(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("ecrRepositoryPrefix").and_then(|v| v.as_str()).unwrap_or_default();
+        let prefix = req
+            .params
+            .get("ecrRepositoryPrefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let rules = state.pull_through_cache_rules.read();
         match rules.get(prefix) {
-            Some(rule) => AwsResponse::json(200, json!({
-                "ecrRepositoryPrefix": prefix,
-                "registryId": req.account.to_string(),
-                "upstreamRegistryUrl": rule.get("upstreamRegistryUrl").cloned().unwrap_or(json!("")),
-                "credentialArn": rule.get("credentialArn").cloned().unwrap_or(json!("")),
-                "isValid": true,
-                "failure": "",
-            })),
+            Some(rule) => AwsResponse::json(
+                200,
+                json!({
+                    "ecrRepositoryPrefix": prefix,
+                    "registryId": req.account.to_string(),
+                    "upstreamRegistryUrl": rule.get("upstreamRegistryUrl").cloned().unwrap_or(json!("")),
+                    "credentialArn": rule.get("credentialArn").cloned().unwrap_or(json!("")),
+                    "isValid": true,
+                    "failure": "",
+                }),
+            ),
             None => {
                 let prefix = prefix.to_string();
                 drop(rules);
@@ -1010,7 +1414,12 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn create_repository_creation_template(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("prefix").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let prefix = req
+            .params
+            .get("prefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
         let mut templates = state.repository_creation_templates.write();
         if templates.contains_key(&prefix) {
@@ -1033,14 +1442,21 @@ impl EcrHandler {
             "updatedAt": now_epoch(),
         });
         templates.insert(prefix, template.clone());
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "repositoryCreationTemplate": template,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "repositoryCreationTemplate": template,
+            }),
+        )
     }
 
     fn delete_repository_creation_template(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("prefix").and_then(|v| v.as_str()).unwrap_or_default();
+        let prefix = req
+            .params
+            .get("prefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut templates = state.repository_creation_templates.write();
         match templates.remove(prefix) {
@@ -1055,7 +1471,11 @@ impl EcrHandler {
     }
 
     fn update_repository_creation_template(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("prefix").and_then(|v| v.as_str()).unwrap_or_default();
+        let prefix = req
+            .params
+            .get("prefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut templates = state.repository_creation_templates.write();
         match templates.get_mut(prefix) {
@@ -1091,25 +1511,42 @@ impl EcrHandler {
     }
 
     fn describe_repository_creation_templates(&self, req: &AwsRequest) -> AwsResponse {
-        let prefixes: Vec<String> = req.params.get("prefixes")
+        let prefixes: Vec<String> = req
+            .params
+            .get("prefixes")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let mut all: Vec<Value> = state.repository_creation_templates
-            .read().values().cloned().collect();
+        let mut all: Vec<Value> = state
+            .repository_creation_templates
+            .read()
+            .values()
+            .cloned()
+            .collect();
         all.sort_by(|a, b| {
             let ka = a.get("prefix").and_then(|v| v.as_str()).unwrap_or("");
             let kb = b.get("prefix").and_then(|v| v.as_str()).unwrap_or("");
             ka.cmp(kb)
         });
         if !prefixes.is_empty() {
-            all.retain(|t| prefixes.iter().any(|p| p == t.get("prefix").and_then(|v| v.as_str()).unwrap_or("")));
+            all.retain(|t| {
+                prefixes
+                    .iter()
+                    .any(|p| p == t.get("prefix").and_then(|v| v.as_str()).unwrap_or(""))
+            });
         }
-        AwsResponse::json(200, json!({
-            "registryId": req.account.to_string(),
-            "repositoryCreationTemplates": all,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": req.account.to_string(),
+                "repositoryCreationTemplates": all,
+            }),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -1117,17 +1554,37 @@ impl EcrHandler {
     // ------------------------------------------------------------------
 
     fn get_account_setting(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let value = state.account_settings.read().get(name).cloned().unwrap_or_default();
+        let value = state
+            .account_settings
+            .read()
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
         AwsResponse::json(200, json!({ "name": name, "value": value }))
     }
 
     fn put_account_setting(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-        let value = req.params.get("value").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let value = req
+            .params
+            .get("value")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        state.account_settings.write().insert(name.to_string(), value.to_string());
+        state
+            .account_settings
+            .write()
+            .insert(name.to_string(), value.to_string());
         AwsResponse::json(200, json!({ "name": name, "value": value }))
     }
 
@@ -1146,7 +1603,11 @@ impl EcrHandler {
     }
 
     fn start_image_scan(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -1156,27 +1617,43 @@ impl EcrHandler {
         let repo_images = images.entry(name.to_string()).or_insert_with(Vec::new);
         match Self::find_image(repo_images, &image_id) {
             Some(idx) => {
-                let today = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+                let today = Utc::now()
+                    .date_naive()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc()
+                    .timestamp();
                 if repo_images[idx].scanned_at == Some(today) {
-                    return AwsResponse::error(400, "LimitExceededException",
-                        "The requested operation exceeds the service quota for scanning images");
+                    return AwsResponse::error(
+                        400,
+                        "LimitExceededException",
+                        "The requested operation exceeds the service quota for scanning images",
+                    );
                 }
                 repo_images[idx].scanned_at = Some(today);
-                AwsResponse::json(200, json!({
-                    "registryId": req.account.to_string(),
-                    "repositoryName": name,
-                    "imageId": image_id_shape(&repo_images[idx]),
-                    "imageScanStatus": { "status": "IN_PROGRESS" },
-                }))
+                AwsResponse::json(
+                    200,
+                    json!({
+                        "registryId": req.account.to_string(),
+                        "repositoryName": name,
+                        "imageId": image_id_shape(&repo_images[idx]),
+                        "imageScanStatus": { "status": "IN_PROGRESS" },
+                    }),
+                )
             }
             None => image_not_found(
                 image_id.get("imageDigest").and_then(|v| v.as_str()),
-                image_id.get("imageTag").and_then(|v| v.as_str())),
+                image_id.get("imageTag").and_then(|v| v.as_str()),
+            ),
         }
     }
 
     fn describe_scan_findings(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -1224,7 +1701,11 @@ impl EcrHandler {
     }
 
     fn describe_image_replication_status(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("repositoryName").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = match self.require_repository(req, name) {
             Ok(s) => s,
             Err(e) => return e,
@@ -1233,14 +1714,18 @@ impl EcrHandler {
         let images = state.images.read();
         let repo_images = images.get(name).cloned().unwrap_or_default();
         match Self::find_image(&repo_images, &image_id) {
-            Some(idx) => AwsResponse::json(200, json!({
-                "repositoryName": name,
-                "imageId": image_id_shape(&repo_images[idx]),
-                "replicationStatuses": [],
-            })),
+            Some(idx) => AwsResponse::json(
+                200,
+                json!({
+                    "repositoryName": name,
+                    "imageId": image_id_shape(&repo_images[idx]),
+                    "replicationStatuses": [],
+                }),
+            ),
             None => image_not_found(
                 image_id.get("imageDigest").and_then(|v| v.as_str()),
-                image_id.get("imageTag").and_then(|v| v.as_str())),
+                image_id.get("imageTag").and_then(|v| v.as_str()),
+            ),
         }
     }
 
@@ -1278,7 +1763,9 @@ fn is_valid_digest(d: &str) -> bool {
         None => return false,
     };
     !scheme.is_empty()
-        && scheme.chars().all(|c| "0123456789abcdefABCDEF_+.-".contains(c))
+        && scheme
+            .chars()
+            .all(|c| "0123456789abcdefABCDEF_+.-".contains(c))
         && hex_part.len() == 64
         && hex_part.chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -1294,21 +1781,36 @@ fn parse_repo_arn(value: Option<&str>) -> Option<(&str, String)> {
 }
 
 fn repo_not_found(req: &AwsRequest, name: &str) -> AwsResponse {
-    AwsResponse::error(400, "RepositoryNotFoundException",
-        &format!("The repository with name '{}' does not exist in the registry with id '{}'",
-            name, req.account))
+    AwsResponse::error(
+        400,
+        "RepositoryNotFoundException",
+        &format!(
+            "The repository with name '{}' does not exist in the registry with id '{}'",
+            name, req.account
+        ),
+    )
 }
 
 fn image_not_found(digest: Option<&str>, tag: Option<&str>) -> AwsResponse {
-    AwsResponse::error(400, "ImageNotFoundException",
-        &format!("Image with id {{imageDigest:'{}', imageTag:'{}'}} not found",
-            digest.unwrap_or("null"), tag.unwrap_or("null")))
+    AwsResponse::error(
+        400,
+        "ImageNotFoundException",
+        &format!(
+            "Image with id {{imageDigest:'{}', imageTag:'{}'}} not found",
+            digest.unwrap_or("null"),
+            tag.unwrap_or("null")
+        ),
+    )
 }
 
 fn image_not_found_payload(digest: Option<String>, tag: Option<String>) -> Value {
     let mut image_id = json!({});
-    if let Some(d) = digest { image_id["imageDigest"] = json!(d); }
-    if let Some(t) = tag { image_id["imageTag"] = json!(t); }
+    if let Some(d) = digest {
+        image_id["imageDigest"] = json!(d);
+    }
+    if let Some(t) = tag {
+        image_id["imageTag"] = json!(t);
+    }
     json!({
         "imageId": image_id,
         "failureCode": "ImageNotFound",
@@ -1326,7 +1828,10 @@ fn image_id_shape(img: &EcrImage) -> Value {
 
 /// `scanOnPush` wrapper; the inner value only.
 fn scan_on_push_config(param: Option<&Value>) -> Value {
-    let scan = param.and_then(|v| v.get("scanOnPush")).cloned().unwrap_or(json!(false));
+    let scan = param
+        .and_then(|v| v.get("scanOnPush"))
+        .cloned()
+        .unwrap_or(json!(false));
     json!({ "scanOnPush": scan })
 }
 
@@ -1400,16 +1905,24 @@ mod tests {
             "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
             "config": {"mediaType": "a", "size": 7023, "digest": digest},
             "layers": [],
-        }).to_string()
+        })
+        .to_string()
     }
 
     #[test]
     fn repo_crud_and_errors() {
         let h = EcrHandler::new();
-        assert_eq!(h.handle(make_req("CreateRepository", json!({"repositoryName": "a"}))).status, 200);
+        assert_eq!(
+            h.handle(make_req("CreateRepository", json!({"repositoryName": "a"})))
+                .status,
+            200
+        );
         let dup = h.handle(make_req("CreateRepository", json!({"repositoryName": "a"})));
         assert!(dup.body.contains("RepositoryAlreadyExistsException"));
-        let missing = h.handle(make_req("DescribeRepositories", json!({"repositoryNames": ["nope"]})));
+        let missing = h.handle(make_req(
+            "DescribeRepositories",
+            json!({"repositoryNames": ["nope"]}),
+        ));
         assert!(missing.body.contains("RepositoryNotFoundException"));
     }
 
@@ -1417,10 +1930,19 @@ mod tests {
     fn lifecycle_policy_paths() {
         let h = EcrHandler::new();
         h.handle(make_req("CreateRepository", json!({"repositoryName": "a"})));
-        let none = h.handle(make_req("GetLifecyclePolicy", json!({"repositoryName": "a"})));
+        let none = h.handle(make_req(
+            "GetLifecyclePolicy",
+            json!({"repositoryName": "a"}),
+        ));
         assert!(none.body.contains("LifecyclePolicyNotFoundException"));
-        h.handle(make_req("PutLifecyclePolicy", json!({"repositoryName": "a", "lifecyclePolicyText": "{}"})));
-        let got = h.handle(make_req("GetLifecyclePolicy", json!({"repositoryName": "a"})));
+        h.handle(make_req(
+            "PutLifecyclePolicy",
+            json!({"repositoryName": "a", "lifecyclePolicyText": "{}"}),
+        ));
+        let got = h.handle(make_req(
+            "GetLifecyclePolicy",
+            json!({"repositoryName": "a"}),
+        ));
         assert!(got.body.contains("lifecyclePolicyText"));
     }
 
@@ -1428,19 +1950,28 @@ mod tests {
     fn put_list_describe_images() {
         let h = EcrHandler::new();
         h.handle(make_req("CreateRepository", json!({"repositoryName": "r"})));
-        let put = h.handle(make_req("PutImage", json!({
-            "repositoryName": "r", "imageManifest": manifest("seed"), "imageTag": "t1"
-        })));
+        let put = h.handle(make_req(
+            "PutImage",
+            json!({
+                "repositoryName": "r", "imageManifest": manifest("seed"), "imageTag": "t1"
+            }),
+        ));
         assert_eq!(put.status, 200);
         let describe = h.handle(make_req("DescribeImages", json!({"repositoryName": "r"})));
         assert!(describe.body.contains("imageTags"));
-        let batch = h.handle(make_req("BatchGetImage", json!({
-            "repositoryName": "r", "imageIds": [{"imageTag": "t1"}]
-        })));
+        let batch = h.handle(make_req(
+            "BatchGetImage",
+            json!({
+                "repositoryName": "r", "imageIds": [{"imageTag": "t1"}]
+            }),
+        ));
         assert!(batch.body.contains("bg") || batch.body.contains("imageId"));
-        let missing = h.handle(make_req("BatchGetImage", json!({
-            "repositoryName": "r", "imageIds": [{"imageTag": "nope"}]
-        })));
+        let missing = h.handle(make_req(
+            "BatchGetImage",
+            json!({
+                "repositoryName": "r", "imageIds": [{"imageTag": "nope"}]
+            }),
+        ));
         assert!(missing.body.contains("ImageNotFound"));
     }
 }

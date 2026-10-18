@@ -48,7 +48,8 @@ impl ObjectVersion {
             legal_hold: None,
             retention: None,
         }
-    }}
+    }
+}
 
 /// A delete marker placeholder created by DeleteObject on versioned buckets.
 #[derive(Debug, Clone)]

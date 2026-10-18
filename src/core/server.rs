@@ -192,7 +192,9 @@ impl ServiceHandler for S3ServiceHandler {
         // Detect the S3 operation from method + path + query
         let mut query_params = std::collections::HashMap::new();
         for pair in req.query_string.split('&') {
-            if pair.is_empty() { continue; }
+            if pair.is_empty() {
+                continue;
+            }
             if let Some((k, v)) = pair.split_once('=') {
                 query_params.insert(
                     urlencoding::decode(k).unwrap_or_default().into_owned(),
@@ -206,11 +208,9 @@ impl ServiceHandler for S3ServiceHandler {
                 );
             }
         }
-        let operation = s3::handler::S3Handler::detect_s3_operation(
-            &req.method,
-            &req.path,
-            &query_params,
-        ).unwrap_or_else(|| req.operation.clone());
+        let operation =
+            s3::handler::S3Handler::detect_s3_operation(&req.method, &req.path, &query_params)
+                .unwrap_or_else(|| req.operation.clone());
 
         let mut s3_req = Self::to_s3_request(req, &req.method, &req.query_string);
         s3_req.operation = operation;
@@ -372,7 +372,9 @@ impl ServiceHandler for KmsServiceHandler {
         };
         let resp = self.inner.handle(kms_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -404,7 +406,9 @@ impl ServiceHandler for SsmServiceHandler {
         };
         let resp = self.inner.handle(ssm_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -437,7 +441,9 @@ impl ServiceHandler for IamServiceHandler {
         };
         let resp = self.inner.handle(iam_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -473,7 +479,9 @@ impl ServiceHandler for LambdaServiceHandler {
         };
         let resp = self.inner.handle(lambda_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -505,7 +513,9 @@ impl ServiceHandler for LogsServiceHandler {
         };
         let resp = self.inner.handle(logs_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -537,7 +547,9 @@ impl ServiceHandler for EventsServiceHandler {
         };
         let resp = self.inner.handle(events_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -569,7 +581,9 @@ impl ServiceHandler for KinesisServiceHandler {
         };
         let resp = self.inner.handle(kinesis_req);
         let mut headers = std::collections::HashMap::new();
-        for (k, v) in resp.headers { headers.insert(k, v); }
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
         Ok(ParsedResponse {
             status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             headers,
@@ -581,67 +595,167 @@ impl ServiceHandler for KinesisServiceHandler {
 }
 
 /// Adapter for Firehose.
-pub struct FirehoseServiceHandler { inner: firehose::DefaultFirehoseHandler }
+pub struct FirehoseServiceHandler {
+    inner: firehose::DefaultFirehoseHandler,
+}
 impl ServiceHandler for FirehoseServiceHandler {
-    fn handle_sync(&self, req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
         let params = serde_json::to_value(&req.params).unwrap_or_default();
-        let r = firehose::protocol::AwsRequest { service: req.service.clone(), operation: req.operation.clone(), account: req.account, region: req.region.clone(), params, body: req.body.clone() };
+        let r = firehose::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
-        for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
     }
 }
 
 /// Adapter for CloudWatch.
-pub struct CloudWatchServiceHandler { inner: cloudwatch::DefaultCloudwatchHandler }
+pub struct CloudWatchServiceHandler {
+    inner: cloudwatch::DefaultCloudwatchHandler,
+}
 impl ServiceHandler for CloudWatchServiceHandler {
-    fn handle_sync(&self, req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
         let params = serde_json::to_value(&req.params).unwrap_or_default();
-        let r = cloudwatch::protocol::AwsRequest { service: req.service.clone(), operation: req.operation.clone(), account: req.account, region: req.region.clone(), params, body: req.body.clone() };
+        let r = cloudwatch::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
-        for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
     }
 }
 
 /// Adapter for ECR.
-pub struct EcrServiceHandler { inner: ecr::DefaultEcrHandler }
+pub struct EcrServiceHandler {
+    inner: ecr::DefaultEcrHandler,
+}
 impl ServiceHandler for EcrServiceHandler {
-    fn handle_sync(&self, req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
         let params = serde_json::to_value(&req.params).unwrap_or_default();
-        let r = ecr::protocol::AwsRequest { service: req.service.clone(), operation: req.operation.clone(), account: req.account, region: req.region.clone(), params, body: req.body.clone() };
+        let r = ecr::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
-        for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
     }
 }
 
 /// Adapter for ECS.
-pub struct EcsServiceHandler { inner: ecs::DefaultEcsHandler }
+pub struct EcsServiceHandler {
+    inner: ecs::DefaultEcsHandler,
+}
 impl ServiceHandler for EcsServiceHandler {
-    fn handle_sync(&self, req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
         let params = serde_json::to_value(&req.params).unwrap_or_default();
-        let r = ecs::protocol::AwsRequest { service: req.service.clone(), operation: req.operation.clone(), account: req.account, region: req.region.clone(), params, body: req.body.clone() };
+        let r = ecs::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
-        for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
     }
 }
 
 /// Adapter for Step Functions.
-pub struct StepFunctionsServiceHandler { inner: stepfunctions::DefaultStepfunctionsHandler }
+pub struct StepFunctionsServiceHandler {
+    inner: stepfunctions::DefaultStepfunctionsHandler,
+}
 impl ServiceHandler for StepFunctionsServiceHandler {
-    fn handle_sync(&self, req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
         let params = serde_json::to_value(&req.params).unwrap_or_default();
-        let r = stepfunctions::protocol::AwsRequest { service: req.service.clone(), operation: req.operation.clone(), account: req.account, region: req.region.clone(), params, body: req.body.clone() };
+        let r = stepfunctions::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
-        for (k, v) in resp.headers { h.insert(k, v); }
-        Ok(ParsedResponse { status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), headers: h, body: serde_json::Value::Null, raw: Some(resp.body), raw_bytes: None })
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
     }
 }
 
@@ -834,7 +948,17 @@ pub async fn catch_all_handler(
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(e) => {
-            audit_out(None, None, &req_method, &req_path, 400, req_start, "", "", Some(format!("Invalid body: {e}")));
+            audit_out(
+                None,
+                None,
+                &req_method,
+                &req_path,
+                400,
+                req_start,
+                "",
+                "",
+                Some(format!("Invalid body: {e}")),
+            );
             return error_response(StatusCode::BAD_REQUEST, "Invalid body");
         }
     };
@@ -843,11 +967,21 @@ pub async fn catch_all_handler(
     let service = match extract_service(&method, &uri, &headers) {
         Ok(s) => s,
         Err(e) => {
-            audit_out(None, None, &req_method, &req_path, 400, req_start, "", "", Some(format!("Could not determine service: {e}")));
+            audit_out(
+                None,
+                None,
+                &req_method,
+                &req_path,
+                400,
+                req_start,
+                "",
+                "",
+                Some(format!("Could not determine service: {e}")),
+            );
             return error_response(
                 StatusCode::BAD_REQUEST,
                 &format!("Could not determine service: {}", e),
-            )
+            );
         }
     };
 
@@ -860,8 +994,14 @@ pub async fn catch_all_handler(
     // Determine operation (may be empty for REST services like S3 where
     // the operation is derived from method + path + query params)
     let query_string = uri.query().unwrap_or("").to_string();
-    let operation = extract_operation(&method, &headers_with_path, &body_bytes, &service, &query_string)
-        .unwrap_or_default();
+    let operation = extract_operation(
+        &method,
+        &headers_with_path,
+        &body_bytes,
+        &service,
+        &query_string,
+    )
+    .unwrap_or_default();
 
     // Extract account from Authorization header or default
     let account = extract_account_from_request(&headers);
@@ -1023,7 +1163,12 @@ pub async fn catch_all_handler(
             error_response(StatusCode::INTERNAL_SERVER_ERROR, &msg)
         }
         Err(_) => {
-            tracing::warn!("Request timed out after {}s: {} {}", timeout_secs, method, uri);
+            tracing::warn!(
+                "Request timed out after {}s: {} {}",
+                timeout_secs,
+                method,
+                uri
+            );
             audit_out(
                 Some(&service),
                 opt_op(&operation),
@@ -1035,10 +1180,7 @@ pub async fn catch_all_handler(
                 &region_for_audit,
                 Some(format!("Request timed out after {timeout_secs}s")),
             );
-            error_response(
-                StatusCode::GATEWAY_TIMEOUT,
-                "Request timed out",
-            )
+            error_response(StatusCode::GATEWAY_TIMEOUT, "Request timed out")
         }
     }
 }
@@ -1089,9 +1231,24 @@ pub async fn health_handler() -> impl IntoResponse {
 
 /// Names of every service with a native handler in this build.
 pub const NATIVE_SERVICES: &[&str] = &[
-    "sts", "sqs", "s3", "dynamodb", "sns", "secretsmanager", "kms", "ssm",
-    "iam", "lambda", "logs", "events", "kinesis", "firehose", "cloudwatch",
-    "ecr", "ecs", "stepfunctions",
+    "sts",
+    "sqs",
+    "s3",
+    "dynamodb",
+    "sns",
+    "secretsmanager",
+    "kms",
+    "ssm",
+    "iam",
+    "lambda",
+    "logs",
+    "events",
+    "kinesis",
+    "firehose",
+    "cloudwatch",
+    "ecr",
+    "ecs",
+    "stepfunctions",
 ];
 
 fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
@@ -1143,14 +1300,12 @@ pub async fn config_handler() -> impl IntoResponse {
 /// Audit endpoint: `?limit=N` recent call records.
 pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
     // Python: `?limit=N` (int required; anything non-numeric is a 400)
-    let limit = match uri
-        .query()
-        .and_then(|q| {
-            q.split('&').find_map(|kv| {
-                let (k, v) = kv.split_once('=')?;
-                (k == "limit").then_some(v)
-            })
-        }) {
+    let limit = match uri.query().and_then(|q| {
+        q.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "limit").then_some(v)
+        })
+    }) {
         Some(v) => match v.parse::<usize>() {
             Ok(n) => n,
             Err(_) => {
@@ -1202,7 +1357,10 @@ pub async fn usage_errors_handler() -> impl IntoResponse {
 }
 
 /// Build the Axum router.
-pub fn build_router(registry: ServiceRegistry, moto_proxy: Option<crate::core::proxy::MotoProxy>) -> Router {
+pub fn build_router(
+    registry: ServiceRegistry,
+    moto_proxy: Option<crate::core::proxy::MotoProxy>,
+) -> Router {
     let state = Arc::new(AppState {
         registry,
         moto_proxy,
@@ -1355,7 +1513,10 @@ fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) ->
         }
     }
     headers_map.insert("server", HeaderValue::from_static("robotocore"));
-    headers_map.insert("x-robotocore-request-id", HeaderValue::from_str(&request_id).unwrap());
+    headers_map.insert(
+        "x-robotocore-request-id",
+        HeaderValue::from_str(&request_id).unwrap(),
+    );
 
     let mut response = Response::builder().status(resp.status).body(body).unwrap();
     *response.headers_mut() = headers_map;

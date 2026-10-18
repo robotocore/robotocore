@@ -53,21 +53,36 @@ async fn main() {
 
     // Optionally start Moto proxy
     let native_list = vec![
-        "sts".to_string(), "sqs".to_string(), "s3".to_string(),
-        "dynamodb".to_string(), "sns".to_string(), "secretsmanager".to_string(),
-        "kms".to_string(), "ssm".to_string(), "iam".to_string(),
-        "lambda".to_string(), "logs".to_string(), "events".to_string(),
-        "kinesis".to_string(), "firehose".to_string(),
-        "cloudwatch".to_string(), "ecr".to_string(), "ecs".to_string(),
+        "sts".to_string(),
+        "sqs".to_string(),
+        "s3".to_string(),
+        "dynamodb".to_string(),
+        "sns".to_string(),
+        "secretsmanager".to_string(),
+        "kms".to_string(),
+        "ssm".to_string(),
+        "iam".to_string(),
+        "lambda".to_string(),
+        "logs".to_string(),
+        "events".to_string(),
+        "kinesis".to_string(),
+        "firehose".to_string(),
+        "cloudwatch".to_string(),
+        "ecr".to_string(),
+        "ecs".to_string(),
         "stepfunctions".to_string(),
     ];
     let moto_proxy = match &args.moto_url {
-        Some(url) => {
-            Some(robotocore_rust::core::proxy::MotoProxy::new(url.clone(), native_list.clone()))
-        }
+        Some(url) => Some(robotocore_rust::core::proxy::MotoProxy::new(
+            url.clone(),
+            native_list.clone(),
+        )),
         None if args.auto_moto => {
             let url = format!("http://127.0.0.1:{}", args.moto_port);
-            Some(robotocore_rust::core::proxy::MotoProxy::new(url, native_list))
+            Some(robotocore_rust::core::proxy::MotoProxy::new(
+                url,
+                native_list,
+            ))
         }
         _ => None,
     };

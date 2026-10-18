@@ -25,8 +25,14 @@ impl AwsResponse {
         Self {
             status,
             headers: vec![
-                ("Content-Type".to_string(), "application/x-amz-json-1.0".to_string()),
-                ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "application/x-amz-json-1.0".to_string(),
+                ),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: serde_json::to_string(&strip_nulls(&body)).unwrap_or_else(|_| "{}".to_string()),
@@ -38,8 +44,14 @@ impl AwsResponse {
         Self {
             status,
             headers: vec![
-                ("Content-Type".to_string(), "application/x-amz-json-1.0".to_string()),
-                ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "application/x-amz-json-1.0".to_string(),
+                ),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),

@@ -63,7 +63,12 @@ impl Shard {
     }
 
     /// Store a record on this shard, returning the assigned sequence number.
-    pub fn put_record(&self, shard_id: &str, partition_key: String, data: Vec<u8>) -> KinesisRecord {
+    pub fn put_record(
+        &self,
+        shard_id: &str,
+        partition_key: String,
+        data: Vec<u8>,
+    ) -> KinesisRecord {
         let mut counter = self.sequence_counter.lock();
         *counter += 1;
         let seq = format!("{:020}", *counter);
@@ -80,10 +85,17 @@ impl Shard {
 
     /// Records at or after `start_sequence` plus the sequence to continue from
     /// (None when the shard has nothing at or after that sequence).
-    pub fn get_records(&self, start_sequence: &str, limit: usize) -> (Vec<KinesisRecord>, Option<String>) {
+    pub fn get_records(
+        &self,
+        start_sequence: &str,
+        limit: usize,
+    ) -> (Vec<KinesisRecord>, Option<String>) {
         let start = parse_sequence(start_sequence);
         let records = self.records.lock();
-        let start_idx = match records.iter().position(|r| parse_sequence(&r.sequence_number) >= start) {
+        let start_idx = match records
+            .iter()
+            .position(|r| parse_sequence(&r.sequence_number) >= start)
+        {
             Some(i) => i,
             None => return (Vec::new(), None),
         };
@@ -158,7 +170,10 @@ pub struct KinesisStream {
 impl KinesisStream {
     pub fn new(account: u64, region: &str, name: String, shard_count: u32) -> Self {
         let arn = format!("arn:aws:kinesis:{region}:{account}:stream/{name}");
-        let shards: Vec<Arc<Shard>> = build_shards(shard_count).into_iter().map(Arc::new).collect();
+        let shards: Vec<Arc<Shard>> = build_shards(shard_count)
+            .into_iter()
+            .map(Arc::new)
+            .collect();
         Self {
             name,
             arn,
@@ -211,7 +226,11 @@ impl KinesisStream {
     }
 
     pub fn shard_by_id(&self, shard_id: &str) -> Option<Arc<Shard>> {
-        self.shards.read().iter().find(|s| s.shard_id == shard_id).cloned()
+        self.shards
+            .read()
+            .iter()
+            .find(|s| s.shard_id == shard_id)
+            .cloned()
     }
 }
 
@@ -221,7 +240,11 @@ pub fn build_shards(count: u32) -> Vec<Shard> {
     (0..count)
         .map(|i| {
             let start = if i == 0 { 0u128 } else { shard_start(i, count) };
-            let end = if i + 1 == count { MAX_HASH_KEY } else { shard_start(i + 1, count) - 1 };
+            let end = if i + 1 == count {
+                MAX_HASH_KEY
+            } else {
+                shard_start(i + 1, count) - 1
+            };
             Shard::new(format!("shardId-{i:012}"), start, end)
         })
         .collect()
@@ -267,5 +290,7 @@ impl KinesisState {
 }
 
 impl Default for KinesisState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

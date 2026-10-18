@@ -186,7 +186,10 @@ mod tests {
             serde_json::json!({"name": "ListThings", "http": {"method": "POST", "requestUri": "/"}}),
         );
         let mut shapes = HashMap::new();
-        shapes.insert("Thing".to_string(), serde_json::json!({"type": "structure"}));
+        shapes.insert(
+            "Thing".to_string(),
+            serde_json::json!({"type": "structure"}),
+        );
         let spec = ServiceSpec {
             protocol: "json".to_string(),
             service_name: "Test".to_string(),

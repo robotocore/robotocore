@@ -117,7 +117,6 @@ fn handle_get_access_key_info(
     })
 }
 
-
 /// A session expiry ~12h out from now, RFC3339 UTC — matches real STS
 /// semantics (session credentials expire) and avoids stale hardcoded dates.
 fn session_expiry() -> String {
@@ -154,7 +153,11 @@ fn handle_get_federation_token(
     req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     let account = req.account;
-    let name = req.params.get("Name").and_then(|v| v.as_str()).unwrap_or("federation-user");
+    let name = req
+        .params
+        .get("Name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("federation-user");
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetFederationTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -174,7 +177,11 @@ fn handle_get_federation_token(
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </GetFederationTokenResponse>"#,
-        account, name, account, name, session_expiry()
+        account,
+        name,
+        account,
+        name,
+        session_expiry()
     );
     Ok(xml_response(&body))
 }
@@ -185,14 +192,27 @@ fn handle_assume_role(
     op: &str,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     let account = req.account;
-    let role_arn = req.params.get("RoleArn")
+    let role_arn = req
+        .params
+        .get("RoleArn")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("arn:aws:iam::{}:role/lambda-role", account));
-    let session_name = req.params.get("RoleSessionName")
+    let session_name = req
+        .params
+        .get("RoleSessionName")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("session-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0000")));
+        .unwrap_or_else(|| {
+            format!(
+                "session-{}",
+                uuid::Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap_or("0000")
+            )
+        });
     let role_name = role_arn.rsplit('/').next().unwrap_or(&role_arn);
 
     // Check policy size limit (2048 characters when packed)
@@ -200,12 +220,15 @@ fn handle_assume_role(
         if policy.len() > 2048 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Policy is too large"
+                "Policy is too large",
             )));
         }
     }
 
-    let arn = format!("arn:aws:sts::{}:assumed-role/{}/{}", account, role_name, session_name);
+    let arn = format!(
+        "arn:aws:sts::{}:assumed-role/{}/{}",
+        account, role_name, session_name
+    );
     let role_id = format!("AROA{}:{}", account, session_name);
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -226,15 +249,19 @@ fn handle_assume_role(
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </{}Response>"#,
-        op, op, session_expiry(), arn, role_id, op, op
+        op,
+        op,
+        session_expiry(),
+        arn,
+        role_id,
+        op,
+        op
     );
     Ok(xml_response(&body))
 }
 
 /// AssumeRoot operation.
-fn handle_assume_root(
-    req: &ParsedRequest,
-) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+fn handle_assume_root(req: &ParsedRequest) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     let account = req.account;
     let arn = format!("arn:aws:sts::{}:assumed-role/Root/root", account);
     let body = format!(
@@ -256,7 +283,8 @@ fn handle_assume_root(
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </AssumeRootResponse>"#,
-        session_expiry(), arn
+        session_expiry(),
+        arn
     );
     Ok(xml_response(&body))
 }

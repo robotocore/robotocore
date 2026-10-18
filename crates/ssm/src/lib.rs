@@ -14,7 +14,9 @@ pub struct DefaultSsmHandler {
 
 impl DefaultSsmHandler {
     pub fn new() -> Self {
-        Self { inner: handler::SsmHandler::new() }
+        Self {
+            inner: handler::SsmHandler::new(),
+        }
     }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
@@ -22,5 +24,7 @@ impl DefaultSsmHandler {
 }
 
 impl Default for DefaultSsmHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

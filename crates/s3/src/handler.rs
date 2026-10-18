@@ -150,7 +150,6 @@ fn parse_copy_source(value: &str) -> (String, String, Option<String>) {
     }
 }
 
-
 /// A listing content row: `(key, etag, size, last_modified, storage_class)`.
 pub type ListingRow = (String, String, usize, u64, String);
 
@@ -163,7 +162,11 @@ pub fn crc32(data: &[u8]) -> u32 {
             let mut c = i as u32;
             let mut k = 0;
             while k < 8 {
-                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+                c = if c & 1 != 0 {
+                    0xEDB8_8320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
                 k += 1;
             }
             table[i] = c;
@@ -328,7 +331,6 @@ impl IdConfig {
         }
     }
 
-
     fn store_field<'a>(&self, bucket: &'a Bucket) -> &'a RwLock<HashMap<String, String>> {
         match self {
             IdConfig::Analytics => &bucket.analytics_config,
@@ -461,8 +463,12 @@ impl S3Handler {
             "GetBucketReplication" => self.get_bucket_replication(&req),
             "PutBucketReplication" => self.put_bucket_replication(&req),
             "DeleteBucketReplication" => self.delete_bucket_replication(&req),
-            "PutBucketAnalyticsConfiguration" => self.put_bucket_id_config(&req, IdConfig::Analytics),
-            "GetBucketAnalyticsConfiguration" => self.get_bucket_id_config(&req, IdConfig::Analytics),
+            "PutBucketAnalyticsConfiguration" => {
+                self.put_bucket_id_config(&req, IdConfig::Analytics)
+            }
+            "GetBucketAnalyticsConfiguration" => {
+                self.get_bucket_id_config(&req, IdConfig::Analytics)
+            }
             "DeleteBucketAnalyticsConfiguration" => {
                 self.delete_bucket_id_config(&req, IdConfig::Analytics)
             }
@@ -484,8 +490,12 @@ impl S3Handler {
             "GetBucketInventoryConfiguration" => self.get_bucket_inventory(&req),
             "DeleteBucketInventoryConfiguration" => self.delete_bucket_inventory(&req),
             "ListBucketInventoryConfigurations" => self.list_bucket_inventory(&req),
-            "ListBucketAnalyticsConfigurations" => self.list_bucket_id_configs(&req, IdConfig::Analytics),
-            "ListBucketMetricsConfigurations" => self.list_bucket_id_configs(&req, IdConfig::Metrics),
+            "ListBucketAnalyticsConfigurations" => {
+                self.list_bucket_id_configs(&req, IdConfig::Analytics)
+            }
+            "ListBucketMetricsConfigurations" => {
+                self.list_bucket_id_configs(&req, IdConfig::Metrics)
+            }
             "ListBucketIntelligentTieringConfigurations" => {
                 self.list_bucket_id_configs(&req, IdConfig::IntelligentTiering)
             }
@@ -641,7 +651,11 @@ impl S3Handler {
         let bucket_name = match &req.bucket {
             Some(name) => name.clone(),
             None => {
-                return AwsResponse::error(400, "InvalidBucketName", "The specified bucket is not valid")
+                return AwsResponse::error(
+                    400,
+                    "InvalidBucketName",
+                    "The specified bucket is not valid",
+                )
             }
         };
 
@@ -649,7 +663,11 @@ impl S3Handler {
         let directory =
             body_str.contains("<Type>Directory</Type>") || bucket_name.ends_with("--x-s3");
         if !directory && !Self::valid_bucket_name(&bucket_name) {
-            return AwsResponse::error(400, "InvalidBucketName", "The specified bucket is not valid");
+            return AwsResponse::error(
+                400,
+                "InvalidBucketName",
+                "The specified bucket is not valid",
+            );
         }
 
         let state = self.get_state(req.account, &req.region);
@@ -725,7 +743,11 @@ impl S3Handler {
         match stored {
             // The Policy member is the response payload (botocore reads the body).
             Some(p) => AwsResponse::binary(200, p.into_bytes(), "application/json"),
-            None => AwsResponse::error(404, "NoSuchBucketPolicy", "The bucket policy does not exist"),
+            None => AwsResponse::error(
+                404,
+                "NoSuchBucketPolicy",
+                "The bucket policy does not exist",
+            ),
         }
     }
 
@@ -785,13 +807,22 @@ impl S3Handler {
             storage_class,
         );
 
-        Self::fire_event(req, &bucket, &key, "s3:ObjectCreated:Put", req.body.len(), &etag);
+        Self::fire_event(
+            req,
+            &bucket,
+            &key,
+            "s3:ObjectCreated:Put",
+            req.body.len(),
+            &etag,
+        );
         self.maybe_replicate(req, &state, &bucket, &key, req.body.to_vec());
 
         let mut resp = AwsResponse::xml(200, String::new());
-        resp.headers.push(("ETag".to_string(), format!("\"{}\"", etag)));
+        resp.headers
+            .push(("ETag".to_string(), format!("\"{}\"", etag)));
         if version_id != NULL_VERSION_ID {
-            resp.headers.push(("x-amz-version-id".to_string(), version_id));
+            resp.headers
+                .push(("x-amz-version-id".to_string(), version_id));
         }
         resp
     }
@@ -830,7 +861,11 @@ impl S3Handler {
                     match found {
                         Some(v) => v,
                         None => {
-                            return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                            return AwsResponse::error(
+                                404,
+                                "NoSuchKey",
+                                "The specified key does not exist",
+                            )
                         }
                     }
                 }
@@ -881,7 +916,14 @@ impl S3Handler {
             storage_class,
         );
 
-        Self::fire_event(req, dest, dest_key, "s3:ObjectCreated:Copy", source.size, &etag);
+        Self::fire_event(
+            req,
+            dest,
+            dest_key,
+            "s3:ObjectCreated:Copy",
+            source.size,
+            &etag,
+        );
 
         AwsResponse::xml(
             200,
@@ -912,7 +954,11 @@ impl S3Handler {
                 }
             };
             let found = match req.query_params.get("versionId") {
-                Some(vid) => entry.versions.iter().find(|v| v.version_id == *vid).cloned(),
+                Some(vid) => entry
+                    .versions
+                    .iter()
+                    .find(|v| v.version_id == *vid)
+                    .cloned(),
                 None => {
                     if !entry.is_live() {
                         None
@@ -930,7 +976,10 @@ impl S3Handler {
         };
 
         // Range handling
-        if let Some(range) = range_header.as_deref().and_then(|r| parse_range(r, obj.size)) {
+        if let Some(range) = range_header
+            .as_deref()
+            .and_then(|r| parse_range(r, obj.size))
+        {
             let body = obj.data[range.clone()].to_vec();
             let mut resp = AwsResponse::binary(206, body, &obj.content_type);
             resp.headers.push((
@@ -989,7 +1038,11 @@ impl S3Handler {
                 None => return AwsResponse::error(404, "NotFound", "Not Found"),
             };
             let found = match req.query_params.get("versionId") {
-                Some(vid) => entry.versions.iter().find(|v| v.version_id == *vid).cloned(),
+                Some(vid) => entry
+                    .versions
+                    .iter()
+                    .find(|v| v.version_id == *vid)
+                    .cloned(),
                 None => {
                     if !entry.is_live() {
                         None
@@ -1208,7 +1261,11 @@ impl S3Handler {
             .get("max-keys")
             .and_then(|v| v.parse().ok())
             .unwrap_or(1000);
-        let delimiter = req.query_params.get("delimiter").cloned().unwrap_or_default();
+        let delimiter = req
+            .query_params
+            .get("delimiter")
+            .cloned()
+            .unwrap_or_default();
         let truncated = last_emitted.is_some();
 
         let mut xml = format!(
@@ -1339,10 +1396,15 @@ impl S3Handler {
             let mut v: Vec<(String, ObjectEntry)> = objects
                 .iter()
                 .filter(|(k, _)| k.starts_with(&prefix))
-                .map(|(k, e)| (k.clone(), ObjectEntry {
-                    versions: e.versions.clone(),
-                    markers: e.markers.clone(),
-                }))
+                .map(|(k, e)| {
+                    (
+                        k.clone(),
+                        ObjectEntry {
+                            versions: e.versions.clone(),
+                            markers: e.markers.clone(),
+                        },
+                    )
+                })
                 .collect();
             v.sort_by(|a, b| a.0.cmp(&b.0));
             v
@@ -1716,7 +1778,8 @@ impl S3Handler {
         }
 
         let mut resp = AwsResponse::xml(200, String::new());
-        resp.headers.push(("ETag".to_string(), format!("\"{}\"", etag)));
+        resp.headers
+            .push(("ETag".to_string(), format!("\"{}\"", etag)));
         resp
     }
 
@@ -1772,7 +1835,11 @@ impl S3Handler {
                     match found {
                         Some(v) => v,
                         None => {
-                            return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                            return AwsResponse::error(
+                                404,
+                                "NoSuchKey",
+                                "The specified key does not exist",
+                            )
                         }
                     }
                 }
@@ -2085,8 +2152,9 @@ impl S3Handler {
             let objects = bucket.objects.read();
             let entry = objects.get(&key);
             match req.query_params.get("versionId") {
-                Some(vid) => entry
-                    .and_then(|e| e.versions.iter().find(|v| v.version_id == *vid).cloned()),
+                Some(vid) => {
+                    entry.and_then(|e| e.versions.iter().find(|v| v.version_id == *vid).cloned())
+                }
                 None => entry
                     .filter(|e| e.is_live())
                     .and_then(|e| e.versions.first().cloned()),
@@ -2094,7 +2162,9 @@ impl S3Handler {
         };
         let obj = match obj {
             Some(o) => o,
-            None => return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist"),
+            None => {
+                return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+            }
         };
         let mut body = format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<GetObjectAttributesOutput xmlns=\"{ns}\"><ETag>{et}</ETag><ObjectSize>{sz}</ObjectSize></GetObjectAttributesOutput>",
@@ -2311,8 +2381,7 @@ impl S3Handler {
             Ok(p) => p,
             Err(e) => return e,
         };
-        *bucket.request_payment_xml.write() =
-            Some(String::from_utf8_lossy(&req.body).to_string());
+        *bucket.request_payment_xml.write() = Some(String::from_utf8_lossy(&req.body).to_string());
         AwsResponse::no_content(200)
     }
 
@@ -2611,7 +2680,12 @@ impl S3Handler {
         let dests: Vec<String> = rules
             .iter()
             .filter(|r| r.status.eq_ignore_ascii_case("Enabled"))
-            .filter(|r| r.prefix.as_ref().map(|p| key.starts_with(p)).unwrap_or(true))
+            .filter(|r| {
+                r.prefix
+                    .as_ref()
+                    .map(|p| key.starts_with(p))
+                    .unwrap_or(true)
+            })
             .filter_map(|r| r.dest_bucket.clone())
             .collect();
         for dest_name in dests {
@@ -2650,7 +2724,11 @@ impl S3Handler {
         };
         let id = req.query_params.get("id").cloned().unwrap_or_default();
         if id.is_empty() {
-            return AwsResponse::error(400, "InvalidArgument", "The Id query parameter is required");
+            return AwsResponse::error(
+                400,
+                "InvalidArgument",
+                "The Id query parameter is required",
+            );
         }
         let body = String::from_utf8_lossy(&req.body).to_string();
         kind.store_field(&bucket).write().insert(id, body);
@@ -2667,7 +2745,11 @@ impl S3Handler {
         match stored {
             // The config member is the response payload: the body IS the config.
             Some(body) => AwsResponse::xml(200, body),
-            None => AwsResponse::error(404, "NoSuchConfiguration", "The specified configuration does not exist"),
+            None => AwsResponse::error(
+                404,
+                "NoSuchConfiguration",
+                "The specified configuration does not exist",
+            ),
         }
     }
 
@@ -2720,7 +2802,11 @@ impl S3Handler {
         match stored {
             // The config member is the response payload: the body IS the config.
             Some(body) => AwsResponse::xml(200, body),
-            None => AwsResponse::error(404, "NoSuchConfiguration", "The specified configuration does not exist"),
+            None => AwsResponse::error(
+                404,
+                "NoSuchConfiguration",
+                "The specified configuration does not exist",
+            ),
         }
     }
 
@@ -2745,7 +2831,10 @@ impl S3Handler {
             ns = S3_NS
         );
         for entry in entries {
-            xml.push_str(&format!("<InventoryConfiguration>{}</InventoryConfiguration>", entry));
+            xml.push_str(&format!(
+                "<InventoryConfiguration>{}</InventoryConfiguration>",
+                entry
+            ));
         }
         xml.push_str("</ListInventoryConfigurationsResult>");
         AwsResponse::xml(200, xml)
@@ -2777,7 +2866,11 @@ impl S3Handler {
         // Session credentials are accepted for any path; matches the Python
         // provider's native CreateSession handling.
         let _ = req;
-        let seed = format!("{}:{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), uuid::Uuid::new_v4());
+        let seed = format!(
+            "{}:{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            uuid::Uuid::new_v4()
+        );
         let hex_digest = {
             use sha2::{Digest, Sha256};
             hex::encode(Sha256::digest(seed.as_bytes()))
@@ -2830,7 +2923,9 @@ impl S3Handler {
         };
         let source = match source {
             Some(v) => v,
-            None => return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist"),
+            None => {
+                return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+            }
         };
         {
             let mut objects = bucket.objects.write();
@@ -2872,7 +2967,11 @@ impl S3Handler {
         size: usize,
         etag: &str,
     ) {
-        let config = bucket.notification_config.read().clone().unwrap_or_default();
+        let config = bucket
+            .notification_config
+            .read()
+            .clone()
+            .unwrap_or_default();
         if config.queues.is_empty()
             && config.topics.is_empty()
             && config.lambdas.is_empty()
@@ -2980,8 +3079,7 @@ impl S3Handler {
             let status = xml_text(&section, "Status").unwrap_or_else(|| "Disabled".to_string());
             // Legacy rules carry <Prefix>; filter-based rules nest it under <Filter>.
             let prefix = xml_text(&section, "Prefix")
-                .or_else(|| xml_text(&section, "Filter").and_then(|f| xml_text(&f, "Prefix")),
-                );
+                .or_else(|| xml_text(&section, "Filter").and_then(|f| xml_text(&f, "Prefix")));
             let dest = xml_text(&section, "Destination").and_then(|d| xml_text(&d, "Bucket"));
             rules.push(ReplicationRule {
                 status,
@@ -3008,15 +3106,11 @@ impl S3Handler {
         let expression = xml_text(&body, "Expression").unwrap_or_default();
         let expression_type = xml_text(&body, "ExpressionType").unwrap_or_default();
         if expression_type != "SQL" {
-            return AwsResponse::error(
-                400,
-                "InvalidRequest",
-                "Only SQL expressions are supported",
-            );
+            return AwsResponse::error(400, "InvalidRequest", "Only SQL expressions are supported");
         }
 
-        let file_header_info = xml_text(&body, "FileHeaderInfo")
-            .unwrap_or_else(|| "NONE".to_string());
+        let file_header_info =
+            xml_text(&body, "FileHeaderInfo").unwrap_or_else(|| "NONE".to_string());
 
         let records_payload = {
             let objects = bucket.objects.read();
@@ -3050,18 +3144,18 @@ impl S3Handler {
 
         // Frame the response as an AWS event stream: a Records event followed
         // by an End event.
-        let mut frames = event_stream_frame("Records", Some("application/octet-stream"), &records_payload);
+        let mut frames = event_stream_frame(
+            "Records",
+            Some("application/octet-stream"),
+            &records_payload,
+        );
         frames.extend_from_slice(&event_stream_frame("End", None, b""));
 
         AwsResponse::binary(200, frames, "application/vnd.amazon.eventstream")
     }
 
     /// Minimal CSV SELECT: `SELECT *|col[,col]* FROM s3object [anything]`.
-    fn run_sql_select(
-        data: &str,
-        expression: &str,
-        file_header_info: &str,
-    ) -> Option<String> {
+    fn run_sql_select(data: &str, expression: &str, file_header_info: &str) -> Option<String> {
         let normalized = expression.split_whitespace().collect::<Vec<_>>().join(" ");
         let rest = normalized
             .strip_prefix("SELECT ")
@@ -3104,9 +3198,7 @@ impl S3Handler {
         // back to selecting all columns.
         let mut selected: Vec<Option<usize>> = Vec::new();
         for want in &wanted {
-            let idx = header
-                .iter()
-                .position(|h| h.eq_ignore_ascii_case(want));
+            let idx = header.iter().position(|h| h.eq_ignore_ascii_case(want));
             selected.push(idx);
         }
         if selected.iter().any(|v| v.is_none()) && !select_all {
@@ -3125,7 +3217,9 @@ impl S3Handler {
             } else {
                 let cells: Vec<String> = selected
                     .iter()
-                    .map(|idx| idx.map_or(String::new(), |i| row.get(i).cloned().unwrap_or_default()))
+                    .map(|idx| {
+                        idx.map_or(String::new(), |i| row.get(i).cloned().unwrap_or_default())
+                    })
                     .collect();
                 out.push_str(&cells.join(","));
                 out.push('\n');
@@ -3509,12 +3603,7 @@ mod tests {
         let handler = S3Handler::new();
         handler.handle(make_req("CreateBucket", Some("test-bucket"), None, b""));
 
-        let mut req = make_req(
-            "PutObject",
-            Some("test-bucket"),
-            Some("meta.txt"),
-            b"body",
-        );
+        let mut req = make_req("PutObject", Some("test-bucket"), Some("meta.txt"), b"body");
         req.headers
             .insert("x-amz-meta-author".to_string(), "X".to_string());
         handler.handle(req);
@@ -3527,7 +3616,10 @@ mod tests {
         ));
         assert_eq!(resp.status, 200);
         let headers: HashMap<String, String> = resp.headers.clone().into_iter().collect();
-        assert_eq!(headers.get("x-amz-meta-author").map(String::as_str), Some("X"));
+        assert_eq!(
+            headers.get("x-amz-meta-author").map(String::as_str),
+            Some("X")
+        );
     }
 
     #[test]
@@ -3542,7 +3634,8 @@ mod tests {
         ));
 
         let mut req = make_req("GetObject", Some("test-bucket"), Some("r.txt"), b"");
-        req.headers.insert("range".to_string(), "bytes=1-2".to_string());
+        req.headers
+            .insert("range".to_string(), "bytes=1-2".to_string());
         let resp = handler.handle(req);
         assert_eq!(resp.status, 206);
         assert_eq!(resp.body, b"12");
@@ -3559,14 +3652,17 @@ mod tests {
         handler.handle(make_req("CreateBucket", Some("ver"), None, b""));
         // enable
         let mut vreq = make_req("PutBucketVersioning", Some("ver"), None, b"<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>Enabled</Status></VersioningConfiguration>");
-        vreq.query_params.insert("versioning".to_string(), String::new());
+        vreq.query_params
+            .insert("versioning".to_string(), String::new());
         handler.handle(vreq);
 
         handler.handle(make_req("PutObject", Some("ver"), Some("k"), b"one"));
         handler.handle(make_req("PutObject", Some("ver"), Some("k"), b"two"));
 
         let mut listreq = make_req("ListObjectVersions", Some("ver"), None, b"");
-        listreq.query_params.insert("prefix".to_string(), String::new());
+        listreq
+            .query_params
+            .insert("prefix".to_string(), String::new());
         let resp = handler.handle(listreq);
         let body = String::from_utf8_lossy(&resp.body).to_string();
         assert_eq!(body.matches("<Version>").count(), 2);
@@ -3614,7 +3710,12 @@ mod tests {
     fn test_bucket_not_empty_delete() {
         let handler = S3Handler::new();
         handler.handle(make_req("CreateBucket", Some("test-bucket"), None, b""));
-        handler.handle(make_req("PutObject", Some("test-bucket"), Some("file"), b"data"));
+        handler.handle(make_req(
+            "PutObject",
+            Some("test-bucket"),
+            Some("file"),
+            b"data",
+        ));
 
         let req = make_req("DeleteBucket", Some("test-bucket"), None, b"");
         let resp = handler.handle(req);

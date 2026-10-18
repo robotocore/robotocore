@@ -78,7 +78,10 @@ impl EventsState {
     }
 
     pub fn get_rule(&self, bus: &str, name: &str) -> Option<Arc<Rule>> {
-        self.rules.read().get(&(bus.to_string(), name.to_string())).cloned()
+        self.rules
+            .read()
+            .get(&(bus.to_string(), name.to_string()))
+            .cloned()
     }
 
     /// Bus ARN for a bus name (the default bus is implicit, never stored).

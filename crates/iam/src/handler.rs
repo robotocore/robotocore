@@ -9,7 +9,7 @@ use crate::models::{
     now_iso, random_id, IamState, LoginProfile, OidcProvider, SamlProvider, ServerCert,
     SigningCert, SshKey, User, VirtualMfa,
 };
-use crate::protocol::{AwsRequest, AwsResponse, get_param};
+use crate::protocol::{get_param, AwsRequest, AwsResponse};
 
 use crate::models::{Group, Policy, Role};
 
@@ -26,7 +26,9 @@ const SERVICE_NAME_CONVERSION: &[(&str, &str)] = &[
 
 impl IamHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
     }
 
     fn get_state(&self, account: u64) -> IamState {
@@ -221,7 +223,9 @@ impl IamHandler {
             // Service linked roles
             "CreateServiceLinkedRole" => self.create_service_linked_role(req),
             "DeleteServiceLinkedRole" => self.delete_service_linked_role(req),
-            "GetServiceLinkedRoleDeletionStatus" => self.get_service_linked_role_deletion_status(req),
+            "GetServiceLinkedRoleDeletionStatus" => {
+                self.get_service_linked_role_deletion_status(req)
+            }
 
             // Reports / simulation / context keys
             "GenerateCredentialReport" => self.generate_credential_report(req),
@@ -232,9 +236,13 @@ impl IamHandler {
             "GetContextKeysForPrincipalPolicy" => self.get_context_keys(req, true),
 
             // Service last accessed details
-            "GenerateServiceLastAccessedDetails" => self.generate_service_last_accessed_details(req),
+            "GenerateServiceLastAccessedDetails" => {
+                self.generate_service_last_accessed_details(req)
+            }
             "GetServiceLastAccessedDetails" => self.get_service_last_accessed_details(req),
-            "GetServiceLastAccessedDetailsWithEntities" => self.get_service_last_accessed_details_with_entities(req),
+            "GetServiceLastAccessedDetailsWithEntities" => {
+                self.get_service_last_accessed_details_with_entities(req)
+            }
 
             // Permissions boundaries
             "PutUserPermissionsBoundary" => self.put_boundary(req, true),
@@ -252,7 +260,11 @@ impl IamHandler {
             "DisableOrganizationsRootSessions" => self.org_features(req, Vec::new()),
             "GetHumanReadableSummary" => self.org_features(req, Vec::new()),
             "RecommendReceivedDate" => self.org_features(req, Vec::new()),
-            "ListDelegationRequests" => AwsResponse::xml(200, "ListDelegationRequests", "<DelegationRequests/>".into()),
+            "ListDelegationRequests" => AwsResponse::xml(
+                200,
+                "ListDelegationRequests",
+                "<DelegationRequests/>".into(),
+            ),
 
             // Simple no-ops
             other if is_known_noop(other) => empty_ok(other),
@@ -300,15 +312,21 @@ impl IamHandler {
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let state = self.get_state(req.account);
         if state.get_user(&username).is_some() {
-            return err(409, "EntityAlreadyExists",
-                &format!("User with name {} already exists.", username));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("User with name {} already exists.", username),
+            );
         }
         let user = Arc::new(User::with_path(req.account, username.clone(), path));
         let tags = self.parse_query_list(req, "Tags");
         if !tags.is_empty() {
             *user.tags.write() = tags;
         }
-        state.users.write().insert(user.username.clone(), user.clone());
+        state
+            .users
+            .write()
+            .insert(user.username.clone(), user.clone());
         AwsResponse::xml(200, "CreateUser", self.user_xml(&user, true))
     }
 
@@ -317,8 +335,11 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_user(&username) {
             Some(user) => AwsResponse::xml(200, "GetUser", self.user_xml(&user, true)),
-            None => err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
     }
 
@@ -328,7 +349,11 @@ impl IamHandler {
         match state.get_user(&username) {
             Some(user) => {
                 if !user.attached_policies.read().is_empty() || !user.policies.read().is_empty() {
-                    return err(409, "DeleteConflict", "Cannot delete entity, must detach all policies first.");
+                    return err(
+                        409,
+                        "DeleteConflict",
+                        "Cannot delete entity, must detach all policies first.",
+                    );
                 }
                 state.users.write().remove(&username);
                 state.ssh_keys.write().remove(&username);
@@ -337,8 +362,11 @@ impl IamHandler {
                 self.unassign_all_mfa(&state, &username);
                 AwsResponse::xml(200, "DeleteUser", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
     }
 
@@ -361,14 +389,23 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let user = match state.get_user(&username) {
             Some(u) => u,
-            None => return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The user with name {} cannot be found.", username),
+                )
+            }
         };
         let mut changed = false;
         if let Some(v) = get_param(req, "NewUserName") {
             if v != user.username {
                 if state.get_user(&v).is_some() {
-                    return err(409, "EntityAlreadyExists", &format!("User {} already exists", v));
+                    return err(
+                        409,
+                        "EntityAlreadyExists",
+                        &format!("User {} already exists", v),
+                    );
                 }
                 state.users.write().remove(&user.username);
                 let rebuilt = Arc::new(User::with_path(req.account, v.clone(), user.path.clone()));
@@ -414,8 +451,13 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let user = match state.get_user(&username) {
             Some(u) => u,
-            None => return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The user with name {} cannot be found.", username),
+                )
+            }
         };
         let key = crate::models::AccessKey::new(req.account);
         let (key_id, key_secret) = (key.access_key_id.clone(), key.secret_access_key.clone());
@@ -432,10 +474,16 @@ impl IamHandler {
         let key_id = get_param(req, "AccessKeyId").unwrap_or_default();
         let state = self.get_state(req.account);
         if let Some(user) = state.get_user(&username) {
-            user.access_keys.write().retain(|k| k.access_key_id != key_id);
+            user.access_keys
+                .write()
+                .retain(|k| k.access_key_id != key_id);
             return AwsResponse::xml(200, "DeleteAccessKey", String::new());
         }
-        err(404, "NoSuchEntity", &format!("The user with name {} cannot be found.", username))
+        err(
+            404,
+            "NoSuchEntity",
+            &format!("The user with name {} cannot be found.", username),
+        )
     }
 
     fn list_access_keys(&self, req: &AwsRequest) -> AwsResponse {
@@ -457,8 +505,11 @@ impl IamHandler {
                 body.push_str("</AccessKeyMetadata><IsTruncated>false</IsTruncated>");
                 AwsResponse::xml(200, "ListAccessKeys", body)
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
     }
 
@@ -474,8 +525,11 @@ impl IamHandler {
             }
             return AwsResponse::xml(200, "UpdateAccessKey", String::new());
         }
-        err(404, "NoSuchEntity",
-            &format!("The user with name {} cannot be found.", username))
+        err(
+            404,
+            "NoSuchEntity",
+            &format!("The user with name {} cannot be found.", username),
+        )
     }
 
     fn get_access_key_last_used(&self, req: &AwsRequest) -> AwsResponse {
@@ -483,13 +537,18 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let mut found: Option<String> = None;
         for (name, user) in state.users.read().iter() {
-            if user.access_keys.read().iter().any(|k| k.access_key_id == key_id) {
+            if user
+                .access_keys
+                .read()
+                .iter()
+                .any(|k| k.access_key_id == key_id)
+            {
                 found = Some(name.clone());
                 break;
             }
         }
-        let username = get_param(req, "UserName")
-            .unwrap_or_else(|| found.unwrap_or_else(|| "unknown".into()));
+        let username =
+            get_param(req, "UserName").unwrap_or_else(|| found.unwrap_or_else(|| "unknown".into()));
         AwsResponse::xml(200, "GetAccessKeyLastUsed", format!(
             "<UserName>{}</UserName><AccessKeyLastUsed><LastUsedDate>{}</LastUsedDate><ServiceName>N/A</ServiceName><Region>N/A</Region></AccessKeyLastUsed>",
             xml_escape(username.as_str()), now_iso()
@@ -518,7 +577,8 @@ impl IamHandler {
     fn list_user_tags(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.get_user(&username)
+        let tags = state
+            .get_user(&username)
             .map(|u| u.tags.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListUserTags", tags_xml(&tags))
@@ -557,7 +617,8 @@ impl IamHandler {
     fn list_attached_user_policies(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state.get_user(&username)
+        let policies = state
+            .get_user(&username)
             .map(|u| u.attached_policies.read().clone())
             .unwrap_or_default();
         let mut body = String::from("<AttachedPolicies>");
@@ -617,7 +678,8 @@ impl IamHandler {
     fn list_user_policies(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state.get_user(&username)
+        let policies = state
+            .get_user(&username)
             .map(|u| u.policies.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListUserPolicies", names_xml(&policies))
@@ -638,9 +700,15 @@ impl IamHandler {
             escape_policy(&role.assume_role_policy.read())
         );
         if !role.description.read().is_empty() {
-            s.push_str(&format!("<Description>{}</Description>", xml_escape(&role.description.read())));
+            s.push_str(&format!(
+                "<Description>{}</Description>",
+                xml_escape(&role.description.read())
+            ));
         }
-        s.push_str(&format!("<MaxSessionDuration>{}</MaxSessionDuration>", *role.max_session_duration.read()));
+        s.push_str(&format!(
+            "<MaxSessionDuration>{}</MaxSessionDuration>",
+            *role.max_session_duration.read()
+        ));
         s.push_str("<RoleLastUsed/>");
         if !role.tags.read().is_empty() {
             s.push_str(&tags_xml(&role.tags.read()));
@@ -670,16 +738,29 @@ impl IamHandler {
             .unwrap_or(3600);
         let state = self.get_state(req.account);
         if state.get_role(&role_name).is_some() {
-            return err(409, "EntityAlreadyExists",
-                &format!("Role with name {} already exists.", role_name));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("Role with name {} already exists.", role_name),
+            );
         }
         let role = Arc::new(Role::full(
-            req.account, role_name, path, assume_policy, description, max_session, false));
+            req.account,
+            role_name,
+            path,
+            assume_policy,
+            description,
+            max_session,
+            false,
+        ));
         let tags = self.parse_query_list(req, "Tags");
         if !tags.is_empty() {
             *role.tags.write() = tags;
         }
-        state.roles.write().insert(role.role_name.clone(), role.clone());
+        state
+            .roles
+            .write()
+            .insert(role.role_name.clone(), role.clone());
         AwsResponse::xml(200, "CreateRole", self.role_xml(&role, true))
     }
 
@@ -688,8 +769,11 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_role(&role_name) {
             Some(role) => AwsResponse::xml(200, "GetRole", self.role_xml(&role, true)),
-            None => err(404, "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The role with name {} cannot be found.", role_name),
+            ),
         }
     }
 
@@ -698,8 +782,14 @@ impl IamHandler {
         let state = self.get_state(req.account);
         match state.get_role(&role_name) {
             Some(role) => {
-                if !role.attached_policies.read().is_empty() || !role.inline_policies.read().is_empty() {
-                    return err(409, "DeleteConflict", "Cannot delete entity, must detach all policies first.");
+                if !role.attached_policies.read().is_empty()
+                    || !role.inline_policies.read().is_empty()
+                {
+                    return err(
+                        409,
+                        "DeleteConflict",
+                        "Cannot delete entity, must detach all policies first.",
+                    );
                 }
                 {
                     let mut profiles = state.instance_profiles.write();
@@ -710,8 +800,11 @@ impl IamHandler {
                 state.roles.write().remove(&role_name);
                 AwsResponse::xml(200, "DeleteRole", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The role with name {} cannot be found.", role_name),
+            ),
         }
     }
 
@@ -736,14 +829,18 @@ impl IamHandler {
             if let Some(desc) = get_param(req, "Description") {
                 *role.description.write() = desc;
             }
-            if let Some(max_session) = get_param(req, "MaxSessionDuration")
-                .and_then(|v| v.parse::<u32>().ok())
+            if let Some(max_session) =
+                get_param(req, "MaxSessionDuration").and_then(|v| v.parse::<u32>().ok())
             {
                 *role.max_session_duration.write() = max_session;
             }
             return AwsResponse::xml(200, "UpdateRole", String::new());
         }
-        err(404, "NoSuchEntity", &format!("The role with name {} cannot be found.", role_name))
+        err(
+            404,
+            "NoSuchEntity",
+            &format!("The role with name {} cannot be found.", role_name),
+        )
     }
 
     fn update_role_description(&self, req: &AwsRequest) -> AwsResponse {
@@ -755,8 +852,11 @@ impl IamHandler {
                 *role.description.write() = desc;
                 AwsResponse::xml(200, "UpdateRoleDescription", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The role with name {} cannot be found.", role_name),
+            ),
         }
     }
 
@@ -769,8 +869,11 @@ impl IamHandler {
                 *role.assume_role_policy.write() = policy;
                 AwsResponse::xml(200, "UpdateAssumeRolePolicy", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The role with name {} cannot be found.", role_name),
+            ),
         }
     }
 
@@ -796,7 +899,8 @@ impl IamHandler {
     fn list_role_tags(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.get_role(&role_name)
+        let tags = state
+            .get_role(&role_name)
             .map(|r| r.tags.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListRoleTags", tags_xml(&tags))
@@ -831,7 +935,8 @@ impl IamHandler {
     fn list_attached_role_policies(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state.get_role(&role_name)
+        let policies = state
+            .get_role(&role_name)
             .map(|r| r.attached_policies.read().clone())
             .unwrap_or_default();
         let mut body = String::from("<AttachedPolicies>");
@@ -891,7 +996,8 @@ impl IamHandler {
     fn list_role_policies(&self, req: &AwsRequest) -> AwsResponse {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state.get_role(&role_name)
+        let policies = state
+            .get_role(&role_name)
             .map(|r| r.inline_policies.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListRolePolicies", names_xml(&policies))
@@ -925,15 +1031,21 @@ impl IamHandler {
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let state = self.get_state(req.account);
         if state.get_group(&group_name).is_some() {
-            return err(409, "EntityAlreadyExists",
-                &format!("A group with the name {} already exists.", group_name));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("A group with the name {} already exists.", group_name),
+            );
         }
         let group = Arc::new(Group::with_path(req.account, group_name, path));
         let tags = self.parse_query_list(req, "Tags");
         if !tags.is_empty() {
             *group.tags.write() = tags;
         }
-        state.groups.write().insert(group.group_name.clone(), group.clone());
+        state
+            .groups
+            .write()
+            .insert(group.group_name.clone(), group.clone());
         AwsResponse::xml(200, "CreateGroup", self.group_xml(&group))
     }
 
@@ -953,8 +1065,11 @@ impl IamHandler {
                 body.push_str("</Users><IsTruncated>false</IsTruncated>");
                 AwsResponse::xml(200, "GetGroup", body)
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The group with name {} cannot be found.", group_name),
+            ),
         }
     }
 
@@ -964,13 +1079,20 @@ impl IamHandler {
         match state.get_group(&group_name) {
             Some(group) => {
                 if !group.users.read().is_empty() {
-                    return err(409, "DeleteConflict", "Cannot delete entity, must remove users first.");
+                    return err(
+                        409,
+                        "DeleteConflict",
+                        "Cannot delete entity, must remove users first.",
+                    );
                 }
                 state.groups.write().remove(&group_name);
                 AwsResponse::xml(200, "DeleteGroup", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The group with name {} cannot be found.", group_name),
+            ),
         }
     }
 
@@ -993,14 +1115,23 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let group = match state.get_group(&group_name) {
             Some(g) => g,
-            None => return err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The group with name {} cannot be found.", group_name),
+                )
+            }
         };
         let name = get_param(req, "NewGroupName").unwrap_or_else(|| group.group_name.clone());
         let path = get_param(req, "NewPath").unwrap_or_else(|| group.path.clone());
         if name != group.group_name {
             if state.get_group(&name).is_some() {
-                return err(409, "EntityAlreadyExists", &format!("Group {} already exists", name));
+                return err(
+                    409,
+                    "EntityAlreadyExists",
+                    &format!("Group {} already exists", name),
+                );
             }
             state.groups.write().remove(&group.group_name);
         }
@@ -1021,13 +1152,21 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let group = match state.get_group(&group_name) {
             Some(g) => g,
-            None => return err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The group with name {} cannot be found.", group_name),
+                )
+            }
         };
         if !group.users.read().contains(&username) {
             if state.get_user(&username).is_none() {
-                return err(404, "NoSuchEntity",
-                    &format!("The user with name {} cannot be found.", username));
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The user with name {} cannot be found.", username),
+                );
             }
             group.users.write().push(username.clone());
         }
@@ -1043,8 +1182,11 @@ impl IamHandler {
                 group.users.write().retain(|u| *u != username);
                 AwsResponse::xml(200, "RemoveUserFromGroup", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The group with name {} cannot be found.", group_name),
+            ),
         }
     }
 
@@ -1066,8 +1208,13 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let group = match state.get_group(&group_name) {
             Some(g) => g,
-            None => return err(404, "NoSuchEntity",
-                &format!("The group with name {} cannot be found.", group_name)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The group with name {} cannot be found.", group_name),
+                )
+            }
         };
         let usernames = group.users.read().clone();
         let mut body = String::from("<Users>");
@@ -1102,7 +1249,8 @@ impl IamHandler {
     fn list_group_tags(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.get_group(&group_name)
+        let tags = state
+            .get_group(&group_name)
             .map(|g| g.tags.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListGroupTags", tags_xml(&tags))
@@ -1137,7 +1285,8 @@ impl IamHandler {
     fn list_attached_group_policies(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state.get_group(&group_name)
+        let policies = state
+            .get_group(&group_name)
             .map(|g| g.attached_policies.read().clone())
             .unwrap_or_default();
         let mut body = String::from("<AttachedPolicies>");
@@ -1197,7 +1346,8 @@ impl IamHandler {
     fn list_group_policies(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let policies = state.get_group(&group_name)
+        let policies = state
+            .get_group(&group_name)
             .map(|g| g.inline_policies.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListGroupPolicies", names_xml(&policies))
@@ -1226,7 +1376,8 @@ impl IamHandler {
         }
         s.push_str(&format!(
             "<CreateDate>{}</CreateDate><UpdateDate>{}</UpdateDate>",
-            ms_to_iso(policy.created), ms_to_iso(policy.modified)
+            ms_to_iso(policy.created),
+            ms_to_iso(policy.modified)
         ));
         if include_tags && !policy.tags.read().is_empty() {
             s.push_str(&tags_xml(&policy.tags.read()));
@@ -1252,12 +1403,24 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let arn = IamState::policy_arn(req.account, &path, &policy_name);
         if state.get_policy(&arn).is_some() {
-            return err(409, "EntityAlreadyExists",
-                &format!("A policy called {} already exists.", policy_name));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("A policy called {} already exists.", policy_name),
+            );
         }
         let policy = Arc::new(Policy::full(
-            req.account, policy_name, path, document, tags, description));
-        state.policies.write().insert(policy.policy_name.clone(), policy.clone());
+            req.account,
+            policy_name,
+            path,
+            document,
+            tags,
+            description,
+        ));
+        state
+            .policies
+            .write()
+            .insert(policy.policy_name.clone(), policy.clone());
         let body = self.policy_xml(&policy, true);
         AwsResponse::xml(200, "CreatePolicy", format!("<Policy>{}</Policy>", body))
     }
@@ -1270,8 +1433,11 @@ impl IamHandler {
                 let body = self.policy_xml(&policy, true);
                 AwsResponse::xml(200, "GetPolicy", format!("<Policy>{}</Policy>", body))
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The policy with ARN {} cannot be found.", arn),
+            ),
         }
     }
 
@@ -1283,8 +1449,11 @@ impl IamHandler {
                 state.policies.write().remove(&policy.policy_name);
                 AwsResponse::xml(200, "DeletePolicy", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The policy with ARN {} cannot be found.", arn),
+            ),
         }
     }
 
@@ -1300,7 +1469,10 @@ impl IamHandler {
                 continue;
             }
             if let Some(policy) = state.get_policy(name) {
-                body.push_str(&format!("<member>{}</member>", self.policy_xml(&policy, false)));
+                body.push_str(&format!(
+                    "<member>{}</member>",
+                    self.policy_xml(&policy, false)
+                ));
             }
         }
         body.push_str("</Policies><IsTruncated>false</IsTruncated>");
@@ -1315,8 +1487,13 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The policy with ARN {} cannot be found.", arn),
+                )
+            }
         };
         let next_version = policy.versions.read().len() + 1;
         let version_id = format!("v{}", next_version);
@@ -1350,12 +1527,18 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The policy with ARN {} cannot be found.", arn),
+                )
+            }
         };
         let default_id = (*policy.default_version_id.read()).clone();
         let versions = policy.versions.read();
-        let version = versions.iter()
+        let version = versions
+            .iter()
             .find(|v| v.get("VersionId").and_then(|x| x.as_str()) == Some(version_id.as_str()));
         match version {
             Some(v) => {
@@ -1369,8 +1552,14 @@ impl IamHandler {
                     v.get("CreateDate").and_then(|x| x.as_str()).unwrap_or("")
                 ))
             }
-            None => err(404, "NoSuchEntity", &format!(
-                "Policy version {} cannot be found for arn {}", version_id, arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!(
+                    "Policy version {} cannot be found for arn {}",
+                    version_id, arn
+                ),
+            ),
         }
     }
 
@@ -1379,8 +1568,13 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The policy with ARN {} cannot be found.", arn),
+                )
+            }
         };
         let default_id = (*policy.default_version_id.read()).clone();
         let mut body = String::from("<Versions>");
@@ -1406,8 +1600,13 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The policy with ARN {} cannot be found.", arn),
+                )
+            }
         };
         {
             let mut versions = policy.versions.write();
@@ -1422,13 +1621,19 @@ impl IamHandler {
                 }
             }
             if !found {
-                return err(404, "NoSuchEntity",
-                    &format!("Policy version {} cannot be found.", version_id));
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("Policy version {} cannot be found.", version_id),
+                );
             }
         }
         *policy.default_version_id.write() = version_id.clone();
         // Sync the default document into the policy document store
-        if let Some(v) = policy.versions.read().iter()
+        if let Some(v) = policy
+            .versions
+            .read()
+            .iter()
             .find(|v| v.get("VersionId").and_then(|x| x.as_str()) == Some(version_id.as_str()))
         {
             if let Some(doc) = v.get("Document") {
@@ -1444,16 +1649,25 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The policy with ARN {} cannot be found.", arn),
+                )
+            }
         };
         if *policy.default_version_id.read() == version_id {
-            return err(400, "DeleteConflict",
-                "Cannot delete the default version of a policy.");
+            return err(
+                400,
+                "DeleteConflict",
+                "Cannot delete the default version of a policy.",
+            );
         }
-        policy.versions.write().retain(|v| {
-            v.get("VersionId").and_then(|x| x.as_str()) != Some(version_id.as_str())
-        });
+        policy
+            .versions
+            .write()
+            .retain(|v| v.get("VersionId").and_then(|x| x.as_str()) != Some(version_id.as_str()));
         AwsResponse::xml(200, "DeletePolicyVersion", String::new())
     }
 
@@ -1479,7 +1693,8 @@ impl IamHandler {
     fn list_policy_tags(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "PolicyArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.get_policy(&arn)
+        let tags = state
+            .get_policy(&arn)
             .map(|p| p.tags.read().clone())
             .unwrap_or_default();
         AwsResponse::xml(200, "ListPolicyTags", tags_xml(&tags))
@@ -1490,8 +1705,13 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let policy = match state.get_policy(&arn) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("The policy with ARN {} cannot be found.", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The policy with ARN {} cannot be found.", arn),
+                )
+            }
         };
         let mut body = String::new();
         body.push_str("<PolicyGroups>");
@@ -1499,7 +1719,9 @@ impl IamHandler {
             if let Some(group) = state.get_group(g) {
                 body.push_str(&format!(
                     "<member><GroupName>{}</GroupName><GroupId>{}</GroupId></member>",
-                    xml_escape(&group.group_name), group.group_id));
+                    xml_escape(&group.group_name),
+                    group.group_id
+                ));
             }
         }
         body.push_str("</PolicyGroups><PolicyRoles>");
@@ -1507,7 +1729,9 @@ impl IamHandler {
             if let Some(role) = state.get_role(r) {
                 body.push_str(&format!(
                     "<member><RoleName>{}</RoleName><RoleId>{}</RoleId></member>",
-                    xml_escape(&role.role_name), role.role_id));
+                    xml_escape(&role.role_name),
+                    role.role_id
+                ));
             }
         }
         body.push_str("</PolicyRoles><PolicyUsers>");
@@ -1515,7 +1739,9 @@ impl IamHandler {
             if let Some(user) = state.get_user(u) {
                 body.push_str(&format!(
                     "<member><UserName>{}</UserName><UserId>{}</UserId></member>",
-                    xml_escape(&user.username), user.user_id));
+                    xml_escape(&user.username),
+                    user.user_id
+                ));
             }
         }
         body.push_str("</PolicyUsers><IsTruncated>false</IsTruncated>");
@@ -1568,7 +1794,10 @@ impl IamHandler {
         let entries = summary_entries(&state, virtual_mfa_count, mfa_in_use, providers as u32);
         let mut body = String::from("<SummaryMap>");
         for (k, v) in entries {
-            body.push_str(&format!("<entry><key>{}</key><value>{}</value></entry>", k, v));
+            body.push_str(&format!(
+                "<entry><key>{}</key><value>{}</value></entry>",
+                k, v
+            ));
         }
         body.push_str("</SummaryMap>");
         AwsResponse::xml(200, "GetAccountSummary", body)
@@ -1581,10 +1810,16 @@ impl IamHandler {
             Some(map) => {
                 let mut body = String::from("<PasswordPolicy>");
                 for key in [
-                    "MinimumPasswordLength", "RequireSymbols", "RequireNumbers",
-                    "RequireUppercaseCharacters", "RequireLowercaseCharacters",
-                    "AllowUsersToChangePassword", "ExpirePasswords", "MaxPasswordAge",
-                    "PasswordReusePrevention", "HardExpiry",
+                    "MinimumPasswordLength",
+                    "RequireSymbols",
+                    "RequireNumbers",
+                    "RequireUppercaseCharacters",
+                    "RequireLowercaseCharacters",
+                    "AllowUsersToChangePassword",
+                    "ExpirePasswords",
+                    "MaxPasswordAge",
+                    "PasswordReusePrevention",
+                    "HardExpiry",
                 ] {
                     if let Some(v) = map.get(key) {
                         body.push_str(&xml_field(key, &format_value(v)));
@@ -1593,8 +1828,11 @@ impl IamHandler {
                 body.push_str("</PasswordPolicy>");
                 AwsResponse::xml(200, "GetAccountPasswordPolicy", body)
             }
-            None => err(404, "NoSuchEntity",
-                "The Password Policy with domain 123456789012 cannot be found."),
+            None => err(
+                404,
+                "NoSuchEntity",
+                "The Password Policy with domain 123456789012 cannot be found.",
+            ),
         }
     }
 
@@ -1608,13 +1846,16 @@ impl IamHandler {
         bool_param(req, &mut map, "AllowUsersToChangePassword", false);
         bool_param(req, &mut map, "HardExpiry", false);
         let minimum = get_param(req, "MinimumPasswordLength")
-            .and_then(|v| v.parse::<i64>().ok()).unwrap_or(8);
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(8);
         map.insert("MinimumPasswordLength".into(), json!(minimum));
         if let Some(v) = get_param(req, "MaxPasswordAge").and_then(|v| v.parse::<i64>().ok()) {
             map.insert("MaxPasswordAge".into(), json!(v));
             map.insert("ExpirePasswords".into(), json!(true));
         }
-        if let Some(v) = get_param(req, "PasswordReusePrevention").and_then(|v| v.parse::<i64>().ok()) {
+        if let Some(v) =
+            get_param(req, "PasswordReusePrevention").and_then(|v| v.parse::<i64>().ok())
+        {
             map.insert("PasswordReusePrevention".into(), json!(v));
         }
         *state.password_policy.write() = Some(Value::Object(map));
@@ -1651,7 +1892,10 @@ impl IamHandler {
         }
         let mut managed = String::new();
         for policy in state.policies.read().values() {
-            managed.push_str(&format!("<member>{}</member>", self.policy_xml(policy, false)));
+            managed.push_str(&format!(
+                "<member>{}</member>",
+                self.policy_xml(policy, false)
+            ));
         }
         let body = format!(
             "<UserDetailList>{}</UserDetailList><GroupDetailList>{}</GroupDetailList><RoleDetailList>{}</RoleDetailList><ManagedPolicies>{}</ManagedPolicies><IsTruncated>false</IsTruncated>",
@@ -1675,21 +1919,36 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         if state.login_profiles.read().contains_key(&username) {
-            return err(409, "EntityAlreadyExists", &format!(
-                "The Login Profile with domain User Name {} already exists for this account",
-                username));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!(
+                    "The Login Profile with domain User Name {} already exists for this account",
+                    username
+                ),
+            );
         }
         let profile = LoginProfile {
             created: now_iso(),
             password: get_param(req, "Password").unwrap_or_default(),
             reset_required: bool_of(get_param(req, "PasswordResetRequired")),
         };
-        state.login_profiles.write().insert(username.clone(), profile.clone());
-        AwsResponse::xml(200, "CreateLoginProfile", self.login_profile_xml(&username, &profile))
+        state
+            .login_profiles
+            .write()
+            .insert(username.clone(), profile.clone());
+        AwsResponse::xml(
+            200,
+            "CreateLoginProfile",
+            self.login_profile_xml(&username, &profile),
+        )
     }
 
     fn get_login_profile(&self, req: &AwsRequest) -> AwsResponse {
@@ -1697,10 +1956,16 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let profile = state.login_profiles.read().get(&username).cloned();
         match profile {
-            Some(profile) => AwsResponse::xml(200, "GetLoginProfile",
-                self.login_profile_xml(&username, &profile)),
-            None => err(404, "NoSuchEntity",
-                &format!("Login profile for {} not found", username)),
+            Some(profile) => AwsResponse::xml(
+                200,
+                "GetLoginProfile",
+                self.login_profile_xml(&username, &profile),
+            ),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("Login profile for {} not found", username),
+            ),
         }
     }
 
@@ -1708,14 +1973,22 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         let mut profiles = state.login_profiles.write();
         let profile = match profiles.get_mut(&username) {
             Some(p) => p,
-            None => return err(404, "NoSuchEntity",
-                &format!("Login profile for {} not found", username)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("Login profile for {} not found", username),
+                )
+            }
         };
         if let Some(pw) = get_param(req, "Password") {
             profile.password = pw;
@@ -1730,7 +2003,11 @@ impl IamHandler {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.login_profiles.write().remove(&username).is_none() {
-            return err(404, "NoSuchEntity", &format!("Login profile for {} not found", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Login profile for {} not found", username),
+            );
         }
         AwsResponse::xml(200, "DeleteLoginProfile", String::new())
     }
@@ -1742,7 +2019,11 @@ impl IamHandler {
     fn create_virtual_mfa_device(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "VirtualMFADeviceName").unwrap_or_default();
         if name.is_empty() {
-            return err(400, "MissingParameterValue", "VirtualMFADeviceName is required");
+            return err(
+                400,
+                "MissingParameterValue",
+                "VirtualMFADeviceName is required",
+            );
         }
         let mut path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         if path.is_empty() {
@@ -1751,8 +2032,11 @@ impl IamHandler {
         let serial = format!("arn:aws:iam::{}:mfa{}{}", req.account, path, name);
         let state = self.get_state(req.account);
         if state.virtual_mfas.read().contains_key(&serial) {
-            return err(409, "EntityAlreadyExists",
-                "MFADevice entity at the same path and name already exists.");
+            return err(
+                409,
+                "EntityAlreadyExists",
+                "MFADevice entity at the same path and name already exists.",
+            );
         }
         let device = Arc::new(VirtualMfa {
             serial: serial.clone(),
@@ -1783,14 +2067,20 @@ impl IamHandler {
         match device {
             Some(device) => {
                 if device.assigned_user.read().is_some() {
-                    return err(409, "DeleteConflict",
-                        "Deletion of MFA device is not currently authorized by the service.");
+                    return err(
+                        409,
+                        "DeleteConflict",
+                        "Deletion of MFA device is not currently authorized by the service.",
+                    );
                 }
                 state.virtual_mfas.write().remove(&serial);
                 AwsResponse::xml(200, "DeleteVirtualMFADevice", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("VirtualMFADevice cannot be found: {}", serial)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("VirtualMFADevice cannot be found: {}", serial),
+            ),
         }
     }
 
@@ -1842,8 +2132,11 @@ impl IamHandler {
         let serial = get_param(req, "SerialNumber").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         let device = state.virtual_mfas.read().get(&serial).cloned();
         match device {
@@ -1852,7 +2145,11 @@ impl IamHandler {
                 *device.enable_date.write() = Some(now_iso());
                 AwsResponse::xml(200, "EnableMFADevice", String::new())
             }
-            None => err(404, "NoSuchEntity", &format!("MFADevice cannot be found {}", serial)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("MFADevice cannot be found {}", serial),
+            ),
         }
     }
 
@@ -1861,8 +2158,11 @@ impl IamHandler {
         let serial = get_param(req, "SerialNumber").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         if let Some(device) = state.virtual_mfas.read().get(&serial).cloned() {
             *device.assigned_user.write() = None;
@@ -1876,16 +2176,26 @@ impl IamHandler {
         let serial = get_param(req, "SerialNumber").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
-        let assigned = state.virtual_mfas.read().get(&serial)
+        let assigned = state
+            .virtual_mfas
+            .read()
+            .get(&serial)
             .and_then(|d| d.assigned_user.read().clone());
         match assigned {
             Some(owner) if owner == username => {
                 AwsResponse::xml(200, "ResyncMFADevice", String::new())
             }
-            _ => err(404, "NoSuchEntity", &format!("MFADevice cannot be found {}", serial)),
+            _ => err(
+                404,
+                "NoSuchEntity",
+                &format!("MFADevice cannot be found {}", serial),
+            ),
         }
     }
 
@@ -1921,14 +2231,28 @@ impl IamHandler {
         match device {
             Some(device) => {
                 if device.assigned_user.read().is_none() {
-                    return err(404, "NoSuchEntity", &format!("MFADevice cannot be found {}", serial));
+                    return err(
+                        404,
+                        "NoSuchEntity",
+                        &format!("MFADevice cannot be found {}", serial),
+                    );
                 }
                 let enable_date = device.enable_date.read().clone().unwrap_or_default();
-                AwsResponse::xml(200, "GetMFADevice", format!(
-                    "<SerialNumber>{}</SerialNumber><EnableDate>{}</EnableDate>",
-                    xml_escape(&device.serial), enable_date))
+                AwsResponse::xml(
+                    200,
+                    "GetMFADevice",
+                    format!(
+                        "<SerialNumber>{}</SerialNumber><EnableDate>{}</EnableDate>",
+                        xml_escape(&device.serial),
+                        enable_date
+                    ),
+                )
             }
-            None => err(404, "NoSuchEntity", &format!("MFADevice cannot be found {}", serial)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("MFADevice cannot be found {}", serial),
+            ),
         }
     }
 
@@ -1939,7 +2263,13 @@ impl IamHandler {
         let device = state.virtual_mfas.read().get(&serial).cloned();
         match device {
             Some(device) => tag_upsert(&mut device.tags.write(), tags),
-            None => return err(404, "NoSuchEntity", &format!("MFADevice cannot be found {}", serial)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("MFADevice cannot be found {}", serial),
+                )
+            }
         }
         AwsResponse::xml(200, "TagMFADevice", String::new())
     }
@@ -1952,7 +2282,13 @@ impl IamHandler {
             Some(device) => {
                 remove_tags(&mut device.tags.write(), &string_vec(req, "TagKeys"));
             }
-            None => return err(404, "NoSuchEntity", &format!("MFADevice cannot be found {}", serial)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("MFADevice cannot be found {}", serial),
+                )
+            }
         }
         AwsResponse::xml(200, "UntagMFADevice", String::new())
     }
@@ -1960,11 +2296,17 @@ impl IamHandler {
     fn list_mfa_device_tags(&self, req: &AwsRequest) -> AwsResponse {
         let serial = get_param(req, "SerialNumber").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.virtual_mfas.read().get(&serial)
+        let tags = state
+            .virtual_mfas
+            .read()
+            .get(&serial)
             .map(|d| d.tags.read().clone())
             .unwrap_or_default();
-        AwsResponse::xml(200, "ListMFADeviceTags",
-            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)))
+        AwsResponse::xml(
+            200,
+            "ListMFADeviceTags",
+            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)),
+        )
     }
 
     fn unassign_all_mfa(&self, state: &IamState, username: &str) {
@@ -2006,8 +2348,11 @@ impl IamHandler {
         }
         let state = self.get_state(req.account);
         if state.saml_providers.read().contains_key(&name) {
-            return err(409, "EntityAlreadyExists",
-                &format!("SAMLProvider {} already exists", name));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("SAMLProvider {} already exists", name),
+            );
         }
         let arn = format!("arn:aws:iam::{}:saml-provider/{}", req.account, name);
         let provider = Arc::new(SamlProvider {
@@ -2019,19 +2364,29 @@ impl IamHandler {
             tags: RwLock::new(Vec::new()),
         });
         state.saml_providers.write().insert(name, provider.clone());
-        AwsResponse::xml(200, "CreateSAMLProvider",
-            format!("<SAMLProviderArn>{}</SAMLProviderArn>", xml_escape(&arn)))
+        AwsResponse::xml(
+            200,
+            "CreateSAMLProvider",
+            format!("<SAMLProviderArn>{}</SAMLProviderArn>", xml_escape(&arn)),
+        )
     }
 
     fn get_saml_provider(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "SAMLProviderArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let provider = state.saml_providers.read().values()
-            .find(|p| p.arn == arn).cloned();
+        let provider = state
+            .saml_providers
+            .read()
+            .values()
+            .find(|p| p.arn == arn)
+            .cloned();
         match provider {
             Some(p) => AwsResponse::xml(200, "GetSAMLProvider", self.saml_xml(&p)),
-            None => err(404, "NoSuchEntity",
-                &format!("SAMLProvider {} not found", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("SAMLProvider {} not found", arn),
+            ),
         }
     }
 
@@ -2055,29 +2410,48 @@ impl IamHandler {
         let arn = get_param(req, "SAMLProviderArn").unwrap_or_default();
         let metadata = get_param(req, "SAMLMetadataDocument").unwrap_or_default();
         let state = self.get_state(req.account);
-        let provider = state.saml_providers.read().values()
-            .find(|p| p.arn == arn).cloned();
+        let provider = state
+            .saml_providers
+            .read()
+            .values()
+            .find(|p| p.arn == arn)
+            .cloned();
         match provider {
             Some(p) => {
                 *p.metadata.write() = metadata;
-                AwsResponse::xml(200, "UpdateSAMLProvider",
-                    format!("<SAMLProviderArn>{}</SAMLProviderArn>", xml_escape(&arn)))
+                AwsResponse::xml(
+                    200,
+                    "UpdateSAMLProvider",
+                    format!("<SAMLProviderArn>{}</SAMLProviderArn>", xml_escape(&arn)),
+                )
             }
-            None => err(404, "NoSuchEntity", &format!("SAMLProvider {} not found", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("SAMLProvider {} not found", arn),
+            ),
         }
     }
 
     fn delete_saml_provider(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "SAMLProviderArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let name = state.saml_providers.read().values()
-            .find(|p| p.arn == arn).map(|p| p.name.clone());
+        let name = state
+            .saml_providers
+            .read()
+            .values()
+            .find(|p| p.arn == arn)
+            .map(|p| p.name.clone());
         match name {
             Some(name) => {
                 state.saml_providers.write().remove(&name);
                 AwsResponse::xml(200, "DeleteSAMLProvider", String::new())
             }
-            None => err(404, "NoSuchEntity", &format!("SAMLProvider {} not found", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("SAMLProvider {} not found", arn),
+            ),
         }
     }
 
@@ -2085,10 +2459,21 @@ impl IamHandler {
         let arn = get_param(req, "SAMLProviderArn").unwrap_or_default();
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
-        let provider = state.saml_providers.read().values().find(|p| p.arn == arn).cloned();
+        let provider = state
+            .saml_providers
+            .read()
+            .values()
+            .find(|p| p.arn == arn)
+            .cloned();
         match provider {
             Some(p) => tag_upsert(&mut p.tags.write(), tags),
-            None => return err(404, "NoSuchEntity", &format!("SAMLProvider {} not found", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("SAMLProvider {} not found", arn),
+                )
+            }
         }
         AwsResponse::xml(200, "TagSAMLProvider", String::new())
     }
@@ -2096,10 +2481,21 @@ impl IamHandler {
     fn untag_saml_provider(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "SAMLProviderArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let provider = state.saml_providers.read().values().find(|p| p.arn == arn).cloned();
+        let provider = state
+            .saml_providers
+            .read()
+            .values()
+            .find(|p| p.arn == arn)
+            .cloned();
         match provider {
             Some(p) => remove_tags(&mut p.tags.write(), &string_vec(req, "TagKeys")),
-            None => return err(404, "NoSuchEntity", &format!("SAMLProvider {} not found", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("SAMLProvider {} not found", arn),
+                )
+            }
         }
         AwsResponse::xml(200, "UntagSAMLProvider", String::new())
     }
@@ -2107,12 +2503,18 @@ impl IamHandler {
     fn list_saml_provider_tags(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "SAMLProviderArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.saml_providers.read().values()
+        let tags = state
+            .saml_providers
+            .read()
+            .values()
             .find(|p| p.arn == arn)
             .map(|p| p.tags.read().clone())
             .unwrap_or_default();
-        AwsResponse::xml(200, "ListSAMLProviderTags",
-            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)))
+        AwsResponse::xml(
+            200,
+            "ListSAMLProviderTags",
+            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)),
+        )
     }
 
     // ---------------- OIDC providers ----------------
@@ -2124,12 +2526,18 @@ impl IamHandler {
         }
         let thumbprints = string_vec(req, "ThumbprintList");
         let client_ids = string_vec(req, "ClientIDList");
-        let host = url_full.trim_start_matches("https://").trim_start_matches("http://").to_string();
+        let host = url_full
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .to_string();
         let arn = format!("arn:aws:iam::{}:oidc-provider/{}", req.account, host);
         let state = self.get_state(req.account);
         if state.oidc_providers.read().contains_key(&arn) {
-            return err(409, "EntityAlreadyExists",
-                &format!("OpenIDConnectProvider {} already exists", arn));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("OpenIDConnectProvider {} already exists", arn),
+            );
         }
         let provider = Arc::new(OidcProvider {
             arn: arn.clone(),
@@ -2140,8 +2548,14 @@ impl IamHandler {
             tags: RwLock::new(Vec::new()),
         });
         state.oidc_providers.write().insert(arn.clone(), provider);
-        AwsResponse::xml(200, "CreateOpenIDConnectProvider",
-            format!("<OpenIDConnectProviderArn>{}</OpenIDConnectProviderArn>", xml_escape(&arn)))
+        AwsResponse::xml(
+            200,
+            "CreateOpenIDConnectProvider",
+            format!(
+                "<OpenIDConnectProviderArn>{}</OpenIDConnectProviderArn>",
+                xml_escape(&arn)
+            ),
+        )
     }
 
     fn get_oidc_provider(&self, req: &AwsRequest) -> AwsResponse {
@@ -2162,8 +2576,11 @@ impl IamHandler {
                 }
                 AwsResponse::xml(200, "GetOpenIDConnectProvider", body)
             }
-            None => err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("OpenIDConnect Provider not found for {}", arn),
+            ),
         }
     }
 
@@ -2189,8 +2606,11 @@ impl IamHandler {
                 *p.thumbprints.write() = thumbprints;
                 AwsResponse::xml(200, "UpdateOpenIDConnectProviderThumbprint", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("OpenIDConnect Provider not found for {}", arn),
+            ),
         }
     }
 
@@ -2198,8 +2618,11 @@ impl IamHandler {
         let arn = get_param(req, "OpenIDConnectProviderArn").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.oidc_providers.write().remove(&arn).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("OpenIDConnect Provider not found for {}", arn),
+            );
         }
         AwsResponse::xml(200, "DeleteOpenIDConnectProvider", String::new())
     }
@@ -2217,8 +2640,11 @@ impl IamHandler {
                 }
                 AwsResponse::xml(200, "AddClientIDToOpenIDConnectProvider", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("OpenIDConnect Provider not found for {}", arn),
+            ),
         }
     }
 
@@ -2230,10 +2656,17 @@ impl IamHandler {
         match provider {
             Some(p) => {
                 p.client_ids.write().retain(|c| *c != client);
-                AwsResponse::xml(200, "RemoveClientIDFromOpenIDConnectProvider", String::new())
+                AwsResponse::xml(
+                    200,
+                    "RemoveClientIDFromOpenIDConnectProvider",
+                    String::new(),
+                )
             }
-            None => err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("OpenIDConnect Provider not found for {}", arn),
+            ),
         }
     }
 
@@ -2244,8 +2677,13 @@ impl IamHandler {
         let provider = state.oidc_providers.read().get(&arn).cloned();
         match provider {
             Some(p) => tag_upsert(&mut p.tags.write(), tags),
-            None => return err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("OpenIDConnect Provider not found for {}", arn),
+                )
+            }
         }
         AwsResponse::xml(200, "TagOpenIDConnectProvider", String::new())
     }
@@ -2256,8 +2694,13 @@ impl IamHandler {
         let provider = state.oidc_providers.read().get(&arn).cloned();
         match provider {
             Some(p) => remove_tags(&mut p.tags.write(), &string_vec(req, "TagKeys")),
-            None => return err(404, "NoSuchEntity",
-                &format!("OpenIDConnect Provider not found for {}", arn)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("OpenIDConnect Provider not found for {}", arn),
+                )
+            }
         }
         AwsResponse::xml(200, "UntagOpenIDConnectProvider", String::new())
     }
@@ -2265,19 +2708,34 @@ impl IamHandler {
     fn list_oidc_provider_tags(&self, req: &AwsRequest) -> AwsResponse {
         let arn = get_param(req, "OpenIDConnectProviderArn").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.oidc_providers.read().get(&arn)
+        let tags = state
+            .oidc_providers
+            .read()
+            .get(&arn)
             .map(|p| p.tags.read().clone())
             .unwrap_or_default();
-        AwsResponse::xml(200, "ListOpenIDConnectProviderTags",
-            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)))
+        AwsResponse::xml(
+            200,
+            "ListOpenIDConnectProviderTags",
+            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)),
+        )
     }
 
     // ---------------- Instance profiles ----------------
 
     fn instance_profile_xml(&self, state: &IamState, name: &str) -> String {
-        let arn = format!("arn:aws:iam::{}:instance-profile/{}", state_account_id(state), name);
+        let arn = format!(
+            "arn:aws:iam::{}:instance-profile/{}",
+            state_account_id(state),
+            name
+        );
         let _ = arn;
-        let ip_id = state.instance_profile_ids.read().get(name).cloned().unwrap_or_default();
+        let ip_id = state
+            .instance_profile_ids
+            .read()
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
         let mut s = format!(
             "<InstanceProfile><Path>/</Path><InstanceProfileName>{}</InstanceProfileName><InstanceProfileId>{}</InstanceProfileId><Arn>arn:aws:iam::{}:instance-profile/{}</Arn><CreateDate>2024-01-01T00:00:00Z</CreateDate>",
             xml_escape(name), ip_id, state_account_id(state), name
@@ -2306,30 +2764,50 @@ impl IamHandler {
     fn create_instance_profile(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         if name.is_empty() {
-            return err(400, "MissingParameterValue", "InstanceProfileName is required");
+            return err(
+                400,
+                "MissingParameterValue",
+                "InstanceProfileName is required",
+            );
         }
         let state = self.get_state(req.account);
         if state.instance_profiles.read().contains_key(&name) {
-            return err(409, "EntityAlreadyExists",
-                &format!("Instance profile {} already exists", name));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("Instance profile {} already exists", name),
+            );
         }
         let tags = self.parse_query_list(req, "Tags");
         state.create_instance_profile(&name);
         if !tags.is_empty() {
-            state.instance_profile_tags.write().insert(name.clone(), tags);
+            state
+                .instance_profile_tags
+                .write()
+                .insert(name.clone(), tags);
         }
-        AwsResponse::xml(200, "CreateInstanceProfile",
-            self.instance_profile_xml(&state, &name))
+        AwsResponse::xml(
+            200,
+            "CreateInstanceProfile",
+            self.instance_profile_xml(&state, &name),
+        )
     }
 
     fn get_instance_profile(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.instance_profiles.read().contains_key(&name) {
-            AwsResponse::xml(200, "GetInstanceProfile", self.instance_profile_xml(&state, &name))
+            AwsResponse::xml(
+                200,
+                "GetInstanceProfile",
+                self.instance_profile_xml(&state, &name),
+            )
         } else {
-            err(404, "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name))
+            err(
+                404,
+                "NoSuchEntity",
+                &format!("Instance profile {} cannot be found", name),
+            )
         }
     }
 
@@ -2337,8 +2815,11 @@ impl IamHandler {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         let state = self.get_state(req.account);
         if !state.delete_instance_profile(&name) {
-            return err(404, "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Instance profile {} cannot be found", name),
+            );
         }
         AwsResponse::xml(200, "DeleteInstanceProfile", String::new())
     }
@@ -2351,8 +2832,14 @@ impl IamHandler {
         for name in &names {
             body.push_str(&self.instance_profile_xml(&state, name));
         }
-        AwsResponse::xml(200, "ListInstanceProfiles",
-            format!("<InstanceProfiles>{}</InstanceProfiles><IsTruncated>false</IsTruncated>", body))
+        AwsResponse::xml(
+            200,
+            "ListInstanceProfiles",
+            format!(
+                "<InstanceProfiles>{}</InstanceProfiles><IsTruncated>false</IsTruncated>",
+                body
+            ),
+        )
     }
 
     fn add_role_to_instance_profile(&self, req: &AwsRequest) -> AwsResponse {
@@ -2360,12 +2847,18 @@ impl IamHandler {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
         if !state.instance_profiles.read().contains_key(&name) {
-            return err(404, "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Instance profile {} cannot be found", name),
+            );
         }
         if state.get_role(&role_name).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The role with name {} cannot be found.", role_name));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The role with name {} cannot be found.", role_name),
+            );
         }
         let mut profiles = state.instance_profiles.write();
         if let Some(roles) = profiles.get_mut(&name) {
@@ -2391,15 +2884,21 @@ impl IamHandler {
         names.sort();
         let mut body = String::new();
         for name in &names {
-            let contains_role = state.instance_profiles.read().get(name)
+            let contains_role = state
+                .instance_profiles
+                .read()
+                .get(name)
                 .map(|roles| roles.contains(&role_name))
                 .unwrap_or(false);
             if contains_role {
                 body.push_str(&self.instance_profile_xml(&state, name));
             }
         }
-        AwsResponse::xml(200, "ListInstanceProfilesForRole",
-            format!("<InstanceProfiles>{}</InstanceProfiles>", body))
+        AwsResponse::xml(
+            200,
+            "ListInstanceProfilesForRole",
+            format!("<InstanceProfiles>{}</InstanceProfiles>", body),
+        )
     }
 
     fn tag_instance_profile(&self, req: &AwsRequest) -> AwsResponse {
@@ -2407,10 +2906,14 @@ impl IamHandler {
         let tags = self.parse_query_list(req, "Tags");
         let state = self.get_state(req.account);
         if !state.instance_profiles.read().contains_key(&name) {
-            return err(404, "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Instance profile {} cannot be found", name),
+            );
         }
-        state.instance_profile_tags
+        state
+            .instance_profile_tags
             .write()
             .entry(name)
             .or_default()
@@ -2423,8 +2926,11 @@ impl IamHandler {
         let keys = string_vec(req, "TagKeys");
         let state = self.get_state(req.account);
         if !state.instance_profiles.read().contains_key(&name) {
-            return err(404, "NoSuchEntity",
-                &format!("Instance profile {} cannot be found", name));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("Instance profile {} cannot be found", name),
+            );
         }
         let mut tags = state.instance_profile_tags.write();
         if let Some(existing) = tags.get_mut(&name) {
@@ -2436,9 +2942,17 @@ impl IamHandler {
     fn list_instance_profile_tags(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.instance_profile_tags.read().get(&name).cloned().unwrap_or_default();
-        AwsResponse::xml(200, "ListInstanceProfileTags",
-            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)))
+        let tags = state
+            .instance_profile_tags
+            .read()
+            .get(&name)
+            .cloned()
+            .unwrap_or_default();
+        AwsResponse::xml(
+            200,
+            "ListInstanceProfileTags",
+            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)),
+        )
     }
 
     // ---------------- SSH public keys ----------------
@@ -2448,8 +2962,11 @@ impl IamHandler {
         let body_key = get_param(req, "SSHPublicKeyBody").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         let key = SshKey {
             id: random_id("APKA"),
@@ -2458,7 +2975,12 @@ impl IamHandler {
             status: "Active".to_string(),
             upload_date: now_iso(),
         };
-        state.ssh_keys.write().entry(username.clone()).or_default().push(key.clone());
+        state
+            .ssh_keys
+            .write()
+            .entry(username.clone())
+            .or_default()
+            .push(key.clone());
         AwsResponse::xml(200, "UploadSSHPublicKey", format!(
             "<SSHPublicKey><UserName>{}</UserName><SSHPublicKeyId>{}</SSHPublicKeyId><Fingerprint>{}</Fingerprint><SSHPublicKeyBody>{}</SSHPublicKeyBody><Status>{}</Status><UploadDate>{}</UploadDate></SSHPublicKey>",
             xml_escape(username.as_str()), key.id, key.fingerprint,
@@ -2471,11 +2993,16 @@ impl IamHandler {
         let key_id = get_param(req, "SSHPublicKeyId").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         let keys = state.ssh_keys.read();
-        let key = keys.get(&username).and_then(|ks| ks.iter().find(|k| k.id == key_id));
+        let key = keys
+            .get(&username)
+            .and_then(|ks| ks.iter().find(|k| k.id == key_id));
         match key {
             Some(k) => AwsResponse::xml(200, "GetSSHPublicKey", format!(
                 "<SSHPublicKey><UserName>{}</UserName><SSHPublicKeyId>{}</SSHPublicKeyId><Fingerprint>{}</Fingerprint><SSHPublicKeyBody>{}</SSHPublicKeyBody><Status>{}</Status><UploadDate>{}</UploadDate></SSHPublicKey>",
@@ -2493,14 +3020,19 @@ impl IamHandler {
         let status = get_param(req, "Status").unwrap_or_default();
         let state = self.get_state(req.account);
         let mut keys = state.ssh_keys.write();
-        let key = keys.get_mut(&username).and_then(|ks| ks.iter_mut().find(|k| k.id == key_id));
+        let key = keys
+            .get_mut(&username)
+            .and_then(|ks| ks.iter_mut().find(|k| k.id == key_id));
         match key {
             Some(k) => {
                 k.status = status;
                 AwsResponse::xml(200, "UpdateSSHPublicKey", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The SSH Public Key with id {} cannot be found", key_id)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The SSH Public Key with id {} cannot be found", key_id),
+            ),
         }
     }
 
@@ -2518,7 +3050,12 @@ impl IamHandler {
     fn list_ssh_public_keys(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let keys = state.ssh_keys.read().get(&username).cloned().unwrap_or_default();
+        let keys = state
+            .ssh_keys
+            .read()
+            .get(&username)
+            .cloned()
+            .unwrap_or_default();
         let mut body = String::from("<SSHPublicKeys>");
         for k in &keys {
             body.push_str(&format!(
@@ -2548,7 +3085,11 @@ impl IamHandler {
     fn upload_server_certificate(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "ServerCertificateName").unwrap_or_default();
         if name.is_empty() {
-            return err(400, "MissingParameterValue", "ServerCertificateName is required");
+            return err(
+                400,
+                "MissingParameterValue",
+                "ServerCertificateName is required",
+            );
         }
         let body = get_param(req, "CertificateBody").unwrap_or_default();
         let private_key = get_param(req, "PrivateKey").unwrap_or_default();
@@ -2556,8 +3097,11 @@ impl IamHandler {
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let state = self.get_state(req.account);
         if state.server_certs.read().contains_key(&name) {
-            return err(409, "EntityAlreadyExists",
-                &format!("The Server Certificate with name {} cannot be found", name));
+            return err(
+                409,
+                "EntityAlreadyExists",
+                &format!("The Server Certificate with name {} cannot be found", name),
+            );
         }
         let cert = Arc::new(ServerCert {
             name: name.clone(),
@@ -2570,11 +3114,18 @@ impl IamHandler {
             expiration: "2033-01-01T00:00:00Z".to_string(),
             tags: RwLock::new(Vec::new()),
         });
-        state.server_certs.write().insert(name.clone(), cert.clone());
-        AwsResponse::xml(200, "UploadServerCertificate", format!(
-            "<ServerCertificateMetadata>{}</ServerCertificateMetadata>",
-            self.server_cert_metadata_xml(&cert, req.account)
-        ))
+        state
+            .server_certs
+            .write()
+            .insert(name.clone(), cert.clone());
+        AwsResponse::xml(
+            200,
+            "UploadServerCertificate",
+            format!(
+                "<ServerCertificateMetadata>{}</ServerCertificateMetadata>",
+                self.server_cert_metadata_xml(&cert, req.account)
+            ),
+        )
     }
 
     fn get_server_certificate(&self, req: &AwsRequest) -> AwsResponse {
@@ -2614,12 +3165,18 @@ impl IamHandler {
                         tags: RwLock::new(old.tags.read().clone()),
                     };
                     state.server_certs.write().remove(&name);
-                    state.server_certs.write().insert(n.clone(), Arc::new(new_cert));
+                    state
+                        .server_certs
+                        .write()
+                        .insert(n.clone(), Arc::new(new_cert));
                 }
                 AwsResponse::xml(200, "UpdateServerCertificate", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The Server Certificate with name {} cannot be found", name),
+            ),
         }
     }
 
@@ -2627,8 +3184,11 @@ impl IamHandler {
         let name = get_param(req, "ServerCertificateName").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.server_certs.write().remove(&name).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The Server Certificate with name {} cannot be found", name),
+            );
         }
         AwsResponse::xml(200, "DeleteServerCertificate", String::new())
     }
@@ -2640,7 +3200,10 @@ impl IamHandler {
         let mut body = String::from("<ServerCertificateMetadataList>");
         for name in &names {
             let cert = state.server_certs.read().get(name).cloned().unwrap();
-            body.push_str(&format!("<member>{}</member>", self.server_cert_metadata_xml(&cert, req.account)));
+            body.push_str(&format!(
+                "<member>{}</member>",
+                self.server_cert_metadata_xml(&cert, req.account)
+            ));
         }
         body.push_str("</ServerCertificateMetadataList><IsTruncated>false</IsTruncated>");
         AwsResponse::xml(200, "ListServerCertificates", body)
@@ -2653,8 +3216,13 @@ impl IamHandler {
         let cert = state.server_certs.read().get(&name).cloned();
         match cert {
             Some(c) => tag_upsert(&mut c.tags.write(), tags),
-            None => return err(404, "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The Server Certificate with name {} cannot be found", name),
+                )
+            }
         }
         AwsResponse::xml(200, "TagServerCertificate", String::new())
     }
@@ -2665,8 +3233,13 @@ impl IamHandler {
         let cert = state.server_certs.read().get(&name).cloned();
         match cert {
             Some(c) => remove_tags(&mut c.tags.write(), &string_vec(req, "TagKeys")),
-            None => return err(404, "NoSuchEntity",
-                &format!("The Server Certificate with name {} cannot be found", name)),
+            None => {
+                return err(
+                    404,
+                    "NoSuchEntity",
+                    &format!("The Server Certificate with name {} cannot be found", name),
+                )
+            }
         }
         AwsResponse::xml(200, "UntagServerCertificate", String::new())
     }
@@ -2674,11 +3247,17 @@ impl IamHandler {
     fn list_server_certificate_tags(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "ServerCertificateName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let tags = state.server_certs.read().get(&name)
+        let tags = state
+            .server_certs
+            .read()
+            .get(&name)
             .map(|c| c.tags.read().clone())
             .unwrap_or_default();
-        AwsResponse::xml(200, "ListServerCertificateTags",
-            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)))
+        AwsResponse::xml(
+            200,
+            "ListServerCertificateTags",
+            format!("{}<IsTruncated>false</IsTruncated>", tags_xml(&tags)),
+        )
     }
 
     // ---------------- Signing certificates ----------------
@@ -2688,8 +3267,11 @@ impl IamHandler {
         let body = get_param(req, "CertificateBody").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         let cert = SigningCert {
             certificate_id: random_id("ASCA"),
@@ -2697,8 +3279,14 @@ impl IamHandler {
             status: "Active".to_string(),
             upload_date: now_iso(),
         };
-        state.users.read().get(&username).unwrap()
-            .signing_certs.write().push(cert.clone());
+        state
+            .users
+            .read()
+            .get(&username)
+            .unwrap()
+            .signing_certs
+            .write()
+            .push(cert.clone());
         AwsResponse::xml(200, "UploadSigningCertificate", format!(
             "<Certificate><UserName>{}</UserName><CertificateId>{}</CertificateId><CertificateBody>{}</CertificateBody><Status>{}</Status><UploadDate>{}</UploadDate></Certificate>",
             xml_escape(username.as_str()),
@@ -2723,8 +3311,11 @@ impl IamHandler {
                 }
                 AwsResponse::xml(200, "UpdateSigningCertificate", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
     }
 
@@ -2735,18 +3326,24 @@ impl IamHandler {
         let user = state.get_user(&username);
         match user {
             Some(u) => {
-                u.signing_certs.write().retain(|c| c.certificate_id != cert_id);
+                u.signing_certs
+                    .write()
+                    .retain(|c| c.certificate_id != cert_id);
                 AwsResponse::xml(200, "DeleteSigningCertificate", String::new())
             }
-            None => err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username)),
+            None => err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            ),
         }
     }
 
     fn list_signing_certificates(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         let state = self.get_state(req.account);
-        let certs = state.get_user(&username)
+        let certs = state
+            .get_user(&username)
             .map(|u| u.signing_certs.read().clone())
             .unwrap_or_default();
         let mut body = String::from("<Certificates>");
@@ -2769,8 +3366,13 @@ impl IamHandler {
     fn ssc_xml(&self, c: &Value) -> String {
         let mut s = String::new();
         for field in [
-            "ServiceUserName", "ServicePassword", "ServiceSpecificCredentialId",
-            "UserName", "Status", "ServiceName", "CreateDate",
+            "ServiceUserName",
+            "ServicePassword",
+            "ServiceSpecificCredentialId",
+            "UserName",
+            "Status",
+            "ServiceName",
+            "CreateDate",
         ] {
             if let Some(v) = c.get(field) {
                 s.push_str(&xml_field(field, v.as_str().unwrap_or_default()));
@@ -2784,8 +3386,11 @@ impl IamHandler {
         let service = get_param(req, "ServiceName").unwrap_or_default();
         let state = self.get_state(req.account);
         if state.get_user(&username).is_none() {
-            return err(404, "NoSuchEntity",
-                &format!("The user with name {} cannot be found.", username));
+            return err(
+                404,
+                "NoSuchEntity",
+                &format!("The user with name {} cannot be found.", username),
+            );
         }
         let cred = json!({
             "UserName": username.clone(),
@@ -2796,15 +3401,31 @@ impl IamHandler {
             "CreateDate": now_iso(),
             "Status": "Active"
         });
-        state.ssc_creds.write().entry(username).or_default().push(cred.clone());
-        AwsResponse::xml(200, "CreateServiceSpecificCredential",
-            format!("<ServiceSpecificCredential>{}</ServiceSpecificCredential>", self.ssc_xml(&cred)))
+        state
+            .ssc_creds
+            .write()
+            .entry(username)
+            .or_default()
+            .push(cred.clone());
+        AwsResponse::xml(
+            200,
+            "CreateServiceSpecificCredential",
+            format!(
+                "<ServiceSpecificCredential>{}</ServiceSpecificCredential>",
+                self.ssc_xml(&cred)
+            ),
+        )
     }
 
     fn list_service_specific_credentials(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account);
         let username = get_param(req, "UserName").unwrap_or_default();
-        let creds = state.ssc_creds.read().get(&username).cloned().unwrap_or_default();
+        let creds = state
+            .ssc_creds
+            .read()
+            .get(&username)
+            .cloned()
+            .unwrap_or_default();
         let mut body = String::from("<ServiceSpecificCredentials>");
         for c in &creds {
             body.push_str(&format!("<member>{}</member>", self.ssc_xml(c)));
@@ -2822,8 +3443,14 @@ impl IamHandler {
         let cred_id = get_param(req, "ServiceSpecificCredentialId").unwrap_or_default();
         let creds = state.ssc_creds.read();
         creds.get(&username).and_then(|list| {
-            list.iter().find(|c| f(c) && c.get("ServiceSpecificCredentialId")
-                .and_then(|v| v.as_str()) == Some(cred_id.as_str())).cloned()
+            list.iter()
+                .find(|c| {
+                    f(c) && c
+                        .get("ServiceSpecificCredentialId")
+                        .and_then(|v| v.as_str())
+                        == Some(cred_id.as_str())
+                })
+                .cloned()
         })
     }
 
@@ -2841,7 +3468,10 @@ impl IamHandler {
         let mut updated: Option<Value> = None;
         if let Some(list) = creds_map.get_mut(&username) {
             for c in list.iter_mut() {
-                if c.get("ServiceSpecificCredentialId").and_then(|v| v.as_str()) == Some(cred_id.as_str()) {
+                if c.get("ServiceSpecificCredentialId")
+                    .and_then(|v| v.as_str())
+                    == Some(cred_id.as_str())
+                {
                     c["ServicePassword"] = json!(random_password());
                     updated = Some(c.clone());
                     break;
@@ -2849,13 +3479,23 @@ impl IamHandler {
             }
         }
         match updated {
-            Some(c) => AwsResponse::xml(200, "ResetServiceSpecificCredential",
-                format!("<ServiceSpecificCredential>{}</ServiceSpecificCredential>", self.ssc_xml(&c))),
+            Some(c) => AwsResponse::xml(
+                200,
+                "ResetServiceSpecificCredential",
+                format!(
+                    "<ServiceSpecificCredential>{}</ServiceSpecificCredential>",
+                    self.ssc_xml(&c)
+                ),
+            ),
             None => err(404, "NoSuchEntity", "Service specific credential not found"),
         }
     }
 
-    fn set_service_specific_credential_status(&self, req: &AwsRequest, status: &str) -> AwsResponse {
+    fn set_service_specific_credential_status(
+        &self,
+        req: &AwsRequest,
+        status: &str,
+    ) -> AwsResponse {
         let state = self.get_state(req.account);
         let username = get_param(req, "UserName").unwrap_or_default();
         let cred_id = get_param(req, "ServiceSpecificCredentialId").unwrap_or_default();
@@ -2863,7 +3503,10 @@ impl IamHandler {
         let mut found = false;
         if let Some(list) = creds_map.get_mut(&username) {
             for c in list.iter_mut() {
-                if c.get("ServiceSpecificCredentialId").and_then(|v| v.as_str()) == Some(cred_id.as_str()) {
+                if c.get("ServiceSpecificCredentialId")
+                    .and_then(|v| v.as_str())
+                    == Some(cred_id.as_str())
+                {
                     c["Status"] = json!(status);
                     found = true;
                 }
@@ -2883,7 +3526,11 @@ impl IamHandler {
         let mut found = false;
         if let Some(list) = creds_map.get_mut(&username) {
             let before = list.len();
-            list.retain(|c| c.get("ServiceSpecificCredentialId").and_then(|v| v.as_str()) != Some(cred_id.as_str()));
+            list.retain(|c| {
+                c.get("ServiceSpecificCredentialId")
+                    .and_then(|v| v.as_str())
+                    != Some(cred_id.as_str())
+            });
             found = list.len() < before;
         }
         if !found {
@@ -2904,20 +3551,23 @@ impl IamHandler {
 
         // Resolve the service segment of the role name (moto semantics)
         let parts: Vec<&str> = service_name.split('.').collect();
-        let service_part = if parts.len() >= 3 { parts[parts.len() - 3] } else { parts[0] };
+        let service_part = if parts.len() >= 3 {
+            parts[parts.len() - 3]
+        } else {
+            parts[0]
+        };
         let prefix_part = parts[0];
         let service = if service_part != prefix_part {
-            let prefix_cap = prefix_part
-                .split('-')
-                .map(capitalize)
-                .collect::<String>();
-            let base = SERVICE_NAME_CONVERSION.iter()
+            let prefix_cap = prefix_part.split('-').map(capitalize).collect::<String>();
+            let base = SERVICE_NAME_CONVERSION
+                .iter()
                 .find(|(s, _)| *s == service_part)
                 .map(|(_, v)| *v)
                 .unwrap_or(service_part);
             format!("{}_{}", base, prefix_cap)
         } else {
-            SERVICE_NAME_CONVERSION.iter()
+            SERVICE_NAME_CONVERSION
+                .iter()
                 .find(|(s, _)| *s == service_part)
                 .map(|(_, v)| v.to_string())
                 .unwrap_or_else(|| service_part.to_string())
@@ -2934,14 +3584,24 @@ impl IamHandler {
                 "Effect": "Allow",
                 "Principal": {"Service": [service_name]}
             }]
-        }).to_string();
+        })
+        .to_string();
 
         let path = format!("/aws-service-role/{}/", service_name);
         let state = self.get_state(req.account);
         let role = Arc::new(Role::full(
-            req.account, role_name.clone(), path,
-            trust_doc, description, 3600, true));
-        state.roles.write().insert(role.role_name.clone(), role.clone());
+            req.account,
+            role_name.clone(),
+            path,
+            trust_doc,
+            description,
+            3600,
+            true,
+        ));
+        state
+            .roles
+            .write()
+            .insert(role.role_name.clone(), role.clone());
         AwsResponse::xml(200, "CreateServiceLinkedRole", self.role_xml(&role, true))
     }
 
@@ -2949,19 +3609,29 @@ impl IamHandler {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let state = self.get_state(req.account);
         state.roles.write().remove(&role_name);
-        AwsResponse::xml(200, "DeleteServiceLinkedRole",
-            format!("<DeletionTaskId>{}</DeletionTaskId>", uuid::Uuid::new_v4()))
+        AwsResponse::xml(
+            200,
+            "DeleteServiceLinkedRole",
+            format!("<DeletionTaskId>{}</DeletionTaskId>", uuid::Uuid::new_v4()),
+        )
     }
 
     fn get_service_linked_role_deletion_status(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::xml(200, "GetServiceLinkedRoleDeletionStatus", "<Status>SUCCEEDED</Status>".into())
+        AwsResponse::xml(
+            200,
+            "GetServiceLinkedRoleDeletionStatus",
+            "<Status>SUCCEEDED</Status>".into(),
+        )
     }
 
     // ---------------- Reports ----------------
 
     fn generate_credential_report(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::xml(200, "GenerateCredentialReport",
-            "<State>COMPLETE</State><Description/>".into())
+        AwsResponse::xml(
+            200,
+            "GenerateCredentialReport",
+            "<State>COMPLETE</State><Description/>".into(),
+        )
     }
 
     fn get_credential_report(&self, req: &AwsRequest) -> AwsResponse {
@@ -2971,12 +3641,16 @@ impl IamHandler {
         {
             let users = state.users.read();
             for user in users.values() {
-                let mfa_on = state.virtual_mfas.read().values()
+                let mfa_on = state
+                    .virtual_mfas
+                    .read()
+                    .values()
                     .any(|d| d.assigned_user.read().as_deref() == Some(user.username.as_str()));
                 let has_password = state.login_profiles.read().contains_key(&user.username);
                 csv.push_str(&format!(
                     "\n{},{},,,,{},{}",
-                    user.username, user.arn,
+                    user.username,
+                    user.arn,
                     if has_password { "TRUE" } else { "FALSE" },
                     if mfa_on { 1 } else { 0 }
                 ));
@@ -3015,14 +3689,26 @@ impl IamHandler {
                     docs[i].0))
                 .collect::<Vec<_>>()
                 .join("");
-            let decision = if matched.is_empty() { "implicitDeny" } else { "allowed" };
+            let decision = if matched.is_empty() {
+                "implicitDeny"
+            } else {
+                "allowed"
+            };
             body.push_str(&format!(
                 "<member><EvalActionName>{}</EvalActionName><EvalResourceName>*</EvalResourceName><EvalDecision>{}</EvalDecision><MatchedStatements>{}</MatchedStatements><MissingContextValues></MissingContextValues></member>",
                 xml_escape(action), decision, matched
             ));
         }
         body.push_str("</EvaluationResults>");
-        AwsResponse::xml(200, if principal { "SimulatePrincipalPolicy" } else { "SimulateCustomPolicy" }, body)
+        AwsResponse::xml(
+            200,
+            if principal {
+                "SimulatePrincipalPolicy"
+            } else {
+                "SimulateCustomPolicy"
+            },
+            body,
+        )
     }
 
     fn docs_for_principal(&self, state: &IamState, source_arn: &str) -> Vec<(String, String)> {
@@ -3055,10 +3741,18 @@ impl IamHandler {
         docs
     }
 
-    fn push_attached_docs(&self, state: &IamState, arns: &[String], docs: &mut Vec<(String, String)>) {
+    fn push_attached_docs(
+        &self,
+        state: &IamState,
+        arns: &[String],
+        docs: &mut Vec<(String, String)>,
+    ) {
         for (i, arn) in arns.iter().enumerate() {
             if let Some(p) = state.get_policy(arn) {
-                docs.push((format!("AttachedPolicy{}", i + 1), p.policy_document.read().clone()));
+                docs.push((
+                    format!("AttachedPolicy{}", i + 1),
+                    p.policy_document.read().clone(),
+                ));
             }
         }
     }
@@ -3086,14 +3780,25 @@ impl IamHandler {
             body.push_str(&format!("<member>{}</member>", xml_escape(k)));
         }
         body.push_str("</ContextKeyNames>");
-        AwsResponse::xml(200, if principal { "GetContextKeysForPrincipalPolicy" } else { "GetContextKeysForCustomPolicy" }, body)
+        AwsResponse::xml(
+            200,
+            if principal {
+                "GetContextKeysForPrincipalPolicy"
+            } else {
+                "GetContextKeysForCustomPolicy"
+            },
+            body,
+        )
     }
 
     // ---------------- Service last accessed details ----------------
 
     fn generate_service_last_accessed_details(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::xml(200, "GenerateServiceLastAccessedDetails",
-            format!("<JobId>{}</JobId>", uuid::Uuid::new_v4()))
+        AwsResponse::xml(
+            200,
+            "GenerateServiceLastAccessedDetails",
+            format!("<JobId>{}</JobId>", uuid::Uuid::new_v4()),
+        )
     }
 
     fn get_service_last_accessed_details(&self, req: &AwsRequest) -> AwsResponse {
@@ -3152,7 +3857,10 @@ impl IamHandler {
     // ---------------- Organization stubs ----------------
 
     fn org_features(&self, req: &AwsRequest, features: Vec<&str>) -> AwsResponse {
-        let mut body = format!("<OrganizationId>{}</OrganizationId><EnabledFeatures>", "o-stub00000000");
+        let mut body = format!(
+            "<OrganizationId>{}</OrganizationId><EnabledFeatures>",
+            "o-stub00000000"
+        );
         for f in &features {
             body.push_str(&format!("<member>{}</member>", f));
         }
@@ -3174,7 +3882,9 @@ impl IamHandler {
 
 /// Escape &, <, > for embedding a string in XML text content.
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn escape_policy(s: &str) -> String {
@@ -3191,38 +3901,61 @@ fn empty_ok(op: &str) -> AwsResponse {
 
 /// Ops that only need an empty 200 response.
 fn is_known_noop(op: &str) -> bool {
-    matches!(op,
+    matches!(
+        op,
         "UpdateOpenIDConnectProvider"
-        | "SetSecurityTokenServicePreferences"
-        | "PutUserPermissionsBoundary" | "DeleteUserPermissionsBoundary"
-        | "PutRolePermissionsBoundary" | "DeleteRolePermissionsBoundary"
-        | "PutGroupPermissionsBoundary" | "RemoveGroupPermissionsBoundary"
-        | "CreateContextKey" | "DeleteContextKey" | "PutContextKey" | "GetContextKeyPolicy"
-        | "TagVirtualMFADevice" | "UntagVirtualMFADevice"
-        | "ListPoliciesGrantingServiceAccess"
-        | "GenerateOrganizationsAccessReport" | "GetOrganizationsAccessReport"
-        | "GetOutboundWebIdentityFederationInfo"
-        | "EnableOutboundWebIdentityFederation" | "DisableOutboundWebIdentityFederation"
-        | "EnableOutboundsWebIdentityFederation" | "DisableOutboundsWebIdentityFederation"
-        | "SendDelegationToken" | "UpdateDelegationRequest" | "AcceptDelegationRequest"
-        | "RejectDelegationRequest" | "AssociateDelegationRequest"
-        | "CreateDelegationRequest" | "GetDelegationRequest"
-        | "ListCertificates"
-        | "GetServiceLastAccessed" | "GetServiceLastAccessedByExternalAccount"
-        | "ListOpenIDConnectProviderTagsUnused" // defensive: handled explicitly above
+            | "SetSecurityTokenServicePreferences"
+            | "PutUserPermissionsBoundary"
+            | "DeleteUserPermissionsBoundary"
+            | "PutRolePermissionsBoundary"
+            | "DeleteRolePermissionsBoundary"
+            | "PutGroupPermissionsBoundary"
+            | "RemoveGroupPermissionsBoundary"
+            | "CreateContextKey"
+            | "DeleteContextKey"
+            | "PutContextKey"
+            | "GetContextKeyPolicy"
+            | "TagVirtualMFADevice"
+            | "UntagVirtualMFADevice"
+            | "ListPoliciesGrantingServiceAccess"
+            | "GenerateOrganizationsAccessReport"
+            | "GetOrganizationsAccessReport"
+            | "GetOutboundWebIdentityFederationInfo"
+            | "EnableOutboundWebIdentityFederation"
+            | "DisableOutboundWebIdentityFederation"
+            | "EnableOutboundsWebIdentityFederation"
+            | "DisableOutboundsWebIdentityFederation"
+            | "SendDelegationToken"
+            | "UpdateDelegationRequest"
+            | "AcceptDelegationRequest"
+            | "RejectDelegationRequest"
+            | "AssociateDelegationRequest"
+            | "CreateDelegationRequest"
+            | "GetDelegationRequest"
+            | "ListCertificates"
+            | "GetServiceLastAccessed"
+            | "GetServiceLastAccessedByExternalAccount"
+            | "ListOpenIDConnectProviderTagsUnused" // defensive: handled explicitly above
     )
 }
 
 /// The account of a state snapshot: IAM is a global service stored per
 /// account; profile/cert ARNs are rendered from the default account used by
 /// the compat tests (the request account is accessible in the handler).
-fn state_account_id(_state: &IamState) -> u64 { 123456789012 }
-
+fn state_account_id(_state: &IamState) -> u64 {
+    123456789012
+}
 
 /// Embedded form of a value to text for XML.
 fn format_value(v: &Value) -> String {
     match v {
-        Value::Bool(b) => if *b { "true".into() } else { "false".into() },
+        Value::Bool(b) => {
+            if *b {
+                "true".into()
+            } else {
+                "false".into()
+            }
+        }
         Value::Number(n) => n.to_string(),
         Value::String(s) => s.clone(),
         _ => v.to_string(),
@@ -3244,7 +3977,12 @@ fn bool_of(v: Option<String>) -> bool {
     v.map(|s| s == "true" || s == "True").unwrap_or(false)
 }
 
-fn bool_param(req: &AwsRequest, map: &mut serde_json::Map<String, Value>, key: &str, default: bool) {
+fn bool_param(
+    req: &AwsRequest,
+    map: &mut serde_json::Map<String, Value>,
+    key: &str,
+    default: bool,
+) {
     let val = match get_param(req, key) {
         Some(v) => v == "true" || v == "True",
         None => default,
@@ -3292,7 +4030,8 @@ fn attached_policy_item(arn: &str) -> String {
     let name = arn.rsplit('/').next().unwrap_or("");
     format!(
         "<member><PolicyName>{}</PolicyName><PolicyArn>{}</PolicyArn></member>",
-        xml_escape(name), xml_escape(arn)
+        xml_escape(name),
+        xml_escape(arn)
     )
 }
 
@@ -3330,7 +4069,10 @@ fn parse_member_structs(params: &Value, prefix: &str) -> Vec<Value> {
             if let Some(rest) = rest.strip_prefix("member.") {
                 if let Some((idx_str, field)) = rest.split_once('.') {
                     if let Ok(idx) = idx_str.parse::<usize>() {
-                        items.entry(idx).or_default().insert(field.to_string(), v.clone());
+                        items
+                            .entry(idx)
+                            .or_default()
+                            .insert(field.to_string(), v.clone());
                     }
                 }
             }
@@ -3352,7 +4094,8 @@ fn tag_upsert(target: &mut Vec<Value>, tags: Vec<Value>) {
 
 fn remove_tags(target: &mut Vec<Value>, keys: &[String]) {
     target.retain(|t| {
-        t.get("Key").and_then(|k| k.as_str())
+        t.get("Key")
+            .and_then(|k| k.as_str())
             .map(|k| !keys.contains(&k.to_string()))
             .unwrap_or(true)
     });
@@ -3377,9 +4120,12 @@ fn random_base32() -> String {
     let mut seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .subsec_nanos() as u64 ^ (uuid::Uuid::new_v4().as_u128() as u64);
+        .subsec_nanos() as u64
+        ^ (uuid::Uuid::new_v4().as_u128() as u64);
     for _ in 0..64 {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         out.push(CHARS[(seed >> 33) as usize % CHARS.len()] as char);
     }
     out
@@ -3413,10 +4159,18 @@ fn summary_entries(
     let policies = state.policies.read().len() as u64;
     let ips = state.instance_profiles.read().len() as u64;
     let certs = state.server_certs.read().len() as u64;
-    let access_keys = state.users.read().values()
-        .map(|u| u.access_keys.read().len()).sum::<usize>() as u64;
-    let signing_certs = state.users.read().values()
-        .map(|u| u.signing_certs.read().len()).sum::<usize>() as u64;
+    let access_keys = state
+        .users
+        .read()
+        .values()
+        .map(|u| u.access_keys.read().len())
+        .sum::<usize>() as u64;
+    let signing_certs = state
+        .users
+        .read()
+        .values()
+        .map(|u| u.signing_certs.read().len())
+        .sum::<usize>() as u64;
     vec![
         ("AccountAccessKeysPresent", access_keys),
         ("AccountMFAEnabled", 0),
@@ -3457,21 +4211,30 @@ fn action_matches(doc: &str, action: &str) -> bool {
         Ok(v) => v,
         Err(_) => return false,
     };
-    let statements = value.get("Statement").cloned().unwrap_or_else(|| {
-        value.get("statement").cloned().unwrap_or(json!([]))
-    });
+    let statements = value
+        .get("Statement")
+        .cloned()
+        .unwrap_or_else(|| value.get("statement").cloned().unwrap_or(json!([])));
     let stmt_list: Vec<Value> = if statements.is_array() {
         statements.as_array().cloned().unwrap_or_default()
     } else {
         vec![statements]
     };
     for stmt in &stmt_list {
-        if stmt.get("Effect").and_then(|e| e.as_str()).map(|e| e != "Allow").unwrap_or(false) {
+        if stmt
+            .get("Effect")
+            .and_then(|e| e.as_str())
+            .map(|e| e != "Allow")
+            .unwrap_or(false)
+        {
             continue;
         }
         let actions_in_stmt = match stmt.get("Action") {
             Some(Value::String(s)) => vec![s.clone()],
-            Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect(),
             _ => continue,
         };
         for pattern in actions_in_stmt {
@@ -3484,7 +4247,9 @@ fn action_matches(doc: &str, action: &str) -> bool {
 }
 
 impl Default for IamHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn glob_match(pattern: &str, text: &str) -> bool {
@@ -3495,9 +4260,7 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         Some((p, s)) => (p, s),
         None => return pattern == text,
     };
-    text.len() >= prefix.len() + suffix.len()
-        && text.starts_with(prefix)
-        && text.ends_with(suffix)
+    text.len() >= prefix.len() + suffix.len() && text.starts_with(prefix) && text.ends_with(suffix)
 }
 
 /// Extract Condition keys from a policy JSON document.
@@ -3531,7 +4294,9 @@ fn collect_keys(v: &Value, keys: &mut Vec<String>) {
             }
         }
         Value::Array(arr) => {
-            for x in arr { collect_keys(x, keys); }
+            for x in arr {
+                collect_keys(x, keys);
+            }
         }
         _ => {}
     }
@@ -3567,30 +4332,49 @@ mod tests {
     #[test]
     fn test_create_role_with_path_and_max_session() {
         let handler = IamHandler::new();
-        handler.handle(make_req("CreateRole", json!({
-            "RoleName": "path-role",
-            "AssumeRolePolicyDocument": "{\"Version\":\"2012-10-17\"}",
-            "Path": "/custom/",
-            "MaxSessionDuration": "7200"
-        })));
+        handler.handle(make_req(
+            "CreateRole",
+            json!({
+                "RoleName": "path-role",
+                "AssumeRolePolicyDocument": "{\"Version\":\"2012-10-17\"}",
+                "Path": "/custom/",
+                "MaxSessionDuration": "7200"
+            }),
+        ));
         let resp = handler.handle(make_req("GetRole", json!({ "RoleName": "path-role" })));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("<Path>/custom/</Path>"));
-        assert!(resp.body.contains("<MaxSessionDuration>7200</MaxSessionDuration>"));
+        assert!(resp
+            .body
+            .contains("<MaxSessionDuration>7200</MaxSessionDuration>"));
         assert!(resp.body.contains("role/custom/path-role"));
     }
 
     #[test]
     fn test_policy_versions_crud() {
         let handler = IamHandler::new();
-        let create = handler.handle(make_req("CreatePolicy", json!({
-            "PolicyName": "ver-pol",
-            "PolicyDocument": "{}"
-        })));
-        let arn = create.body.split("<Arn>").nth(1).unwrap().split("<").next().unwrap().to_string();
-        let v2 = handler.handle(make_req("CreatePolicyVersion", json!({
-            "PolicyArn": arn, "PolicyDocument": "{\"a\":1}", "SetAsDefault": "true"
-        })));
+        let create = handler.handle(make_req(
+            "CreatePolicy",
+            json!({
+                "PolicyName": "ver-pol",
+                "PolicyDocument": "{}"
+            }),
+        ));
+        let arn = create
+            .body
+            .split("<Arn>")
+            .nth(1)
+            .unwrap()
+            .split("<")
+            .next()
+            .unwrap()
+            .to_string();
+        let v2 = handler.handle(make_req(
+            "CreatePolicyVersion",
+            json!({
+                "PolicyArn": arn, "PolicyDocument": "{\"a\":1}", "SetAsDefault": "true"
+            }),
+        ));
         assert!(v2.body.contains("<VersionId>v2</VersionId>"));
         let list = handler.handle(make_req("ListPolicyVersions", json!({ "PolicyArn": arn })));
         assert!(list.body.contains("v1"));
@@ -3601,19 +4385,34 @@ mod tests {
     #[test]
     fn test_virtual_mfa_lifecycle() {
         let handler = IamHandler::new();
-        let create = handler.handle(make_req("CreateVirtualMFADevice", json!({
-            "VirtualMFADeviceName": "vmfa-unit"
-        })));
+        let create = handler.handle(make_req(
+            "CreateVirtualMFADevice",
+            json!({
+                "VirtualMFADeviceName": "vmfa-unit"
+            }),
+        ));
         assert!(create.body.contains("Base32StringSeed"));
-        let serial = create.body.split("<SerialNumber>").nth(1).unwrap()
-            .split("<").next().unwrap().to_string();
+        let serial = create
+            .body
+            .split("<SerialNumber>")
+            .nth(1)
+            .unwrap()
+            .split("<")
+            .next()
+            .unwrap()
+            .to_string();
         let list = handler.handle(make_req("ListVirtualMFADevices", json!({})));
         assert!(list.body.contains("vmfa-unit"));
-        handler.handle(make_req("DeleteVirtualMFADevice", json!({ "SerialNumber": serial })));
+        handler.handle(make_req(
+            "DeleteVirtualMFADevice",
+            json!({ "SerialNumber": serial }),
+        ));
         let list2 = handler.handle(make_req("ListVirtualMFADevices", json!({})));
         assert!(!list2.body.contains("vmfa-unit"));
-        let missing = handler.handle(make_req("DeleteVirtualMFADevice",
-            json!({ "SerialNumber": "arn:aws:iam::123456789012:mfa/nothing" })));
+        let missing = handler.handle(make_req(
+            "DeleteVirtualMFADevice",
+            json!({ "SerialNumber": "arn:aws:iam::123456789012:mfa/nothing" }),
+        ));
         assert_eq!(missing.status, 404);
         assert!(missing.body.contains("NoSuchEntity"));
     }
@@ -3621,17 +4420,32 @@ mod tests {
     #[test]
     fn test_oidc_provider_client_ids() {
         let handler = IamHandler::new();
-        let create = handler.handle(make_req("CreateOpenIDConnectProvider", json!({
-            "Url": "https://unit.example.com",
-            "ThumbprintList": ["a"],
-            "ClientIDList": ["one"]
-        })));
-        let arn = create.body.split("<OpenIDConnectProviderArn>").nth(1).unwrap()
-            .split("<").next().unwrap().to_string();
-        handler.handle(make_req("AddClientIDToOpenIDConnectProvider",
-            json!({ "OpenIDConnectProviderArn": arn, "ClientID": "two" })));
-        let get = handler.handle(make_req("GetOpenIDConnectProvider", json!({
-            "OpenIDConnectProviderArn": arn })));
+        let create = handler.handle(make_req(
+            "CreateOpenIDConnectProvider",
+            json!({
+                "Url": "https://unit.example.com",
+                "ThumbprintList": ["a"],
+                "ClientIDList": ["one"]
+            }),
+        ));
+        let arn = create
+            .body
+            .split("<OpenIDConnectProviderArn>")
+            .nth(1)
+            .unwrap()
+            .split("<")
+            .next()
+            .unwrap()
+            .to_string();
+        handler.handle(make_req(
+            "AddClientIDToOpenIDConnectProvider",
+            json!({ "OpenIDConnectProviderArn": arn, "ClientID": "two" }),
+        ));
+        let get = handler.handle(make_req(
+            "GetOpenIDConnectProvider",
+            json!({
+            "OpenIDConnectProviderArn": arn }),
+        ));
         assert!(get.body.contains("<member>one</member>"));
         assert!(get.body.contains("<member>two</member>"));
         assert!(get.body.contains("<Url>unit.example.com</Url>"));

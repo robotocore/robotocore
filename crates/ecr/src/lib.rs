@@ -13,13 +13,17 @@ pub struct DefaultEcrHandler {
 
 impl DefaultEcrHandler {
     pub fn new() -> Self {
-        Self { inner: handler::EcrHandler::new() }
-}
+        Self {
+            inner: handler::EcrHandler::new(),
+        }
+    }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
-}
+    }
 }
 
 impl Default for DefaultEcrHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

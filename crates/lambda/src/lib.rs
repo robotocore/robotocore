@@ -15,7 +15,9 @@ pub struct DefaultLambdaHandler {
 
 impl DefaultLambdaHandler {
     pub fn new() -> Self {
-        Self { inner: handler::LambdaHandler::new() }
+        Self {
+            inner: handler::LambdaHandler::new(),
+        }
     }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
@@ -23,5 +25,7 @@ impl DefaultLambdaHandler {
 }
 
 impl Default for DefaultLambdaHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

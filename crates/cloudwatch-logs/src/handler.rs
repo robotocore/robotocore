@@ -87,7 +87,11 @@ fn parse_token(tok: &str) -> Option<(char, usize)> {
                 return None;
             }
             let trimmed = rest.trim_start_matches('0');
-            let index = if trimmed.is_empty() { 0 } else { trimmed.parse::<usize>().ok()? };
+            let index = if trimmed.is_empty() {
+                0
+            } else {
+                trimmed.parse::<usize>().ok()?
+            };
             Some((d, index))
         }
         _ => None,
@@ -96,7 +100,9 @@ fn parse_token(tok: &str) -> Option<(char, usize)> {
 
 impl LogsHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
     }
 
     fn get_state(&self, account: u64, region: &str) -> LogsState {
@@ -176,7 +182,11 @@ impl LogsHandler {
         params
             .get(key)
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -273,21 +283,26 @@ impl LogsHandler {
             }
 
             // Group-level policies addressed by logGroupIdentifier.
-            "GetDataProtectionPolicy" | "PutDataProtectionPolicy"
-            | "DeleteDataProtectionPolicy" | "PutIndexPolicy" | "DeleteIndexPolicy"
-            | "PutBearerTokenAuthentication" | "PutLogGroupDeletionProtection" => {
-                self.group_identifier_guard(&req)
-            }
+            "GetDataProtectionPolicy"
+            | "PutDataProtectionPolicy"
+            | "DeleteDataProtectionPolicy"
+            | "PutIndexPolicy"
+            | "DeleteIndexPolicy"
+            | "PutBearerTokenAuthentication"
+            | "PutLogGroupDeletionProtection" => self.group_identifier_guard(&req),
             "GetTransformer" | "DeleteTransformer" => {
                 // Transformers are never stored: RNFE regardless (moto parity).
                 Self::not_found("The specified log group does not have a transformer.")
             }
 
-            "GetLogGroupFields" => AwsResponse::json(200, json!({ "logGroupFields": [
-                { "name": "@timestamp", "percent": 100 },
-                { "name": "@message", "percent": 100 },
-                { "name": "@logStream", "percent": 100 },
-            ]})),
+            "GetLogGroupFields" => AwsResponse::json(
+                200,
+                json!({ "logGroupFields": [
+                    { "name": "@timestamp", "percent": 100 },
+                    { "name": "@message", "percent": 100 },
+                    { "name": "@logStream", "percent": 100 },
+                ]}),
+            ),
             "GetLogFields" => AwsResponse::json(200, json!({})),
             "ListLogGroups" => self.list_log_groups(&req),
             "ListAggregateLogGroupSummaries" => {
@@ -352,15 +367,25 @@ impl LogsHandler {
         let kms = Self::str_param(&req.params, "kmsKeyId");
         let group = LogGroupRec {
             name: name.clone(),
-            arn: format!("arn:aws:logs:{}:{}:log-group:{}", req.region, req.account, name),
+            arn: format!(
+                "arn:aws:logs:{}:{}:log-group:{}",
+                req.region, req.account, name
+            ),
             creation_time: now_millis(),
             retention_in_days: None,
-            kms_key_id: if kms.is_empty() { None } else { Some(kms.to_string()) },
+            kms_key_id: if kms.is_empty() {
+                None
+            } else {
+                Some(kms.to_string())
+            },
             streams: BTreeMap::new(),
             tags: tags_param(&req.params, "tags"),
         };
         if !group.tags.is_empty() {
-            state.arn_tags.write().insert(group.arn.clone(), group.tags.clone());
+            state
+                .arn_tags
+                .write()
+                .insert(group.arn.clone(), group.tags.clone());
         }
         state.log_groups.write().insert(name, group);
         AwsResponse::json(200, json!({}))
@@ -376,7 +401,10 @@ impl LogsHandler {
             .subscription_filters
             .write()
             .retain(|f| f.log_group_name != name);
-        state.metric_filters.write().retain(|f| f.log_group_name != name);
+        state
+            .metric_filters
+            .write()
+            .retain(|f| f.log_group_name != name);
         AwsResponse::json(200, json!({}))
     }
 
@@ -392,10 +420,13 @@ impl LogsHandler {
             .map(|(_, g)| Self::group_json(g))
             .take(limit)
             .collect();
-        AwsResponse::json(200, json!({
-            "logGroups": groups,
-            "nextToken": Value::Null
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "logGroups": groups,
+                "nextToken": Value::Null
+            }),
+        )
     }
 
     fn get_log_group(&self, req: &AwsRequest) -> AwsResponse {
@@ -460,7 +491,11 @@ impl LogsHandler {
         let mut groups = state.log_groups.write();
         match groups.get_mut(&name) {
             Some(g) => {
-                g.kms_key_id = if associate { Some(key.to_string()) } else { None };
+                g.kms_key_id = if associate {
+                    Some(key.to_string())
+                } else {
+                    None
+                };
                 AwsResponse::json(200, json!({}))
             }
             None => Self::missing_group(),
@@ -494,7 +529,8 @@ impl LogsHandler {
         let mut found = false;
         let mut matched_arn: Option<String> = None;
         for g in groups.values_mut() {
-            if (by_name && g.name == name) || (!by_name && g.arn == Self::arn_without_suffix(&arn)) {
+            if (by_name && g.name == name) || (!by_name && g.arn == Self::arn_without_suffix(&arn))
+            {
                 found = true;
                 matched_arn = Some(g.arn.clone());
                 for (k, v) in set {
@@ -536,12 +572,7 @@ impl LogsHandler {
     fn list_tags_for_resource(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let arn = Self::arn_without_suffix(Self::str_param(&req.params, "resourceArn"));
-        let tags = state
-            .arn_tags
-            .read()
-            .get(&arn)
-            .cloned()
-            .unwrap_or_default();
+        let tags = state.arn_tags.read().get(&arn).cloned().unwrap_or_default();
         AwsResponse::json(200, json!({ "tags": tags }))
     }
 
@@ -645,12 +676,18 @@ impl LogsHandler {
                 if descending {
                     streams.reverse();
                 }
-                let page: Vec<Value> =
-                    streams.iter().take(limit).map(|s| Self::stream_json(s)).collect();
-                AwsResponse::json(200, json!({
-                    "logStreams": page,
-                    "nextToken": Value::Null
-                }))
+                let page: Vec<Value> = streams
+                    .iter()
+                    .take(limit)
+                    .map(|s| Self::stream_json(s))
+                    .collect();
+                AwsResponse::json(
+                    200,
+                    json!({
+                        "logStreams": page,
+                        "nextToken": Value::Null
+                    }),
+                )
             }
             None => Self::missing_group(),
         }
@@ -705,7 +742,11 @@ impl LogsHandler {
                 ingested.push(LogEventItem {
                     timestamp: ts,
                     ingestion_time: ingestion,
-                    message: e.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    message: e
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     event_id: next_event_id(),
                 });
             }
@@ -719,10 +760,16 @@ impl LogsHandler {
             let max_ts = ingested.iter().map(|e| e.timestamp).max();
             stream.upload_sequence_token = stream.upload_sequence_token.saturating_add(1);
             stream.stored_bytes += stored_len;
-            stream.first_event_timestamp =
-                stream.first_event_timestamp.zip(min_ts).map(|(a, b)| a.min(b)).or(min_ts);
-            stream.last_event_timestamp =
-                stream.last_event_timestamp.zip(max_ts).map(|(a, b)| a.max(b)).or(max_ts);
+            stream.first_event_timestamp = stream
+                .first_event_timestamp
+                .zip(min_ts)
+                .map(|(a, b)| a.min(b))
+                .or(min_ts);
+            stream.last_event_timestamp = stream
+                .last_event_timestamp
+                .zip(max_ts)
+                .map(|(a, b)| a.max(b))
+                .or(max_ts);
             stream.last_ingestion_time = Some(ingestion);
             stream.events.extend(ingested);
         }
@@ -798,21 +845,27 @@ impl LogsHandler {
         } else if start_index > final_index {
             // Past the end: empty page, tokens anchored at the last index.
             let anchor = final_index.max(0) as usize;
-            return AwsResponse::json(200, json!({
-                "events": [],
-                "nextForwardToken": token('f', anchor),
-                "nextBackwardToken": token('b', anchor),
-            }));
+            return AwsResponse::json(
+                200,
+                json!({
+                    "events": [],
+                    "nextForwardToken": token('f', anchor),
+                    "nextBackwardToken": token('b', anchor),
+                }),
+            );
         }
         if end_index > final_index {
             end_index = final_index;
         }
         if end_index < 0 {
-            return AwsResponse::json(200, json!({
-                "events": [],
-                "nextForwardToken": token('f', 0),
-                "nextBackwardToken": token('b', 0),
-            }));
+            return AwsResponse::json(
+                200,
+                json!({
+                    "events": [],
+                    "nextForwardToken": token('f', 0),
+                    "nextBackwardToken": token('b', 0),
+                }),
+            );
         }
 
         let page: Vec<Value> = events[(start_index as usize)..=(end_index as usize)]
@@ -826,11 +879,14 @@ impl LogsHandler {
             })
             .collect();
 
-        AwsResponse::json(200, json!({
-            "events": page,
-            "nextForwardToken": token('f', end_index.max(0) as usize),
-            "nextBackwardToken": token('b', start_index.max(0) as usize),
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "events": page,
+                "nextForwardToken": token('f', end_index.max(0) as usize),
+                "nextBackwardToken": token('b', start_index.max(0) as usize),
+            }),
+        )
     }
 
     fn filter_log_events(&self, req: &AwsRequest) -> AwsResponse {
@@ -917,11 +973,14 @@ impl LogsHandler {
             Value::Null
         };
 
-        AwsResponse::json(200, json!({
-            "events": page,
-            "searchedLogStreams": searched,
-            "nextToken": new_token
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "events": page,
+                "searchedLogStreams": searched,
+                "nextToken": new_token
+            }),
+        )
     }
 
     // ---- Insights queries ----
@@ -932,12 +991,13 @@ impl LogsHandler {
         if query_string.is_empty() {
             return Self::invalid_param("queryString is required");
         }
-        let start_time = params.get("startTime").and_then(|v| v.as_i64()).unwrap_or(0);
+        let start_time = params
+            .get("startTime")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         let end_time = params.get("endTime").and_then(|v| v.as_i64()).unwrap_or(0);
         if start_time >= end_time {
-            return Self::invalid_param(
-                "Queries must have a start time earlier than the end time",
-            );
+            return Self::invalid_param("Queries must have a start time earlier than the end time");
         }
         let mut log_groups = Self::str_vec(params, "logGroupNames");
         if log_groups.is_empty() {
@@ -976,10 +1036,16 @@ impl LogsHandler {
             "bytesScanned": matched * 16.0
         });
         let qid = uuid::Uuid::new_v4().to_string();
-        state.query_results.write().insert(qid.clone(), (rows, statistics));
+        state
+            .query_results
+            .write()
+            .insert(qid.clone(), (rows, statistics));
         state.queries.write().insert(
             qid.clone(),
-            QueryRec { query_id: qid.clone(), status: "Complete".to_string() },
+            QueryRec {
+                query_id: qid.clone(),
+                status: "Complete".to_string(),
+            },
         );
         AwsResponse::json(200, json!({ "queryId": qid }))
     }
@@ -991,13 +1057,15 @@ impl LogsHandler {
         match status {
             Some(status) => {
                 let found = state.query_results.read().get(qid).cloned();
-                let (results, statistics) = found
-                    .unwrap_or_else(|| (Vec::new(), json!({})));
-                AwsResponse::json(200, json!({
-                    "status": status,
-                    "results": results,
-                    "statistics": statistics
-                }))
+                let (results, statistics) = found.unwrap_or_else(|| (Vec::new(), json!({})));
+                AwsResponse::json(
+                    200,
+                    json!({
+                        "status": status,
+                        "results": results,
+                        "statistics": statistics
+                    }),
+                )
             }
             None => Self::not_found("Query not found"),
         }
@@ -1123,7 +1191,10 @@ impl LogsHandler {
             log_group_name: group_name.clone(),
             filter_name: filter_name.clone(),
             filter_pattern: Self::str_param(params, "filterPattern").to_string(),
-            metric_transformations: params.get("metricTransformations").cloned().unwrap_or(json!([])),
+            metric_transformations: params
+                .get("metricTransformations")
+                .cloned()
+                .unwrap_or(json!([])),
         };
         let mut filters = state.metric_filters.write();
         filters.retain(|f| !(f.log_group_name == group_name && f.filter_name == filter_name));
@@ -1196,7 +1267,10 @@ impl LogsHandler {
             existing.role_arn = Self::str_param(params, "roleArn").to_string();
             return AwsResponse::json(200, json!({}));
         }
-        let group_count = subs.iter().filter(|f| f.log_group_name == group_name).count();
+        let group_count = subs
+            .iter()
+            .filter(|f| f.log_group_name == group_name)
+            .count();
         if group_count >= 2 {
             return AwsResponse::error(
                 400,
@@ -1281,15 +1355,20 @@ impl LogsHandler {
             return Self::invalid_param("destinationName is required");
         }
         let state = self.get_state(req.account, &req.region);
-        let arn = format!("arn:aws:logs:{}:{}:destination:{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:logs:{}:{}:destination:{}",
+            req.region, req.account, name
+        );
         let mut destinations = state.destinations.write();
-        let destination = destinations.entry(name.clone()).or_insert_with(|| DestinationRec {
-            destination_name: name,
-            arn: arn.clone(),
-            target_arn: String::new(),
-            role_arn: String::new(),
-            access_policy: None,
-        });
+        let destination = destinations
+            .entry(name.clone())
+            .or_insert_with(|| DestinationRec {
+                destination_name: name,
+                arn: arn.clone(),
+                target_arn: String::new(),
+                role_arn: String::new(),
+                access_policy: None,
+            });
         let role_arn = Self::str_param(params, "roleArn").to_string();
         if !role_arn.is_empty() {
             destination.role_arn = role_arn;
@@ -1298,7 +1377,10 @@ impl LogsHandler {
         if !target_arn.is_empty() {
             destination.target_arn = target_arn;
         }
-        AwsResponse::json(200, json!({ "destination": Self::destination_json(destination) }))
+        AwsResponse::json(
+            200,
+            json!({ "destination": Self::destination_json(destination) }),
+        )
     }
 
     fn delete_destination(&self, req: &AwsRequest) -> AwsResponse {
@@ -1332,7 +1414,10 @@ impl LogsHandler {
         let policy = Self::str_param(&req.params, "accessPolicy").to_string();
         let state = self.get_state(req.account, &req.region);
         let mut destinations = state.destinations.write();
-        match destinations.values_mut().find(|d| d.destination_name == name) {
+        match destinations
+            .values_mut()
+            .find(|d| d.destination_name == name)
+        {
             Some(d) => {
                 d.access_policy = Some(policy);
                 AwsResponse::json(200, json!({}))
@@ -1354,25 +1439,30 @@ impl LogsHandler {
         }
         let state = self.get_state(req.account, &req.region);
         let mut policies = state.resource_policies.write();
-        let policy = policies.entry(name.clone()).or_insert_with(|| ResourcePolicyRec {
-            policy_name: name.clone(),
-            policy_document: document.clone(),
-            description: None,
-            last_updated_time: now_millis(),
-        });
+        let policy = policies
+            .entry(name.clone())
+            .or_insert_with(|| ResourcePolicyRec {
+                policy_name: name.clone(),
+                policy_document: document.clone(),
+                description: None,
+                last_updated_time: now_millis(),
+            });
         policy.policy_document = document;
         policy.last_updated_time = now_millis();
         let description = Self::str_param(&req.params, "description");
         if !description.is_empty() {
             policy.description = Some(description.to_string());
         }
-        AwsResponse::json(200, json!({
-            "resourcePolicy": {
-                "policyName": policy.policy_name,
-                "policyDocument": policy.policy_document,
-                "lastUpdatedTime": policy.last_updated_time
-            }
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "resourcePolicy": {
+                    "policyName": policy.policy_name,
+                    "policyDocument": policy.policy_document,
+                    "lastUpdatedTime": policy.last_updated_time
+                }
+            }),
+        )
     }
 
     fn describe_resource_policies(&self, req: &AwsRequest) -> AwsResponse {
@@ -1434,7 +1524,11 @@ impl LogsHandler {
         let task_name = Self::str_param(&req.params, "taskName");
         let task = ExportTaskRec {
             task_id: task_id.clone(),
-            task_name: if task_name.is_empty() { None } else { Some(task_name.to_string()) },
+            task_name: if task_name.is_empty() {
+                None
+            } else {
+                Some(task_name.to_string())
+            },
             log_group_name: group_name,
             destination: Self::str_param(&req.params, "destination").to_string(),
             from_time: req.params.get("from").and_then(|v| v.as_i64()).unwrap_or(0),
@@ -1471,12 +1565,23 @@ impl LogsHandler {
     // ---- anomaly detectors ----
 
     fn create_log_anomaly_detector(&self, req: &AwsRequest) -> AwsResponse {
-        let _arn_list = req.params.get("logGroupArnList").cloned().unwrap_or(json!([]));
+        let _arn_list = req
+            .params
+            .get("logGroupArnList")
+            .cloned()
+            .unwrap_or(json!([]));
         let detector_name = Self::str_param(&req.params, "detectorName");
         let frequency = Self::str_param(&req.params, "evaluationFrequency");
         if !frequency.is_empty()
-            && !["ONE_MIN", "FIVE_MIN", "TEN_MIN", "FIFTEEN_MIN", "THIRTY_MIN", "ONE_HOUR"]
-                .contains(&frequency)
+            && ![
+                "ONE_MIN",
+                "FIVE_MIN",
+                "TEN_MIN",
+                "FIFTEEN_MIN",
+                "THIRTY_MIN",
+                "ONE_HOUR",
+            ]
+            .contains(&frequency)
         {
             return Self::invalid_param(
                 "1 validation error detected: Value at 'evaluationFrequency' failed to satisfy constraint: Member must satisfy enum value set: [ONE_MIN, FIVE_MIN, TEN_MIN, FIFTEEN_MIN, THIRTY_MIN, ONE_HOUR]",
@@ -1496,7 +1601,11 @@ impl LogsHandler {
             arn.clone(),
             AnomalyDetectorRec {
                 arn: arn.clone(),
-                log_group_arn_list: req.params.get("logGroupArnList").cloned().unwrap_or(json!([])),
+                log_group_arn_list: req
+                    .params
+                    .get("logGroupArnList")
+                    .cloned()
+                    .unwrap_or(json!([])),
                 evaluation_frequency: if frequency.is_empty() {
                     None
                 } else {
@@ -1523,10 +1632,13 @@ impl LogsHandler {
         let state = self.get_state(req.account, &req.region);
         let found = state.anomaly_detectors.read().get(arn).cloned();
         match found {
-            Some(d) => AwsResponse::json(200, json!({
-                "anomalyDetectorArn": d.arn,
-                "enabled": d.enabled
-            })),
+            Some(d) => AwsResponse::json(
+                200,
+                json!({
+                    "anomalyDetectorArn": d.arn,
+                    "enabled": d.enabled
+                }),
+            ),
             None => Self::not_found("The specified anomaly detector does not exist."),
         }
     }
@@ -1537,9 +1649,14 @@ impl LogsHandler {
         let mut detectors = state.anomaly_detectors.write();
         match detectors.get_mut(arn) {
             Some(d) => {
-                let enabled = req.params.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                let enabled = req
+                    .params
+                    .get("enabled")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
                 d.enabled = enabled;
-                d.evaluation_frequency = Some(Self::str_param(&req.params, "evaluationFrequency").to_string());
+                d.evaluation_frequency =
+                    Some(Self::str_param(&req.params, "evaluationFrequency").to_string());
                 d.filter_pattern = Some(Self::str_param(&req.params, "filterPattern").to_string());
                 AwsResponse::json(200, json!({}))
             }
@@ -1594,7 +1711,11 @@ impl LogsHandler {
         }
         let scope = {
             let s = Self::str_param(params, "scope");
-            if s.is_empty() { "ALL".to_string() } else { s.to_string() }
+            if s.is_empty() {
+                "ALL".to_string()
+            } else {
+                s.to_string()
+            }
         };
         let state = self.get_state(req.account, &req.region);
         let policy = AccountPolicyRec {
@@ -1607,16 +1728,19 @@ impl LogsHandler {
         let updated = policy.last_updated_time;
         let key = format!("{policy_type}/{name}");
         state.account_policies.write().insert(key, policy);
-        AwsResponse::json(200, json!({
-            "accountPolicy": {
-                "accountId": req.account.to_string(),
-                "policyName": name,
-                "policyDocument": document,
-                "policyType": policy_type,
-                "scope": Self::str_param(params, "scope"),
-                "lastUpdatedTime": updated
-            }
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "accountPolicy": {
+                    "accountId": req.account.to_string(),
+                    "policyName": name,
+                    "policyDocument": document,
+                    "policyType": policy_type,
+                    "scope": Self::str_param(params, "scope"),
+                    "lastUpdatedTime": updated
+                }
+            }),
+        )
     }
 
     fn describe_account_policies(&self, req: &AwsRequest) -> AwsResponse {
@@ -1687,37 +1811,51 @@ impl LogsHandler {
         let state = self.get_state(req.account, &req.region);
         let source = DeliverySourceRec {
             name: name.clone(),
-            arn: format!("arn:aws:logs:{}:{}:delivery-source:{}", req.region, req.account, name),
+            arn: format!(
+                "arn:aws:logs:{}:{}:delivery-source:{}",
+                req.region, req.account, name
+            ),
             resource_arns: json!([resource_arn]),
             service: service.clone(),
             log_type: log_type.clone(),
         };
         state.delivery_sources.write().insert(name.clone(), source);
-        AwsResponse::json(200, json!({
-            "deliverySource": {
-                "name": name,
-                "arn": format!("arn:aws:logs:{}:{}:delivery-source:{}", req.region, req.account, name),
-                "resourceArns": [resource_arn],
-                "service": service,
-                "logType": log_type
-            }
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "deliverySource": {
+                    "name": name,
+                    "arn": format!("arn:aws:logs:{}:{}:delivery-source:{}", req.region, req.account, name),
+                    "resourceArns": [resource_arn],
+                    "service": service,
+                    "logType": log_type
+                }
+            }),
+        )
     }
 
     fn get_delivery_source(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::str_param(&req.params, "name");
         let state = self.get_state(req.account, &req.region);
-        let found = state.delivery_sources.read().values().find(|s| s.name == name).cloned();
+        let found = state
+            .delivery_sources
+            .read()
+            .values()
+            .find(|s| s.name == name)
+            .cloned();
         match found {
-            Some(source) => AwsResponse::json(200, json!({
-                "deliverySource": {
-                    "name": source.name,
-                    "arn": source.arn,
-                    "resourceArns": source.resource_arns,
-                    "service": source.service,
-                    "logType": source.log_type
-                }
-            })),
+            Some(source) => AwsResponse::json(
+                200,
+                json!({
+                    "deliverySource": {
+                        "name": source.name,
+                        "arn": source.arn,
+                        "resourceArns": source.resource_arns,
+                        "service": source.service,
+                        "logType": source.log_type
+                    }
+                }),
+            ),
             None => Self::not_found("Requested Delivery Source does not exist in this account."),
         }
     }
@@ -1765,7 +1903,10 @@ impl LogsHandler {
         let mut out = Map::new();
         out.insert("name".to_string(), json!(d.name));
         out.insert("arn".to_string(), json!(d.arn));
-        out.insert("deliveryDestinationType".to_string(), json!(d.delivery_destination_type));
+        out.insert(
+            "deliveryDestinationType".to_string(),
+            json!(d.delivery_destination_type),
+        );
         if let Some(f) = &d.output_format {
             out.insert("outputFormat".to_string(), json!(f));
         }
@@ -1810,19 +1951,25 @@ impl LogsHandler {
             configuration,
             policy: None,
         };
-        state.delivery_destinations.write().insert(name.clone(), dest);
-        AwsResponse::json(200, json!({
-            "deliveryDestination": {
-                "name": name,
-                "arn": format!("arn:aws:logs:{}:{}:delivery-destination:{}", req.region, req.account, name),
-                "deliveryDestinationType": destination_type,
-                "outputFormat": Self::str_param(params, "outputFormat"),
-                "deliveryDestinationConfiguration": params
-                    .get("deliveryDestinationConfiguration")
-                    .cloned()
-                    .unwrap_or(json!({}))
-            }
-        }))
+        state
+            .delivery_destinations
+            .write()
+            .insert(name.clone(), dest);
+        AwsResponse::json(
+            200,
+            json!({
+                "deliveryDestination": {
+                    "name": name,
+                    "arn": format!("arn:aws:logs:{}:{}:delivery-destination:{}", req.region, req.account, name),
+                    "deliveryDestinationType": destination_type,
+                    "outputFormat": Self::str_param(params, "outputFormat"),
+                    "deliveryDestinationConfiguration": params
+                        .get("deliveryDestinationConfiguration")
+                        .cloned()
+                        .unwrap_or(json!({}))
+                }
+            }),
+        )
     }
 
     fn get_delivery_destination(&self, req: &AwsRequest) -> AwsResponse {
@@ -1835,8 +1982,13 @@ impl LogsHandler {
             .find(|d| d.name == name)
             .cloned();
         match found {
-            Some(d) => AwsResponse::json(200, json!({ "deliveryDestination": Self::delivery_destination_json(&d) })),
-            None => Self::not_found("Requested Delivery Destination does not exist in this account."),
+            Some(d) => AwsResponse::json(
+                200,
+                json!({ "deliveryDestination": Self::delivery_destination_json(&d) }),
+            ),
+            None => {
+                Self::not_found("Requested Delivery Destination does not exist in this account.")
+            }
         }
     }
 
@@ -1845,7 +1997,9 @@ impl LogsHandler {
         let state = self.get_state(req.account, &req.region);
         let mut destinations = state.delivery_destinations.write();
         if !destinations.values().any(|d| d.name == name) {
-            return Self::not_found("Requested Delivery Destination does not exist in this account.");
+            return Self::not_found(
+                "Requested Delivery Destination does not exist in this account.",
+            );
         }
         destinations.retain(|_, d| d.name != name);
         AwsResponse::json(200, json!({}))
@@ -1869,18 +2023,27 @@ impl LogsHandler {
         match destinations.values_mut().find(|d| d.name == name) {
             Some(d) => {
                 if is_put {
-                    let policy = Self::str_param(&req.params, "deliveryDestinationPolicy").to_string();
+                    let policy =
+                        Self::str_param(&req.params, "deliveryDestinationPolicy").to_string();
                     d.policy = Some(policy.clone());
-                    AwsResponse::json(200, json!({
-                        "policy": { "deliveryDestinationPolicy": policy }
-                    }))
+                    AwsResponse::json(
+                        200,
+                        json!({
+                            "policy": { "deliveryDestinationPolicy": policy }
+                        }),
+                    )
                 } else {
-                    AwsResponse::json(200, json!({
-                        "policy": { "deliveryDestinationPolicy": d.policy.clone().unwrap_or_default() }
-                    }))
+                    AwsResponse::json(
+                        200,
+                        json!({
+                            "policy": { "deliveryDestinationPolicy": d.policy.clone().unwrap_or_default() }
+                        }),
+                    )
                 }
             }
-            None => Self::not_found("Requested Delivery Destination does not exist in this account."),
+            None => {
+                Self::not_found("Requested Delivery Destination does not exist in this account.")
+            }
         }
     }
 
@@ -1893,7 +2056,9 @@ impl LogsHandler {
                 d.policy = None;
                 AwsResponse::json(200, json!({}))
             }
-            None => Self::not_found("Requested Delivery Destination does not exist in this account."),
+            None => {
+                Self::not_found("Requested Delivery Destination does not exist in this account.")
+            }
         }
     }
 
@@ -1908,7 +2073,9 @@ impl LogsHandler {
             .values()
             .any(|d| d.arn == destination_arn);
         if !has_dest {
-            return Self::not_found("Requested Delivery Destination does not exist in this account.");
+            return Self::not_found(
+                "Requested Delivery Destination does not exist in this account.",
+            );
         }
         let sources = state.delivery_sources.read();
         let source = sources.values().find(|s| s.name == source_name);
@@ -1919,27 +2086,33 @@ impl LogsHandler {
         let id: String = uuid::Uuid::new_v4().simple().to_string()[..16].to_string();
         let delivery = DeliveryRec {
             id: id.clone(),
-            arn: format!("arn:aws:logs:{}:{}:delivery:{}", req.region, req.account, id),
+            arn: format!(
+                "arn:aws:logs:{}:{}:delivery:{}",
+                req.region, req.account, id
+            ),
             delivery_source_name: source_name.to_string(),
             delivery_destination_arn: destination_arn.to_string(),
             delivery_destination_type: destination_type.clone(),
         };
         state.deliveries.write().insert(id.clone(), delivery);
-        AwsResponse::json(200, json!({
-            "delivery": {
-                "id": id,
-                "arn": format!("arn:aws:logs:{}:{}:delivery:{}", req.region, req.account, id),
-                "deliverySourceName": source_name,
-                "deliveryDestinationArn": destination_arn,
-                "deliveryDestinationType": destination_type,
-                "recordFields": [
-                    "date", "time", "x-edge-location", "sc-bytes", "c-ip", "cs-method",
-                    "cs(Host)", "cs-uri-stem", "sc-status", "cs(Referer)", "cs(User-Agent)",
-                    "cs-uri-query", "cs(Cookie)", "x-edge-result-type", "x-edge-request-id",
-                    "x-host-header", "cs-protocol", "cs-bytes", "time-taken", "x-forwarded-for"
-                ]
-            }
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "delivery": {
+                    "id": id,
+                    "arn": format!("arn:aws:logs:{}:{}:delivery:{}", req.region, req.account, id),
+                    "deliverySourceName": source_name,
+                    "deliveryDestinationArn": destination_arn,
+                    "deliveryDestinationType": destination_type,
+                    "recordFields": [
+                        "date", "time", "x-edge-location", "sc-bytes", "c-ip", "cs-method",
+                        "cs(Host)", "cs-uri-stem", "sc-status", "cs(Referer)", "cs(User-Agent)",
+                        "cs-uri-query", "cs(Cookie)", "x-edge-result-type", "x-edge-request-id",
+                        "x-host-header", "cs-protocol", "cs-bytes", "time-taken", "x-forwarded-for"
+                    ]
+                }
+            }),
+        )
     }
 
     fn delivery_json(d: &DeliveryRec) -> Value {
@@ -1955,7 +2128,12 @@ impl LogsHandler {
     fn get_delivery(&self, req: &AwsRequest) -> AwsResponse {
         let id = Self::str_param(&req.params, "id");
         let state = self.get_state(req.account, &req.region);
-        let found = state.deliveries.read().values().find(|d| d.id == id).cloned();
+        let found = state
+            .deliveries
+            .read()
+            .values()
+            .find(|d| d.id == id)
+            .cloned();
         match found {
             Some(d) => AwsResponse::json(200, json!({ "delivery": Self::delivery_json(&d) })),
             None => Self::not_found("Requested Delivery does not exist in this account."),
@@ -1975,7 +2153,9 @@ impl LogsHandler {
 }
 
 impl Default for LogsHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -2004,26 +2184,35 @@ mod tests {
             json!({ "logGroupName": "/t", "logStreamName": "s" }),
         ));
         let now = now_millis();
-        handler.handle(make_req("PutLogEvents", json!({
-            "logGroupName": "/t",
-            "logStreamName": "s",
-            "logEvents": [
-                {"timestamp": now, "message": "one"},
-                {"timestamp": now + 1, "message": "two"}
-            ]
-        })));
-        let resp = handler.handle(make_req("GetLogEvents", json!({
-            "logGroupName": "/t", "logStreamName": "s", "startFromHead": true, "limit": 1
-        })));
+        handler.handle(make_req(
+            "PutLogEvents",
+            json!({
+                "logGroupName": "/t",
+                "logStreamName": "s",
+                "logEvents": [
+                    {"timestamp": now, "message": "one"},
+                    {"timestamp": now + 1, "message": "two"}
+                ]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "GetLogEvents",
+            json!({
+                "logGroupName": "/t", "logStreamName": "s", "startFromHead": true, "limit": 1
+            }),
+        ));
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(body["events"].as_array().unwrap().len(), 1);
         assert!(body["nextForwardToken"].as_str().unwrap().starts_with("f/"));
 
         // Follow the forward token.
         let next = body["nextForwardToken"].as_str().unwrap().to_string();
-        let resp2 = handler.handle(make_req("GetLogEvents", json!({
-            "logGroupName": "/t", "logStreamName": "s", "nextToken": next, "limit": 1
-        })));
+        let resp2 = handler.handle(make_req(
+            "GetLogEvents",
+            json!({
+                "logGroupName": "/t", "logStreamName": "s", "nextToken": next, "limit": 1
+            }),
+        ));
         let body2: Value = serde_json::from_str(&resp2.body).unwrap();
         assert_eq!(body2["events"][0]["message"], "two");
     }
@@ -2037,17 +2226,23 @@ mod tests {
             json!({ "logGroupName": "/f", "logStreamName": "s" }),
         ));
         let now = now_millis();
-        handler.handle(make_req("PutLogEvents", json!({
-            "logGroupName": "/f",
-            "logStreamName": "s",
-            "logEvents": [
-                {"timestamp": now, "message": "ERROR boom"},
-                {"timestamp": now + 1, "message": "INFO fine"}
-            ]
-        })));
-        let resp = handler.handle(make_req("FilterLogEvents", json!({
-            "logGroupName": "/f", "filterPattern": "ERROR"
-        })));
+        handler.handle(make_req(
+            "PutLogEvents",
+            json!({
+                "logGroupName": "/f",
+                "logStreamName": "s",
+                "logEvents": [
+                    {"timestamp": now, "message": "ERROR boom"},
+                    {"timestamp": now + 1, "message": "INFO fine"}
+                ]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "FilterLogEvents",
+            json!({
+                "logGroupName": "/f", "filterPattern": "ERROR"
+            }),
+        ));
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         let events = body["events"].as_array().unwrap();
         assert_eq!(events.len(), 1);
@@ -2066,15 +2261,24 @@ mod tests {
             "metricTransformations": [{"metricName": "E", "metricNamespace": "N", "metricValue": "1"}]
         })));
         assert_eq!(put.status, 200);
-        let desc = handler.handle(make_req("DescribeMetricFilters", json!({
-            "logGroupName": "/m", "filterNamePrefix": "mf"
-        })));
+        let desc = handler.handle(make_req(
+            "DescribeMetricFilters",
+            json!({
+                "logGroupName": "/m", "filterNamePrefix": "mf"
+            }),
+        ));
         let body: Value = serde_json::from_str(&desc.body).unwrap();
         assert_eq!(body["metricFilters"].as_array().unwrap().len(), 1);
-        handler.handle(make_req("DeleteMetricFilter", json!({
-            "logGroupName": "/m", "filterName": "mf"
-        })));
-        let after = handler.handle(make_req("DescribeMetricFilters", json!({ "logGroupName": "/m" })));
+        handler.handle(make_req(
+            "DeleteMetricFilter",
+            json!({
+                "logGroupName": "/m", "filterName": "mf"
+            }),
+        ));
+        let after = handler.handle(make_req(
+            "DescribeMetricFilters",
+            json!({ "logGroupName": "/m" }),
+        ));
         let body2: Value = serde_json::from_str(&after.body).unwrap();
         assert_eq!(body2["metricFilters"].as_array().unwrap().len(), 0);
     }
@@ -2083,13 +2287,19 @@ mod tests {
     fn test_retention_validation() {
         let handler = LogsHandler::new();
         handler.handle(make_req("CreateLogGroup", json!({ "logGroupName": "/r" })));
-        let bad = handler.handle(make_req("PutRetentionPolicy", json!({
-            "logGroupName": "/r", "retentionInDays": 999
-        })));
+        let bad = handler.handle(make_req(
+            "PutRetentionPolicy",
+            json!({
+                "logGroupName": "/r", "retentionInDays": 999
+            }),
+        ));
         assert_eq!(bad.status, 400);
-        let ok = handler.handle(make_req("PutRetentionPolicy", json!({
-            "logGroupName": "/r", "retentionInDays": 30
-        })));
+        let ok = handler.handle(make_req(
+            "PutRetentionPolicy",
+            json!({
+                "logGroupName": "/r", "retentionInDays": 30
+            }),
+        ));
         assert_eq!(ok.status, 200);
         let groups = handler.handle(make_req("DescribeLogGroups", json!({})));
         let body: Value = serde_json::from_str(&groups.body).unwrap();

@@ -23,7 +23,9 @@ fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
 
 impl StepfunctionsHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
     }
 
     fn get_state(&self, account: u64, region: &str) -> StepfunctionsState {
@@ -35,7 +37,10 @@ impl StepfunctionsHandler {
     }
 
     fn machine_arn(&self, req: &AwsRequest, name: &str) -> String {
-        format!("arn:aws:states:{}:{}:stateMachine:{}", req.region, req.account, name)
+        format!(
+            "arn:aws:states:{}:{}:stateMachine:{}",
+            req.region, req.account, name
+        )
     }
 
     // ---------------- State machine CRUD ----------------
@@ -60,7 +65,11 @@ impl StepfunctionsHandler {
         }
         let role_arn = param_str(req, &["roleArn"]);
         let sm_type = param_str(req, &["type"]);
-        let sm_type = if sm_type.is_empty() { "STANDARD".to_string() } else { sm_type };
+        let sm_type = if sm_type.is_empty() {
+            "STANDARD".to_string()
+        } else {
+            sm_type
+        };
         let creation_date = asl::now_f();
         let machine = Arc::new(StateMachine {
             name: name.clone(),
@@ -74,7 +83,10 @@ impl StepfunctionsHandler {
             state.tags.write().insert(arn.clone(), tags);
         }
         state.state_machines.write().insert(arn.clone(), machine);
-        AwsResponse::json(200, json!({ "stateMachineArn": arn, "creationDate": creation_date }))
+        AwsResponse::json(
+            200,
+            json!({ "stateMachineArn": arn, "creationDate": creation_date }),
+        )
     }
 
     fn delete_sm(&self, req: &AwsRequest) -> AwsResponse {
@@ -132,7 +144,10 @@ impl StepfunctionsHandler {
                 })
             })
             .collect();
-        AwsResponse::json(200, json!({ "stateMachines": rows, "nextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "stateMachines": rows, "nextToken": Value::Null }),
+        )
     }
 
     fn update_sm(&self, req: &AwsRequest) -> AwsResponse {
@@ -182,7 +197,11 @@ impl StepfunctionsHandler {
         };
         let exec_arn = format!("{sm_arn}:execution:{}", exec_name);
         let input = param_str(req, &["input"]);
-        let input = if input.is_empty() { "{}".to_string() } else { input };
+        let input = if input.is_empty() {
+            "{}".to_string()
+        } else {
+            input
+        };
         let exec = Arc::new(Execution {
             arn: exec_arn.clone(),
             name: exec_name,
@@ -196,13 +215,24 @@ impl StepfunctionsHandler {
             cause: RwLock::new(None),
             events: RwLock::new(Vec::new()),
         });
-        state.executions.write().insert(exec_arn.clone(), exec.clone());
+        state
+            .executions
+            .write()
+            .insert(exec_arn.clone(), exec.clone());
         asl::run_on_thread(exec, machine.definition_string());
-        AwsResponse::json(200, json!({ "executionArn": exec_arn, "startDate": asl::now_f() }))
+        AwsResponse::json(
+            200,
+            json!({ "executionArn": exec_arn, "startDate": asl::now_f() }),
+        )
     }
 
     /// Run an execution inline (StartSyncExecution); returns the exec record.
-    fn run_sync_execution(&self, state: &StepfunctionsState, machine: &StateMachine, input: String) -> Arc<Execution> {
+    fn run_sync_execution(
+        &self,
+        state: &StepfunctionsState,
+        machine: &StateMachine,
+        input: String,
+    ) -> Arc<Execution> {
         let name = uuid::Uuid::new_v4().to_string();
         let exec_arn = format!("{}:execution:{}", machine.arn, name);
         let arn = exec_arn.replace("stateMachine:", "express:");
@@ -219,7 +249,10 @@ impl StepfunctionsHandler {
             cause: RwLock::new(None),
             events: RwLock::new(Vec::new()),
         });
-        state.executions.write().insert(exec_arn.clone(), exec.clone());
+        state
+            .executions
+            .write()
+            .insert(exec_arn.clone(), exec.clone());
         // Run inline so the response carries the completed execution.
         exec.push_event(json!({
             "timestamp": asl::now_f(),
@@ -232,10 +265,14 @@ impl StepfunctionsHandler {
         }));
         let ctx = asl::Ctx::new(exec.clone());
         let result = (|| {
-            let def: Value = serde_json::from_str(&machine.definition_string()).unwrap_or(Value::Null);
-            let states = def.get("States").and_then(|s| s.as_object()).ok_or_else(|| {
-                asl::FlowError::new("States.StatesMissing", "States is required".to_string())
-            })?;
+            let def: Value =
+                serde_json::from_str(&machine.definition_string()).unwrap_or(Value::Null);
+            let states = def
+                .get("States")
+                .and_then(|s| s.as_object())
+                .ok_or_else(|| {
+                    asl::FlowError::new("States.StatesMissing", "States is required".to_string())
+                })?;
             let start_at = def
                 .get("StartAt")
                 .and_then(|s| s.as_str())
@@ -247,7 +284,8 @@ impl StepfunctionsHandler {
         let last_event_id = ctx.exec.events.read().len() as i64;
         match result {
             Ok(output) => {
-                ctx.exec.mark_succeeded(asl::value_to_string(&output), last_event_id);
+                ctx.exec
+                    .mark_succeeded(asl::value_to_string(&output), last_event_id);
             }
             Err(e) => ctx.exec.mark_failed(e.error, e.cause, last_event_id),
         }
@@ -257,7 +295,11 @@ impl StepfunctionsHandler {
     fn start_sync_execution(&self, req: &AwsRequest) -> AwsResponse {
         let sm_arn = param_str(req, &["stateMachineArn"]);
         let input = param_str(req, &["input"]);
-        let input = if input.is_empty() { "{}".to_string() } else { input };
+        let input = if input.is_empty() {
+            "{}".to_string()
+        } else {
+            input
+        };
         let state = self.get_state(req.account, &req.region);
         let Some(machine) = state.get_machine(&sm_arn) else {
             return AwsResponse::error(
@@ -351,7 +393,11 @@ impl StepfunctionsHandler {
 
     fn get_execution_history(&self, req: &AwsRequest) -> AwsResponse {
         let arn = param_str(req, &["executionArn"]);
-        let reverse = req.params.get("reverseOrder").and_then(|v| v.as_bool()).unwrap_or(false);
+        let reverse = req
+            .params
+            .get("reverseOrder")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let state = self.get_state(req.account, &req.region);
         let Some(exec) = state.get_execution(&arn) else {
             return AwsResponse::error(
@@ -419,13 +465,20 @@ impl StepfunctionsHandler {
                     .collect()
             })
             .unwrap_or_default();
-        AwsResponse::json(200, json!({ "stateMachineVersions": rows, "nextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "stateMachineVersions": rows, "nextToken": Value::Null }),
+        )
     }
 
     fn delete_version(&self, req: &AwsRequest) -> AwsResponse {
         let version_arn = param_str(req, &["stateMachineVersionArn"]);
         let Some((base, num_str)) = version_arn.rsplit_once(':') else {
-            return AwsResponse::error(400, "ValidationException", "stateMachineVersionArn is invalid");
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "stateMachineVersionArn is invalid",
+            );
         };
         let Ok(num) = num_str.parse::<u64>() else {
             return AwsResponse::error(400, "ValidationException", "Invalid version ARN");
@@ -470,7 +523,10 @@ impl StepfunctionsHandler {
             creation_date: now,
             update_date: RwLock::new(now),
         });
-        state.aliases.write().insert(alias_arn.clone(), alias.clone());
+        state
+            .aliases
+            .write()
+            .insert(alias_arn.clone(), alias.clone());
         AwsResponse::json(
             200,
             json!({ "stateMachineAliasArn": alias.arn, "creationDate": now }),
@@ -483,14 +539,25 @@ impl StepfunctionsHandler {
         let existing = state.aliases.read().get(&arn).cloned();
         match existing {
             Some(alias) => {
-                if let Some(routing) = req.params.get("routingConfiguration").and_then(|v| v.as_array()) {
+                if let Some(routing) = req
+                    .params
+                    .get("routingConfiguration")
+                    .and_then(|v| v.as_array())
+                {
                     *alias.routing_configuration.write() = routing.clone();
                 }
                 let now = asl::now_f();
                 *alias.update_date.write() = now;
-                AwsResponse::json(200, json!({ "stateMachineAliasArn": alias.arn, "updateDate": now }))
+                AwsResponse::json(
+                    200,
+                    json!({ "stateMachineAliasArn": alias.arn, "updateDate": now }),
+                )
             }
-            None => AwsResponse::error(400, "ResourceNotFound", &format!("Resource not found: '{arn}'")),
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFound",
+                &format!("Resource not found: '{arn}'"),
+            ),
         }
     }
 
@@ -507,7 +574,11 @@ impl StepfunctionsHandler {
         let existing = state.aliases.read().get(&arn).cloned();
         match existing {
             Some(alias) => AwsResponse::json(200, alias.describe_value()),
-            None => AwsResponse::error(400, "ResourceNotFound", &format!("Resource not found: '{arn}'")),
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFound",
+                &format!("Resource not found: '{arn}'"),
+            ),
         }
     }
 
@@ -521,14 +592,20 @@ impl StepfunctionsHandler {
             .filter(|alias| alias.arn.starts_with(&format!("{sm_arn}:")))
             .map(|alias| json!({ "stateMachineAliasArn": alias.arn, "creationDate": alias.creation_date }))
             .collect();
-        AwsResponse::json(200, json!({ "stateMachineAliases": rows, "nextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "stateMachineAliases": rows, "nextToken": Value::Null }),
+        )
     }
 
     // ---------------- Activities ----------------
 
     fn create_activity(&self, req: &AwsRequest) -> AwsResponse {
         let name = param_str(req, &["name"]);
-        let arn = format!("arn:aws:states:{}:{}:activity:{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:states:{}:{}:activity:{}",
+            req.region, req.account, name
+        );
         let now = asl::now_f();
         let state = self.get_state(req.account, &req.region);
         state.activities.write().insert(
@@ -609,10 +686,7 @@ impl StepfunctionsHandler {
         };
         let scheduled = activity.scheduled.read().clone();
         let token = uuid::Uuid::new_v4().to_string();
-        state
-            .task_tokens
-            .write()
-            .insert(token.clone(), arn.clone());
+        state.task_tokens.write().insert(token.clone(), arn.clone());
         // botocore drops null members, so an empty activity reports "" input
         // (JSON null would make the member vanish client-side).
         let input = if scheduled.is_null() {
@@ -673,7 +747,10 @@ impl StepfunctionsHandler {
     fn validate_definition(&self, req: &AwsRequest) -> AwsResponse {
         let definition = param_str(req, &["definition"]);
         match serde_json::from_str::<Value>(&definition) {
-            Ok(_) => AwsResponse::json(200, json!({ "result": "OK", "diagnostics": [], "truncated": false })),
+            Ok(_) => AwsResponse::json(
+                200,
+                json!({ "result": "OK", "diagnostics": [], "truncated": false }),
+            ),
             Err(_) => AwsResponse::json(
                 200,
                 json!({
@@ -702,7 +779,11 @@ impl StepfunctionsHandler {
         let state = self.get_state(req.account, &req.region);
         let mut existing = state.tags.read().get(&arn).cloned().unwrap_or_default();
         for tag in tags {
-            let key = tag.get("key").and_then(|k| k.as_str()).unwrap_or_default().to_string();
+            let key = tag
+                .get("key")
+                .and_then(|k| k.as_str())
+                .unwrap_or_default()
+                .to_string();
             let found = existing
                 .iter_mut()
                 .any(|t| t.get("key").and_then(|k| k.as_str()) == Some(key.as_str()));
@@ -726,7 +807,11 @@ impl StepfunctionsHandler {
             .params
             .get("tagKeys")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|k| k.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|k| k.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut existing = state.tags.read().get(&arn).cloned().unwrap_or_default();
@@ -831,11 +916,14 @@ mod tests {
     #[test]
     fn test_create_and_list_sms() {
         let handler = StepfunctionsHandler::new();
-        handler.handle(make_req("CreateStateMachine", json!({
-            "stateMachineName": "my-sm",
-            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
-            "definition": "{}"
-        })));
+        handler.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "my-sm",
+                "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                "definition": "{}"
+            }),
+        ));
         let resp = handler.handle(make_req("ListStateMachines", json!({})));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("my-sm"));
@@ -849,9 +937,12 @@ mod tests {
             "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
             "definition": "{\"StartAt\": \"Pass\", \"States\": {\"Pass\": {\"Type\": \"Pass\", \"End\": true}}}"
         })));
-        let resp = handler.handle(make_req("StartExecution", json!({
-            "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:exec-sm"
-        })));
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:exec-sm"
+            }),
+        ));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("executionArn"));
     }
@@ -872,15 +963,21 @@ mod tests {
             }
         })
         .to_string();
-        handler.handle(make_req("CreateStateMachine", json!({
-            "stateMachineName": "choice-sm",
-            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
-            "definition": definition
-        })));
-        let resp = handler.handle(make_req("StartExecution", json!({
-            "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:choice-sm",
-            "input": "{\"value\": 20}"
-        })));
+        handler.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "choice-sm",
+                "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                "definition": definition
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:choice-sm",
+                "input": "{\"value\": 20}"
+            }),
+        ));
         let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
         // Wait briefly for the engine thread to finish.
         for _ in 0..50 {
@@ -893,7 +990,10 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        let desc = body(&handler.handle(make_req("DescribeExecution", json!({ "executionArn": arn }))));
+        let desc = body(&handler.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
         assert_eq!(desc["status"], "SUCCEEDED");
         assert_eq!(
             serde_json::from_str::<Value>(desc["output"].as_str().unwrap()).unwrap(),

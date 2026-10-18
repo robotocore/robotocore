@@ -49,5 +49,7 @@ impl EcsState {
 }
 
 impl Default for EcsState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

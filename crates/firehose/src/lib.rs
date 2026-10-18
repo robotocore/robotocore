@@ -13,13 +13,17 @@ pub struct DefaultFirehoseHandler {
 
 impl DefaultFirehoseHandler {
     pub fn new() -> Self {
-        Self { inner: handler::FirehoseHandler::new() }
-}
+        Self {
+            inner: handler::FirehoseHandler::new(),
+        }
+    }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
-}
+    }
 }
 
 impl Default for DefaultFirehoseHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

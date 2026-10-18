@@ -145,7 +145,10 @@ pub fn bump_requests(service: &str) {
         .iter()
         .any(|(name, _, _, _)| *name == service);
     if known {
-        *REQUEST_COUNTS.write().entry(service.to_string()).or_insert(0) += 1;
+        *REQUEST_COUNTS
+            .write()
+            .entry(service.to_string())
+            .or_insert(0) += 1;
     }
 }
 

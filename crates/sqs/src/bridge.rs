@@ -6,7 +6,7 @@
 //! into the real queue when the SQS handler reads the queue, so per-instance
 //! unit-test isolation in the sqs crate is unaffected.
 
-use crate::models::{SqsMessage, Queue};
+use crate::models::{Queue, SqsMessage};
 use chrono::Utc;
 use md5 as md5sum;
 use parking_lot::RwLock;
@@ -80,10 +80,7 @@ pub fn drain_pending(account: u64, region: &str, queue_name: &str, queue: &mut Q
         // idx always decreasing so remove keeps indices consistent.
         for idx in (0..pend.len()).rev() {
             let p = &pend[idx];
-            if p.account == account
-                && p.region == region
-                && p.queue_name == queue_name
-            {
+            if p.account == account && p.region == region && p.queue_name == queue_name {
                 drained.push(p.message.clone());
                 pend.remove(idx);
             }
@@ -97,7 +94,7 @@ pub fn drain_pending(account: u64, region: &str, queue_name: &str, queue: &mut Q
 
 /// Drop pending cross-service messages for a queue (PurgeQueue / DeleteQueue).
 pub fn clear_pending(account: u64, region: &str, queue_name: &str) {
-    pending().write().retain(|p| {
-        !(p.account == account && p.region == region && p.queue_name == queue_name)
-    });
+    pending()
+        .write()
+        .retain(|p| !(p.account == account && p.region == region && p.queue_name == queue_name));
 }

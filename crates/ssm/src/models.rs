@@ -18,7 +18,12 @@ pub fn fmt_dt(dt: &DateTime<Utc>) -> String {
 
 /// Short hex string of `n` chars taken from a uuid4 hex.
 pub fn hex_id(len: usize) -> String {
-    Uuid::new_v4().simple().to_string().chars().take(len).collect()
+    Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(len)
+        .collect()
 }
 
 pub fn uuid_str() -> String {
@@ -57,7 +62,10 @@ impl ParamVersion {
         if !decrypt || self.parameter_type != "SecureString" {
             return self.value.clone();
         }
-        let prefix = format!("kms:{}:", self.keyid.clone().unwrap_or_else(|| "default".into()));
+        let prefix = format!(
+            "kms:{}:",
+            self.keyid.clone().unwrap_or_else(|| "default".into())
+        );
         match self.value.strip_prefix(&prefix) {
             Some(rest) => rest.to_string(),
             None => self.value.clone(),
@@ -65,7 +73,13 @@ impl ParamVersion {
     }
 
     /// Shape returned by GetParameter / GetParameters / GetParametersByPath.
-    pub fn response_object(&self, name: &str, decrypt: bool, region: Option<&str>, account: u64) -> Value {
+    pub fn response_object(
+        &self,
+        name: &str,
+        decrypt: bool,
+        region: Option<&str>,
+        account: u64,
+    ) -> Value {
         let mut r = json!({
             "Name": name,
             "Type": self.parameter_type,
@@ -119,7 +133,10 @@ pub struct Parameter {
 
 impl Parameter {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string(), versions: RwLock::new(Vec::new()) }
+        Self {
+            name: name.to_string(),
+            versions: RwLock::new(Vec::new()),
+        }
     }
 
     pub fn current(&self) -> Option<ParamVersion> {
@@ -127,7 +144,11 @@ impl Parameter {
     }
 
     pub fn version(&self, n: u64) -> Option<ParamVersion> {
-        self.versions.read().iter().find(|v| v.version == n).cloned()
+        self.versions
+            .read()
+            .iter()
+            .find(|v| v.version == n)
+            .cloned()
     }
 
     pub fn version_by_label(&self, label: &str) -> Option<ParamVersion> {
@@ -201,7 +222,9 @@ impl Document {
             .get("schemaVersion")
             .map(v_to_string)
             .ok_or("missing schemaVersion")?;
-        let description = parsed.get("description").map(|v| v.as_str().unwrap_or("").to_string());
+        let description = parsed
+            .get("description")
+            .map(|v| v.as_str().unwrap_or("").to_string());
         let parameter_list = parsed.get("parameters").map(doc_param_list);
         Ok((parsed, schema_version, description, parameter_list))
     }
@@ -310,7 +333,9 @@ fn v_to_string(v: &Value) -> String {
 
 /// moto's `generate_ssm_doc_param_list`.
 fn doc_param_list(parameters: &Value) -> Value {
-    let Some(map) = parameters.as_object() else { return Value::Null };
+    let Some(map) = parameters.as_object() else {
+        return Value::Null;
+    };
     let mut out = Vec::new();
     for (name, info) in map {
         let mut entry = json!({ "Name": name });
@@ -525,7 +550,6 @@ impl MaintenanceWindow {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Patch baselines
 // ---------------------------------------------------------------------------
@@ -701,7 +725,10 @@ pub struct OpsItem {
 
 impl OpsItem {
     pub fn root_arn(&self, account: u64, region: &str) -> String {
-        format!("arn:aws:ssm:{region}:{account}:opsitem/{}", self.ops_item_id)
+        format!(
+            "arn:aws:ssm:{region}:{account}:opsitem/{}",
+            self.ops_item_id
+        )
     }
 
     pub fn to_json(&self, account: u64, region: &str) -> Value {
@@ -904,8 +931,10 @@ pub struct SsmState {
     pub ops_items: Arc<RwLock<std::collections::BTreeMap<String, Arc<RwLock<OpsItem>>>>>,
     pub ops_metadata: Arc<RwLock<std::collections::BTreeMap<String, Arc<RwLock<OpsMetadata>>>>>,
     pub activations: Arc<RwLock<std::collections::BTreeMap<String, Arc<Activation>>>>,
-    pub resource_data_syncs: Arc<RwLock<std::collections::BTreeMap<String, Arc<RwLock<ResourceDataSync>>>>>,
-    pub automation_executions: Arc<RwLock<std::collections::BTreeMap<String, Arc<AutomationExecution>>>>,
+    pub resource_data_syncs:
+        Arc<RwLock<std::collections::BTreeMap<String, Arc<RwLock<ResourceDataSync>>>>>,
+    pub automation_executions:
+        Arc<RwLock<std::collections::BTreeMap<String, Arc<AutomationExecution>>>>,
     pub resource_policies: Arc<RwLock<std::collections::BTreeMap<String, RwLock<Value>>>>,
 }
 
@@ -975,10 +1004,7 @@ impl SsmState {
 
     pub fn list_tags(&self, resource_type: &str, resource_id: &str) -> Value {
         let tags = self.resource_tags.read();
-        match tags
-            .get(resource_type)
-            .and_then(|t| t.get(resource_id))
-        {
+        match tags.get(resource_type).and_then(|t| t.get(resource_id)) {
             Some(m) => {
                 let list: Vec<Value> = m
                     .iter()
@@ -1028,6 +1054,9 @@ pub struct OpsMetadata {
 
 impl OpsMetadata {
     pub fn arn(&self, account: u64, region: &str) -> String {
-        format!("arn:aws:ssm:{region}:{account}:opsmetadata/{}", self.resource_id)
+        format!(
+            "arn:aws:ssm:{region}:{account}:opsmetadata/{}",
+            self.resource_id
+        )
     }
 }

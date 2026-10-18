@@ -139,9 +139,7 @@ impl QueueAttributes {
                     "Policy" => self.policy = Some(val.to_string()),
                     "RedrivePolicy" => self.redrive_policy = Some(val.to_string()),
                     "FifoQueue" => self.fifo_queue = val == "true",
-                    "ContentBasedDeduplication" => {
-                        self.content_based_deduplication = val == "true"
-                    }
+                    "ContentBasedDeduplication" => self.content_based_deduplication = val == "true",
                     _ => {
                         self.extra.insert(key.clone(), val.to_string());
                     }
@@ -387,7 +385,9 @@ impl SqsStore {
 
     /// Record a completed/cancelled message move task.
     pub fn record_move_task(&self, task: MoveTask) {
-        self.move_tasks.write().insert(task.task_handle.clone(), task);
+        self.move_tasks
+            .write()
+            .insert(task.task_handle.clone(), task);
     }
 
     pub fn get_move_task(&self, handle: &str) -> Option<MoveTask> {

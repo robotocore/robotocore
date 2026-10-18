@@ -34,9 +34,12 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
             None => {
                 // Absent key: only a list whose sole match is "exists": false passes.
                 let absent_ok = pattern_value.as_array().is_some_and(|list| {
-                    list.iter()
-                        .any(|pv| pv.as_object().and_then(|o| o.get("exists")).and_then(|e| e.as_bool())
-                            == Some(false))
+                    list.iter().any(|pv| {
+                        pv.as_object()
+                            .and_then(|o| o.get("exists"))
+                            .and_then(|e| e.as_bool())
+                            == Some(false)
+                    })
                 });
                 if !absent_ok {
                     return false;
@@ -80,7 +83,10 @@ fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
                     }
                 }
                 if let Some(arr) = event_value.as_array() {
-                    if arr.iter().any(|v| v.as_str().map(|s| s.starts_with(p)) == Some(true)) {
+                    if arr
+                        .iter()
+                        .any(|v| v.as_str().map(|s| s.starts_with(p)) == Some(true))
+                    {
                         return true;
                     }
                 }
@@ -91,7 +97,10 @@ fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
                     }
                 }
                 if let Some(arr) = event_value.as_array() {
-                    if arr.iter().any(|v| v.as_str().map(|s| s.ends_with(p)) == Some(true)) {
+                    if arr
+                        .iter()
+                        .any(|v| v.as_str().map(|s| s.ends_with(p)) == Some(true))
+                    {
                         return true;
                     }
                 }

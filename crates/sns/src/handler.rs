@@ -79,7 +79,6 @@ impl Default for SnsHandler {
 }
 
 impl SnsHandler {
-
     fn get_state(&self, account: u64, region: &str) -> SnsState {
         let mut states = self.state.write();
         states
@@ -164,16 +163,29 @@ impl SnsHandler {
             .map(|v| v.eq_ignore_ascii_case("true"))
             .unwrap_or_else(|| name.ends_with(".fifo"));
         if fifo && !name.ends_with(".fifo") {
-            return AwsResponse::error(400, "InvalidParameter", "FIFO topic name must end with .fifo");
+            return AwsResponse::error(
+                400,
+                "InvalidParameter",
+                "FIFO topic name must end with .fifo",
+            );
         }
-        let topic = Arc::new(Topic::new(name.clone(), req.account, req.region.clone(), fifo));
+        let topic = Arc::new(Topic::new(
+            name.clone(),
+            req.account,
+            req.region.clone(),
+            fifo,
+        ));
         for (k, v) in attrs {
             topic.set_attr(k, v);
         }
         if fifo {
             // Persist as attributes so GetTopicAttributes reports what AWS reports.
             topic.set_attr("FifoTopic".into(), "true".into());
-            if !topic.attributes.read().contains_key("ContentBasedDeduplication") {
+            if !topic
+                .attributes
+                .read()
+                .contains_key("ContentBasedDeduplication")
+            {
                 topic.set_attr("ContentBasedDeduplication".into(), "false".into());
             }
         }
@@ -294,7 +306,10 @@ impl SnsHandler {
 
         let mut body = String::from("<Topics>");
         for topic in &topics {
-            body.push_str(&format!("<member><TopicArn>{}</TopicArn></member>", esc(&topic.arn)));
+            body.push_str(&format!(
+                "<member><TopicArn>{}</TopicArn></member>",
+                esc(&topic.arn)
+            ));
         }
         body.push_str("</Topics>");
         AwsResponse::query_success("ListTopics", body)
@@ -307,8 +322,11 @@ impl SnsHandler {
         let mut out = Map::new();
         let mut i = 1;
         while let Some(name) = pstr(req, &format!("MessageAttributes.entry.{}.Name", i)) {
-            let data_type = pstr(req, &format!("MessageAttributes.entry.{}.Value.DataType", i))
-                .unwrap_or_else(|| "String".into());
+            let data_type = pstr(
+                req,
+                &format!("MessageAttributes.entry.{}.Value.DataType", i),
+            )
+            .unwrap_or_else(|| "String".into());
             let string_value = pstr(
                 req,
                 &format!("MessageAttributes.entry.{}.Value.StringValue", i),
@@ -354,13 +372,11 @@ impl SnsHandler {
                     .and_then(|v| v.as_object().cloned());
                 match parsed {
                     Some(obj) => Some(obj),
-                    None => {
-                        return Err(AwsResponse::error(
-                            400,
-                            "InvalidParameter",
-                            "Invalid parameter: Message Structure - JSON message body failed to parse",
-                        ))
-                    }
+                    None => return Err(AwsResponse::error(
+                        400,
+                        "InvalidParameter",
+                        "Invalid parameter: Message Structure - JSON message body failed to parse",
+                    )),
                 }
             }
             _ => None,
@@ -383,7 +399,15 @@ impl SnsHandler {
                     .to_string(),
                 None => message.to_string(),
             };
-            self.deliver(&sub, &delivery_message, subject.as_deref(), message_attributes, &message_id, &topic.arn, &topic.region);
+            self.deliver(
+                &sub,
+                &delivery_message,
+                subject.as_deref(),
+                message_attributes,
+                &message_id,
+                &topic.arn,
+                &topic.region,
+            );
         }
 
         Ok(message_id)
@@ -431,9 +455,15 @@ impl SnsHandler {
         let mut i = 1;
         let mut successful = Vec::new();
         while let Some(id) = pstr(req, &format!("PublishBatchRequestEntries.member.{}.Id", i)) {
-            let message = pstr(req, &format!("PublishBatchRequestEntries.member.{}.Message", i))
-                .unwrap_or_default();
-            let subject = pstr(req, &format!("PublishBatchRequestEntries.member.{}.Subject", i));
+            let message = pstr(
+                req,
+                &format!("PublishBatchRequestEntries.member.{}.Message", i),
+            )
+            .unwrap_or_default();
+            let subject = pstr(
+                req,
+                &format!("PublishBatchRequestEntries.member.{}.Subject", i),
+            );
             let message_id = self
                 .publish_common(
                     &state,
@@ -442,8 +472,17 @@ impl SnsHandler {
                     subject,
                     &Map::new(),
                     None,
-                    pstr(req, &format!("PublishBatchRequestEntries.member.{}.MessageGroupId", i)),
-                    pstr(req, &format!("PublishBatchRequestEntries.member.{}.MessageDeduplicationId", i)),
+                    pstr(
+                        req,
+                        &format!("PublishBatchRequestEntries.member.{}.MessageGroupId", i),
+                    ),
+                    pstr(
+                        req,
+                        &format!(
+                            "PublishBatchRequestEntries.member.{}.MessageDeduplicationId",
+                            i
+                        ),
+                    ),
                 )
                 .unwrap_or_default();
             successful.push(format!(
@@ -454,10 +493,7 @@ impl SnsHandler {
             i += 1;
         }
 
-        let body = format!(
-            "<Successful>{}</Successful><Failed/>",
-            successful.join("")
-        );
+        let body = format!("<Successful>{}</Successful><Failed/>", successful.join(""));
         AwsResponse::query_success("PublishBatch", body)
     }
 
@@ -564,7 +600,10 @@ impl SnsHandler {
         state.add_subscription(sub);
         AwsResponse::query_success(
             "Subscribe",
-            format!("<SubscriptionArn>{}</SubscriptionArn>", esc(&subscription_arn)),
+            format!(
+                "<SubscriptionArn>{}</SubscriptionArn>",
+                esc(&subscription_arn)
+            ),
         )
     }
 
@@ -576,10 +615,7 @@ impl SnsHandler {
         let mut confirmed_arn: Option<String> = None;
         {
             let mut subs = state.subscriptions.write();
-            if let Some(sub) = subs
-                .iter_mut()
-                .find(|s| s.topic_arn == arn && !s.confirmed)
-            {
+            if let Some(sub) = subs.iter_mut().find(|s| s.topic_arn == arn && !s.confirmed) {
                 sub.confirmed = true;
                 confirmed_arn = Some(sub.subscription_arn.clone());
             }
@@ -618,7 +654,10 @@ impl SnsHandler {
         if state.get_topic(&arn).is_none() {
             return Self::not_found(&arn);
         }
-        Self::subscriptions_xml("ListSubscriptionsByTopic", &state.list_subscriptions_by_topic(&arn))
+        Self::subscriptions_xml(
+            "ListSubscriptionsByTopic",
+            &state.list_subscriptions_by_topic(&arn),
+        )
     }
 
     fn sub_member_xml(sub: &Subscription) -> String {
@@ -653,14 +692,8 @@ impl SnsHandler {
                     ("Protocol".into(), sub.protocol.clone()),
                     ("Endpoint".into(), sub.endpoint.clone()),
                     ("Owner".into(), sub.owner.to_string()),
-                    (
-                        "RawMessageDelivery".into(),
-                        raw.to_string(),
-                    ),
-                    (
-                        "PendingConfirmation".into(),
-                        (!sub.confirmed).to_string(),
-                    ),
+                    ("RawMessageDelivery".into(), raw.to_string()),
+                    ("PendingConfirmation".into(), (!sub.confirmed).to_string()),
                 ];
                 for (k, v) in sub.attributes.read().iter() {
                     if matches!(k.as_str(), "RawMessageDelivery" | "__confirmed__") {
@@ -726,18 +759,26 @@ impl SnsHandler {
             .params
             .get("ActionName")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
         let aws_account_ids: Vec<String> = req
             .params
             .get("AWSAccountId")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let existing = topic.attr("Policy").unwrap_or_else(|| {
-            json!({"Version": "2008-10-17", "Statement": []}).to_string()
-        });
+        let existing = topic
+            .attr("Policy")
+            .unwrap_or_else(|| json!({"Version": "2008-10-17", "Statement": []}).to_string());
         let mut policy: Value = serde_json::from_str(&existing)
             .unwrap_or_else(|_| json!({"Version": "2008-10-17", "Statement": []}));
         if !policy.is_object() {
@@ -993,11 +1034,7 @@ impl SnsHandler {
         let app = match app {
             Some(a) => a,
             None => {
-                return AwsResponse::error(
-                    404,
-                    "NotFound",
-                    "PlatformApplication does not exist",
-                )
+                return AwsResponse::error(404, "NotFound", "PlatformApplication does not exist")
             }
         };
         let token = pstr(req, "Token").unwrap_or_default();
@@ -1024,10 +1061,7 @@ impl SnsHandler {
             custom_user_data,
             attributes: RwLock::new(attributes),
         });
-        state
-            .platform_endpoints
-            .write()
-            .insert(arn.clone(), ep);
+        state.platform_endpoints.write().insert(arn.clone(), ep);
         AwsResponse::query_success(
             "CreatePlatformEndpoint",
             format!("<EndpointArn>{}</EndpointArn>", esc(&arn)),
@@ -1123,7 +1157,11 @@ impl SnsHandler {
             .params
             .get("attributes")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
         let map = state.sms_attributes.read();
         let mut body = String::from("<attributes>");
@@ -1143,12 +1181,7 @@ impl SnsHandler {
 
     fn list_phone_numbers_opted_out(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let mut numbers: Vec<String> = state
-            .opted_out
-            .read()
-            .iter()
-            .cloned()
-            .collect();
+        let mut numbers: Vec<String> = state.opted_out.read().iter().cloned().collect();
         numbers.sort();
         let body = member_list_xml("phoneNumbers", &numbers);
         AwsResponse::query_success("ListPhoneNumbersOptedOut", body)
@@ -1178,7 +1211,10 @@ impl SnsHandler {
 
     fn get_sms_sandbox_account_status(&self, req: &AwsRequest) -> AwsResponse {
         let _ = req;
-        AwsResponse::query_success("GetSMSSandboxAccountStatus", "<IsInSandbox>true</IsInSandbox>".into())
+        AwsResponse::query_success(
+            "GetSMSSandboxAccountStatus",
+            "<IsInSandbox>true</IsInSandbox>".into(),
+        )
     }
 
     fn list_sms_sandbox_phone_numbers(&self, req: &AwsRequest) -> AwsResponse {
@@ -1257,12 +1293,13 @@ impl SnsHandler {
             Some(t) => t,
             None => return Self::not_found(&arn),
         };
-        let policy = topic
-            .attr("DataProtectionPolicy")
-            .unwrap_or_default();
+        let policy = topic.attr("DataProtectionPolicy").unwrap_or_default();
         AwsResponse::query_success(
             "GetDataProtectionPolicy",
-            format!("<DataProtectionPolicy>{}</DataProtectionPolicy>", esc(&policy)),
+            format!(
+                "<DataProtectionPolicy>{}</DataProtectionPolicy>",
+                esc(&policy)
+            ),
         )
     }
 }
@@ -1366,7 +1403,11 @@ fn anything_but(exclusion: &Value, actual: &str) -> bool {
 }
 
 /// Evaluate a subscription filter policy. `scope` selects MessageBody vs MessageAttributes.
-fn matches_filter(sub: &Subscription, message_attributes: &Map<String, Value>, message: &str) -> bool {
+fn matches_filter(
+    sub: &Subscription,
+    message_attributes: &Map<String, Value>,
+    message: &str,
+) -> bool {
     let Some(policy_json) = sub.attr("FilterPolicy") else {
         return true;
     };
@@ -1473,10 +1514,13 @@ mod tests {
     #[test]
     fn test_publish_to_nonexistent_topic() {
         let handler = SnsHandler::new();
-        let req = make_req("Publish", json!({
-            "TopicArn": "arn:aws:sns:us-east-1:123456789012:nonexistent",
-            "Message": "hello"
-        }));
+        let req = make_req(
+            "Publish",
+            json!({
+                "TopicArn": "arn:aws:sns:us-east-1:123456789012:nonexistent",
+                "Message": "hello"
+            }),
+        );
         let resp = handler.handle(req);
         assert_eq!(resp.status, 404);
         assert!(resp.body.contains("NotFound"));
@@ -1535,7 +1579,9 @@ mod tests {
             "GetSubscriptionAttributes",
             json!({"SubscriptionArn": sub_arn}),
         ));
-        assert!(resp.body.contains("<key>RawMessageDelivery</key><value>true</value>"));
+        assert!(resp
+            .body
+            .contains("<key>RawMessageDelivery</key><value>true</value>"));
     }
 
     #[test]

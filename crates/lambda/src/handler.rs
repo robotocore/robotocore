@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::models::{
-    iso_now, layer_date_now, utc_date_now, url_date_now, LambdaAlias, LambdaFunction, LambdaState,
+    iso_now, layer_date_now, url_date_now, utc_date_now, LambdaAlias, LambdaFunction, LambdaState,
 };
 use crate::protocol::{function_not_found, path_segments, resolve_fn, AwsRequest, AwsResponse};
 use crate::runtime;
@@ -92,16 +92,10 @@ impl LambdaHandler {
             "AddLayerVersionPermission" => self.add_layer_version_permission(&state, &req),
             "GetLayerVersionPolicy" => self.get_layer_version_policy(&state, &req),
             "RemoveLayerVersionPermission" => self.remove_layer_version_permission(&state, &req),
-            "CreateFunctionUrlConfig" => {
-                self.function_url_config(&state, &req, UrlVerb::Create)
-            }
+            "CreateFunctionUrlConfig" => self.function_url_config(&state, &req, UrlVerb::Create),
             "GetFunctionUrlConfig" => self.function_url_config(&state, &req, UrlVerb::Get),
-            "UpdateFunctionUrlConfig" => {
-                self.function_url_config(&state, &req, UrlVerb::Update)
-            }
-            "DeleteFunctionUrlConfig" => {
-                self.function_url_config(&state, &req, UrlVerb::Delete)
-            }
+            "UpdateFunctionUrlConfig" => self.function_url_config(&state, &req, UrlVerb::Update),
+            "DeleteFunctionUrlConfig" => self.function_url_config(&state, &req, UrlVerb::Delete),
             "ListFunctionUrlConfigs" => self.list_function_url_configs(&state, &req),
             "PutProvisionedConcurrencyConfig" => self.put_provisioned_concurrency(&state, &req),
             "GetProvisionedConcurrencyConfig" => self.get_provisioned_concurrency(&state, &req),
@@ -136,7 +130,11 @@ impl LambdaHandler {
             "ListFunctionsByCodeSigningConfig" => {
                 self.list_functions_by_code_signing_config(&state, &req)
             }
-            _ => AwsResponse::error(400, "InvalidRequest", &format!("Unknown path: {}", req.path)),
+            _ => AwsResponse::error(
+                400,
+                "InvalidRequest",
+                &format!("Unknown path: {}", req.path),
+            ),
         }
     }
 }
@@ -407,7 +405,11 @@ impl LambdaHandler {
     fn create_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let name = req.param_str("FunctionName").unwrap_or_default();
         if name.is_empty() {
-            return AwsResponse::error(400, "InvalidParameterValueException", "Missing FunctionName");
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValueException",
+                "Missing FunctionName",
+            );
         }
         if state.get_function(&name).is_some() {
             return AwsResponse::error(
@@ -556,7 +558,10 @@ impl LambdaHandler {
                     .retain(|_, em| em.function_arn != fn_arn);
                 state.url_configs.write().remove(&name);
                 state.url_configs.write().remove(&fn_arn);
-                state.provisioned.write().retain(|(fn_name, _), _| fn_name != &name);
+                state
+                    .provisioned
+                    .write()
+                    .retain(|(fn_name, _), _| fn_name != &name);
             }
             Some(_) => {
                 // Deleting a published version only: drop it from the entry.
@@ -691,11 +696,7 @@ impl LambdaHandler {
                 }
             }
         }
-        let env_vars = func
-            .environment
-            .read()
-            .clone()
-            .unwrap_or_default();
+        let env_vars = func.environment.read().clone().unwrap_or_default();
         Ok(runtime::execute_python(
             &zip_bytes,
             &layer_zips,
@@ -727,19 +728,26 @@ impl LambdaHandler {
             .unwrap_or("RequestResponse");
         let executed_version = func.version.read().clone();
         match invocation_type {
-            "Event" => AwsResponse::raw_with_headers(202, "application/json", String::new(), &[
-                ("x-amz-executed-version", executed_version.clone()),
-            ]),
-            "DryRun" => AwsResponse::raw_with_headers(204, "application/json", String::new(), &[
-                ("x-amz-executed-version", executed_version),
-            ]),
+            "Event" => AwsResponse::raw_with_headers(
+                202,
+                "application/json",
+                String::new(),
+                &[("x-amz-executed-version", executed_version.clone())],
+            ),
+            "DryRun" => AwsResponse::raw_with_headers(
+                204,
+                "application/json",
+                String::new(),
+                &[("x-amz-executed-version", executed_version)],
+            ),
             _ => {
                 let mut extra: Vec<(&str, String)> =
                     vec![("x-amz-executed-version", executed_version)];
                 if let Some(err) = &res.function_error {
                     extra.push(("x-amz-function-error", err.clone()));
                 }
-                if req.header("x-amz-log-type").unwrap_or("None") == "Tail" && !res.logs.is_empty() {
+                if req.header("x-amz-log-type").unwrap_or("None") == "Tail" && !res.logs.is_empty()
+                {
                     let log_tail: String = res
                         .logs
                         .chars()
@@ -749,7 +757,8 @@ impl LambdaHandler {
                         .into_iter()
                         .rev()
                         .collect();
-                    let encoded = base64::engine::general_purpose::STANDARD.encode(log_tail.as_bytes());
+                    let encoded =
+                        base64::engine::general_purpose::STANDARD.encode(log_tail.as_bytes());
                     extra.push(("x-amz-log-result", encoded));
                 }
                 AwsResponse::raw_with_headers(200, "application/json", res.payload.clone(), &extra)
@@ -776,9 +785,12 @@ impl LambdaHandler {
             Err(resp) => return resp,
         };
         let executed_version = func.version.read().clone();
-        AwsResponse::raw_with_headers(200, "application/json", res.payload.clone(), &[
-            ("x-amz-executed-version", executed_version),
-        ])
+        AwsResponse::raw_with_headers(
+            200,
+            "application/json",
+            res.payload.clone(),
+            &[("x-amz-executed-version", executed_version)],
+        )
     }
 
     // ---------------------------------------------------------------
@@ -981,10 +993,13 @@ impl LambdaHandler {
             "Id": "default",
             "Statement": *stmts,
         });
-        AwsResponse::json(200, json!({
-            "Policy": serde_json::to_string(&policy).unwrap_or_default(),
-            "RevisionId": *func.policy.revision.read(),
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "Policy": serde_json::to_string(&policy).unwrap_or_default(),
+                "RevisionId": *func.policy.revision.read(),
+            }),
+        )
     }
 
     fn add_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -996,7 +1011,9 @@ impl LambdaHandler {
         let sid = req
             .param_str("StatementId")
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let principal = req.param_str("Principal").unwrap_or_else(|| "*".to_string());
+        let principal = req
+            .param_str("Principal")
+            .unwrap_or_else(|| "*".to_string());
         let principal_value: Value = if principal == "*" {
             json!(principal)
         } else if principal.ends_with(".amazonaws.com") {
@@ -1028,9 +1045,12 @@ impl LambdaHandler {
         }
         func.policy.statements.write().push(statement.clone());
         *func.policy.revision.write() = uuid::Uuid::new_v4().to_string();
-        AwsResponse::json(201, json!({
-            "Statement": serde_json::to_string(&statement).unwrap_or_default(),
-        }))
+        AwsResponse::json(
+            201,
+            json!({
+                "Statement": serde_json::to_string(&statement).unwrap_or_default(),
+            }),
+        )
     }
 
     fn remove_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -1129,7 +1149,11 @@ impl LambdaHandler {
             state_transition_reason: "User action".to_string(),
             last_modified: epoch_now(),
             batch_size: req.param_u64("BatchSize").unwrap_or(10) as u32,
-            enabled: req.params.get("Enabled").and_then(Value::as_bool).unwrap_or(true),
+            enabled: req
+                .params
+                .get("Enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         });
         state
             .event_source_mappings
@@ -1344,14 +1368,12 @@ impl LambdaHandler {
         }
         let found = {
             let layers = state.layers.read();
-            layers
-                .get(&layer_name)
-                .and_then(|l| {
-                    l.versions
-                        .iter()
-                        .find(|v| i64::from(v.version) == version)
-                        .cloned()
-                })
+            layers.get(&layer_name).and_then(|l| {
+                l.versions
+                    .iter()
+                    .find(|v| i64::from(v.version) == version)
+                    .cloned()
+            })
         };
         match found {
             Some(v) => AwsResponse::json(200, Self::layer_version_dict(&v)),
@@ -1395,7 +1417,12 @@ impl LambdaHandler {
         let layers = state.layers.read();
         let items: Vec<Value> = layers
             .get(&layer_name)
-            .map(|l| l.versions.iter().map(|v| Self::layer_version_dict(v)).collect())
+            .map(|l| {
+                l.versions
+                    .iter()
+                    .map(|v| Self::layer_version_dict(v))
+                    .collect()
+            })
             .unwrap_or_default();
         AwsResponse::json(200, json!({ "LayerVersions": items }))
     }
@@ -1474,18 +1501,23 @@ impl LambdaHandler {
             "Resource": format!("arn:aws:lambda:{region}:{account}:layer:{layer_name}:{version}"),
         });
         let mut permissions = state.layer_permissions.write();
-        let entry = permissions.entry((layer_name.clone(), version)).or_default();
+        let entry = permissions
+            .entry((layer_name.clone(), version))
+            .or_default();
         entry.insert(sid, statement.clone());
         let policy = json!({
             "Version": "2012-10-17",
             "Id": "default",
             "Statement": entry.values().cloned().collect::<Vec<_>>(),
         });
-        AwsResponse::json(201, json!({
-            "Statement": serde_json::to_string(&statement).unwrap_or_default(),
-            "RevisionId": uuid::Uuid::new_v4().to_string(),
-            "Policy": serde_json::to_string(&policy).unwrap_or_default(),
-        }))
+        AwsResponse::json(
+            201,
+            json!({
+                "Statement": serde_json::to_string(&statement).unwrap_or_default(),
+                "RevisionId": uuid::Uuid::new_v4().to_string(),
+                "Policy": serde_json::to_string(&policy).unwrap_or_default(),
+            }),
+        )
     }
 
     fn get_layer_version_policy(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -1515,7 +1547,11 @@ impl LambdaHandler {
         }
     }
 
-    fn remove_layer_version_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+    fn remove_layer_version_permission(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+    ) -> AwsResponse {
         let Some((layer_name, version)) = self.layer_version_of(state, req) else {
             return not_found_layer_version();
         };
@@ -1589,19 +1625,17 @@ impl LambdaHandler {
                 urls.insert(func.function_name.clone(), config.clone());
                 AwsResponse::json(201, Self::function_url_response(&config))
             }
-            UrlVerb::Get => {
-                match state.url_configs.read().get(&func.function_name).cloned() {
-                    Some(config) => AwsResponse::json(200, Self::function_url_response(&config)),
-                    None => AwsResponse::error(
-                        404,
-                        "ResourceNotFoundException",
-                        &format!(
-                            "The function url config for function {} does not exist",
-                            func.function_name
-                        ),
+            UrlVerb::Get => match state.url_configs.read().get(&func.function_name).cloned() {
+                Some(config) => AwsResponse::json(200, Self::function_url_response(&config)),
+                None => AwsResponse::error(
+                    404,
+                    "ResourceNotFoundException",
+                    &format!(
+                        "The function url config for function {} does not exist",
+                        func.function_name
                     ),
-                }
-            }
+                ),
+            },
             UrlVerb::Update => {
                 let mut urls = state.url_configs.write();
                 match urls.get_mut(&func.function_name) {
@@ -1670,7 +1704,9 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let qualifier = req
+            .query_param("Qualifier")
+            .unwrap_or_else(|| "$LATEST".to_string());
         let count = req
             .params
             .get("ProvisionedConcurrentExecutions")
@@ -1709,7 +1745,9 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let qualifier = req
+            .query_param("Qualifier")
+            .unwrap_or_else(|| "$LATEST".to_string());
         match state
             .provisioned
             .read()
@@ -1743,9 +1781,7 @@ impl LambdaHandler {
             return AwsResponse::error(
                 404,
                 "ProvisionedConcurrencyConfigNotFoundException",
-                &format!(
-                    "There is no provisioned concurrency config for {name}:{qualifier}"
-                ),
+                &format!("There is no provisioned concurrency config for {name}:{qualifier}"),
             );
         }
         AwsResponse::empty(204)
@@ -1800,7 +1836,10 @@ impl LambdaHandler {
                 );
             }
         }
-        if let Some(age) = config.get("MaximumEventAgeInSeconds").and_then(Value::as_i64) {
+        if let Some(age) = config
+            .get("MaximumEventAgeInSeconds")
+            .and_then(Value::as_i64)
+        {
             if age > 21600 {
                 return AwsResponse::error(
                     400,
@@ -1902,15 +1941,17 @@ impl LambdaHandler {
     // Function code signing config
     // ---------------------------------------------------------------
 
-    fn put_function_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+    fn put_function_code_signing_config(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+    ) -> AwsResponse {
         let name = req.path_fn_name();
         let func = match resolve_fn(state, req, &name) {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        let csc_arn = req
-            .param_str("CodeSigningConfigArn")
-            .unwrap_or_default();
+        let csc_arn = req.param_str("CodeSigningConfigArn").unwrap_or_default();
         *func.code_signing_config_arn.write() = Some(csc_arn.clone());
         AwsResponse::json(
             200,
@@ -1918,7 +1959,11 @@ impl LambdaHandler {
         )
     }
 
-    fn get_function_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+    fn get_function_code_signing_config(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+    ) -> AwsResponse {
         let name = req.path_fn_name();
         let func = match resolve_fn(state, req, &name) {
             Ok(f) => f,
@@ -1965,10 +2010,7 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        AwsResponse::json(
-            200,
-            json!({"RecursiveLoop": *func.recursion_config.read()}),
-        )
+        AwsResponse::json(200, json!({"RecursiveLoop": *func.recursion_config.read()}))
     }
 
     fn put_function_recursion_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -1978,7 +2020,9 @@ impl LambdaHandler {
             Err(resp) => return resp,
         };
         let allowed = ["Allow", "Terminate"];
-        let value = req.param_str("RecursiveLoop").unwrap_or_else(|| "Terminate".to_string());
+        let value = req
+            .param_str("RecursiveLoop")
+            .unwrap_or_else(|| "Terminate".to_string());
         if !allowed.contains(&value.as_str()) {
             return AwsResponse::error(
                 400,
@@ -1996,18 +2040,23 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let qualifier = req
+            .query_param("Qualifier")
+            .unwrap_or_else(|| "$LATEST".to_string());
         let config = func
             .scaling_configs
             .read()
             .get(&qualifier)
             .cloned()
             .unwrap_or_else(|| json!({}));
-        AwsResponse::json(200, json!({
-            "FunctionArn": func.function_arn,
-            "AppliedFunctionScalingConfig": config.clone(),
-            "RequestedFunctionScalingConfig": config,
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "FunctionArn": func.function_arn,
+                "AppliedFunctionScalingConfig": config.clone(),
+                "RequestedFunctionScalingConfig": config,
+            }),
+        )
     }
 
     fn put_function_scaling_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -2016,18 +2065,25 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let qualifier = req
+            .query_param("Qualifier")
+            .unwrap_or_else(|| "$LATEST".to_string());
         let config = req
             .params
             .get("FunctionScalingConfig")
             .cloned()
             .unwrap_or_else(|| json!({}));
-        func.scaling_configs.write().insert(qualifier, config.clone());
-        AwsResponse::json(200, json!({
-            "FunctionArn": func.function_arn,
-            "FunctionState": "Active",
-            "RequestedFunctionScalingConfig": config,
-        }))
+        func.scaling_configs
+            .write()
+            .insert(qualifier, config.clone());
+        AwsResponse::json(
+            200,
+            json!({
+                "FunctionArn": func.function_arn,
+                "FunctionState": "Active",
+                "RequestedFunctionScalingConfig": config,
+            }),
+        )
     }
 
     fn get_runtime_management_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -2055,7 +2111,9 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        let update_on = req.param_str("UpdateRuntimeOn").unwrap_or_else(|| "Auto".to_string());
+        let update_on = req
+            .param_str("UpdateRuntimeOn")
+            .unwrap_or_else(|| "Auto".to_string());
         let mut config = json!({"UpdateRuntimeOn": update_on});
         if config["UpdateRuntimeOn"] == json!("Manual") {
             if let Some(arn) = req.param_str("RuntimeVersionArn") {
@@ -2085,19 +2143,22 @@ impl LambdaHandler {
                 }
             }
         }
-        AwsResponse::json(200, json!({
-            "AccountLimit": {
-                "TotalCodeSize": 80 * 1024 * 1024 * 1024u64,
-                "CodeSizeUnzipped": 250 * 1024 * 1024u64,
-                "CodeSizeZipped": 50 * 1024 * 1024u64,
-                "ConcurrentExecutions": 1000u64,
-                "UnreservedConcurrentExecutions": 1000u64.saturating_sub(total_reserved.max(0) as u64),
-            },
-            "AccountUsage": {
-                "TotalCodeSize": total_code,
-                "FunctionCount": count,
-            }
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "AccountLimit": {
+                    "TotalCodeSize": 80 * 1024 * 1024 * 1024u64,
+                    "CodeSizeUnzipped": 250 * 1024 * 1024u64,
+                    "CodeSizeZipped": 50 * 1024 * 1024u64,
+                    "ConcurrentExecutions": 1000u64,
+                    "UnreservedConcurrentExecutions": 1000u64.saturating_sub(total_reserved.max(0) as u64),
+                },
+                "AccountUsage": {
+                    "TotalCodeSize": total_code,
+                    "FunctionCount": count,
+                }
+            }),
+        )
     }
 
     fn list_durable_executions(&self) -> AwsResponse {
@@ -2145,14 +2206,19 @@ impl LambdaHandler {
             policies: req.params.get("CodeSigningPolicies").cloned(),
             last_modified: layer_date_now(),
         });
-        state.code_signing_configs.write().insert(arn, Arc::clone(&csc));
+        state
+            .code_signing_configs
+            .write()
+            .insert(arn, Arc::clone(&csc));
         AwsResponse::json(201, json!({ "CodeSigningConfig": Self::csc_dict(&csc) }))
     }
 
     fn get_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let arn = req.path_code_signing_arn();
         match state.code_signing_configs.read().get(&arn).cloned() {
-            Some(csc) => AwsResponse::json(200, json!({ "CodeSigningConfig": Self::csc_dict(&csc) })),
+            Some(csc) => {
+                AwsResponse::json(200, json!({ "CodeSigningConfig": Self::csc_dict(&csc) }))
+            }
             None => AwsResponse::error(
                 404,
                 "ResourceNotFoundException",
@@ -2189,7 +2255,10 @@ impl LambdaHandler {
             .code_signing_configs
             .write()
             .insert(arn, Arc::clone(&code_signing_config));
-        AwsResponse::json(200, json!({ "CodeSigningConfig": Self::csc_dict(&code_signing_config) }))
+        AwsResponse::json(
+            200,
+            json!({ "CodeSigningConfig": Self::csc_dict(&code_signing_config) }),
+        )
     }
 
     fn delete_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -2379,15 +2448,15 @@ mod tests {
     #[test]
     fn test_invoke_event_type() {
         let handler = LambdaHandler::new();
-        let payload =
-            json!({"FunctionName": "inv-func", "Code": {"ZipFile": ""}, "Handler": "lambda_function.handler"});
+        let payload = json!({"FunctionName": "inv-func", "Code": {"ZipFile": ""}, "Handler": "lambda_function.handler"});
         handler.handle(make_req("POST", payload, "/2015-03-31/functions"));
         let mut req = make_req(
             "POST",
             json!({}),
             "/2015-03-31/functions/inv-func/invocations",
         );
-        req.headers.insert("x-amz-invocation-type".to_string(), "Event".to_string());
+        req.headers
+            .insert("x-amz-invocation-type".to_string(), "Event".to_string());
         let resp = handler.handle(req);
         assert_eq!(resp.status, 202);
     }

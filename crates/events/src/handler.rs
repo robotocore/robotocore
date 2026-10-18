@@ -9,7 +9,6 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-
 /// Process-global EventBridge state registry, shared by every handler
 /// instance so cross-service publishers (S3, ...) can reach the same rules.
 static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
@@ -52,7 +51,10 @@ pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
                     .unwrap_or_default()
                     .to_string();
                 if arn.starts_with(SQS_ARN_PREFIX) {
-                    sqs::bridge::deliver_to_arn(&arn, &serde_json::to_string(event).unwrap_or_default());
+                    sqs::bridge::deliver_to_arn(
+                        &arn,
+                        &serde_json::to_string(event).unwrap_or_default(),
+                    );
                 }
             }
         }
@@ -78,9 +80,7 @@ impl EventsHandler {
         String::new()
     }
 
-
     // ---------------- Rules ----------------
-
 
     fn put_rule(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["Name"]);
@@ -88,7 +88,11 @@ impl EventsHandler {
             return AwsResponse::error(400, "ValidationException", "Name is required");
         }
         let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() { "default".to_string() } else { bus };
+        let bus = if bus.is_empty() {
+            "default".to_string()
+        } else {
+            bus
+        };
         let state = self.get_state(req.account, &req.region);
 
         // Custom buses must exist; the default bus always does.
@@ -101,9 +105,15 @@ impl EventsHandler {
         }
 
         let arn = if bus == "default" {
-            format!("arn:aws:events:{}:{}:rule/{}", req.region, req.account, name)
+            format!(
+                "arn:aws:events:{}:{}:rule/{}",
+                req.region, req.account, name
+            )
         } else {
-            format!("arn:aws:events:{}:{}:rule/{}/{}", req.region, req.account, bus, name)
+            format!(
+                "arn:aws:events:{}:{}:rule/{}/{}",
+                req.region, req.account, bus, name
+            )
         };
         let description = Self::param_str(req, &["Description"]);
         let event_pattern = Self::param_str(req, &["EventPattern"]);
@@ -149,7 +159,11 @@ impl EventsHandler {
 
     fn rule_key(req: &AwsRequest) -> (String, String) {
         let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() { "default".to_string() } else { bus };
+        let bus = if bus.is_empty() {
+            "default".to_string()
+        } else {
+            bus
+        };
         // Rule CRUD ops carry the name in "Name"; target ops use "Rule".
         let name = Self::param_str(req, &["Name", "Rule"]);
         (bus, name)
@@ -187,8 +201,6 @@ impl EventsHandler {
         }
         AwsResponse::json(200, json!({}))
     }
-
-
 
     fn set_rule_state(&self, req: &AwsRequest, state: &str) -> AwsResponse {
         let key = Self::rule_key(req);
@@ -334,7 +346,10 @@ impl EventsHandler {
     fn dispatch_to_targets(rule: &Arc<Rule>, event: &Value) {
         let targets = rule.targets.read().clone();
         for target in targets {
-            let arn = target.get("Arn").and_then(|a| a.as_str()).unwrap_or_default();
+            let arn = target
+                .get("Arn")
+                .and_then(|a| a.as_str())
+                .unwrap_or_default();
             if arn.is_empty() {
                 continue;
             }
@@ -393,7 +408,8 @@ impl EventsHandler {
 
             // The Python provider fails entries for buses that do not exist
             // (the default bus always exists).
-            let bus_exists = bus_name == "default" || state.event_buses.read().contains_key(&bus_name);
+            let bus_exists =
+                bus_name == "default" || state.event_buses.read().contains_key(&bus_name);
             if !bus_exists {
                 failed_count += 1;
                 results.push(json!({
@@ -449,9 +465,10 @@ impl EventsHandler {
     fn test_event_pattern(&self, req: &AwsRequest) -> AwsResponse {
         let pattern = Self::param_str(req, &["EventPattern"]);
         let event = Self::param_str(req, &["Event"]);
-        let (Ok(pattern), Ok(event)) =
-            (serde_json::from_str::<Value>(&pattern), serde_json::from_str::<Value>(&event))
-        else {
+        let (Ok(pattern), Ok(event)) = (
+            serde_json::from_str::<Value>(&pattern),
+            serde_json::from_str::<Value>(&event),
+        ) else {
             return AwsResponse::error(
                 400,
                 "InvalidEventPatternExpression",
@@ -469,12 +486,12 @@ impl EventsHandler {
             return AwsResponse::error(400, "ValidationException", "Name is required");
         }
         let state = self.get_state(req.account, &req.region);
-        let arn = format!("arn:aws:events:{}:{}:event-bus/{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:events:{}:{}:event-bus/{}",
+            req.region, req.account, name
+        );
         let bus = json!({ "Name": name, "Arn": arn });
-        state
-            .event_buses
-            .write()
-            .insert(name.clone(), bus);
+        state.event_buses.write().insert(name.clone(), bus);
         AwsResponse::json(200, json!({ "EventBusName": name, "EventBusArn": arn }))
     }
 
@@ -518,7 +535,11 @@ impl EventsHandler {
         if name.is_empty() {
             name = Self::param_str(req, &["Name"]);
         }
-        let name = if name.is_empty() { "default".to_string() } else { name };
+        let name = if name.is_empty() {
+            "default".to_string()
+        } else {
+            name
+        };
         let state = self.get_state(req.account, &req.region);
         if name != "default" && !state.event_buses.read().contains_key(&name) {
             return AwsResponse::error(
@@ -544,12 +565,19 @@ impl EventsHandler {
             .collect();
         rows.sort_by(|a, b| a["Name"].as_str().cmp(&b["Name"].as_str()));
         buses.append(&mut rows);
-        AwsResponse::json(200, json!({ "EventBuses": buses, "NextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "EventBuses": buses, "NextToken": Value::Null }),
+        )
     }
 
     fn update_event_bus(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["EventBusName", "Name"]);
-        let name = if name.is_empty() { "default".to_string() } else { name };
+        let name = if name.is_empty() {
+            "default".to_string()
+        } else {
+            name
+        };
         let state = self.get_state(req.account, &req.region);
         if name != "default" && !state.event_buses.read().contains_key(&name) {
             return AwsResponse::error(
@@ -566,7 +594,11 @@ impl EventsHandler {
 
     fn put_permission(&self, req: &AwsRequest) -> AwsResponse {
         let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() { "default".to_string() } else { bus };
+        let bus = if bus.is_empty() {
+            "default".to_string()
+        } else {
+            bus
+        };
         if req.params.get("Principal").is_none() {
             return AwsResponse::error(
                 400,
@@ -588,12 +620,12 @@ impl EventsHandler {
             .get(&bus)
             .cloned()
             .unwrap_or_else(|| json!({ "Version": "2012-10-17", "Statement": [] }));
-        let statements = policy
-            .get_mut("Statement")
-            .and_then(|s| s.as_array_mut());
+        let statements = policy.get_mut("Statement").and_then(|s| s.as_array_mut());
         if let Some(arr) = statements {
             if !statement_id.is_empty() {
-                arr.retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
+                arr.retain(|s| {
+                    s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str())
+                });
             }
             arr.push(statement);
         }
@@ -603,7 +635,11 @@ impl EventsHandler {
 
     fn remove_permission(&self, req: &AwsRequest) -> AwsResponse {
         let bus = Self::param_str(req, &["EventBusName"]);
-        let bus = if bus.is_empty() { "default".to_string() } else { bus };
+        let bus = if bus.is_empty() {
+            "default".to_string()
+        } else {
+            bus
+        };
         let statement_id = Self::param_str(req, &["StatementId"]);
         let state = self.get_state(req.account, &req.region);
         let Some(mut policy) = state.bus_policies.read().get(&bus).cloned() else {
@@ -622,7 +658,8 @@ impl EventsHandler {
         }
         if let Some(statements) = policy.get_mut("Statement").and_then(|s| s.as_array_mut()) {
             let before = statements.len();
-            statements.retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
+            statements
+                .retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(statement_id.as_str()));
             if statements.len() == before {
                 return AwsResponse::error(
                     400,
@@ -648,7 +685,11 @@ impl EventsHandler {
         let state = self.get_state(req.account, &req.region);
         let mut existing = state.get_tags(&arn);
         for tag in tags {
-            let key = tag.get("Key").and_then(|k| k.as_str()).unwrap_or_default().to_string();
+            let key = tag
+                .get("Key")
+                .and_then(|k| k.as_str())
+                .unwrap_or_default()
+                .to_string();
             let found = existing
                 .iter_mut()
                 .any(|t| t.get("Key").and_then(|k| k.as_str()) == Some(key.as_str()));
@@ -672,7 +713,11 @@ impl EventsHandler {
             .params
             .get("TagKeys")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|k| k.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|k| k.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut existing = state.get_tags(&arn);
@@ -704,7 +749,10 @@ impl EventsHandler {
                 &format!("Archive {name} already exists"),
             );
         }
-        let arn = format!("arn:aws:events:{}:{}:archive/{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:events:{}:{}:archive/{}",
+            req.region, req.account, name
+        );
         let mut record = json!({
             "ArchiveName": name,
             "ArchiveArn": arn,
@@ -771,7 +819,10 @@ impl EventsHandler {
             obj.insert("RetentionDays".into(), json!(days));
         }
         let arn = obj.get("ArchiveArn").cloned().unwrap_or(Value::Null);
-        let state_flag = obj.get("State").cloned().unwrap_or_else(|| json!("ENABLED"));
+        let state_flag = obj
+            .get("State")
+            .cloned()
+            .unwrap_or_else(|| json!("ENABLED"));
         AwsResponse::json(200, json!({ "ArchiveArn": arn, "State": state_flag }))
     }
 
@@ -806,7 +857,8 @@ impl EventsHandler {
                     .map(|n| n.starts_with(&name_prefix))
                     .unwrap_or(true)
                     && (source.is_empty()
-                        || a.get("EventSourceArn").and_then(|s| s.as_str()) == Some(source.as_str()))
+                        || a.get("EventSourceArn").and_then(|s| s.as_str())
+                            == Some(source.as_str()))
             })
             .map(|row| {
                 // List entries omit Description/EventPattern (ground truth shape).
@@ -824,7 +876,10 @@ impl EventsHandler {
     // ---------------- Replays ----------------
 
     fn replay_arn(&self, req: &AwsRequest, name: &str) -> String {
-        format!("arn:aws:events:{}:{}:replay/{}", req.region, req.account, name)
+        format!(
+            "arn:aws:events:{}:{}:replay/{}",
+            req.region, req.account, name
+        )
     }
 
     fn start_replay(&self, req: &AwsRequest) -> AwsResponse {
@@ -900,7 +955,10 @@ impl EventsHandler {
     // ---------------- Connections ----------------
 
     fn connection_arn(&self, req: &AwsRequest, name: &str) -> String {
-        format!("arn:aws:events:{}:{}:connection/{}", req.region, req.account, name)
+        format!(
+            "arn:aws:events:{}:{}:connection/{}",
+            req.region, req.account, name
+        )
     }
 
     fn create_connection(&self, req: &AwsRequest) -> AwsResponse {
@@ -970,7 +1028,10 @@ impl EventsHandler {
         row["LastModifiedTime"] = json!(now);
         let conn_state = row["ConnectionState"].clone();
         let arn = row["ConnectionArn"].clone();
-        AwsResponse::json(200, json!({ "ConnectionArn": arn, "ConnectionState": conn_state, "LastModifiedTime": now }))
+        AwsResponse::json(
+            200,
+            json!({ "ConnectionArn": arn, "ConnectionState": conn_state, "LastModifiedTime": now }),
+        )
     }
 
     fn deauthorize_connection(&self, req: &AwsRequest) -> AwsResponse {
@@ -1008,7 +1069,10 @@ impl EventsHandler {
                     req.region, req.account, name
                 );
                 let _ = row;
-                AwsResponse::json(200, json!({ "ConnectionArn": arn, "ConnectionState": "DELETING" }))
+                AwsResponse::json(
+                    200,
+                    json!({ "ConnectionArn": arn, "ConnectionState": "DELETING" }),
+                )
             }
             None => AwsResponse::error(
                 400,
@@ -1021,13 +1085,19 @@ impl EventsHandler {
     fn list_connections(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let rows: Vec<Value> = state.connections.read().values().cloned().collect();
-        AwsResponse::json(200, json!({ "Connections": rows, "NextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "Connections": rows, "NextToken": Value::Null }),
+        )
     }
 
     // ---------------- API destinations ----------------
 
     fn api_destination_arn(&self, req: &AwsRequest, name: &str) -> String {
-        format!("arn:aws:events:{}:{}:api-destination/{}", req.region, req.account, name)
+        format!(
+            "arn:aws:events:{}:{}:api-destination/{}",
+            req.region, req.account, name
+        )
     }
 
     fn create_api_destination(&self, req: &AwsRequest) -> AwsResponse {
@@ -1135,7 +1205,8 @@ impl EventsHandler {
             .values()
             .filter(|d| {
                 let conn = Self::param_str(req, &["ConnectionArn"]);
-                conn.is_empty() || d.get("ConnectionArn").and_then(|c| c.as_str()) == Some(conn.as_str())
+                conn.is_empty()
+                    || d.get("ConnectionArn").and_then(|c| c.as_str()) == Some(conn.as_str())
             })
             .map(|row| {
                 let mut entry = row.clone();
@@ -1146,13 +1217,19 @@ impl EventsHandler {
                 entry
             })
             .collect();
-        AwsResponse::json(200, json!({ "ApiDestinations": rows, "NextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "ApiDestinations": rows, "NextToken": Value::Null }),
+        )
     }
 
     // ---------------- Endpoints ----------------
 
     fn endpoint_record(&self, req: &AwsRequest, name: &str) -> Value {
-        let arn = format!("arn:aws:events:{}:{}:endpoint/{}", req.region, req.account, name);
+        let arn = format!(
+            "arn:aws:events:{}:{}:endpoint/{}",
+            req.region, req.account, name
+        );
         json!({
             "Name": name,
             "Arn": arn.clone(),
@@ -1232,10 +1309,7 @@ impl EventsHandler {
     fn delete_endpoint(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["Name"]);
         let state = self.get_state(req.account, &req.region);
-        state
-            .endpoints
-            .write()
-            .remove(&name);
+        state.endpoints.write().remove(&name);
         AwsResponse::json(200, json!({}))
     }
 
@@ -1250,11 +1324,14 @@ impl EventsHandler {
     fn create_partner_event_source(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["Name"]);
         let state = self.get_state(req.account, &req.region);
-        let arn = format!("arn:aws:events:{}::event-source/aws.partner/{}", req.region, name);
-        state.partner_sources.write().insert(
-            name.clone(),
-            json!({ "Name": name, "Arn": arn }),
+        let arn = format!(
+            "arn:aws:events:{}::event-source/aws.partner/{}",
+            req.region, name
         );
+        state
+            .partner_sources
+            .write()
+            .insert(name.clone(), json!({ "Name": name, "Arn": arn }));
         AwsResponse::json(200, json!({}))
     }
 
@@ -1265,7 +1342,10 @@ impl EventsHandler {
         let row = match existing {
             Some(row) => row,
             None => {
-                let arn = format!("arn:aws:events:{}::event-source/aws.partner/{}", req.region, name);
+                let arn = format!(
+                    "arn:aws:events:{}::event-source/aws.partner/{}",
+                    req.region, name
+                );
                 json!({ "Name": name, "Arn": arn })
             }
         };
@@ -1294,11 +1374,17 @@ impl EventsHandler {
             })
             .cloned()
             .collect();
-        AwsResponse::json(200, json!({ "PartnerEventSources": rows, "NextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "PartnerEventSources": rows, "NextToken": Value::Null }),
+        )
     }
 
     fn list_partner_event_source_accounts(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({ "PartnerEventSourceAccounts": [], "NextToken": Value::Null }))
+        AwsResponse::json(
+            200,
+            json!({ "PartnerEventSourceAccounts": [], "NextToken": Value::Null }),
+        )
     }
 
     fn describe_event_source(&self, req: &AwsRequest) -> AwsResponse {
@@ -1418,14 +1504,21 @@ mod tests {
     #[test]
     fn test_put_and_list_rules() {
         let handler = EventsHandler::new();
-        handler.handle(make_req("PutRule", json!({
-            "Name": "my-rule",
-            "EventPattern": "{}"
-        })));
+        handler.handle(make_req(
+            "PutRule",
+            json!({
+                "Name": "my-rule",
+                "EventPattern": "{}"
+            }),
+        ));
         let resp = handler.handle(make_req("ListRules", json!({})));
         assert_eq!(resp.status, 200);
         let json = body(&resp);
-        assert!(json["Rules"].as_array().unwrap().iter().any(|r| r["Name"] == "my-rule"));
+        assert!(json["Rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["Name"] == "my-rule"));
     }
 
     #[test]
@@ -1445,13 +1538,20 @@ mod tests {
     #[test]
     fn test_tag_resource_replaces_keys() {
         let handler = EventsHandler::new();
-        let resp = handler.handle(make_req("PutRule", json!({"Name": "r", "EventPattern": "{}"})));
+        let resp = handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "r", "EventPattern": "{}"}),
+        ));
         let arn = body(&resp)["RuleArn"].as_str().unwrap().to_string();
-        handler.handle(make_req("TagResource", json!({
-            "ResourceARN": arn,
-            "Tags": [{"Key": "env", "Value": "staging"}]
-        })));
-        let tags = body(&handler.handle(make_req("ListTagsForResource", json!({"ResourceARN": arn}))));
+        handler.handle(make_req(
+            "TagResource",
+            json!({
+                "ResourceARN": arn,
+                "Tags": [{"Key": "env", "Value": "staging"}]
+            }),
+        ));
+        let tags =
+            body(&handler.handle(make_req("ListTagsForResource", json!({"ResourceARN": arn}))));
         assert_eq!(tags["Tags"][0]["Value"], "staging");
     }
 

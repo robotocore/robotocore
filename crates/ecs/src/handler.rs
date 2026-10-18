@@ -29,7 +29,9 @@ pub struct EcsHandler {
 
 impl Default for EcsHandler {
     fn default() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
     }
 }
 
@@ -40,7 +42,10 @@ impl EcsHandler {
 
     fn get_state(&self, account: u64, region: &str) -> EcsState {
         let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_default().clone()
+        states
+            .entry((account, region.to_string()))
+            .or_default()
+            .clone()
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
@@ -96,7 +101,8 @@ impl EcsHandler {
             "ListServiceDeployments" => self.list_service_deployments(&req),
             "DescribeServiceDeployments" => self.describe_service_deployments(&req),
             "DescribeServiceRevisions" => self.describe_service_revisions(&req),
-            "SubmitContainerStateChange" | "SubmitTaskStateChange"
+            "SubmitContainerStateChange"
+            | "SubmitTaskStateChange"
             | "SubmitAttachmentStateChanges" => {
                 AwsResponse::json(200, json!({ "acknowledgment": "ACCEPT" }))
             }
@@ -105,17 +111,23 @@ impl EcsHandler {
             "UpdateTaskProtection" => self.update_task_protection(&req),
             "ListServicesByNamespace" => AwsResponse::json(200, json!({ "serviceArns": [] })),
             "StopServiceDeployment" => AwsResponse::json(200, json!({})),
-            "CreateExpressGatewayService" | "DeleteExpressGatewayService"
-            | "DescribeExpressGatewayService" | "UpdateExpressGatewayService" => {
-                AwsResponse::json(200, json!({}))
-            }
-            "DiscoverPollEndpoint" => AwsResponse::json(200, json!({
-                "endpoint": "http://localhost:4567",
-                "agentArgs": [],
-                "agentConfig": {},
-            })),
-            other => AwsResponse::error(400, "InvalidAction",
-                &format!("Could not find operation {}", other)),
+            "CreateExpressGatewayService"
+            | "DeleteExpressGatewayService"
+            | "DescribeExpressGatewayService"
+            | "UpdateExpressGatewayService" => AwsResponse::json(200, json!({})),
+            "DiscoverPollEndpoint" => AwsResponse::json(
+                200,
+                json!({
+                    "endpoint": "http://localhost:4567",
+                    "agentArgs": [],
+                    "agentConfig": {},
+                }),
+            ),
+            other => AwsResponse::error(
+                400,
+                "InvalidAction",
+                &format!("Could not find operation {}", other),
+            ),
         }
     }
 
@@ -124,16 +136,35 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn create_cluster(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("clusterName").and_then(|v| v.as_str())
-            .unwrap_or("default").to_string();
+        let name = req
+            .params
+            .get("clusterName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default")
+            .to_string();
         let state = self.get_state(req.account, &req.region);
-        let settings: Vec<Value> = req.params.get("settings")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default();
-        let tags: Vec<Value> = req.params.get("tags")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default();
-        let providers: Vec<Value> = req.params.get("capacityProviders")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default();
-        let arn = format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, name);
+        let settings: Vec<Value> = req
+            .params
+            .get("settings")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let providers: Vec<Value> = req
+            .params
+            .get("capacityProviders")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let arn = format!(
+            "arn:aws:ecs:{}:{}:cluster/{}",
+            req.region, req.account, name
+        );
         let cluster = json!({
             "clusterArn": arn.clone(),
             "clusterName": name,
@@ -154,21 +185,33 @@ impl EcsHandler {
     }
 
     fn delete_cluster(&self, req: &AwsRequest) -> AwsResponse {
-        let name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         let cluster = state.clusters.read().get(name).cloned();
         let cluster = match cluster {
             Some(c) => c,
             None => return cluster_not_found(name),
         };
-        let arn = cluster["clusterArn"].as_str().unwrap_or_default().to_string();
+        let arn = cluster["clusterArn"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         // Cascade: remove child services/tasks and their tags, then the cluster's.
         {
             let mut services = state.services.write();
             if let Some(svcs) = services.remove(name) {
                 let mut tags = state.tags.write();
                 for svc in svcs.values() {
-                    tags.remove(svc.get("serviceArn").and_then(|a| a.as_str()).unwrap_or_default());
+                    tags.remove(
+                        svc.get("serviceArn")
+                            .and_then(|a| a.as_str())
+                            .unwrap_or_default(),
+                    );
                 }
             }
         }
@@ -177,7 +220,11 @@ impl EcsHandler {
             if let Some(tsk) = tasks.remove(name) {
                 let mut tags = state.tags.write();
                 for task in tsk.values() {
-                    tags.remove(task.get("taskArn").and_then(|a| a.as_str()).unwrap_or_default());
+                    tags.remove(
+                        task.get("taskArn")
+                            .and_then(|a| a.as_str())
+                            .unwrap_or_default(),
+                    );
                 }
             }
         }
@@ -189,9 +236,15 @@ impl EcsHandler {
     }
 
     fn describe_clusters(&self, req: &AwsRequest) -> AwsResponse {
-        let ids: Vec<String> = req.params.get("clusters")
+        let ids: Vec<String> = req
+            .params
+            .get("clusters")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut found: Vec<Value> = Vec::new();
@@ -202,12 +255,21 @@ impl EcsHandler {
             match clusters.get(name) {
                 Some(cluster) => {
                     let mut c = cluster.clone();
-                    c["activeServicesCount"] = json!(state.services.read()
-                        .get(name).map(|m| m.len()).unwrap_or(0));
-                    c["runningTasksCount"] = json!(state.tasks.read()
-                        .get(name).map(|m| m.values()
+                    c["activeServicesCount"] = json!(state
+                        .services
+                        .read()
+                        .get(name)
+                        .map(|m| m.len())
+                        .unwrap_or(0));
+                    c["runningTasksCount"] = json!(state
+                        .tasks
+                        .read()
+                        .get(name)
+                        .map(|m| m
+                            .values()
                             .filter(|t| t["lastStatus"] == json!("RUNNING"))
-                            .count()).unwrap_or(0));
+                            .count())
+                        .unwrap_or(0));
                     found.push(c);
                 }
                 None => failures.push(json!({ "arn": cid, "reason": "MISSING" })),
@@ -218,7 +280,9 @@ impl EcsHandler {
 
     fn list_clusters(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let arns: Vec<Value> = state.clusters.read()
+        let arns: Vec<Value> = state
+            .clusters
+            .read()
             .values()
             .map(|c| c["clusterArn"].clone())
             .collect();
@@ -226,7 +290,12 @@ impl EcsHandler {
     }
 
     fn update_cluster_common(&self, req: &AwsRequest, apply_settings: bool) -> AwsResponse {
-        let name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         let exists = state.clusters.read().contains_key(name);
         if !exists {
@@ -259,15 +328,27 @@ impl EcsHandler {
     }
 
     fn put_cluster_capacity_providers(&self, req: &AwsRequest) -> AwsResponse {
-        let name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(name) {
             return cluster_not_found(name);
         }
         let updated = {
-            let providers = req.params.get("capacityProviders").cloned().unwrap_or(json!([]));
-            let strategy = req.params.get("defaultCapacityProviderStrategy")
-                .cloned().unwrap_or(json!([]));
+            let providers = req
+                .params
+                .get("capacityProviders")
+                .cloned()
+                .unwrap_or(json!([]));
+            let strategy = req
+                .params
+                .get("defaultCapacityProviderStrategy")
+                .cloned()
+                .unwrap_or(json!([]));
             let mut clusters = state.clusters.write();
             let cluster = clusters.get_mut(name).unwrap();
             cluster["capacityProviders"] = providers;
@@ -282,10 +363,18 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn create_capacity_provider(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str())
-            .unwrap_or_default().to_string();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let state = self.get_state(req.account, &req.region);
-        let mut asg = req.params.get("autoScalingGroupProvider").cloned().unwrap_or(json!({}));
+        let mut asg = req
+            .params
+            .get("autoScalingGroupProvider")
+            .cloned()
+            .unwrap_or(json!({}));
         normalize_asg(&mut asg);
         let cp = json!({
             "capacityProviderArn": format!("arn:aws:ecs:{}:{}:capacity-provider/{}",
@@ -299,9 +388,15 @@ impl EcsHandler {
     }
 
     fn describe_capacity_providers(&self, req: &AwsRequest) -> AwsResponse {
-        let names: Vec<String> = req.params.get("capacityProviders")
+        let names: Vec<String> = req
+            .params
+            .get("capacityProviders")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut found: Vec<Value> = Vec::new();
@@ -321,11 +416,18 @@ impl EcsHandler {
                 })),
             }
         }
-        AwsResponse::json(200, json!({ "capacityProviders": found, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "capacityProviders": found, "failures": failures }),
+        )
     }
 
     fn delete_capacity_provider(&self, req: &AwsRequest) -> AwsResponse {
-        let reference = req.params.get("capacityProvider").and_then(|v| v.as_str()).unwrap_or_default();
+        let reference = req
+            .params
+            .get("capacityProvider")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let name = resolve_name(reference);
         let state = self.get_state(req.account, &req.region);
         let mut cps = state.capacity_providers.write();
@@ -335,20 +437,37 @@ impl EcsHandler {
                 let _ = reference;
                 AwsResponse::json(200, json!({ "capacityProvider": cp }))
             }
-            None => AwsResponse::error(400, "CapacityProviderNotFoundException",
-                &format!("The specified capacity provider {} was not found", reference)),
+            None => AwsResponse::error(
+                400,
+                "CapacityProviderNotFoundException",
+                &format!(
+                    "The specified capacity provider {} was not found",
+                    reference
+                ),
+            ),
         }
     }
 
     fn update_capacity_provider(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let exists = state.capacity_providers.read().contains_key(name);
         if !exists {
-            return AwsResponse::error(400, "CapacityProviderNotFoundException",
-                &format!("The specified capacity provider {} was not found", name));
+            return AwsResponse::error(
+                400,
+                "CapacityProviderNotFoundException",
+                &format!("The specified capacity provider {} was not found", name),
+            );
         }
-        let asg = req.params.get("autoScalingGroupProvider").cloned().unwrap_or(json!({}));
+        let asg = req
+            .params
+            .get("autoScalingGroupProvider")
+            .cloned()
+            .unwrap_or(json!({}));
         let updated = {
             let mut cps = state.capacity_providers.write();
             let cp = cps.get_mut(name).unwrap();
@@ -363,7 +482,11 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn register_task_definition(&self, req: &AwsRequest) -> AwsResponse {
-        let family = req.params.get("family").and_then(|v| v.as_str()).unwrap_or_default();
+        let family = req
+            .params
+            .get("family")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if family.is_empty() {
             return AwsResponse::error(400, "ClientException", "family is required.");
         }
@@ -374,9 +497,16 @@ impl EcsHandler {
             let mut tds = state.task_definitions.write();
             let revisions = tds.entry(family.to_string()).or_default();
             let revision = revisions.len() + 1;
-            td_arn = format!("arn:aws:ecs:{}:{}:task-definition/{}:{}",
-                req.region, req.account, family, revision);
-            tags = req.params.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            td_arn = format!(
+                "arn:aws:ecs:{}:{}:task-definition/{}:{}",
+                req.region, req.account, family, revision
+            );
+            tags = req
+                .params
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
             let td = json!({
                 "taskDefinitionArn": td_arn.clone(),
                 "family": family,
@@ -399,28 +529,49 @@ impl EcsHandler {
         if !tags.is_empty() {
             state.tags.write().insert(td_arn, json!(tags));
         }
-        AwsResponse::json(200, json!({
-            "taskDefinition": td.clone(),
-            "tags": td["tags"].clone(),
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "taskDefinition": td.clone(),
+                "tags": td["tags"].clone(),
+            }),
+        )
     }
 
     fn describe_task_definition(&self, req: &AwsRequest) -> AwsResponse {
-        let td_ref = req.params.get("taskDefinition").and_then(|v| v.as_str()).unwrap_or_default();
+        let td_ref = req
+            .params
+            .get("taskDefinition")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         match resolve_task_definition(&state, td_ref) {
-            Some(td) => AwsResponse::json(200, json!({
-                "taskDefinition": td.clone(),
-                "tags": td.get("tags").cloned().unwrap_or(json!([])),
-            })),
-            None => AwsResponse::error(400, "ClientException",
-                &format!("Unable to describe task definition {}.", td_ref)),
+            Some(td) => AwsResponse::json(
+                200,
+                json!({
+                    "taskDefinition": td.clone(),
+                    "tags": td.get("tags").cloned().unwrap_or(json!([])),
+                }),
+            ),
+            None => AwsResponse::error(
+                400,
+                "ClientException",
+                &format!("Unable to describe task definition {}.", td_ref),
+            ),
         }
     }
 
     fn list_task_definitions(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("familyPrefix").and_then(|v| v.as_str()).unwrap_or_default();
-        let status = req.params.get("status").and_then(|v| v.as_str()).unwrap_or("ACTIVE");
+        let prefix = req
+            .params
+            .get("familyPrefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let status = req
+            .params
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ACTIVE");
         let state = self.get_state(req.account, &req.region);
         let tds = state.task_definitions.read();
         let mut arns: Vec<String> = Vec::new();
@@ -430,7 +581,12 @@ impl EcsHandler {
             }
             for td in revisions {
                 if td.get("status").and_then(|v| v.as_str()) == Some(status) {
-                    arns.push(td["taskDefinitionArn"].as_str().unwrap_or_default().to_string());
+                    arns.push(
+                        td["taskDefinitionArn"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -439,8 +595,16 @@ impl EcsHandler {
     }
 
     fn list_task_definition_families(&self, req: &AwsRequest) -> AwsResponse {
-        let prefix = req.params.get("familyPrefix").and_then(|v| v.as_str()).unwrap_or_default();
-        let status = req.params.get("status").and_then(|v| v.as_str()).unwrap_or("ACTIVE");
+        let prefix = req
+            .params
+            .get("familyPrefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let status = req
+            .params
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ACTIVE");
         let state = self.get_state(req.account, &req.region);
         let tds = state.task_definitions.read();
         let mut families: Vec<String> = Vec::new();
@@ -448,11 +612,22 @@ impl EcsHandler {
             if !prefix.is_empty() && !family.starts_with(prefix) {
                 continue;
             }
-            let has_status = |want: &str| revisions.iter()
-                .any(|td| td.get("status").and_then(|v| v.as_str()) == Some(want));
+            let has_status = |want: &str| {
+                revisions
+                    .iter()
+                    .any(|td| td.get("status").and_then(|v| v.as_str()) == Some(want))
+            };
             match status {
-                "ACTIVE" => { if has_status("ACTIVE") { families.push(family.clone()); } }
-                "INACTIVE" => { if has_status("INACTIVE") { families.push(family.clone()); } }
+                "ACTIVE" => {
+                    if has_status("ACTIVE") {
+                        families.push(family.clone());
+                    }
+                }
+                "INACTIVE" => {
+                    if has_status("INACTIVE") {
+                        families.push(family.clone());
+                    }
+                }
                 _ => families.push(family.clone()),
             }
         }
@@ -462,12 +637,21 @@ impl EcsHandler {
     }
 
     fn deregister_task_definition(&self, req: &AwsRequest) -> AwsResponse {
-        let td_ref = req.params.get("taskDefinition").and_then(|v| v.as_str()).unwrap_or_default();
+        let td_ref = req
+            .params
+            .get("taskDefinition")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let found = resolve_task_definition(&state, td_ref);
         let td = match found {
-            None => return AwsResponse::error(400, "ClientException",
-                &format!("Unable to deregister task definition {}.", td_ref)),
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    &format!("Unable to deregister task definition {}.", td_ref),
+                )
+            }
             Some(td) => td,
         };
         let family = td["family"].as_str().unwrap_or_default().to_string();
@@ -488,9 +672,15 @@ impl EcsHandler {
     }
 
     fn delete_task_definitions(&self, req: &AwsRequest) -> AwsResponse {
-        let refs: Vec<String> = req.params.get("taskDefinitions")
+        let refs: Vec<String> = req
+            .params
+            .get("taskDefinitions")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut deleted: Vec<Value> = Vec::new();
@@ -519,7 +709,10 @@ impl EcsHandler {
                 })),
             }
         }
-        AwsResponse::json(200, json!({ "taskDefinitions": deleted, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "taskDefinitions": deleted, "failures": failures }),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -527,28 +720,51 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn create_service(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let svc_name = req.params.get("serviceName").and_then(|v| v.as_str()).unwrap_or_default();
+        let svc_name = req
+            .params
+            .get("serviceName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if svc_name.is_empty() {
             return AwsResponse::error(400, "ClientException", "serviceName is required.");
         }
         let now = now_f64();
-        let dep_id = format!("ecs-svc/{}", &uuid::Uuid::new_v4().simple().to_string()[..20]);
-        let task_definition = req.params.get("taskDefinition").and_then(|v| v.as_str()).unwrap_or_default();
-        let svc_arn = format!("arn:aws:ecs:{}:{}:service/{}/{}",
-            req.region, req.account, cluster_name, svc_name);
+        let dep_id = format!(
+            "ecs-svc/{}",
+            &uuid::Uuid::new_v4().simple().to_string()[..20]
+        );
+        let task_definition = req
+            .params
+            .get("taskDefinition")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let svc_arn = format!(
+            "arn:aws:ecs:{}:{}:service/{}/{}",
+            req.region, req.account, cluster_name, svc_name
+        );
         let clusters = state.clusters.read();
-        let cluster_arn = clusters.get(cluster_name)
+        let cluster_arn = clusters
+            .get(cluster_name)
             .and_then(|c| c.get("clusterArn"))
             .cloned()
             .unwrap_or(Value::Null);
         drop(clusters);
-        let tags: Vec<Value> = req.params.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let service = json!({
             "serviceArn": svc_arn.clone(),
             "serviceName": svc_name,
@@ -578,8 +794,11 @@ impl EcsHandler {
             let mut services = state.services.write();
             let cluster_services = services.entry(cluster_name.to_string()).or_default();
             if cluster_services.contains_key(svc_name) {
-                return AwsResponse::error(400, "ClientException",
-                    &format!("Service {} already exists.", svc_name));
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    &format!("Service {} already exists.", svc_name),
+                );
             }
             cluster_services.insert(svc_name.to_string(), service.clone());
         }
@@ -590,20 +809,31 @@ impl EcsHandler {
     }
 
     fn delete_service(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         let mut services = state.services.write();
         let cluster_services = services.get_mut(cluster_name);
-        let lookup = cluster_services
-            .and_then(|m| m.get_mut(svc_name));
+        let lookup = cluster_services.and_then(|m| m.get_mut(svc_name));
         let Some(service) = lookup else {
             return service_not_found(svc_name);
         };
         service["status"] = json!("INACTIVE");
         service["desiredCount"] = json!(0);
-        let arn = service["serviceArn"].as_str().unwrap_or_default().to_string();
+        let arn = service["serviceArn"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         let updated = service.clone();
         if let Some(map) = services.get_mut(cluster_name) {
             map.remove(svc_name);
@@ -614,11 +844,21 @@ impl EcsHandler {
     }
 
     fn describe_services(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let ids: Vec<String> = req.params.get("services")
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let ids: Vec<String> = req
+            .params
+            .get("services")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut found: Vec<Value> = Vec::new();
@@ -627,7 +867,11 @@ impl EcsHandler {
         let cluster_services = services.get(cluster_name);
         for sid in &ids {
             let lookup = cluster_services
-                .map(|m| m.get(resolve_name(sid)).cloned().or_else(|| m.get(sid).cloned()))
+                .map(|m| {
+                    m.get(resolve_name(sid))
+                        .cloned()
+                        .or_else(|| m.get(sid).cloned())
+                })
                 .unwrap_or(None);
             match lookup {
                 Some(svc) => found.push(svc),
@@ -638,25 +882,43 @@ impl EcsHandler {
     }
 
     fn list_services(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
-        let arns: Vec<String> = state.services.read()
+        let arns: Vec<String> = state
+            .services
+            .read()
             .get(cluster_name)
-            .map(|m| m.values()
-                .map(|s| s["serviceArn"].as_str().unwrap_or_default().to_string())
-                .collect())
+            .map(|m| {
+                m.values()
+                    .map(|s| s["serviceArn"].as_str().unwrap_or_default().to_string())
+                    .collect()
+            })
             .unwrap_or_default();
         AwsResponse::json(200, json!({ "serviceArns": arns }))
     }
 
     fn update_service(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         let mut services = state.services.write();
-        let lookup = services.get_mut(cluster_name)
+        let lookup = services
+            .get_mut(cluster_name)
             .and_then(|m| m.get_mut(svc_name));
         let Some(service) = lookup else {
             return service_not_found(svc_name);
@@ -672,22 +934,42 @@ impl EcsHandler {
     }
 
     fn update_service_primary_task_set(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
-        let exists = state.services.read()
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let exists = state
+            .services
+            .read()
             .get(cluster_name)
             .map(|m| m.contains_key(svc_name))
             .unwrap_or(false);
         if !exists {
             return service_not_found(svc_name);
         }
-        AwsResponse::error(400, "InvalidParameterException",
-            &format!("Task set {} not found",
-                req.params.get("primaryTaskSet").and_then(|v| v.as_str()).unwrap_or_default()))
+        AwsResponse::error(
+            400,
+            "InvalidParameterException",
+            &format!(
+                "Task set {} not found",
+                req.params
+                    .get("primaryTaskSet")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+            ),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -695,28 +977,49 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn run_task(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let td_ref = req.params.get("taskDefinition").and_then(|v| v.as_str()).unwrap_or_default();
+        let td_ref = req
+            .params
+            .get("taskDefinition")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let td = match resolve_task_definition(&state, td_ref) {
             Some(td) => td,
-            None => return AwsResponse::error(400, "ClientException",
-                &format!("Task definition {} not found.", td_ref)),
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    &format!("Task definition {} not found.", td_ref),
+                )
+            }
         };
-        let count = req.params.get("count").and_then(|v| v.as_i64()).unwrap_or(1);
+        let count = req
+            .params
+            .get("count")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(1);
         let now = now_f64();
         let clusters = state.clusters.read();
-        let cluster_arn = clusters.get(cluster_name)
+        let cluster_arn = clusters
+            .get(cluster_name)
             .and_then(|c| c.get("clusterArn"))
             .cloned()
             .unwrap_or(Value::Null);
         drop(clusters);
-        let containers: Vec<Value> = td.get("containerDefinitions")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default()
+        let containers: Vec<Value> = td
+            .get("containerDefinitions")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
             .iter()
             .map(|cd| {
                 let mut entry = json!({
@@ -734,14 +1037,23 @@ impl EcsHandler {
             .collect();
         let mut tasks: Vec<Value> = Vec::new();
         let mut inserted: Vec<(String, Value)> = Vec::new();
-        let task_tags: Vec<Value> = req.params.get("tags")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let task_tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         for _ in 0..count {
             let task_id = uuid::Uuid::new_v4().to_string();
-            let task_arn = format!("arn:aws:ecs:{}:{}:task/{}/{}",
-                req.region, req.account, cluster_name, task_id);
+            let task_arn = format!(
+                "arn:aws:ecs:{}:{}:task/{}/{}",
+                req.region, req.account, cluster_name, task_id
+            );
             if !task_tags.is_empty() {
-                state.tags.write().insert(task_arn.clone(), json!(task_tags.clone()));
+                state
+                    .tags
+                    .write()
+                    .insert(task_arn.clone(), json!(task_tags.clone()));
             }
             let task = json!({
                 "taskArn": task_arn.clone(),
@@ -761,7 +1073,9 @@ impl EcsHandler {
             tasks.push(task.clone());
             inserted.push((task_id, task));
         }
-        state.tasks.write()
+        state
+            .tasks
+            .write()
             .entry(cluster_name.to_string())
             .or_default()
             .extend(inserted);
@@ -769,21 +1083,37 @@ impl EcsHandler {
     }
 
     fn start_task(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let td_ref = req.params.get("taskDefinition").and_then(|v| v.as_str()).unwrap_or_default();
+        let td_ref = req
+            .params
+            .get("taskDefinition")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let td = match resolve_task_definition(&state, td_ref) {
             Some(td) => td,
-            None => return AwsResponse::error(400, "ClientException",
-                &format!("Task definition {} not found.", td_ref)),
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "ClientException",
+                    &format!("Task definition {} not found.", td_ref),
+                )
+            }
         };
         let now = now_f64();
         let task_id = uuid::Uuid::new_v4().to_string();
-        let task_arn = format!("arn:aws:ecs:{}:{}:task/{}/{}",
-            req.region, req.account, cluster_name, task_id);
+        let task_arn = format!(
+            "arn:aws:ecs:{}:{}:task/{}/{}",
+            req.region, req.account, cluster_name, task_id
+        );
         let task = json!({
             "taskArn": task_arn.clone(),
             "taskDefinitionArn": td["taskDefinitionArn"].clone(),
@@ -794,7 +1124,9 @@ impl EcsHandler {
             "startedAt": now,
             "tags": [],
         });
-        state.tasks.write()
+        state
+            .tasks
+            .write()
             .entry(cluster_name.to_string())
             .or_default()
             .insert(task_id, task.clone());
@@ -802,33 +1134,56 @@ impl EcsHandler {
     }
 
     fn stop_task(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let task_ref = req.params.get("task").and_then(|v| v.as_str()).unwrap_or_default();
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let task_ref = req
+            .params
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let task_id = resolve_name(task_ref);
         let state = self.get_state(req.account, &req.region);
         let mut tasks = state.tasks.write();
-        let lookup = tasks.get_mut(cluster_name)
-            .and_then(|m| m.get_mut(task_id));
+        let lookup = tasks.get_mut(cluster_name).and_then(|m| m.get_mut(task_id));
         let Some(task) = lookup else {
-            return AwsResponse::error(400, "InvalidParameterException",
-                &format!("Task {} not found.", task_ref));
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Task {} not found.", task_ref),
+            );
         };
         task["lastStatus"] = json!("STOPPED");
         task["desiredStatus"] = json!("STOPPED");
         task["stoppedAt"] = json!(now_f64());
-        task["stoppedReason"] = json!(req.params.get("reason")
-            .and_then(|v| v.as_str()).unwrap_or("Task stopped by user"));
+        task["stoppedReason"] = json!(req
+            .params
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Task stopped by user"));
         let updated = task.clone();
         AwsResponse::json(200, json!({ "task": updated }))
     }
 
     fn describe_tasks(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let ids: Vec<String> = req.params.get("tasks")
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let ids: Vec<String> = req
+            .params
+            .get("tasks")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut found: Vec<Value> = Vec::new();
@@ -838,14 +1193,15 @@ impl EcsHandler {
         for tid in &ids {
             let lookup = cluster_tasks
                 .map(|m| {
-                    m.get(resolve_name(tid)).cloned()
-                        .or_else(|| {
-                            m.get(tid).cloned().or_else(|| {
-                                m.values().find(|t| {
+                    m.get(resolve_name(tid)).cloned().or_else(|| {
+                        m.get(tid).cloned().or_else(|| {
+                            m.values()
+                                .find(|t| {
                                     t.get("taskArn").and_then(|a| a.as_str()) == Some(tid.as_str())
-                                }).cloned()
-                            })
+                                })
+                                .cloned()
                         })
+                    })
                 })
                 .unwrap_or(None);
             match lookup {
@@ -857,15 +1213,27 @@ impl EcsHandler {
     }
 
     fn list_tasks(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let status_filter = req.params.get("desiredStatus").and_then(|v| v.as_str()).unwrap_or("RUNNING");
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let status_filter = req
+            .params
+            .get("desiredStatus")
+            .and_then(|v| v.as_str())
+            .unwrap_or("RUNNING");
         let state = self.get_state(req.account, &req.region);
-        let arns: Vec<String> = state.tasks.read()
+        let arns: Vec<String> = state
+            .tasks
+            .read()
             .get(cluster_name)
             .map(|m| {
                 m.values()
-                    .filter(|t| t.get("desiredStatus").and_then(|v| v.as_str()) == Some(status_filter))
+                    .filter(|t| {
+                        t.get("desiredStatus").and_then(|v| v.as_str()) == Some(status_filter)
+                    })
                     .map(|t| t["taskArn"].as_str().unwrap_or_default().to_string())
                     .collect()
             })
@@ -878,23 +1246,38 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn register_container_instance(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let doc = req.params.get("instanceIdentityDocument")
+        let doc = req
+            .params
+            .get("instanceIdentityDocument")
             .and_then(|v| v.as_str())
             .and_then(|s| serde_json::from_str::<Value>(s).ok())
             .unwrap_or_else(|| json!({}));
-        let ec2_instance_id = doc.get("instanceId").and_then(|v| v.as_str())
+        let ec2_instance_id = doc
+            .get("instanceId")
+            .and_then(|v| v.as_str())
             .map(String::from)
             .unwrap_or_else(|| format!("i-{}", uuid::Uuid::new_v4().simple()));
         let ci_id = uuid::Uuid::new_v4().to_string();
-        let ci_arn = format!("arn:aws:ecs:{}:{}:container-instance/{}/{}",
-            req.region, req.account, cluster_name, ci_id);
-        let tags: Vec<Value> = req.params.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let ci_arn = format!(
+            "arn:aws:ecs:{}:{}:container-instance/{}/{}",
+            req.region, req.account, cluster_name, ci_id
+        );
+        let tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let ci = json!({
             "containerInstanceArn": ci_arn.clone(),
             "ec2InstanceId": ec2_instance_id,
@@ -913,12 +1296,16 @@ impl EcsHandler {
             "attributes": req.params.get("attributes").cloned().unwrap_or(json!([])),
             "tags": tags.clone(),
         });
-        state.container_instances.write()
+        state
+            .container_instances
+            .write()
             .entry(cluster_name.to_string())
             .or_default()
             .insert(ci_id, ci.clone());
         if let Some(cluster) = state.clusters.write().get_mut(cluster_name) {
-            let current = cluster["registeredContainerInstancesCount"].as_i64().unwrap_or(0);
+            let current = cluster["registeredContainerInstancesCount"]
+                .as_i64()
+                .unwrap_or(0);
             cluster["registeredContainerInstancesCount"] = json!(current + 1);
         }
         if !tags.is_empty() {
@@ -928,40 +1315,65 @@ impl EcsHandler {
     }
 
     fn deregister_container_instance(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let ci_ref = req.params.get("containerInstance").and_then(|v| v.as_str()).unwrap_or_default();
+        let ci_ref = req
+            .params
+            .get("containerInstance")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let ci_id = resolve_name(ci_ref);
         let mut cis = state.container_instances.write();
-        let removed = cis.get_mut(cluster_name)
-            .and_then(|m| m.remove(ci_id));
+        let removed = cis.get_mut(cluster_name).and_then(|m| m.remove(ci_id));
         let Some(mut ci) = removed else {
-            return AwsResponse::error(400, "InvalidParameterException",
-                &format!("Container instance {} not found.", ci_ref));
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Container instance {} not found.", ci_ref),
+            );
         };
-        let arn = ci["containerInstanceArn"].as_str().unwrap_or_default().to_string();
+        let arn = ci["containerInstanceArn"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         ci["status"] = json!("INACTIVE");
         ci["agentConnected"] = json!(false);
         let updated = ci;
         drop(cis);
         state.tags.write().remove(&arn);
         if let Some(cluster) = state.clusters.write().get_mut(cluster_name) {
-            let current = cluster["registeredContainerInstancesCount"].as_i64().unwrap_or(0);
+            let current = cluster["registeredContainerInstancesCount"]
+                .as_i64()
+                .unwrap_or(0);
             cluster["registeredContainerInstancesCount"] = json!(current - 1);
         }
         AwsResponse::json(200, json!({ "containerInstance": updated }))
     }
 
     fn describe_container_instances(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let refs: Vec<String> = req.params.get("containerInstances")
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let refs: Vec<String> = req
+            .params
+            .get("containerInstances")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut found: Vec<Value> = Vec::new();
@@ -971,13 +1383,14 @@ impl EcsHandler {
         for reference in &refs {
             let lookup = cluster_cis
                 .map(|m| {
-                    m.get(resolve_name(reference)).cloned()
-                        .or_else(|| {
-                            m.iter()
-                                .find(|(_, t)| t.get("containerInstanceArn")
-                                    .and_then(|a| a.as_str()) == Some(reference.as_str()))
-                                .map(|(_, t)| t.clone())
-                        })
+                    m.get(resolve_name(reference)).cloned().or_else(|| {
+                        m.iter()
+                            .find(|(_, t)| {
+                                t.get("containerInstanceArn").and_then(|a| a.as_str())
+                                    == Some(reference.as_str())
+                            })
+                            .map(|(_, t)| t.clone())
+                    })
                 })
                 .unwrap_or(None);
             match lookup {
@@ -985,38 +1398,66 @@ impl EcsHandler {
                 None => failures.push(json!({ "arn": reference, "reason": "MISSING" })),
             }
         }
-        AwsResponse::json(200, json!({ "containerInstances": found, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "containerInstances": found, "failures": failures }),
+        )
     }
 
     fn list_container_instances(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
-        let arns: Vec<String> = state.container_instances.read()
+        let arns: Vec<String> = state
+            .container_instances
+            .read()
             .get(cluster_name)
-            .map(|m| m.values()
-                .map(|ci| ci["containerInstanceArn"].as_str().unwrap_or_default().to_string())
-                .collect())
+            .map(|m| {
+                m.values()
+                    .map(|ci| {
+                        ci["containerInstanceArn"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string()
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
         AwsResponse::json(200, json!({ "containerInstanceArns": arns }))
     }
 
     fn update_container_instances_state(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let new_status = req.params.get("status").and_then(|v| v.as_str()).unwrap_or("ACTIVE");
+        let new_status = req
+            .params
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ACTIVE");
         let mut found: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
         {
             let mut cis = state.container_instances.write();
             let cluster_cis = cis.get_mut(cluster_name);
             if let Some(map) = cluster_cis {
-                for reference in req.params.get("containerInstances")
-                    .and_then(|v| v.as_array()).cloned().unwrap_or_default()
+                for reference in req
+                    .params
+                    .get("containerInstances")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default()
                 {
                     let r = reference.as_str().unwrap_or_default().to_string();
                     match map.get_mut(resolve_name(&r)) {
@@ -1029,25 +1470,42 @@ impl EcsHandler {
                 }
             }
         }
-        AwsResponse::json(200, json!({ "containerInstances": found, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "containerInstances": found, "failures": failures }),
+        )
     }
 
     fn update_container_agent(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let ci_ref = req.params.get("containerInstance").and_then(|v| v.as_str()).unwrap_or_default();
+        let ci_ref = req
+            .params
+            .get("containerInstance")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let ci_id = resolve_name(ci_ref);
-        let found = state.container_instances.read()
+        let found = state
+            .container_instances
+            .read()
             .get(cluster_name)
             .and_then(|m| m.get(ci_id))
             .cloned();
         match found {
             Some(ci) => AwsResponse::json(200, json!({ "containerInstance": ci })),
-            None => AwsResponse::error(400, "InvalidParameterException",
-                "The referenced container instance is not found."),
+            None => AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "The referenced container instance is not found.",
+            ),
         }
     }
 
@@ -1056,13 +1514,25 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn create_task_set(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
-        let svc = state.services.read()
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let svc = state
+            .services
+            .read()
             .get(cluster_name)
             .and_then(|m| m.get(svc_name))
             .cloned();
@@ -1071,9 +1541,16 @@ impl EcsHandler {
         };
         let svc_arn = svc["serviceArn"].as_str().unwrap_or_default().to_string();
         let ts_id = uuid::Uuid::new_v4().to_string();
-        let ts_arn = format!("arn:aws:ecs:{}:{}:task-set/{}/{}/{}",
-            req.region, req.account, cluster_name, svc_name, ts_id);
-        let tags: Vec<Value> = req.params.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let ts_arn = format!(
+            "arn:aws:ecs:{}:{}:task-set/{}/{}/{}",
+            req.region, req.account, cluster_name, svc_name, ts_id
+        );
+        let tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let task_set = json!({
             "id": ts_id,
             "taskSetArn": ts_arn.clone(),
@@ -1093,7 +1570,9 @@ impl EcsHandler {
             "tags": tags.clone(),
             "createdAt": now_f64(),
         });
-        state.task_sets.write()
+        state
+            .task_sets
+            .write()
             .entry(svc_arn)
             .or_default()
             .insert(ts_id, task_set.clone());
@@ -1104,10 +1583,22 @@ impl EcsHandler {
     }
 
     fn describe_task_sets(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
-        let svc = state.services.read()
+        let svc = state
+            .services
+            .read()
             .get(cluster_name)
             .and_then(|m| m.get(svc_name))
             .cloned();
@@ -1115,13 +1606,21 @@ impl EcsHandler {
             return service_not_found(svc_name);
         };
         let svc_arn = svc["serviceArn"].as_str().unwrap_or_default().to_string();
-        let ts_map = state.task_sets.read()
+        let ts_map = state
+            .task_sets
+            .read()
             .get(&svc_arn)
             .cloned()
             .unwrap_or_default();
-        let refs: Vec<String> = req.params.get("taskSets")
+        let refs: Vec<String> = req
+            .params
+            .get("taskSets")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let found: Vec<Value> = if refs.is_empty() {
             ts_map.values().cloned().collect()
@@ -1134,11 +1633,27 @@ impl EcsHandler {
     }
 
     fn update_task_set(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
-        let ts_ref = req.params.get("taskSet").and_then(|v| v.as_str()).unwrap_or_default();
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let ts_ref = req
+            .params
+            .get("taskSet")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let svc = state.services.read()
+        let svc = state
+            .services
+            .read()
             .get(cluster_name)
             .and_then(|m| m.get(svc_name))
             .cloned();
@@ -1147,11 +1662,15 @@ impl EcsHandler {
         };
         let svc_arn = svc["serviceArn"].as_str().unwrap_or_default().to_string();
         let mut ts_maps = state.task_sets.write();
-        let ts = ts_maps.get_mut(&svc_arn)
+        let ts = ts_maps
+            .get_mut(&svc_arn)
             .and_then(|m| m.get_mut(resolve_name(ts_ref)));
         let Some(ts_json) = ts else {
-            return AwsResponse::error(400, "InvalidParameterException",
-                &format!("Task set {} not found.", ts_ref));
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Task set {} not found.", ts_ref),
+            );
         };
         if let Some(scale) = req.params.get("scale") {
             ts_json["scale"] = scale.clone();
@@ -1161,11 +1680,27 @@ impl EcsHandler {
     }
 
     fn delete_task_set(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
-        let ts_ref = req.params.get("taskSet").and_then(|v| v.as_str()).unwrap_or_default();
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let ts_ref = req
+            .params
+            .get("taskSet")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let svc = state.services.read()
+        let svc = state
+            .services
+            .read()
             .get(cluster_name)
             .and_then(|m| m.get(svc_name))
             .cloned();
@@ -1174,15 +1709,22 @@ impl EcsHandler {
         };
         let svc_arn = svc["serviceArn"].as_str().unwrap_or_default().to_string();
         let mut ts_maps = state.task_sets.write();
-        let removed = ts_maps.get_mut(&svc_arn)
+        let removed = ts_maps
+            .get_mut(&svc_arn)
             .and_then(|m| m.remove(resolve_name(ts_ref)));
         let Some(mut ts) = removed else {
-            return AwsResponse::error(400, "InvalidParameterException",
-                &format!("Task set {} not found.", ts_ref));
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Task set {} not found.", ts_ref),
+            );
         };
         ts["status"] = json!("INACTIVE");
         let updated = ts;
-        let arn = updated["taskSetArn"].as_str().unwrap_or_default().to_string();
+        let arn = updated["taskSetArn"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         drop(ts_maps);
         state.tags.write().remove(&arn);
         AwsResponse::json(200, json!({ "taskSet": updated }))
@@ -1193,14 +1735,22 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn put_attributes(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let attrs: Vec<Value> = req.params.get("attributes")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let attrs: Vec<Value> = req
+            .params
+            .get("attributes")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let mut all = state.attributes.write();
         let existing = all.entry(cluster_name.to_string()).or_default();
         for attr in &attrs {
@@ -1213,14 +1763,22 @@ impl EcsHandler {
     }
 
     fn delete_attributes(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let attrs_to_del: Vec<Value> = req.params.get("attributes")
-            .and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let attrs_to_del: Vec<Value> = req
+            .params
+            .get("attributes")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         {
             let mut all = state.attributes.write();
             let existing = all.entry(cluster_name.to_string()).or_default();
@@ -1234,15 +1792,26 @@ impl EcsHandler {
     }
 
     fn list_attributes(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster")
-            .map(|v| v.as_str().unwrap_or("default")).unwrap_or("default"));
-        let target_type = req.params.get("targetType").and_then(|v| v.as_str()).unwrap_or_default();
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .map(|v| v.as_str().unwrap_or("default"))
+                .unwrap_or("default"),
+        );
+        let target_type = req
+            .params
+            .get("targetType")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let name_filter = req.params.get("attributeName").and_then(|v| v.as_str());
         let state = self.get_state(req.account, &req.region);
-        let filtered: Vec<Value> = state.attributes.read()
+        let filtered: Vec<Value> = state
+            .attributes
+            .read()
             .get(cluster_name)
             .map(|attrs| {
-                attrs.iter()
+                attrs
+                    .iter()
                     .filter(|a| {
                         let t = a.get("targetType").and_then(|v| v.as_str()).unwrap_or("");
                         target_type.is_empty() || t == target_type
@@ -1266,9 +1835,14 @@ impl EcsHandler {
     fn list_account_settings(&self, req: &AwsRequest) -> AwsResponse {
         let name = req.params.get("name").and_then(|v| v.as_str());
         let state = self.get_state(req.account, &req.region);
-        let mut settings_list: Vec<Value> = state.account_settings.read()
+        let mut settings_list: Vec<Value> = state
+            .account_settings
+            .read()
             .values()
-            .filter(|s| name.map(|n| s.get("name").and_then(|v| v.as_str()) == Some(n)).unwrap_or(true))
+            .filter(|s| {
+                name.map(|n| s.get("name").and_then(|v| v.as_str()) == Some(n))
+                    .unwrap_or(true)
+            })
             .cloned()
             .collect();
         settings_list.sort_by(|a, b| {
@@ -1280,8 +1854,17 @@ impl EcsHandler {
     }
 
     fn put_account_setting(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let value = req.params.get("value").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let value = req
+            .params
+            .get("value")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let setting = json!({ "name": name, "value": value });
         state.account_settings.write().insert(name, setting.clone());
@@ -1289,11 +1872,22 @@ impl EcsHandler {
     }
 
     fn put_account_setting_default(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-        let value = req.params.get("value").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let value = req
+            .params
+            .get("value")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if !ACCOUNT_SETTING_NAMES.contains(&name) {
-            return AwsResponse::error(400, "InvalidParameterException",
-                &format!("Unknown account setting {}", name));
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("Unknown account setting {}", name),
+            );
         }
         let state = self.get_state(req.account, &req.region);
         let setting = json!({ "name": name, "value": value });
@@ -1301,9 +1895,9 @@ impl EcsHandler {
         // moto: stored under `default:{name}`, and becomes the effective
         // setting when it is not set per-user yet.
         settings.insert(format!("default:{}", name), setting.clone());
-        let user_has = settings.values().any(|s| {
-            s.get("name").and_then(|v| v.as_str()) == Some(name)
-        });
+        let user_has = settings
+            .values()
+            .any(|s| s.get("name").and_then(|v| v.as_str()) == Some(name));
         if !user_has {
             settings.insert(name.to_string(), setting.clone());
         }
@@ -1311,7 +1905,11 @@ impl EcsHandler {
     }
 
     fn delete_account_setting(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = req
+            .params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut settings = state.account_settings.write();
         settings.retain(|key, _| key != name && key != &format!("default:{}", name));
@@ -1323,8 +1921,18 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn tag_resource(&self, req: &AwsRequest) -> AwsResponse {
-        let arn = req.params.get("resourceArn").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let tags: Vec<Value> = req.params.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let arn = req
+            .params
+            .get("resourceArn")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let tags: Vec<Value> = req
+            .params
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         {
             let mut all_tags = state.tags.write();
@@ -1332,7 +1940,8 @@ impl EcsHandler {
             for tag in tags {
                 let key = tag.get("key").and_then(|k| k.as_str()).unwrap_or_default();
                 if let Some(arr) = entry.as_array_mut() {
-                    match arr.iter_mut()
+                    match arr
+                        .iter_mut()
                         .find(|t| t.get("key").and_then(|k| k.as_str()) == Some(key))
                     {
                         Some(slot) => *slot = tag,
@@ -1346,17 +1955,32 @@ impl EcsHandler {
     }
 
     fn untag_resource(&self, req: &AwsRequest) -> AwsResponse {
-        let arn = req.params.get("resourceArn").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let keys: Vec<String> = req.params.get("tagKeys")
+        let arn = req
+            .params
+            .get("resourceArn")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let keys: Vec<String> = req
+            .params
+            .get("tagKeys")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         {
             let mut all_tags = state.tags.write();
-            if let Some(arr) = all_tags.get_mut(arn.as_str()).and_then(|v| v.as_array_mut()) {
+            if let Some(arr) = all_tags
+                .get_mut(arn.as_str())
+                .and_then(|v| v.as_array_mut())
+            {
                 arr.retain(|t| {
-                    t.get("key").and_then(|k| k.as_str())
+                    t.get("key")
+                        .and_then(|k| k.as_str())
                         .map(|k| !keys.iter().any(|x| x == k))
                         .unwrap_or(true)
                 });
@@ -1367,7 +1991,11 @@ impl EcsHandler {
     }
 
     fn list_tags(&self, req: &AwsRequest) -> AwsResponse {
-        let arn = req.params.get("resourceArn").and_then(|v| v.as_str()).unwrap_or_default();
+        let arn = req
+            .params
+            .get("resourceArn")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let tags = state.tags.read().get(arn).cloned().unwrap_or_default();
         AwsResponse::json(200, json!({ "tags": tags }))
@@ -1378,13 +2006,25 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn list_service_deployments(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let svc_name = resolve_name(req.params.get("service").and_then(|v| v.as_str()).unwrap_or_default());
-        let svc = state.services.read()
+        let svc_name = resolve_name(
+            req.params
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
+        let svc = state
+            .services
+            .read()
             .get(cluster_name)
             .and_then(|m| m.get(svc_name))
             .cloned();
@@ -1393,8 +2033,17 @@ impl EcsHandler {
         };
         let status_filter = req.params.get("status").and_then(|v| v.as_str());
         let mut deployments = Vec::new();
-        for dep in svc.get("deployments").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
-            let status = dep.get("status").and_then(|v| v.as_str()).unwrap_or("PRIMARY").to_string();
+        for dep in svc
+            .get("deployments")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+        {
+            let status = dep
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("PRIMARY")
+                .to_string();
             if let Some(want) = status_filter {
                 if want != status {
                     continue;
@@ -1418,9 +2067,15 @@ impl EcsHandler {
     }
 
     fn describe_service_deployments(&self, req: &AwsRequest) -> AwsResponse {
-        let dep_arns: Vec<String> = req.params.get("serviceDeploymentArns")
+        let dep_arns: Vec<String> = req
+            .params
+            .get("serviceDeploymentArns")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut results: Vec<Value> = Vec::new();
@@ -1429,13 +2084,25 @@ impl EcsHandler {
         for dep_arn in &dep_arns {
             let mut found = false;
             for (cluster_name, svc_map) in services.iter() {
-                if found { break; }
+                if found {
+                    break;
+                }
                 for (svc_name, svc) in svc_map.iter() {
                     let mut matched: Option<Value> = None;
-                    for dep in svc.get("deployments").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
-                        let expected = format!("arn:aws:ecs:{}:{}:service-deployment/{}/{}/{}",
-                            req.region, req.account, cluster_name, svc_name,
-                            dep.get("id").and_then(|d| d.as_str()).unwrap_or(""));
+                    for dep in svc
+                        .get("deployments")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                    {
+                        let expected = format!(
+                            "arn:aws:ecs:{}:{}:service-deployment/{}/{}/{}",
+                            req.region,
+                            req.account,
+                            cluster_name,
+                            svc_name,
+                            dep.get("id").and_then(|d| d.as_str()).unwrap_or("")
+                        );
                         if expected == *dep_arn {
                             matched = Some(json!({
                                 "serviceDeploymentArn": expected,
@@ -1465,13 +2132,22 @@ impl EcsHandler {
                 }));
             }
         }
-        AwsResponse::json(200, json!({ "serviceDeployments": results, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "serviceDeployments": results, "failures": failures }),
+        )
     }
 
     fn describe_service_revisions(&self, req: &AwsRequest) -> AwsResponse {
-        let rev_arns: Vec<String> = req.params.get("serviceRevisionArns")
+        let rev_arns: Vec<String> = req
+            .params
+            .get("serviceRevisionArns")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         let mut results: Vec<Value> = Vec::new();
@@ -1489,7 +2165,8 @@ impl EcsHandler {
             });
             let mut found = false;
             if let Some((cluster_name, svc_name)) = match_info {
-                if let Some((_, svc)) = services.get(&cluster_name)
+                if let Some((_, svc)) = services
+                    .get(&cluster_name)
                     .and_then(|m| m.get_key_value(&svc_name))
                 {
                     results.push(json!({
@@ -1511,7 +2188,10 @@ impl EcsHandler {
                 }));
             }
         }
-        AwsResponse::json(200, json!({ "serviceRevisions": results, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "serviceRevisions": results, "failures": failures }),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -1519,51 +2199,76 @@ impl EcsHandler {
     // ------------------------------------------------------------------
 
     fn execute_command(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let task_ref = req.params.get("task").and_then(|v| v.as_str()).unwrap_or_default();
-        let found = state.tasks.read()
-            .get(cluster_name)
-            .and_then(|m| {
-                m.get(resolve_name(task_ref)).cloned()
-                    .or_else(|| m.get(task_ref).cloned())
-                    .or_else(|| {
-                        m.values()
-                            .find(|t| t.get("taskArn").and_then(|a| a.as_str()) == Some(task_ref))
-                            .cloned()
-                    })
-            });
+        let task_ref = req
+            .params
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let found = state.tasks.read().get(cluster_name).and_then(|m| {
+            m.get(resolve_name(task_ref))
+                .cloned()
+                .or_else(|| m.get(task_ref).cloned())
+                .or_else(|| {
+                    m.values()
+                        .find(|t| t.get("taskArn").and_then(|a| a.as_str()) == Some(task_ref))
+                        .cloned()
+                })
+        });
         let Some(task) = found else {
-            return AwsResponse::error(400, "InvalidParameterException",
-                &format!("The task was not found: {}", task_ref));
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                &format!("The task was not found: {}", task_ref),
+            );
         };
-        AwsResponse::json(200, json!({
-            "clusterArn": format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, cluster_name),
-            "containerArn": format!("arn:aws:ecs:{}:{}:container/{}", req.region, req.account, uuid::Uuid::new_v4()),
-            "containerName": req.params.get("container").and_then(|v| v.as_str()).unwrap_or(""),
-            "interactive": req.params.get("interactive").cloned().unwrap_or(json!(false)),
-            "session": {
-                "sessionId": uuid::Uuid::new_v4().to_string(),
-                "streamUrl": format!("wss://ssmmessages.{}.amazonaws.com/v1/data-channel/{}",
-                    req.region, uuid::Uuid::new_v4()),
-                "tokenValue": uuid::Uuid::new_v4().to_string(),
-            },
-            "taskArn": task["taskArn"].clone(),
-        }))
+        AwsResponse::json(
+            200,
+            json!({
+                "clusterArn": format!("arn:aws:ecs:{}:{}:cluster/{}", req.region, req.account, cluster_name),
+                "containerArn": format!("arn:aws:ecs:{}:{}:container/{}", req.region, req.account, uuid::Uuid::new_v4()),
+                "containerName": req.params.get("container").and_then(|v| v.as_str()).unwrap_or(""),
+                "interactive": req.params.get("interactive").cloned().unwrap_or(json!(false)),
+                "session": {
+                    "sessionId": uuid::Uuid::new_v4().to_string(),
+                    "streamUrl": format!("wss://ssmmessages.{}.amazonaws.com/v1/data-channel/{}",
+                        req.region, uuid::Uuid::new_v4()),
+                    "tokenValue": uuid::Uuid::new_v4().to_string(),
+                },
+                "taskArn": task["taskArn"].clone(),
+            }),
+        )
     }
 
     fn get_task_protection(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let task_refs: Vec<String> = req.params.get("tasks")
+        let task_refs: Vec<String> = req
+            .params
+            .get("tasks")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let mut protected: Vec<Value> = Vec::new();
         let mut failures: Vec<Value> = Vec::new();
@@ -1581,10 +2286,12 @@ impl EcsHandler {
                 let short = resolve_name(&task_ref);
                 let found = cluster_tasks
                     .and_then(|m| m.get(short).cloned().or_else(|| m.get(&task_ref).cloned()))
-                    .map(|t| json!({
-                        "taskArn": t["taskArn"].clone(),
-                        "protectionEnabled": false,
-                    }));
+                    .map(|t| {
+                        json!({
+                            "taskArn": t["taskArn"].clone(),
+                            "protectionEnabled": false,
+                        })
+                    });
                 match found {
                     Some(v) => protected.push(v),
                     None => failures.push(json!({
@@ -1595,20 +2302,38 @@ impl EcsHandler {
                 }
             }
         }
-        AwsResponse::json(200, json!({ "protectedTasks": protected, "failures": failures }))
+        AwsResponse::json(
+            200,
+            json!({ "protectedTasks": protected, "failures": failures }),
+        )
     }
 
     fn update_task_protection(&self, req: &AwsRequest) -> AwsResponse {
-        let cluster_name = resolve_name(req.params.get("cluster").and_then(|v| v.as_str()).unwrap_or_default());
+        let cluster_name = resolve_name(
+            req.params
+                .get("cluster")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        );
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
         }
-        let task_refs: Vec<String> = req.params.get("tasks")
+        let task_refs: Vec<String> = req
+            .params
+            .get("tasks")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
-        let enabled = req.params.get("protectionEnabled").and_then(|v| v.as_bool()).unwrap_or(false);
+        let enabled = req
+            .params
+            .get("protectionEnabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let mut protected: Vec<Value> = Vec::new();
         for task_ref in task_refs {
             protected.push(json!({
@@ -1632,19 +2357,23 @@ fn resolve_name(value: &str) -> &str {
 
 /// Python `time.time()`-style epoch seconds with sub-second precision.
 fn now_f64() -> f64 {
-    UNIX_EPOCH.elapsed()
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0)
+    UNIX_EPOCH.elapsed().map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
 fn cluster_not_found(name: &str) -> AwsResponse {
-    AwsResponse::error(400, "ClusterNotFoundException",
-        &format!("Cluster {} not found.", name))
+    AwsResponse::error(
+        400,
+        "ClusterNotFoundException",
+        &format!("Cluster {} not found.", name),
+    )
 }
 
 fn service_not_found(name: &str) -> AwsResponse {
-    AwsResponse::error(400, "ServiceNotFoundException",
-        &format!("Service {} not found.", name))
+    AwsResponse::error(
+        400,
+        "ServiceNotFoundException",
+        &format!("Service {} not found.", name),
+    )
 }
 
 /// Resolve a task-definition reference: family, `family:revision`, or ARN.
@@ -1659,7 +2388,8 @@ fn resolve_task_definition(state: &EcsState, td_ref: &str) -> Option<Value> {
     if let Some((family, rev_str)) = parts.rsplit_once(':') {
         if let Ok(rev) = rev_str.parse::<i64>() {
             return tds.get(family).and_then(|revisions| {
-                revisions.iter()
+                revisions
+                    .iter()
                     .find(|td| td["revision"].as_i64() == Some(rev))
                     .cloned()
             });
@@ -1667,7 +2397,8 @@ fn resolve_task_definition(state: &EcsState, td_ref: &str) -> Option<Value> {
         return None;
     }
     tds.get(parts).and_then(|revisions| {
-        revisions.iter()
+        revisions
+            .iter()
             .rev()
             .find(|td| td["status"] == json!("ACTIVE"))
             .cloned()
@@ -1678,9 +2409,18 @@ fn resolve_task_definition(state: &EcsState, td_ref: &str) -> Option<Value> {
 /// put/delete attribute semantics.
 fn attr_key(attr: &Value) -> (String, String, String) {
     (
-        attr.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        attr.get("targetId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        attr.get("targetType").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        attr.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        attr.get("targetId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        attr.get("targetType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
     )
 }
 
@@ -1742,7 +2482,8 @@ fn merge_asg(provider: &mut Value, asg: &Value) {
     if let Some(mtp) = asg.get("managedTerminationProtection").cloned() {
         provider["autoScalingGroupProvider"]["managedTerminationProtection"] = mtp;
     }
-    if let Some(scaling_props) = asg.get("managedScaling")
+    if let Some(scaling_props) = asg
+        .get("managedScaling")
         .and_then(|m| m.as_object())
         .cloned()
     {
@@ -1810,14 +2551,20 @@ mod tests {
     #[test]
     fn task_definition_roundtrip() {
         let h = EcsHandler::new();
-        let reg = h.handle(make_req("RegisterTaskDefinition", json!({
-            "family": "fam",
-            "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
-        })));
+        let reg = h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": "fam",
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
         assert!(reg.body.contains("\"revision\":1"));
-        let dereg = h.handle(make_req("DeregisterTaskDefinition", json!({
-            "taskDefinition": "fam:1"
-        })));
+        let dereg = h.handle(make_req(
+            "DeregisterTaskDefinition",
+            json!({
+                "taskDefinition": "fam:1"
+            }),
+        ));
         assert!(dereg.body.contains("INACTIVE"));
     }
 
@@ -1825,15 +2572,21 @@ mod tests {
     fn service_lifecycle() {
         let h = EcsHandler::new();
         h.handle(make_req("CreateCluster", json!({"clusterName": "cls"})));
-        let err = h.handle(make_req("CreateService", json!({
-            "cluster": "cls", "serviceName": "s1"
-        })));
+        let err = h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s1"
+            }),
+        ));
         assert!(err.body.contains("serviceArn"));
         let listed = h.handle(make_req("ListServices", json!({"cluster": "cls"})));
         assert!(listed.body.contains("service/cls/s1"));
-        let deleted = h.handle(make_req("DeleteService", json!({
-            "cluster": "cls", "service": "s1", "force": true
-        })));
+        let deleted = h.handle(make_req(
+            "DeleteService",
+            json!({
+                "cluster": "cls", "service": "s1", "force": true
+            }),
+        ));
         assert!(deleted.body.contains("INACTIVE"));
     }
 }

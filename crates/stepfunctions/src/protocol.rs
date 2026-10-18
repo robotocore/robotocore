@@ -21,25 +21,39 @@ pub struct AwsResponse {
 
 impl AwsResponse {
     pub fn json(status: u16, body: Value) -> Self {
-        Self { status,
+        Self {
+            status,
             headers: vec![
-                ("Content-Type".to_string(), "application/x-amz-json-1.0".to_string()),
-                ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "application/x-amz-json-1.0".to_string(),
+                ),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
-}
-}
+        }
+    }
 
     pub fn error(status: u16, code: &str, message: &str) -> Self {
         let body = serde_json::json!({ "__type": code, "message": message });
-        Self { status,
+        Self {
+            status,
             headers: vec![
-                ("Content-Type".to_string(), "application/x-amz-json-1.0".to_string()),
-                ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "application/x-amz-json-1.0".to_string(),
+                ),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
-}
-}
+        }
+    }
 }

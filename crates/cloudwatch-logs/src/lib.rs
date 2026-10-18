@@ -13,8 +13,18 @@ pub struct DefaultLogsHandler {
 }
 
 impl DefaultLogsHandler {
-    pub fn new() -> Self { Self { inner: handler::LogsHandler::new() } }
-    pub fn handle(&self, req: AwsRequest) -> AwsResponse { self.inner.handle(req) }
+    pub fn new() -> Self {
+        Self {
+            inner: handler::LogsHandler::new(),
+        }
+    }
+    pub fn handle(&self, req: AwsRequest) -> AwsResponse {
+        self.inner.handle(req)
+    }
 }
 
-impl Default for DefaultLogsHandler { fn default() -> Self { Self::new() } }
+impl Default for DefaultLogsHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}

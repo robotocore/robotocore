@@ -74,7 +74,8 @@ impl Topic {
     }
 
     pub fn display_name(&self) -> String {
-        self.attr("DisplayName").unwrap_or_else(|| self.name.clone())
+        self.attr("DisplayName")
+            .unwrap_or_else(|| self.name.clone())
     }
 
     /// Tag lookup helper (ordered list, last value wins per key).
@@ -165,9 +166,7 @@ impl SnsState {
     pub fn delete_topic(&self, arn: &str) -> Option<Arc<Topic>> {
         let topic = self.topics.write().remove(arn);
         if let Some(t) = &topic {
-            self.subscriptions
-                .write()
-                .retain(|s| s.topic_arn != t.arn);
+            self.subscriptions.write().retain(|s| s.topic_arn != t.arn);
         }
         topic
     }

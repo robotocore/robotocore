@@ -37,9 +37,7 @@ impl SecretsManagerHandler {
         let secrets = state.secrets.read();
         // Full ARN
         for secret in secrets.values() {
-            if secret.arn == id
-                || secret.arn.split('/') .next_back() == Some(id)
-            {
+            if secret.arn == id || secret.arn.split('/').next_back() == Some(id) {
                 return Some(secret.clone());
             }
         }
@@ -50,10 +48,7 @@ impl SecretsManagerHandler {
         AwsResponse::error(
             400,
             "ResourceNotFoundException",
-            &format!(
-                "Secrets Manager can't find the specified secret: {}",
-                id
-            ),
+            &format!("Secrets Manager can't find the specified secret: {}", id),
         )
     }
 
@@ -117,8 +112,16 @@ impl SecretsManagerHandler {
         let secret = Arc::new(Secret::new(name.clone(), req.account, req.region.clone()));
 
         let version_id = Self::new_version_id();
-        let secret_string = req.params.get("SecretString").and_then(|v| v.as_str()).map(String::from);
-        let secret_binary = req.params.get("SecretBinary").and_then(|v| v.as_str()).map(String::from);
+        let secret_string = req
+            .params
+            .get("SecretString")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let secret_binary = req
+            .params
+            .get("SecretBinary")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let version = SecretVersion {
             version_id: version_id.clone(),
@@ -208,10 +211,14 @@ impl SecretsManagerHandler {
             "CreatedDate": version.created_date,
         });
         if let Some(ref s) = version.secret_string {
-            resp.as_object_mut().unwrap().insert("SecretString".into(), json!(s));
+            resp.as_object_mut()
+                .unwrap()
+                .insert("SecretString".into(), json!(s));
         }
         if let Some(ref b) = version.secret_binary {
-            resp.as_object_mut().unwrap().insert("SecretBinary".into(), json!(b));
+            resp.as_object_mut()
+                .unwrap()
+                .insert("SecretBinary".into(), json!(b));
         }
 
         AwsResponse::json(200, resp)
@@ -221,12 +228,18 @@ impl SecretsManagerHandler {
         let state = self.get_state(req.account, &req.region);
         let secret = match Self::resolve_secret(
             &state,
-            req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or(""),
+            req.params
+                .get("SecretId")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
         ) {
             Some(s) => s,
             None => {
                 return Self::not_found(
-                    req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or(""),
+                    req.params
+                        .get("SecretId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
                 );
             }
         };
@@ -235,7 +248,11 @@ impl SecretsManagerHandler {
 
     fn update_secret(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -269,8 +286,16 @@ impl SecretsManagerHandler {
     /// AWSCURRENT/AWSPREVIOUS stage labels like the Python twin does.
     fn promote_new_version(req: &AwsRequest, secret: &Arc<Secret>, _mode: &str) -> AwsResponse {
         let version_id = Self::new_version_id();
-        let secret_string = req.params.get("SecretString").and_then(|v| v.as_str()).map(String::from);
-        let secret_binary = req.params.get("SecretBinary").and_then(|v| v.as_str()).map(String::from);
+        let secret_string = req
+            .params
+            .get("SecretString")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let secret_binary = req
+            .params
+            .get("SecretBinary")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let created_date = Utc::now().timestamp() as f64;
 
         let mut versions = secret.versions.write();
@@ -287,7 +312,11 @@ impl SecretsManagerHandler {
             .params
             .get("VersionStages")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().map(|s| s.as_str().unwrap_or("").to_string()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .map(|s| s.as_str().unwrap_or("").to_string())
+                    .collect()
+            })
             .unwrap_or_else(|| vec!["AWSCURRENT".to_string()]);
 
         let version = SecretVersion {
@@ -313,7 +342,11 @@ impl SecretsManagerHandler {
     fn delete_secret(&self, req: &AwsRequest) -> AwsResponse {
         const DAY_SECS: f64 = 24.0 * 60.0 * 60.0;
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let force = req
             .params
             .get("ForceDeleteWithoutRecovery")
@@ -396,7 +429,11 @@ impl SecretsManagerHandler {
 
     fn restore_secret(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -416,7 +453,11 @@ impl SecretsManagerHandler {
 
     fn describe_secret(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -456,7 +497,10 @@ impl SecretsManagerHandler {
         }
         let replicas = secret.replicas.read().clone();
         if !replicas.is_empty() {
-            resp_obj.insert("ReplicationStatus".into(), json!(Self::replica_statuses(&replicas)));
+            resp_obj.insert(
+                "ReplicationStatus".into(),
+                json!(Self::replica_statuses(&replicas)),
+            );
         }
 
         AwsResponse::json(200, resp)
@@ -464,7 +508,11 @@ impl SecretsManagerHandler {
 
     fn list_secrets(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let filters = req.params.get("Filters").and_then(|v| v.as_array()).cloned();
+        let filters = req
+            .params
+            .get("Filters")
+            .and_then(|v| v.as_array())
+            .cloned();
 
         let secrets = state.list_secrets();
         let secret_list: Vec<Value> = secrets
@@ -486,7 +534,10 @@ impl SecretsManagerHandler {
                 let replicas = s.replicas.read().clone();
                 if !replicas.is_empty() {
                     obj_map.insert("PrimaryRegion".into(), json!(s.region));
-                    obj_map.insert("ReplicationStatus".into(), json!(Self::replica_statuses(&replicas)));
+                    obj_map.insert(
+                        "ReplicationStatus".into(),
+                        json!(Self::replica_statuses(&replicas)),
+                    );
                 }
                 obj
             })
@@ -497,7 +548,11 @@ impl SecretsManagerHandler {
 
     fn list_secret_version_ids(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -528,7 +583,11 @@ impl SecretsManagerHandler {
 
     fn tag_resource(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -551,7 +610,11 @@ impl SecretsManagerHandler {
 
     fn untag_resource(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -560,18 +623,27 @@ impl SecretsManagerHandler {
             .params
             .get("TagKeys")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect()
+            })
             .unwrap_or_default();
-        secret
-            .tags
-            .write()
-            .retain(|t| !t.get("Key").and_then(|k| k.as_str()).is_some_and(|k| tag_keys.contains(&k.to_string())));
+        secret.tags.write().retain(|t| {
+            !t.get("Key")
+                .and_then(|k| k.as_str())
+                .is_some_and(|k| tag_keys.contains(&k.to_string()))
+        });
         AwsResponse::json(200, json!({}))
     }
 
     fn list_tags_for_resource(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let tags = Self::resolve_secret(&state, secret_id)
             .map(|s| s.tags.read().clone())
             .unwrap_or_default();
@@ -580,7 +652,11 @@ impl SecretsManagerHandler {
 
     fn get_resource_policy(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -599,7 +675,11 @@ impl SecretsManagerHandler {
 
     fn put_resource_policy(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -610,7 +690,11 @@ impl SecretsManagerHandler {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if policy.is_empty() {
-            return AwsResponse::error(400, "InvalidParameterException", "ResourcePolicy is required");
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "ResourcePolicy is required",
+            );
         }
         *secret.resource_policy.write() = Some(policy.to_string());
         AwsResponse::json(
@@ -624,7 +708,11 @@ impl SecretsManagerHandler {
 
     fn delete_resource_policy(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -708,14 +796,30 @@ impl SecretsManagerHandler {
         let mut rng = rand_xorshift();
         if !exclude_lowercase && !exclude_uppercase {
             alphabet.push_str("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
-            required.push(Self::pick_from("abcdefghijklmnopqrstuvwxyz", exclude_chars, &mut rng));
-            required.push(Self::pick_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ", exclude_chars, &mut rng));
+            required.push(Self::pick_from(
+                "abcdefghijklmnopqrstuvwxyz",
+                exclude_chars,
+                &mut rng,
+            ));
+            required.push(Self::pick_from(
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                exclude_chars,
+                &mut rng,
+            ));
         } else if !exclude_lowercase {
             alphabet.push_str("abcdefghijklmnopqrstuvwxyz");
-            required.push(Self::pick_from("abcdefghijklmnopqrstuvwxyz", exclude_chars, &mut rng));
+            required.push(Self::pick_from(
+                "abcdefghijklmnopqrstuvwxyz",
+                exclude_chars,
+                &mut rng,
+            ));
         } else if !exclude_uppercase {
             alphabet.push_str("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-            required.push(Self::pick_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ", exclude_chars, &mut rng));
+            required.push(Self::pick_from(
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                exclude_chars,
+                &mut rng,
+            ));
         }
         if !exclude_numbers {
             alphabet.push_str("0123456789");
@@ -723,14 +827,21 @@ impl SecretsManagerHandler {
         }
         if !exclude_punctuation {
             alphabet.push_str("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
-            required.push(Self::pick_from("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", exclude_chars, &mut rng));
+            required.push(Self::pick_from(
+                "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+                exclude_chars,
+                &mut rng,
+            ));
         }
         if include_space {
             alphabet.push(' ');
             required.push(' ');
         }
         // Remove any explicitly excluded characters from the pool.
-        let alphabet: String = alphabet.chars().filter(|c| !exclude_chars.contains(*c)).collect();
+        let alphabet: String = alphabet
+            .chars()
+            .filter(|c| !exclude_chars.contains(*c))
+            .collect();
 
         let mut password: String = (0..length)
             .map(|_| {
@@ -764,7 +875,11 @@ impl SecretsManagerHandler {
 
     fn rotate_secret(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -782,7 +897,11 @@ impl SecretsManagerHandler {
             .get("RotationLambdaARN")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let rules = req.params.get("RotationRules").cloned().unwrap_or(Value::Null);
+        let rules = req
+            .params
+            .get("RotationRules")
+            .cloned()
+            .unwrap_or(Value::Null);
         if !lambda_arn.is_empty() {
             *secret.rotation_lambda_arn.write() = Some(lambda_arn.to_string());
         }
@@ -825,7 +944,11 @@ impl SecretsManagerHandler {
 
     fn cancel_rotate_secret(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -849,7 +972,11 @@ impl SecretsManagerHandler {
 
     fn update_secret_version_stage(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -881,7 +1008,10 @@ impl SecretsManagerHandler {
                         return AwsResponse::error(
                             400,
                             "InvalidParameterException",
-                            &format!("Version stage {} not found in version {}", stage, remove_from),
+                            &format!(
+                                "Version stage {} not found in version {}",
+                                stage, remove_from
+                            ),
                         );
                     }
                     v.stages.retain(|s| s != &stage);
@@ -938,7 +1068,11 @@ impl SecretsManagerHandler {
             .params
             .get("SecretIdList")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().map(|s| s.as_str().unwrap_or("").to_string()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .map(|s| s.as_str().unwrap_or("").to_string())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut values: Vec<Value> = Vec::new();
@@ -959,10 +1093,14 @@ impl SecretsManagerHandler {
                         "CreatedDate": version.created_date,
                     });
                     if let Some(ref s) = version.secret_string {
-                        obj.as_object_mut().unwrap().insert("SecretString".into(), json!(s));
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("SecretString".into(), json!(s));
                     }
                     if let Some(ref b) = version.secret_binary {
-                        obj.as_object_mut().unwrap().insert("SecretBinary".into(), json!(b));
+                        obj.as_object_mut()
+                            .unwrap()
+                            .insert("SecretBinary".into(), json!(b));
                     }
                     values.push(obj);
                     continue;
@@ -977,14 +1115,20 @@ impl SecretsManagerHandler {
 
         let mut resp = json!({ "SecretValues": values });
         if !errors.is_empty() {
-            resp.as_object_mut().unwrap().insert("Errors".into(), json!(errors));
+            resp.as_object_mut()
+                .unwrap()
+                .insert("Errors".into(), json!(errors));
         }
         AwsResponse::json(200, resp)
     }
 
     fn replicate_secret_to_regions(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -1001,7 +1145,11 @@ impl SecretsManagerHandler {
             .params
             .get("AddReplicaRegions")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().map(|r| r["Region"].as_str().unwrap_or("").to_string()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .map(|r| r["Region"].as_str().unwrap_or("").to_string())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut replicas = secret.replicas.write();
@@ -1023,7 +1171,11 @@ impl SecretsManagerHandler {
 
     fn remove_regions_from_replication(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -1033,7 +1185,11 @@ impl SecretsManagerHandler {
             .params
             .get("RemoveReplicaRegions")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().map(|r| r.as_str().unwrap_or("").to_string()).collect())
+            .map(|arr| {
+                arr.iter()
+                    .map(|r| r.as_str().unwrap_or("").to_string())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut replicas = secret.replicas.write();
@@ -1051,7 +1207,11 @@ impl SecretsManagerHandler {
 
     fn stop_replication_to_replica(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
-        let secret_id = req.params.get("SecretId").and_then(|v| v.as_str()).unwrap_or("");
+        let secret_id = req
+            .params
+            .get("SecretId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let secret = match Self::resolve_secret(&state, secret_id) {
             Some(s) => s,
             None => return Self::not_found(secret_id),
@@ -1101,18 +1261,22 @@ fn filtered_in(secret: &Arc<Secret>, filters: Option<&[Value]>) -> bool {
             "name" => values.iter().any(|p| secret.name.starts_with(p)),
             "description" => {
                 let desc = secret.description.read().clone().unwrap_or_default();
-                values.iter().any(|p| desc.to_lowercase().contains(&p.to_lowercase()))
+                values
+                    .iter()
+                    .any(|p| desc.to_lowercase().contains(&p.to_lowercase()))
             }
             "tag-key" => {
                 let tags = secret.tags.read();
                 values.iter().any(|p| {
-                    tags.iter().any(|t| t.get("Key").and_then(|k| k.as_str()) == Some(*p))
+                    tags.iter()
+                        .any(|t| t.get("Key").and_then(|k| k.as_str()) == Some(*p))
                 })
             }
             "tag-value" => {
                 let tags = secret.tags.read();
                 values.iter().any(|p| {
-                    tags.iter().any(|t| t.get("Value").and_then(|k| k.as_str()) == Some(*p))
+                    tags.iter()
+                        .any(|t| t.get("Value").and_then(|k| k.as_str()) == Some(*p))
                 })
             }
             "all" => {
@@ -1120,11 +1284,22 @@ fn filtered_in(secret: &Arc<Secret>, filters: Option<&[Value]>) -> bool {
                 let tags = secret.tags.read().clone();
                 let mut all: Vec<String> = vec![secret.name.clone(), desc];
                 for t in &tags {
-                    all.push(t.get("Key").and_then(|k| k.as_str()).unwrap_or("").to_string());
-                    all.push(t.get("Value").and_then(|k| k.as_str()).unwrap_or("").to_string());
+                    all.push(
+                        t.get("Key")
+                            .and_then(|k| k.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    );
+                    all.push(
+                        t.get("Value")
+                            .and_then(|k| k.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    );
                 }
                 values.iter().any(|p| {
-                    all.iter().any(|s| s.to_lowercase().contains(&p.to_lowercase()))
+                    all.iter()
+                        .any(|s| s.to_lowercase().contains(&p.to_lowercase()))
                 })
             }
             "primary-region" => values.contains(&secret.region.as_str()),
@@ -1276,7 +1451,10 @@ mod tests {
                 "Tags": [{"Key": "env", "Value": "test"}],
             }),
         ));
-        let resp = handler.handle(make_req("DescribeSecret", json!({"SecretId": "tagged/secret"})));
+        let resp = handler.handle(make_req(
+            "DescribeSecret",
+            json!({"SecretId": "tagged/secret"}),
+        ));
         assert!(resp.body.contains("env"));
         assert!(resp.body.contains("test"));
     }
@@ -1288,12 +1466,16 @@ mod tests {
             "CreateSecret",
             json!({"Name": "policy/secret", "SecretString": "val"}),
         ));
-        let policy = json!({"Version": "2012-10-17", "Statement": [{"Effect": "Allow"}]}).to_string();
+        let policy =
+            json!({"Version": "2012-10-17", "Statement": [{"Effect": "Allow"}]}).to_string();
         handler.handle(make_req(
             "PutResourcePolicy",
             json!({"SecretId": "policy/secret", "ResourcePolicy": policy}),
         ));
-        let resp = handler.handle(make_req("GetResourcePolicy", json!({"SecretId": "policy/secret"})));
+        let resp = handler.handle(make_req(
+            "GetResourcePolicy",
+            json!({"SecretId": "policy/secret"}),
+        ));
         assert!(resp.body.contains("Statement"));
     }
 
@@ -1325,12 +1507,21 @@ mod tests {
                 "RotationRules": {"AutomaticallyAfterDays": 30},
             }),
         ));
-        let resp = handler.handle(make_req("DescribeSecret", json!({"SecretId": "rot/secret"})));
+        let resp = handler.handle(make_req(
+            "DescribeSecret",
+            json!({"SecretId": "rot/secret"}),
+        ));
         assert!(resp.body.contains("RotationEnabled\":true"));
 
-        let resp = handler.handle(make_req("CancelRotateSecret", json!({"SecretId": "rot/secret"})));
+        let resp = handler.handle(make_req(
+            "CancelRotateSecret",
+            json!({"SecretId": "rot/secret"}),
+        ));
         assert_eq!(resp.status, 200);
-        let resp = handler.handle(make_req("DescribeSecret", json!({"SecretId": "rot/secret"})));
+        let resp = handler.handle(make_req(
+            "DescribeSecret",
+            json!({"SecretId": "rot/secret"}),
+        ));
         assert!(resp.body.contains("RotationEnabled\":false"));
     }
 

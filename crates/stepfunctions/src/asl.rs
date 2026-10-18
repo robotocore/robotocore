@@ -23,7 +23,10 @@ pub struct FlowError {
 
 impl FlowError {
     pub fn new(error: &str, cause: String) -> Self {
-        Self { error: error.to_string(), cause }
+        Self {
+            error: error.to_string(),
+            cause,
+        }
     }
 }
 
@@ -55,7 +58,10 @@ pub struct Ctx {
 
 impl Ctx {
     pub fn new(exec: Arc<Execution>) -> Self {
-        Self { exec, last_exited: Mutex::new(0) }
+        Self {
+            exec,
+            last_exited: Mutex::new(0),
+        }
     }
 
     fn detail_prefix(state_type: &str) -> String {
@@ -68,7 +74,10 @@ impl Ctx {
     }
 
     pub fn emit_entered(&self, state_type: &str, name: &str, input: &Value) {
-        let key = format!("{}StateEnteredEventDetails", Self::detail_prefix(state_type));
+        let key = format!(
+            "{}StateEnteredEventDetails",
+            Self::detail_prefix(state_type)
+        );
         let prev = *self.last_exited.lock();
         let event = json!({
             "timestamp": now_f(),
@@ -332,7 +341,11 @@ pub fn run_flow(
             ));
         };
         let obj = state.as_object().cloned().unwrap_or_default();
-        let state_type = obj.get("Type").and_then(|t| t.as_str()).unwrap_or("Pass").to_string();
+        let state_type = obj
+            .get("Type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Pass")
+            .to_string();
         let name = current.clone();
         let is_end = obj.get("End").and_then(|v| v.as_bool()).unwrap_or(false);
         let next_state = obj.get("Next").and_then(|v| v.as_str()).map(String::from);
@@ -341,8 +354,16 @@ pub fn run_flow(
 
         match state_type.as_str() {
             "Fail" => {
-                let error = obj.get("Error").and_then(|e| e.as_str()).unwrap_or("").to_string();
-                let cause = obj.get("Cause").and_then(|e| e.as_str()).unwrap_or("").to_string();
+                let error = obj
+                    .get("Error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let cause = obj
+                    .get("Cause")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 return Err(FlowError { error, cause });
             }
             "Succeed" => {
@@ -473,7 +494,8 @@ pub fn run_flow(
                     &input,
                     processed,
                 );
-                let merged = apply_output_path(obj.get("OutputPath").and_then(|p| p.as_str()), merged);
+                let merged =
+                    apply_output_path(obj.get("OutputPath").and_then(|p| p.as_str()), merged);
                 ctx.emit_exited(&state_type, &name, &merged);
                 if is_end || next_state.is_none() {
                     return Ok(merged);
@@ -512,13 +534,14 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
                 .and_then(|s| s.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let input: Value =
-                serde_json::from_str(&exec.input).unwrap_or_else(|_| json!({}));
+            let input: Value = serde_json::from_str(&exec.input).unwrap_or_else(|_| json!({}));
             run_flow(&ctx, states, start_at, input)
         })();
         let last_event_id = ctx.exec.events.read().len() as i64;
         match result {
-            Ok(output) => ctx.exec.mark_succeeded(value_to_string(&output), last_event_id),
+            Ok(output) => ctx
+                .exec
+                .mark_succeeded(value_to_string(&output), last_event_id),
             Err(e) => ctx.exec.mark_failed(e.error, e.cause, last_event_id),
         }
     });

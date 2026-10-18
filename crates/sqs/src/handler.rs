@@ -96,7 +96,10 @@ impl DefaultSqsHandler {
         names.sort();
         for name in names {
             let details = &attrs[name.as_str()];
-            let data_type = details.get("DataType").and_then(|v| v.as_str()).unwrap_or("");
+            let data_type = details
+                .get("DataType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             Self::encode_len_prefixed(&mut encoded, name.as_bytes());
             Self::encode_len_prefixed(&mut encoded, data_type.as_bytes());
             if data_type.starts_with("Binary") {
@@ -186,7 +189,10 @@ impl DefaultSqsHandler {
 
         // Check if queue already exists
         if let Some(existing) = store.get_queue(queue_name) {
-            existing.write().attributes.apply(params.get("Attributes").unwrap_or(&Value::Null));
+            existing
+                .write()
+                .attributes
+                .apply(params.get("Attributes").unwrap_or(&Value::Null));
             // Return the existing queue URL (idempotent, like Python _create_queue)
             let url = Self::queue_url_for(queue_name, account, region);
             let body = json!({
@@ -446,8 +452,11 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl")
-            .and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
@@ -455,7 +464,8 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
         })?;
 
-        let entries = params.get("Entries")
+        let entries = params
+            .get("Entries")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
@@ -464,9 +474,16 @@ impl DefaultSqsHandler {
         let mut failed: Vec<Value> = Vec::new();
 
         for entry in &entries {
-            let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let receipt_handle = entry.get("ReceiptHandle")
-                .and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let id = entry
+                .get("Id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let receipt_handle = entry
+                .get("ReceiptHandle")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
             let visibility = entry
                 .get("VisibilityTimeout")
                 .and_then(|v| v.as_u64())
@@ -505,8 +522,11 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl")
-            .and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
@@ -514,7 +534,8 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
         })?;
 
-        let entries = params.get("Entries")
+        let entries = params
+            .get("Entries")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
@@ -523,9 +544,16 @@ impl DefaultSqsHandler {
         let mut failed: Vec<Value> = Vec::new();
 
         for entry in &entries {
-            let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let receipt_handle = entry.get("ReceiptHandle")
-                .and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let id = entry
+                .get("Id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let receipt_handle = entry
+                .get("ReceiptHandle")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
             let mut q = queue_arc.write();
             if q.delete_message(&receipt_handle).is_ok() {
                 successful.push(json!({ "Id": id }));
@@ -653,7 +681,8 @@ impl DefaultSqsHandler {
                 if !msg.message_attributes.is_empty() {
                     map.insert(
                         "MD5OfMessageAttributes".into(),
-                        json!(Self::md5_of_message_attributes(&msg.message_attributes).unwrap_or_default()),
+                        json!(Self::md5_of_message_attributes(&msg.message_attributes)
+                            .unwrap_or_default()),
                     );
                     map.insert(
                         "MessageAttributes".into(),
@@ -905,7 +934,12 @@ impl DefaultSqsHandler {
             attrs.insert(
                 "ContentBasedDeduplication".to_string(),
                 Value::String(
-                    if q.attributes.content_based_deduplication { "true" } else { "false" }.to_string(),
+                    if q.attributes.content_based_deduplication {
+                        "true"
+                    } else {
+                        "false"
+                    }
+                    .to_string(),
                 ),
             );
         }
@@ -1068,22 +1102,31 @@ impl DefaultSqsHandler {
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
-        let queue_arc = store
-            .get_queue(&queue_name)
-            .ok_or_else(|| SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url)))?;
+        let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
+            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+        })?;
 
         let mut successful: Vec<Value> = Vec::new();
 
         for entry in &entries {
-            let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let body = entry.get("MessageBody").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let id = entry
+                .get("Id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let body = entry
+                .get("MessageBody")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
             let mut success = serde_json::Map::new();
             {
                 let mut q = queue_arc.write();
                 match self.prepare_send(&mut q, queue_url, &body, entry)? {
                     Some(PreparedMessage::Accepted(message)) => {
-                        let md5_attrs = Self::md5_of_message_attributes(&message.message_attributes);
+                        let md5_attrs =
+                            Self::md5_of_message_attributes(&message.message_attributes);
                         let sequence_number = message.attributes.get("SequenceNumber").cloned();
                         let message_id = message.message_id.clone();
                         let md5_body = message.md5_of_body.clone();
@@ -1132,13 +1175,23 @@ impl DefaultSqsHandler {
         })
     }
 
-
-    fn handle_tag_queue(&self, params: &Value, account: u64, region: &str) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl").and_then(|v| v.as_str()).unwrap_or_default();
+    fn handle_tag_queue(
+        &self,
+        params: &Value,
+        account: u64,
+        region: &str,
+    ) -> Result<AwsResponse, SqsError> {
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let tags_val = params.get("Tags").cloned().unwrap_or(Value::Null);
         let mut tags: HashMap<String, String> = match tags_val {
-            Value::Object(m) => m.into_iter().map(|(k, v)| (k, v.as_str().unwrap_or("").to_string())).collect(),
+            Value::Object(m) => m
+                .into_iter()
+                .map(|(k, v)| (k, v.as_str().unwrap_or("").to_string()))
+                .collect(),
             _ => {
                 // Legacy Tag.N.Key/Value flattened form
                 let mut result = HashMap::new();
@@ -1147,7 +1200,10 @@ impl DefaultSqsHandler {
                     let val_name = format!("Tag.{}.Value", i);
                     match (params.get(&key_name), params.get(&val_name)) {
                         (Some(k), Some(v)) => {
-                            result.insert(k.as_str().unwrap_or("").to_string(), v.as_str().unwrap_or("").to_string());
+                            result.insert(
+                                k.as_str().unwrap_or("").to_string(),
+                                v.as_str().unwrap_or("").to_string(),
+                            );
                         }
                         _ => break,
                     }
@@ -1163,7 +1219,7 @@ impl DefaultSqsHandler {
                 stored.insert(k, v);
             }
         }
-let body = json!({}).to_string();
+        let body = json!({}).to_string();
         Ok(AwsResponse {
             status: 200,
             headers: Self::json_headers(),
@@ -1171,12 +1227,25 @@ let body = json!({}).to_string();
         })
     }
 
-    fn handle_untag_queue(&self, params: &Value, account: u64, region: &str) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl").and_then(|v| v.as_str()).unwrap_or_default();
+    fn handle_untag_queue(
+        &self,
+        params: &Value,
+        account: u64,
+        region: &str,
+    ) -> Result<AwsResponse, SqsError> {
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
-        let tag_keys: Vec<String> = params.get("TagKeys")
+        let tag_keys: Vec<String> = params
+            .get("TagKeys")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let store = self.get_store(account, region);
         if let Some(q) = store.get_queue(&queue_name) {
@@ -1194,8 +1263,16 @@ let body = json!({}).to_string();
         })
     }
 
-    fn handle_list_queue_tags(&self, params: &Value, account: u64, region: &str) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl").and_then(|v| v.as_str()).unwrap_or_default();
+    fn handle_list_queue_tags(
+        &self,
+        params: &Value,
+        account: u64,
+        region: &str,
+    ) -> Result<AwsResponse, SqsError> {
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
         let has_tags = store
@@ -1223,13 +1300,21 @@ let body = json!({}).to_string();
         })
     }
 
-    fn handle_add_permission(&self, params: &Value, account: u64, region: &str) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl").and_then(|v| v.as_str()).unwrap_or_default();
+    fn handle_add_permission(
+        &self,
+        params: &Value,
+        account: u64,
+        region: &str,
+    ) -> Result<AwsResponse, SqsError> {
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
-        let queue_arc = store
-            .get_queue(&queue_name)
-            .ok_or_else(|| SqsError::NonExistentQueue("The specified queue does not exist.".to_string()))?;
+        let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+        })?;
 
         let label = params
             .get("Label")
@@ -1239,12 +1324,20 @@ let body = json!({}).to_string();
         let account_ids: Vec<String> = params
             .get("AWSAccountIds")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let actions: Vec<String> = params
             .get("Actions")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut q = queue_arc.write();
@@ -1266,7 +1359,10 @@ let body = json!({}).to_string();
                 "Actions must contain at least one entry.".to_string(),
             ));
         }
-        let action_list: Vec<Value> = actions.iter().map(|a| json!(format!("SQS:{}", a))).collect();
+        let action_list: Vec<Value> = actions
+            .iter()
+            .map(|a| json!(format!("SQS:{}", a)))
+            .collect();
         let principals: Vec<Value> = account_ids
             .iter()
             .map(|aid| json!(format!("arn:aws:iam::{}:root", aid)))
@@ -1298,13 +1394,21 @@ let body = json!({}).to_string();
         })
     }
 
-    fn handle_remove_permission(&self, params: &Value, account: u64, region: &str) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl").and_then(|v| v.as_str()).unwrap_or_default();
+    fn handle_remove_permission(
+        &self,
+        params: &Value,
+        account: u64,
+        region: &str,
+    ) -> Result<AwsResponse, SqsError> {
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
-        let queue_arc = store
-            .get_queue(&queue_name)
-            .ok_or_else(|| SqsError::NonExistentQueue("The specified queue does not exist.".to_string()))?;
+        let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+        })?;
 
         let label = params
             .get("Label")
@@ -1321,7 +1425,8 @@ let body = json!({}).to_string();
                         .and_then(|v| v.as_array())
                         .cloned()
                         .unwrap_or_default();
-                    statements.retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(label.as_str()));
+                    statements
+                        .retain(|s| s.get("Sid").and_then(|v| v.as_str()) != Some(label.as_str()));
                     obj.insert("Statement".into(), json!(statements));
                 }
                 q.attributes.policy = Some(policy.to_string());
@@ -1342,12 +1447,15 @@ let body = json!({}).to_string();
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
-        let queue_url = params.get("QueueUrl").and_then(|v| v.as_str()).unwrap_or_default();
+        let queue_url = params
+            .get("QueueUrl")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
-        let queue_arc = store
-            .get_queue(&queue_name)
-            .ok_or_else(|| SqsError::NonExistentQueue("The specified queue does not exist.".to_string()))?;
+        let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+        })?;
         let dlq_arn = queue_arc.read().arn.clone();
         let sources = store.dead_letter_sources(&dlq_arn);
         let urls: Vec<String> = sources
@@ -1388,14 +1496,12 @@ let body = json!({}).to_string();
             .min(500) as u32;
 
         let store = self.get_store(account, region);
-        let source = store
-            .get_queue_by_arn(&source_arn)
-            .ok_or_else(|| {
-                SqsError::ValidationError(format!(
-                    "Value {} for parameter SourceArn is invalid. Reason: Queue not found.",
-                    source_arn
-                ))
-            })?;
+        let source = store.get_queue_by_arn(&source_arn).ok_or_else(|| {
+            SqsError::ValidationError(format!(
+                "Value {} for parameter SourceArn is invalid. Reason: Queue not found.",
+                source_arn
+            ))
+        })?;
 
         // Resolve the target queue: explicit DestinationArn, else the queue
         // whose RedrivePolicy points at this DLQ.
@@ -1517,10 +1623,14 @@ let body = json!({}).to_string();
                     "StartedTimestamp": task.started_at,
                 });
                 if let Some(dest) = &task.destination_arn {
-                    obj.as_object_mut().unwrap().insert("DestinationArn".into(), json!(dest));
+                    obj.as_object_mut()
+                        .unwrap()
+                        .insert("DestinationArn".into(), json!(dest));
                 }
                 if let Some(reason) = &task.failure_reason {
-                    obj.as_object_mut().unwrap().insert("FailureReason".into(), json!(reason));
+                    obj.as_object_mut()
+                        .unwrap()
+                        .insert("FailureReason".into(), json!(reason));
                 }
                 obj
             })
@@ -1553,8 +1663,12 @@ impl DefaultSqsHandler {
             "SendMessage" => self.handle_send_message(&req.params, req.account, &req.region),
             "ReceiveMessage" => self.handle_receive_message(&req.params, req.account, &req.region),
             "DeleteMessage" => self.handle_delete_message(&req.params, req.account, &req.region),
-            "DeleteMessageBatch" => self.handle_delete_message_batch(&req.params, req.account, &req.region),
-            "ChangeMessageVisibilityBatch" => self.handle_change_visibility_batch(&req.params, req.account, &req.region),
+            "DeleteMessageBatch" => {
+                self.handle_delete_message_batch(&req.params, req.account, &req.region)
+            }
+            "ChangeMessageVisibilityBatch" => {
+                self.handle_change_visibility_batch(&req.params, req.account, &req.region)
+            }
             "DeleteQueue" => self.handle_delete_queue(&req.params, req.account, &req.region),
             "ListQueues" => self.handle_list_queues(&req.params, req.account, &req.region),
             "GetQueueUrl" => self.handle_get_queue_url(&req.params, req.account, &req.region),
@@ -1568,12 +1682,16 @@ impl DefaultSqsHandler {
                 self.handle_change_message_visibility(&req.params, req.account, &req.region)
             }
             "PurgeQueue" => self.handle_purge_queue(&req.params, req.account, &req.region),
-            "SendMessageBatch" => self.handle_send_message_batch(&req.params, req.account, &req.region),
+            "SendMessageBatch" => {
+                self.handle_send_message_batch(&req.params, req.account, &req.region)
+            }
             "TagQueue" => self.handle_tag_queue(&req.params, req.account, &req.region),
             "UntagQueue" => self.handle_untag_queue(&req.params, req.account, &req.region),
             "ListQueueTags" => self.handle_list_queue_tags(&req.params, req.account, &req.region),
             "AddPermission" => self.handle_add_permission(&req.params, req.account, &req.region),
-            "RemovePermission" => self.handle_remove_permission(&req.params, req.account, &req.region),
+            "RemovePermission" => {
+                self.handle_remove_permission(&req.params, req.account, &req.region)
+            }
             "ListDeadLetterSourceQueues" => {
                 self.handle_list_dead_letter_source_queues(&req.params, req.account, &req.region)
             }

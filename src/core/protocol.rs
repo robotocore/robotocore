@@ -167,7 +167,10 @@ pub fn parse_query_protocol(
             let base = &key[..pos];
             let idx_str = &key[pos + 8..];
             if let Ok(idx) = idx_str.parse::<u32>() {
-                lists.entry(base.to_string()).or_default().push((idx, value));
+                lists
+                    .entry(base.to_string())
+                    .or_default()
+                    .push((idx, value));
             } else {
                 params.insert(key, Value::String(value));
             }
@@ -182,7 +185,10 @@ pub fn parse_query_protocol(
     // Convert lists to JSON arrays
     for (base, mut entries) in lists {
         entries.sort_by_key(|(idx, _)| *idx);
-        let arr: Vec<Value> = entries.iter().map(|(_, v)| Value::String(v.clone())).collect();
+        let arr: Vec<Value> = entries
+            .iter()
+            .map(|(_, v)| Value::String(v.clone()))
+            .collect();
         params.insert(base, Value::Array(arr));
     }
 
@@ -352,11 +358,7 @@ pub fn extract_operation(
 ///
 /// Matches the request path against the botocore spec's requestUri templates.
 /// The path is version-agnostic: the first segment (API version) is stripped.
-fn resolve_rest_op_from_spec(
-    service: &str,
-    method: &str,
-    path: &str,
-) -> Option<&'static str> {
+fn resolve_rest_op_from_spec(service: &str, method: &str, path: &str) -> Option<&'static str> {
     let p = path.trim_start_matches('/').trim_end_matches('/');
     // Strip the version prefix (first segment)
     let rest = if let Some(idx) = p.find('/') {
@@ -400,8 +402,16 @@ fn strip_version_prefix(uri: &str) -> &str {
 /// except `{ParamName}` segments which match any single non-empty segment.
 /// Segment counts must be equal; trailing `/` is ignored on both sides.
 fn segments_match(spec: &str, req: &str) -> bool {
-    let spec_segs: Vec<&str> = spec.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
-    let req_segs: Vec<&str> = req.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+    let spec_segs: Vec<&str> = spec
+        .trim_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    let req_segs: Vec<&str> = req
+        .trim_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
     if spec_segs.len() != req_segs.len() {
         return false;
     }
@@ -436,72 +446,117 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
                 };
                 if after.is_empty() {
                     // /functions (no name)
-                    if m == "GET" { Some("ListFunctions") }
-                    else if m == "POST" { Some("CreateFunction") }
-                    else { None }
+                    if m == "GET" {
+                        Some("ListFunctions")
+                    } else if m == "POST" {
+                        Some("CreateFunction")
+                    } else {
+                        None
+                    }
                 } else if after.contains('/') {
                     // /functions/{name}/... (sub-resource)
                     if after.ends_with("/configuration") {
-                        if m == "GET" { Some("GetFunctionConfiguration") }
-                        else if m == "PUT" { Some("UpdateFunctionConfiguration") }
-                        else { None }
+                        if m == "GET" {
+                            Some("GetFunctionConfiguration")
+                        } else if m == "PUT" {
+                            Some("UpdateFunctionConfiguration")
+                        } else {
+                            None
+                        }
                     } else if after.contains("/invocations") || after.contains("/invoke") {
                         Some("Invoke")
                     } else if after.contains("/aliases") {
-                        if m == "GET" { Some("ListAliases") }
-                        else if m == "POST" { Some("CreateAlias") }
-                        else { None }
+                        if m == "GET" {
+                            Some("ListAliases")
+                        } else if m == "POST" {
+                            Some("CreateAlias")
+                        } else {
+                            None
+                        }
                     } else if after.contains("/tags") {
-                        if m == "GET" { Some("ListTags") }
-                        else if m == "PUT" { Some("TagResource") }
-                        else if m == "DELETE" { Some("UntagResource") }
-                        else { None }
+                        if m == "GET" {
+                            Some("ListTags")
+                        } else if m == "PUT" {
+                            Some("TagResource")
+                        } else if m == "DELETE" {
+                            Some("UntagResource")
+                        } else {
+                            None
+                        }
                     } else if after.contains("/code") {
                         Some("GetFunction")
                     } else if after.contains("/versions") {
-                        if m == "POST" { Some("PublishVersion") }
-                        else if m == "GET" { Some("ListVersionsByFunction") }
-                        else { None }
+                        if m == "POST" {
+                            Some("PublishVersion")
+                        } else if m == "GET" {
+                            Some("ListVersionsByFunction")
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
                 } else {
                     // /functions/{name} (single segment)
-                    if m == "GET" { Some("GetFunction") }
-                    else if m == "DELETE" { Some("DeleteFunction") }
-                    else if m == "PUT" { Some("UploadFunction") }
-                    else { None }
+                    if m == "GET" {
+                        Some("GetFunction")
+                    } else if m == "DELETE" {
+                        Some("DeleteFunction")
+                    } else if m == "PUT" {
+                        Some("UploadFunction")
+                    } else {
+                        None
+                    }
                 }
             } else if let Some(after) = rest.strip_prefix("aliases/") {
                 if after.is_empty() {
                     None
                 } else if after.contains('/') {
                     if after.ends_with("/configuration") {
-                        if m == "GET" { Some("GetAlias") }
-                        else if m == "PUT" { Some("UpdateAlias") }
-                        else { None }
+                        if m == "GET" {
+                            Some("GetAlias")
+                        } else if m == "PUT" {
+                            Some("UpdateAlias")
+                        } else {
+                            None
+                        }
                     } else if after.contains("/tags") {
-                        if m == "GET" { Some("ListTags") }
-                        else if m == "PUT" { Some("TagResource") }
-                        else if m == "DELETE" { Some("UntagResource") }
-                        else { None }
+                        if m == "GET" {
+                            Some("ListTags")
+                        } else if m == "PUT" {
+                            Some("TagResource")
+                        } else if m == "DELETE" {
+                            Some("UntagResource")
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
                 } else {
-                    if m == "GET" { Some("GetAlias") }
-                    else if m == "PUT" { Some("UpdateAlias") }
-                    else if m == "DELETE" { Some("DeleteAlias") }
-                    else { None }
+                    if m == "GET" {
+                        Some("GetAlias")
+                    } else if m == "PUT" {
+                        Some("UpdateAlias")
+                    } else if m == "DELETE" {
+                        Some("DeleteAlias")
+                    } else {
+                        None
+                    }
                 }
             } else if let Some(after) = rest.strip_prefix("layers/") {
                 if after.contains("/versions") {
-                    if m == "POST" { Some("PublishLayerVersion") }
-                    else if m == "GET" && after.contains("/versions/") {
+                    if m == "POST" {
+                        Some("PublishLayerVersion")
+                    } else if m == "GET" && after.contains("/versions/") {
                         Some("GetLayerVersion")
-                    } else if m == "GET" { Some("ListLayerVersions") }
-                    else if m == "DELETE" { Some("DeleteLayerVersion") }
-                    else { None }
+                    } else if m == "GET" {
+                        Some("ListLayerVersions")
+                    } else if m == "DELETE" {
+                        Some("DeleteLayerVersion")
+                    } else {
+                        None
+                    }
                 } else if m == "GET" {
                     Some("ListLayers")
                 } else {
@@ -509,99 +564,188 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
                 }
             } else if rest.starts_with("event-source-mappings") {
                 if rest.ends_with("event-source-mappings") || rest == "event-source-mappings/" {
-                    if m == "GET" { Some("ListEventSources") }
-                    else if m == "POST" { Some("AddEventSource") }
-                    else { None }
+                    if m == "GET" {
+                        Some("ListEventSources")
+                    } else if m == "POST" {
+                        Some("AddEventSource")
+                    } else {
+                        None
+                    }
                 } else {
                     // /event-source-mappings/{uuid}
-                    if m == "GET" { Some("GetEventSource") }
-                    else if m == "PUT" { Some("UpdateEventSource") }
-                    else if m == "DELETE" { Some("RemoveEventSource") }
-                    else { None }
+                    if m == "GET" {
+                        Some("GetEventSource")
+                    } else if m == "PUT" {
+                        Some("UpdateEventSource")
+                    } else if m == "DELETE" {
+                        Some("RemoveEventSource")
+                    } else {
+                        None
+                    }
                 }
             } else if rest.starts_with("tags") {
-                if m == "GET" { Some("ListTags") }
-                else if m == "PUT" { Some("TagResource") }
-                else if m == "DELETE" { Some("UntagResource") }
-                else { None }
+                if m == "GET" {
+                    Some("ListTags")
+                } else if m == "PUT" {
+                    Some("TagResource")
+                } else if m == "DELETE" {
+                    Some("UntagResource")
+                } else {
+                    None
+                }
             } else if rest.starts_with("code-signing-configs") {
-                if m == "POST" { Some("CreateCodeSigningConfig") }
-                else if m == "GET" { Some("ListCodeSigningConfigs") }
-                else if rest.contains('/') {
-                    if m == "GET" { Some("GetCodeSigningConfig") }
-                    else if m == "PUT" { Some("UpdateCodeSigningConfig") }
-                    else if m == "DELETE" { Some("DeleteCodeSigningConfig") }
-                    else { None }
-                } else { None }
+                if m == "POST" {
+                    Some("CreateCodeSigningConfig")
+                } else if m == "GET" {
+                    Some("ListCodeSigningConfigs")
+                } else if rest.contains('/') {
+                    if m == "GET" {
+                        Some("GetCodeSigningConfig")
+                    } else if m == "PUT" {
+                        Some("UpdateCodeSigningConfig")
+                    } else if m == "DELETE" {
+                        Some("DeleteCodeSigningConfig")
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             } else if rest.starts_with("capacity-providers") {
-                if m == "POST" { Some("CreateCapacityProvider") }
-                else if m == "GET" { Some("ListCapacityProviders") }
-                else if rest.contains('/') {
-                    if m == "GET" { Some("GetCapacityProvider") }
-                    else if m == "PUT" { Some("UpdateCapacityProvider") }
-                    else if m == "DELETE" { Some("DeleteCapacityProvider") }
-                    else { None }
-                } else { None }
+                if m == "POST" {
+                    Some("CreateCapacityProvider")
+                } else if m == "GET" {
+                    Some("ListCapacityProviders")
+                } else if rest.contains('/') {
+                    if m == "GET" {
+                        Some("GetCapacityProvider")
+                    } else if m == "PUT" {
+                        Some("UpdateCapacityProvider")
+                    } else if m == "DELETE" {
+                        Some("DeleteCapacityProvider")
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             } else if rest.starts_with("function-url") {
-                if m == "POST" { Some("CreateFunctionUrlConfig") }
-                else if m == "GET" {
-                    if rest.contains('/') { Some("GetFunctionUrlConfig") }
-                    else { Some("ListFunctionUrlConfigs") }
+                if m == "POST" {
+                    Some("CreateFunctionUrlConfig")
+                } else if m == "GET" {
+                    if rest.contains('/') {
+                        Some("GetFunctionUrlConfig")
+                    } else {
+                        Some("ListFunctionUrlConfigs")
+                    }
+                } else if m == "PUT" {
+                    Some("UpdateFunctionUrlConfig")
+                } else if m == "DELETE" {
+                    Some("DeleteFunctionUrlConfig")
+                } else {
+                    None
                 }
-                else if m == "PUT" { Some("UpdateFunctionUrlConfig") }
-                else if m == "DELETE" { Some("DeleteFunctionUrlConfig") }
-                else { None }
-            } else if rest.starts_with("event-invoke-config") || rest.contains("/event-invoke-config") {
-                if m == "PUT" { Some("PutFunctionEventInvokeConfig") }
-                else if m == "GET" { Some("GetFunctionEventInvokeConfig") }
-                else if m == "DELETE" { Some("DeleteFunctionEventInvokeConfig") }
-                else { None }
+            } else if rest.starts_with("event-invoke-config")
+                || rest.contains("/event-invoke-config")
+            {
+                if m == "PUT" {
+                    Some("PutFunctionEventInvokeConfig")
+                } else if m == "GET" {
+                    Some("GetFunctionEventInvokeConfig")
+                } else if m == "DELETE" {
+                    Some("DeleteFunctionEventInvokeConfig")
+                } else {
+                    None
+                }
             } else if rest.starts_with("account-settings") {
-                if m == "GET" { Some("GetAccountSettings") }
-                else if m == "PUT" { Some("PutAccountSettings") }
-                else { None }
+                if m == "GET" {
+                    Some("GetAccountSettings")
+                } else if m == "PUT" {
+                    Some("PutAccountSettings")
+                } else {
+                    None
+                }
             } else if rest.starts_with("policy") || rest.contains("/policy") {
-                if m == "POST" { Some("AddPermission") }
-                else if m == "DELETE" { Some("RemovePermission") }
-                else { None }
+                if m == "POST" {
+                    Some("AddPermission")
+                } else if m == "DELETE" {
+                    Some("RemovePermission")
+                } else {
+                    None
+                }
             } else if rest.starts_with("concurrency") || rest.contains("/concurrency") {
-                if m == "PUT" { Some("PutFunctionConcurrency") }
-                else if m == "GET" { Some("GetFunctionConcurrency") }
-                else if m == "DELETE" { Some("DeleteFunctionConcurrency") }
-                else { None }
-            } else if rest.starts_with("provisioned-concurrency") || rest.contains("/provisioned-concurrency") {
-                if m == "PUT" { Some("PutProvisionedConcurrencyConfig") }
-                else if m == "GET" { Some("GetProvisionedConcurrencyConfig") }
-                else if m == "DELETE" { Some("DeleteProvisionedConcurrencyConfig") }
-                else if m == "GET" && rest.ends_with("/provisioned-concurrency") {
+                if m == "PUT" {
+                    Some("PutFunctionConcurrency")
+                } else if m == "GET" {
+                    Some("GetFunctionConcurrency")
+                } else if m == "DELETE" {
+                    Some("DeleteFunctionConcurrency")
+                } else {
+                    None
+                }
+            } else if rest.starts_with("provisioned-concurrency")
+                || rest.contains("/provisioned-concurrency")
+            {
+                if m == "PUT" {
+                    Some("PutProvisionedConcurrencyConfig")
+                } else if m == "GET" {
+                    Some("GetProvisionedConcurrencyConfig")
+                } else if m == "DELETE" {
+                    Some("DeleteProvisionedConcurrencyConfig")
+                } else if m == "GET" && rest.ends_with("/provisioned-concurrency") {
                     Some("ListProvisionedConcurrencyConfigs")
+                } else {
+                    None
                 }
-                else { None }
             } else if rest.starts_with("scaling-config") || rest.contains("/scaling-config") {
-                if m == "PUT" { Some("PutFunctionScalingConfig") }
-                else if m == "GET" { Some("GetFunctionScalingConfig") }
-                else if m == "DELETE" { Some("DeleteFunctionScalingConfig") }
-                else { None }
-            } else if rest.starts_with("runtime-management-config") || rest.contains("/runtime-management-config") {
-                if m == "PUT" { Some("PutRuntimeManagementConfig") }
-                else if m == "GET" { Some("GetRuntimeManagementConfig") }
-                else { None }
-            } else if rest.starts_with("recursion-config") || rest.contains("/recursion-config") {
-                if m == "PUT" { Some("PutFunctionRecursionConfig") }
-                else if m == "GET" { Some("GetFunctionRecursionConfig") }
-                else if m == "DELETE" { Some("DeleteFunctionRecursionConfig") }
-                else { None }
-            } else if rest.starts_with("durable-executions") || rest.contains("/durable-executions") {
-                if m == "GET" { Some("GetDurableExecution") }
-                else if m == "POST" { Some("StopDurableExecution") }
-                else if rest.contains("history") { Some("GetDurableExecutionHistory") }
-                else if rest.contains("callback") { Some("SendDurableExecutionCallbackSuccess") }
-                else if rest.contains("heartbeat") { Some("SendDurableExecutionCallbackHeartbeat") }
-                else if rest.contains("failure") { Some("SendDurableExecutionCallbackFailure") }
-                else if m == "GET" && rest.ends_with("durable-executions") {
-                    Some("ListDurableExecutionsByFunction")
+                if m == "PUT" {
+                    Some("PutFunctionScalingConfig")
+                } else if m == "GET" {
+                    Some("GetFunctionScalingConfig")
+                } else if m == "DELETE" {
+                    Some("DeleteFunctionScalingConfig")
+                } else {
+                    None
                 }
-                else { None }
+            } else if rest.starts_with("runtime-management-config")
+                || rest.contains("/runtime-management-config")
+            {
+                if m == "PUT" {
+                    Some("PutRuntimeManagementConfig")
+                } else if m == "GET" {
+                    Some("GetRuntimeManagementConfig")
+                } else {
+                    None
+                }
+            } else if rest.starts_with("recursion-config") || rest.contains("/recursion-config") {
+                if m == "PUT" {
+                    Some("PutFunctionRecursionConfig")
+                } else if m == "GET" {
+                    Some("GetFunctionRecursionConfig")
+                } else if m == "DELETE" {
+                    Some("DeleteFunctionRecursionConfig")
+                } else {
+                    None
+                }
+            } else if rest.starts_with("durable-executions") || rest.contains("/durable-executions")
+            {
+                if m == "GET" {
+                    Some("GetDurableExecution")
+                } else if m == "POST" {
+                    Some("StopDurableExecution")
+                } else if rest.contains("history") {
+                    Some("GetDurableExecutionHistory")
+                } else if rest.contains("callback") {
+                    Some("SendDurableExecutionCallbackSuccess")
+                } else if rest.contains("heartbeat") {
+                    Some("SendDurableExecutionCallbackHeartbeat")
+                } else if rest.contains("failure") {
+                    Some("SendDurableExecutionCallbackFailure")
+                } else if m == "GET" && rest.ends_with("durable-executions") {
+                    Some("ListDurableExecutionsByFunction")
+                } else {
+                    None
+                }
             } else if rest.starts_with("invocations") || rest.contains("/invocations") {
                 if m == "POST" {
                     if rest.contains("response-stream") || rest.contains("streaming") {
@@ -609,10 +753,15 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
                     } else {
                         Some("Invoke")
                     }
-                } else { None }
+                } else {
+                    None
+                }
             } else if rest == "invocation" || rest.starts_with("invocation") {
-                if m == "POST" { Some("Invoke") }
-                else { None }
+                if m == "POST" {
+                    Some("Invoke")
+                } else {
+                    None
+                }
             } else {
                 None
             }

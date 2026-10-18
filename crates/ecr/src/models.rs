@@ -45,9 +45,7 @@ impl EcrState {
             tags: Arc::new(RwLock::new(HashMap::new())),
             scanning_configs: Arc::new(RwLock::new(HashMap::new())),
             registry_policy: Arc::new(RwLock::new(None)),
-            replication_configuration: Arc::new(RwLock::new(
-                serde_json::json!({"rules": []}),
-            )),
+            replication_configuration: Arc::new(RwLock::new(serde_json::json!({"rules": []}))),
             registry_scanning_configuration: Arc::new(RwLock::new(
                 serde_json::json!({"scanType": "BASIC", "rules": []}),
             )),
@@ -59,5 +57,7 @@ impl EcrState {
 }
 
 impl Default for EcrState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

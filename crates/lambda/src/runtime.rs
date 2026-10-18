@@ -139,7 +139,13 @@ if __name__ == "__main__":
 fn safe_dir_name(fn_name: &str) -> String {
     fn_name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -316,7 +322,11 @@ pub fn execute_python(
     let parsed: Value = serde_json::from_str(&result_raw).unwrap_or(Value::Null);
     match parsed {
         Value::Object(ref map) if map.contains_key("restocore_error") => ExecResult {
-            payload: map.get("restocore_error").cloned().unwrap_or(Value::Null).to_string(),
+            payload: map
+                .get("restocore_error")
+                .cloned()
+                .unwrap_or(Value::Null)
+                .to_string(),
             function_error: Some("Handled".to_string()),
             logs,
         },
@@ -326,7 +336,11 @@ pub fn execute_python(
                 .and_then(Value::as_str)
                 .unwrap_or("null")
                 .to_string();
-            ExecResult { payload: raw, function_error: None, logs }
+            ExecResult {
+                payload: raw,
+                function_error: None,
+                logs,
+            }
         }
         _ => missing_runtime_result("handler produced no result"),
     }
@@ -365,7 +379,11 @@ mod tests {
             .stdin(Stdio::null())
             .output()
             .expect("python3 failed");
-        assert!(out.status.success(), "zip maker failed: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "zip maker failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         let z = fs::read(&zpath).unwrap();
         let _ = fs::remove_dir_all(&dir);
         z

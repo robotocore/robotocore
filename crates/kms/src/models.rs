@@ -121,11 +121,7 @@ impl Key {
     /// Algorithms supported by the key (mirrors AWS KeyMetadata fields).
     pub fn algorithms(&self) -> (Vec<&'static str>, Vec<&'static str>, Vec<&'static str>) {
         match (self.key_usage.as_str(), self.key_spec.as_str()) {
-            ("ENCRYPT_DECRYPT", "SYMMETRIC_DEFAULT") => (
-                vec!["SYMMETRIC_DEFAULT"],
-                vec![],
-                vec![],
-            ),
+            ("ENCRYPT_DECRYPT", "SYMMETRIC_DEFAULT") => (vec!["SYMMETRIC_DEFAULT"], vec![], vec![]),
             ("ENCRYPT_DECRYPT", s) if s.starts_with("RSA_") => (
                 vec!["RSAES_OAEP_SHA_1", "RSAES_OAEP_SHA_256"],
                 vec![],
@@ -205,11 +201,15 @@ impl KmsState {
     }
 
     pub fn create_alias(&self, alias_name: &str, key_id: &str) {
-        self.aliases.write().insert(alias_name.to_string(), key_id.to_string());
+        self.aliases
+            .write()
+            .insert(alias_name.to_string(), key_id.to_string());
     }
 
     pub fn update_alias(&self, alias_name: &str, key_id: &str) {
-        self.aliases.write().insert(alias_name.to_string(), key_id.to_string());
+        self.aliases
+            .write()
+            .insert(alias_name.to_string(), key_id.to_string());
     }
 
     pub fn delete_alias(&self, alias_name: &str) {

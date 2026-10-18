@@ -47,7 +47,9 @@ impl AccessKey {
     pub fn new(_account: u64) -> Self {
         Self {
             access_key_id: random_id("AKIA"),
-            secret_access_key: crate::handler::base64_encode(format!("{}", uuid::Uuid::new_v4()).as_bytes()),
+            secret_access_key: crate::handler::base64_encode(
+                format!("{}", uuid::Uuid::new_v4()).as_bytes(),
+            ),
             status: "Active".to_string(),
             created: chrono::Utc::now().timestamp_millis() as u64,
         }
@@ -119,7 +121,15 @@ pub struct Role {
 
 impl Role {
     pub fn new(account: u64, role_name: String, assume_role_policy: String) -> Self {
-        Self::full(account, role_name, "/".to_string(), assume_role_policy, String::new(), 3600, false)
+        Self::full(
+            account,
+            role_name,
+            "/".to_string(),
+            assume_role_policy,
+            String::new(),
+            3600,
+            false,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -210,7 +220,14 @@ pub struct Policy {
 
 impl Policy {
     pub fn new(account: u64, policy_name: String, document: String) -> Self {
-        Self::full(account, policy_name, "/".to_string(), document, Vec::new(), String::new())
+        Self::full(
+            account,
+            policy_name,
+            "/".to_string(),
+            document,
+            Vec::new(),
+            String::new(),
+        )
     }
 
     pub fn full(
@@ -355,7 +372,8 @@ pub struct IamState {
 }
 
 impl IamState {
-    pub fn new() -> Self {        Self {
+    pub fn new() -> Self {
+        Self {
             users: Arc::new(RwLock::new(HashMap::new())),
             roles: Arc::new(RwLock::new(HashMap::new())),
             groups: Arc::new(RwLock::new(HashMap::new())),
@@ -389,7 +407,9 @@ impl IamState {
 
     pub fn get_policy(&self, arn_or_name: &str) -> Option<Arc<Policy>> {
         let policies = self.policies.read();
-        if let Some(p) = policies.get(arn_or_name) { return Some(p.clone()); }
+        if let Some(p) = policies.get(arn_or_name) {
+            return Some(p.clone());
+        }
         policies.values().find(|p| p.arn == arn_or_name).cloned()
     }
 
@@ -409,8 +429,13 @@ impl IamState {
     }
 
     pub fn create_instance_profile(&self, name: &str) {
-        self.instance_profiles.write().entry(name.to_string()).or_default();
-        self.instance_profile_ids.write().entry(name.to_string())
+        self.instance_profiles
+            .write()
+            .entry(name.to_string())
+            .or_default();
+        self.instance_profile_ids
+            .write()
+            .entry(name.to_string())
             .or_insert_with(|| random_id("").chars().take(20).collect());
     }
 
@@ -435,7 +460,11 @@ impl IamState {
     }
 
     pub fn add_role_to_instance_profile(&self, profile: &str, role: &str) {
-        self.instance_profiles.write().entry(profile.to_string()).or_default().push(role.to_string());
+        self.instance_profiles
+            .write()
+            .entry(profile.to_string())
+            .or_default()
+            .push(role.to_string());
     }
 
     pub fn remove_role_from_instance_profile(&self, profile: &str, role: &str) {
@@ -446,5 +475,7 @@ impl IamState {
 }
 
 impl Default for IamState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -14,13 +14,17 @@ pub struct DefaultStepfunctionsHandler {
 
 impl DefaultStepfunctionsHandler {
     pub fn new() -> Self {
-        Self { inner: handler::StepfunctionsHandler::new() }
-}
+        Self {
+            inner: handler::StepfunctionsHandler::new(),
+        }
+    }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
-}
+    }
 }
 
 impl Default for DefaultStepfunctionsHandler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

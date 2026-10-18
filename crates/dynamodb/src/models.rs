@@ -158,7 +158,10 @@ pub struct GlobalTable {
 }
 
 /// Compute the primary key string for an item.
-pub fn compute_key_from_attrs(key_schema: &[KeySchema], attrs: &HashMap<String, AttrValue>) -> Option<String> {
+pub fn compute_key_from_attrs(
+    key_schema: &[KeySchema],
+    attrs: &HashMap<String, AttrValue>,
+) -> Option<String> {
     let mut parts = Vec::new();
     for key in key_schema {
         let val = attrs.get(&key.attribute_name)?;
@@ -179,12 +182,18 @@ pub struct IndexDefinition {
 impl IndexDefinition {
     /// The index hash (partition) key attribute name.
     pub fn hash_attr(&self) -> Option<&str> {
-        self.key_schema.iter().find(|k| k.key_type == "HASH").map(|k| k.attribute_name.as_str())
+        self.key_schema
+            .iter()
+            .find(|k| k.key_type == "HASH")
+            .map(|k| k.attribute_name.as_str())
     }
 
     /// The index range (sort) key attribute name.
     pub fn range_attr(&self) -> Option<&str> {
-        self.key_schema.iter().find(|k| k.key_type == "RANGE").map(|k| k.attribute_name.as_str())
+        self.key_schema
+            .iter()
+            .find(|k| k.key_type == "RANGE")
+            .map(|k| k.attribute_name.as_str())
     }
 }
 

@@ -222,8 +222,7 @@ pub type AliasMap = Arc<RwLock<HashMap<(String, String), Arc<LambdaAlias>>>>;
 pub type ProvisionedMap = Arc<RwLock<HashMap<(String, String), Value>>>;
 
 /// Layer-version policies keyed by (layer name, version) → Sid → statement.
-pub type LayerPermissionMap =
-    Arc<RwLock<HashMap<(String, i64), BTreeMap<String, Value>>>>;
+pub type LayerPermissionMap = Arc<RwLock<HashMap<(String, i64), BTreeMap<String, Value>>>>;
 
 impl LambdaState {
     pub fn new() -> Self {

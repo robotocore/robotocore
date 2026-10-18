@@ -79,7 +79,10 @@ impl AwsRequest {
     }
 
     pub fn param_str(&self, name: &str) -> Option<String> {
-        self.params.get(name).and_then(Value::as_str).map(String::from)
+        self.params
+            .get(name)
+            .and_then(Value::as_str)
+            .map(String::from)
     }
 
     pub fn param_u64(&self, name: &str) -> Option<u64> {
@@ -213,7 +216,10 @@ impl AwsResponse {
             status,
             headers: vec![
                 ("Content-Type".to_string(), "application/json".to_string()),
-                ("x-amz-request-id".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "x-amz-request-id".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
@@ -230,7 +236,10 @@ impl AwsResponse {
             status,
             headers: vec![
                 ("Content-Type".to_string(), content_type.to_string()),
-                ("x-amz-request-id".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "x-amz-request-id".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body,
@@ -246,11 +255,18 @@ impl AwsResponse {
     ) -> Self {
         let mut headers = vec![
             ("Content-Type".to_string(), content_type.to_string()),
-            ("x-amz-request-id".to_string(), uuid::Uuid::new_v4().to_string()),
+            (
+                "x-amz-request-id".to_string(),
+                uuid::Uuid::new_v4().to_string(),
+            ),
             ("server".to_string(), "robotocore".to_string()),
         ];
         headers.extend(extra.iter().map(|(k, v)| (k.to_string(), v.clone())));
-        Self { status, headers, body }
+        Self {
+            status,
+            headers,
+            body,
+        }
     }
 
     /// Error body follows the Python ground truth:
@@ -268,7 +284,10 @@ impl AwsResponse {
             status,
             headers: vec![
                 ("Content-Type".to_string(), "application/json".to_string()),
-                ("x-amz-request-id".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "x-amz-request-id".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: serialized,

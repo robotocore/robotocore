@@ -32,7 +32,10 @@ impl AwsResponse {
             status,
             headers: vec![
                 ("Content-Type".to_string(), "text/xml".to_string()),
-                ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body: full_body,
@@ -49,13 +52,18 @@ impl AwsResponse {
              </Error>\
              <RequestId>{}</RequestId>\
              </ErrorResponse>",
-            code, message, uuid::Uuid::new_v4()
+            code,
+            message,
+            uuid::Uuid::new_v4()
         );
         Self {
             status,
             headers: vec![
                 ("Content-Type".to_string(), "text/xml".to_string()),
-                ("x-amzn-RequestId".to_string(), uuid::Uuid::new_v4().to_string()),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
                 ("server".to_string(), "robotocore".to_string()),
             ],
             body,
