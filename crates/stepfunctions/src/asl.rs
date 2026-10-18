@@ -11,6 +11,10 @@ use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
+/// AWS ends an execution once its event history reaches this size; a
+/// self-referential Next cycle otherwise runs forever emitting events.
+pub const MAX_EVENT_HISTORY: usize = 25_000;
+
 pub fn now_f() -> f64 {
     (chrono::Utc::now().timestamp_millis() as f64) / 1000.0
 }
@@ -335,6 +339,12 @@ pub fn run_flow(
         if ctx.exec.is_aborted() {
             // Aborted executions leave the engine without changing state.
             return Ok(input);
+        }
+        if ctx.exec.events.read().len() >= MAX_EVENT_HISTORY {
+            return Err(FlowError::new(
+                "States.ExceedMaxEventHistoryReached",
+                "Too many events in the execution history".to_string(),
+            ));
         }
 
         let Some(state) = states.get(&current) else {

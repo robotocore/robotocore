@@ -948,6 +948,40 @@ mod tests {
     }
 
     #[test]
+    fn test_self_referential_loop_hits_history_cap() {
+        let handler = StepfunctionsHandler::new();
+        handler.handle(make_req("CreateStateMachine", json!({
+            "stateMachineName": "loop-sm",
+            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+            "definition": "{\"StartAt\": \"Loop\", \"States\": {\"Loop\": {\"Type\": \"Pass\", \"Next\": \"Loop\"}}}"
+        })));
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:loop-sm"
+            }),
+        ));
+        let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
+        // The engine must fail the execution once the event history is full.
+        for _ in 0..500 {
+            let exec = handler
+                .get_state(123456789012, "us-east-1")
+                .get_execution(&arn)
+                .unwrap();
+            if !exec.is_running() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let desc = body(&handler.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
+        assert_eq!(desc["status"], "FAILED");
+        assert_eq!(desc["error"], "States.ExceedMaxEventHistoryReached");
+    }
+
+    #[test]
     fn test_choice_executes_to_correct_branch() {
         let handler = StepfunctionsHandler::new();
         let definition = json!({
