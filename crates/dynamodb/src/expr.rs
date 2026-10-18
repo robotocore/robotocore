@@ -78,6 +78,24 @@ fn lex(expr: &str) -> Result<Vec<Tok>, String> {
                     if c2.is_alphanumeric() || c2 == '_' || c2 == '.' || c2 == '#' {
                         s.push(c2);
                         chars.next();
+                    } else if c2 == '[' {
+                        // Document-path list index: name[0][1] stays one token.
+                        s.push(c2);
+                        chars.next();
+                        let mut digits = String::new();
+                        while let Some(&c3) = chars.peek() {
+                            if c3.is_ascii_digit() {
+                                digits.push(c3);
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        if digits.is_empty() || chars.next() != Some(']') {
+                            return Err(format!("invalid document path near '{s}'"));
+                        }
+                        s.push_str(&digits);
+                        s.push(']');
                     } else {
                         break;
                     }
@@ -98,7 +116,9 @@ fn lex(expr: &str) -> Result<Vec<Tok>, String> {
 }
 
 /// Resolve an expression path token into attribute path segments, substituting
-/// `#name` placeholders and splitting dotted paths.
+/// `#name` placeholders and splitting dotted paths. List indices ([0]) become
+/// their own "[N]" segments:
+/// `#l[0].a` resolves to ["l-name", "[0]", "a"].
 fn resolve_path(token: &str, names: &Names) -> Vec<String> {
     let mut segments = Vec::new();
     for part in token.split('.') {
@@ -106,17 +126,42 @@ fn resolve_path(token: &str, names: &Names) -> Vec<String> {
         if part.is_empty() {
             continue;
         }
-        if let Some(stripped) = part.strip_prefix('#') {
+        // Peel the trailing [N] index groups off the head name.
+        let mut idx_segs: Vec<String> = Vec::new();
+        let mut head = part;
+        while let Some(open) = head.rfind('[') {
+            if head.ends_with(']') && index_of(&head[open..]).is_some() {
+                idx_segs.push(head[open..].to_string());
+                head = &head[..open];
+            } else {
+                break;
+            }
+        }
+        idx_segs.reverse();
+        if head.is_empty() {
+            // Index-only fragment (cannot happen through lex()); be permissive.
+            segments.extend(idx_segs);
+            continue;
+        }
+        if let Some(stripped) = head.strip_prefix('#') {
             let resolved = names
                 .get(&format!("#{stripped}"))
                 .cloned()
-                .unwrap_or_else(|| part.to_string());
+                .unwrap_or_else(|| head.to_string());
             segments.push(resolved);
         } else {
-            segments.push(part.to_string());
+            segments.push(head.to_string());
         }
+        segments.extend(idx_segs);
     }
     segments
+}
+
+/// Parse a "[N]" segment into its list index. Indices traverse L only.
+fn index_of(seg: &str) -> Option<usize> {
+    let inner = seg.strip_prefix('[')?;
+    let digits = inner.strip_suffix(']')?;
+    digits.parse::<usize>().ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +258,8 @@ fn size_of(val: &Value) -> Option<f64> {
 }
 
 /// Look up a possibly-nested attribute path in an item. Intermediate typed
-/// maps ({"M": {...}}) are unwrapped transparently.
+/// maps ({"M": {...}}) are unwrapped transparently. "[N]" segments index
+/// into L lists.
 pub fn lookup<'v>(item: &'v Value, segs: &[String]) -> Option<&'v Value> {
     let mut cur = item;
     for seg in segs {
@@ -224,6 +270,9 @@ pub fn lookup<'v>(item: &'v Value, segs: &[String]) -> Option<&'v Value> {
 
 fn descend<'v>(cur: &'v Value, seg: &str) -> Option<&'v Value> {
     let obj = cur.as_object()?;
+    if let Some(idx) = index_of(seg) {
+        return obj.get("L")?.as_array()?.get(idx);
+    }
     if let Some(v) = obj.get(seg) {
         return Some(v);
     }
@@ -1040,50 +1089,133 @@ impl MapPathExt for Map<String, Value> {
     }
 }
 
-/// Set a possibly-nested attribute path, creating intermediate maps.
+/// Set a possibly-nested attribute path, creating intermediate maps and
+/// lists. "[N]" segments index into L values; an index past the end appends
+/// (matching the local ground-truth twin's leniency).
 pub fn set_path(attrs: &mut Map<String, Value>, segs: &[String], val: Value) -> Result<(), String> {
-    let mut cur = attrs;
-    for (i, seg) in segs.iter().enumerate() {
-        if i == segs.len() - 1 {
-            cur.insert(seg.clone(), val);
+    let Some((seg, rest)) = segs.split_first() else {
+        return Ok(());
+    };
+    if rest.is_empty() {
+        // A path never starts with an index (lex() binds [N] to a name).
+        attrs.insert(seg.clone(), val);
+        return Ok(());
+    }
+    // The intermediate wrapper type follows how the path continues.
+    let entry = attrs.entry(seg.clone()).or_insert_with(|| {
+        if index_of(&rest[0]).is_some() {
+            json!({ "L": [] })
+        } else {
+            json!({ "M": {} })
+        }
+    });
+    set_in_typed(entry, rest, val)
+}
+
+/// Continue a set within a typed attribute value: "[N]" indexes its L array,
+/// other segments descend through "M".
+fn set_in_typed(cur: &mut Value, segs: &[String], val: Value) -> Result<(), String> {
+    let Some((seg, rest)) = segs.split_first() else {
+        // Ran out of path: the target is this typed value itself.
+        *cur = val;
+        return Ok(());
+    };
+    if let Some(idx) = index_of(seg) {
+        let arr = cur
+            .get_mut("L")
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| "cannot index into a non-list attribute".to_string())?;
+        let at = idx.min(arr.len());
+        if rest.is_empty() {
+            if at == arr.len() {
+                arr.push(val);
+            } else {
+                arr[at] = val;
+            }
             return Ok(());
         }
-        let entry = cur.entry(seg.clone()).or_insert_with(|| json!({ "M": {} }));
-        if !entry.is_object() {
-            return Err(format!("cannot descend into non-map attribute {seg}"));
+        if at == arr.len() {
+            arr.push(json!({ "M": {} }));
         }
-        cur = entry
-            .get_mut("M")
-            .and_then(|m| m.as_object_mut())
-            .ok_or_else(|| format!("cannot descend into non-map attribute {seg}"))?;
+        return set_in_typed(&mut arr[at], rest, val);
     }
-    Ok(())
+    let inner = cur
+        .get_mut("M")
+        .and_then(|m| m.as_object_mut())
+        .ok_or_else(|| "cannot descend into non-map attribute".to_string())?;
+    if rest.is_empty() {
+        inner.insert(seg.clone(), val);
+        return Ok(());
+    }
+    let entry = inner.entry(seg.clone()).or_insert_with(|| {
+        if index_of(&rest[0]).is_some() {
+            json!({ "L": [] })
+        } else {
+            json!({ "M": {} })
+        }
+    });
+    set_in_typed(entry, rest, val)
 }
 
-/// Remove a possibly-nested attribute path (no-op when missing).
+/// Remove a possibly-nested attribute path (no-op when missing). Removing a
+/// list element with "[N]" in range drops it from the list; out of range it
+/// is a no-op.
 pub fn remove_path(attrs: &mut Map<String, Value>, segs: &[String]) {
-    if segs.is_empty() {
+    let Some((last, parents)) = segs.split_last() else {
+        return;
+    };
+    let parent: Option<&mut Value> = if parents.is_empty() {
+        // A top-level path cannot start with an index; "last" is a name.
+        None
+    } else {
+        let Some(head) = attrs.get_mut(&parents[0]) else {
+            return;
+        };
+        nested_value_mut(head, &parents[1..])
+    };
+    let Some(parent) = parent else {
+        if let Some(idx) = index_of(last) {
+            if let Some(arr) = attrs.get_mut("L").and_then(|v| v.as_array_mut()) {
+                if idx < arr.len() {
+                    arr.remove(idx);
+                }
+            }
+            return;
+        }
+        attrs.remove(last);
+        return;
+    };
+    if let Some(idx) = index_of(last) {
+        if let Some(arr) = parent.get_mut("L").and_then(|v| v.as_array_mut()) {
+            if idx < arr.len() {
+                arr.remove(idx);
+            }
+        }
         return;
     }
-    if segs.len() == 1 {
-        attrs.remove(&segs[0]);
-        return;
-    }
-    if let Some(parent) = nested_map_mut(attrs, &segs[..segs.len() - 1]) {
-        parent.remove(&segs[segs.len() - 1]);
+    if let Some(inner) = parent.get_mut("M").and_then(|m| m.as_object_mut()) {
+        inner.remove(last);
     }
 }
 
-fn nested_map_mut<'m>(
-    attrs: &'m mut Map<String, Value>,
-    segs: &[String],
-) -> Option<&'m mut Map<String, Value>> {
-    let mut cur = attrs;
-    for seg in segs {
-        let entry = cur.get_mut(seg)?;
-        cur = entry.get_mut("M").and_then(|m| m.as_object_mut())?;
+/// Recursive mutable lookup inside a typed value ("[N]" through L, names
+/// through M). Used to find the parent of a REMOVE path.
+fn nested_value_mut<'m>(tv: &'m mut Value, segs: &[String]) -> Option<&'m mut Value> {
+    if segs.is_empty() {
+        return Some(tv);
     }
-    Some(cur)
+    let (seg, rest) = segs.split_first()?;
+    let next: Option<&mut Value> = match index_of(seg) {
+        Some(idx) => {
+            let arr = tv.get_mut("L").and_then(|v| v.as_array_mut())?;
+            arr.get_mut(idx)
+        }
+        None => {
+            let inner = tv.get_mut("M").and_then(|m| m.as_object_mut())?;
+            inner.get_mut(seg)
+        }
+    };
+    nested_value_mut(next?, rest)
 }
 
 /// ADD: numeric addition for N, set union for SS/NS/BS, otherwise copy.
@@ -1433,5 +1565,135 @@ mod tests {
             vals.get("L").and_then(|v| v.as_array()).map(|a| a.len()),
             Some(3)
         );
+    }
+
+    #[test]
+    fn test_lookup_lookup_and_index_paths() {
+        let it = json!({"l": {"L": [{"M": {"a": {"S": "x"}}}, {"M": {"a": {"S": "y"}}}]}});
+        assert_eq!(
+            lookup(&it, &["l".into(), "[0]".into(), "a".into()]).cloned(),
+            Some(json!({"S": "x"}))
+        );
+        assert_eq!(
+            lookup(&it, &["l".into(), "[1]".into()]).cloned(),
+            Some(json!({"M": {"a": {"S": "y"}}}))
+        );
+        // Index into a non-list attribute is unresolvable.
+        assert!(lookup(&it, &["l".into(), "a".into(), "[0]".into()]).is_none());
+        // ... and so is an index past a list's end.
+        assert!(lookup(&it, &["l".into(), "[2]".into()]).is_none());
+
+        // Through the lexer / resolver.
+        let mut names = HashMap::new();
+        names.insert("#l".to_string(), "l".to_string());
+        assert_eq!(
+            resolve_path("#l[1].a", &names),
+            vec!["l".to_string(), "[1]".to_string(), "a".to_string()]
+        );
+        assert_eq!(
+            resolve_path("mylist[0]", &names),
+            vec!["mylist".to_string(), "[0]".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_update_set_list_index() {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"},
+            "mylist": {"L": [{"S": "a"}, {"S": "b"}]},
+            "deep": {"L": [{"M": {"a": {"S": "x"}}}]}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":z".to_string(), json!({"S": "z"}));
+        // Replace in place.
+        apply_update(&mut attrs, "SET mylist[0] = :z", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "z"}, {"S": "b"}]}))
+        );
+        // Index past the end appends, like the ground-truth twin.
+        apply_update(&mut attrs, "SET mylist[5] = :z", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "z"}, {"S": "b"}, {"S": "z"}]}))
+        );
+        // Nested element under an index.
+        apply_update(&mut attrs, "SET deep[0].a = :z", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("deep").cloned(),
+            Some(json!({"L": [{"M": {"a": {"S": "z"}}}]}))
+        );
+        // Index into a non-list attribute fails cleanly.
+        let mut attrs2: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}, "plain": {"S": "s"}
+        }))
+        .unwrap();
+        assert!(apply_update(&mut attrs2, "SET plain[0] = :z", &names, &values).is_err());
+    }
+
+    #[test]
+    fn test_remove_list_index_shrinks() {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"},
+            "mylist": {"L": [{"S": "a"}, {"S": "b"}, {"S": "c"}]},
+            "deep": {"L": [{"M": {"a": {"S": "x"}}}, {"M": {"a": {"S": "y"}}}]}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let values: Values = HashMap::new();
+        // In range: the element drops out.
+        apply_update(&mut attrs, "REMOVE mylist[1], deep[0].a", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "a"}, {"S": "c"}]}))
+        );
+        assert_eq!(
+            attrs.get("deep").cloned(),
+            Some(json!({"L": [{"M": {}}, {"M": {"a": {"S": "y"}}}]}))
+        );
+        // Out of range: a no-op.
+        apply_update(&mut attrs, "REMOVE mylist[9]", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "a"}, {"S": "c"}]}))
+        );
+    }
+
+    #[test]
+    fn test_projection_with_index_path() {
+        let mut names: Names = HashMap::new();
+        names.insert("#l".to_string(), "mylist".to_string());
+        let paths = parse_projection("#l[1]", &names).unwrap();
+        let it = json!({
+            "pk": {"S": "a"},
+            "mylist": {"L": [{"S": "a"}, {"S": "b"}, {"S": "c"}]}
+        });
+        let proj = project_item(&it, &paths);
+        assert_eq!(
+            proj.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "b"}]}))
+        );
+    }
+
+    #[test]
+    fn test_condition_on_list_index() {
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":b".to_string(), json!({"S": "b"}));
+        values.insert(":z".to_string(), json!({"S": "z"}));
+        let it = json!({"pk": {"S": "a"}, "mylist": {"L": [{"S": "a"}, {"S": "b"}]}});
+        assert!(eval_condition("mylist[1] = :b", &it, &names, &values).unwrap());
+        assert!(!eval_condition("mylist[0] = :b", &it, &names, &values).unwrap());
+        assert!(!eval_condition("mylist[9] = :b", &it, &names, &values).unwrap());
+        // attribute_not_exists over an index past the end is true.
+        assert!(eval_condition(
+            "attribute_not_exists(mylist[9])",
+            &it,
+            &names,
+            &values
+        )
+        .unwrap());
     }
 }
