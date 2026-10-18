@@ -705,3 +705,56 @@ fn test_receive_message_max_count_validation() {
     // The handler clamps to 10, so this should succeed with empty result
     assert_eq!(recv_resp.status, 200);
 }
+
+#[test]
+fn test_bridged_message_gets_real_receipt_handle() {
+    let handler = DefaultSqsHandler::new();
+
+    let create_resp = handler.handle(make_request(
+        "CreateQueue",
+        json!({"QueueName": "bridge-queue"}),
+    ));
+    assert_eq!(create_resp.status, 200);
+    let queue_data: Value = serde_json::from_str(&create_resp.body).expect("Invalid JSON");
+    let queue_url = queue_data["QueueUrl"]
+        .as_str()
+        .expect("Missing QueueUrl")
+        .to_string();
+
+    // Cross-service delivery (EventBridge/S3 fanout path) before any receive.
+    assert!(crate::bridge::deliver_to_queue(
+        123456789012,
+        "us-east-1",
+        "bridge-queue",
+        "bridged body"
+    ));
+
+    let recv_resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert_eq!(recv_resp.status, 200);
+    let recv_data: Value = serde_json::from_str(&recv_resp.body).expect("Invalid JSON");
+    let msg = &recv_data["Messages"][0];
+    assert_eq!(msg["Body"].as_str().unwrap(), "bridged body");
+    let receipt_handle = msg["ReceiptHandle"].as_str().expect("Missing handle");
+    assert!(!receipt_handle.is_empty(), "receipt handle must be minted");
+
+    // The handle must be usable to delete the bridged message.
+    let del_resp = handler.handle(make_request(
+        "DeleteMessage",
+        json!({"QueueUrl": &queue_url, "ReceiptHandle": receipt_handle}),
+    ));
+    assert_eq!(del_resp.status, 200);
+
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let again_data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    let remaining = again_data
+        .get("Messages")
+        .map(|a| a.as_array().map(|a| a.len()).unwrap_or(0))
+        .unwrap_or(0);
+    assert_eq!(remaining, 0);
+}

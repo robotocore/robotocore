@@ -142,7 +142,9 @@ impl DefaultSqsHandler {
         format!("{:x}", md5::compute(data))
     }
 
-    fn generate_receipt_handle(message_id: &str, queue_url: &str) -> String {
+    /// Mint a receipt handle for `message_id` on `queue_url`. Also used by the
+    /// bridge so cross-service messages get real handles when drained.
+    pub(crate) fn generate_receipt_handle(message_id: &str, queue_url: &str) -> String {
         // Encode as base64: {random_uuid} {queue_arn} {message_id} {timestamp}
         let data = format!(
             "{} {} {} {}",
