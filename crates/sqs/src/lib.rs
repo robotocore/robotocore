@@ -2,6 +2,7 @@
 //!
 //! Provides in-memory SQS with full message lifecycle support.
 
+pub mod bridge;
 pub mod error;
 pub mod handler;
 pub mod models;

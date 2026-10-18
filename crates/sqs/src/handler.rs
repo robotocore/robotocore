@@ -396,6 +396,7 @@ impl DefaultSqsHandler {
 
         let messages = {
             let mut q = queue_arc.write();
+            super::bridge::drain_pending(account, region, &queue_name, &mut q);
             q.receive_messages(max_messages, visibility_timeout)
         };
 
@@ -495,6 +496,7 @@ impl DefaultSqsHandler {
 
         let store = self.get_store(account, region);
         store.delete_queue(&queue_name);
+        super::bridge::clear_pending(account, region, &queue_name);
 
         let body = json!({}).to_string();
 
@@ -820,6 +822,8 @@ impl DefaultSqsHandler {
 
         {
             let mut q = queue_arc.write();
+            super::bridge::drain_pending(account, region, &queue_name, &mut q);
+            super::bridge::clear_pending(account, region, &queue_name);
             q.purge();
         }
 

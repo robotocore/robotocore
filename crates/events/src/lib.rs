@@ -4,6 +4,7 @@
 
 pub mod handler;
 pub mod models;
+pub mod pattern;
 pub mod protocol;
 
 pub use protocol::{AwsRequest, AwsResponse};
