@@ -34,6 +34,7 @@ struct State {
     findings_filters: BTreeMap<String, Value>,
     classification_export_configuration: Option<Value>,
     reveal_configuration: Value,
+    retrieval_configuration: Value,
     automated_discovery_status: String,
     tagger: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -41,6 +42,7 @@ struct State {
 impl State {
     fn init(&mut self) {
         self.reveal_configuration = json!({"status": "DISABLED"});
+        self.retrieval_configuration = json!({"retrievalMode": "CALLER_CREDENTIALS"});
         self.automated_discovery_status = "DISABLED".to_string();
     }
 }
@@ -210,8 +212,8 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
         ("POST", "findings", "describe", "") => ok(json!({"findings": []})),
         ("POST", "findings", "statistics", "") => ok(json!({"countsByGroup": []})),
         ("POST", "findings", "sample", "") => ok(json!({})),
-        ("GET", "findings", _, "availability") => sensitive_data_availability(svc),
-        ("GET", "findings", _, _) => sensitive_data_occurrences(svc),
+        ("GET", "findings", _, "reveal") if segs.len() == 4 => sensitive_data_availability(svc),
+        ("GET", "findings", "reveal", _) if segs.len() == 3 => sensitive_data_occurrences(svc),
         ("POST", "findingsfilters", "", "") => create_findings_filter(svc),
         ("GET", "findingsfilters", "", "") => list_findings_filters(svc),
         // --- Jobs / data identifiers / allow lists ---
@@ -788,10 +790,17 @@ fn update_reveal_configuration(svc: &Svc) -> Response {
             }
         }
     });
+    let update = |st: &mut State| {
+        if !retrieval.is_null() {
+            st.retrieval_configuration = retrieval.clone();
+        }
+        st.retrieval_configuration.clone()
+    };
+    let stored_retrieval = svc.with(update);
     let config = svc.with(|st| st.reveal_configuration.clone());
     ok(json!({
         "configuration": config,
-        "retrievalConfiguration": retrieval,
+        "retrievalConfiguration": stored_retrieval,
     }))
 }
 
