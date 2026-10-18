@@ -986,19 +986,15 @@ pub static SERVICE_REQUESTS: Lazy<std::collections::HashMap<&'static str, Atomic
 });
 
 fn bump_service_requests(service: &str) {
-    if let Some((_, counter)) = SERVICE_REQUESTS
-        .iter()
-        .find(|(s, _)| **s == *service)
-    {
+    if let Some(counter) = SERVICE_REQUESTS.get(service) {
         counter.fetch_add(1, Ordering::Relaxed);
     }
 }
 
 fn service_request_count(service: &str) -> u64 {
     SERVICE_REQUESTS
-        .iter()
-        .find(|(s, _)| **s == *service)
-        .map(|(_, c)| c.load(Ordering::Relaxed))
+        .get(service)
+        .map(|c| c.load(Ordering::Relaxed))
         .unwrap_or(0)
 }
 
