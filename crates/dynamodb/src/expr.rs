@@ -78,6 +78,24 @@ fn lex(expr: &str) -> Result<Vec<Tok>, String> {
                     if c2.is_alphanumeric() || c2 == '_' || c2 == '.' || c2 == '#' {
                         s.push(c2);
                         chars.next();
+                    } else if c2 == '[' {
+                        // Document-path list index: name[0][1] stays one token.
+                        s.push(c2);
+                        chars.next();
+                        let mut digits = String::new();
+                        while let Some(&c3) = chars.peek() {
+                            if c3.is_ascii_digit() {
+                                digits.push(c3);
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        if digits.is_empty() || chars.next() != Some(']') {
+                            return Err(format!("invalid document path near '{s}'"));
+                        }
+                        s.push_str(&digits);
+                        s.push(']');
                     } else {
                         break;
                     }
@@ -98,7 +116,9 @@ fn lex(expr: &str) -> Result<Vec<Tok>, String> {
 }
 
 /// Resolve an expression path token into attribute path segments, substituting
-/// `#name` placeholders and splitting dotted paths.
+/// `#name` placeholders and splitting dotted paths. List indices ([0]) become
+/// their own "[N]" segments:
+/// `#l[0].a` resolves to ["l-name", "[0]", "a"].
 fn resolve_path(token: &str, names: &Names) -> Vec<String> {
     let mut segments = Vec::new();
     for part in token.split('.') {
@@ -106,17 +126,42 @@ fn resolve_path(token: &str, names: &Names) -> Vec<String> {
         if part.is_empty() {
             continue;
         }
-        if let Some(stripped) = part.strip_prefix('#') {
+        // Peel the trailing [N] index groups off the head name.
+        let mut idx_segs: Vec<String> = Vec::new();
+        let mut head = part;
+        while let Some(open) = head.rfind('[') {
+            if head.ends_with(']') && index_of(&head[open..]).is_some() {
+                idx_segs.push(head[open..].to_string());
+                head = &head[..open];
+            } else {
+                break;
+            }
+        }
+        idx_segs.reverse();
+        if head.is_empty() {
+            // Index-only fragment (cannot happen through lex()); be permissive.
+            segments.extend(idx_segs);
+            continue;
+        }
+        if let Some(stripped) = head.strip_prefix('#') {
             let resolved = names
                 .get(&format!("#{stripped}"))
                 .cloned()
-                .unwrap_or_else(|| part.to_string());
+                .unwrap_or_else(|| head.to_string());
             segments.push(resolved);
         } else {
-            segments.push(part.to_string());
+            segments.push(head.to_string());
         }
+        segments.extend(idx_segs);
     }
     segments
+}
+
+/// Parse a "[N]" segment into its list index. Indices traverse L only.
+fn index_of(seg: &str) -> Option<usize> {
+    let inner = seg.strip_prefix('[')?;
+    let digits = inner.strip_suffix(']')?;
+    digits.parse::<usize>().ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -156,11 +201,210 @@ pub fn fmt_num(n: f64) -> Value {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Exact decimal-string arithmetic
+// ---------------------------------------------------------------------------
+
+/// Strip leading zeros from a digit string ("0" when all zeros).
+fn strip_lead_zeros(d: &str) -> &str {
+    let t = d.trim_start_matches('0');
+    if t.is_empty() {
+        "0"
+    } else {
+        t
+    }
+}
+
+/// Compare two raw digit strings numerically.
+fn cmp_mag(a: &str, b: &str) -> std::cmp::Ordering {
+    let (a, b) = (strip_lead_zeros(a), strip_lead_zeros(b));
+    match a.len().cmp(&b.len()) {
+        std::cmp::Ordering::Equal => a.cmp(b),
+        other => other,
+    }
+}
+
+/// a + b over raw digit strings.
+fn add_mag(a: &str, b: &str) -> String {
+    let ax: Vec<u8> = a.bytes().rev().collect();
+    let bx: Vec<u8> = b.bytes().rev().collect();
+    let n = ax.len().max(bx.len());
+    let mut out = Vec::with_capacity(n + 1);
+    let mut carry = 0u8;
+    for i in 0..n {
+        let ad = *ax.get(i).unwrap_or(&b'0') - b'0';
+        let bd = *bx.get(i).unwrap_or(&b'0') - b'0';
+        let s = ad + bd + carry;
+        out.push(s % 10 + b'0');
+        carry = s / 10;
+    }
+    if carry > 0 {
+        out.push(b'0' + carry);
+    }
+    let s: String = out.into_iter().rev().map(|c| c as char).collect();
+    strip_lead_zeros(&s).to_string()
+}
+
+/// a - b over raw digit strings; a must be greater or equal.
+fn sub_mag(a: &str, b: &str) -> String {
+    let ax: Vec<u8> = a.bytes().rev().collect();
+    let bx: Vec<u8> = b.bytes().rev().collect();
+    let mut out = Vec::with_capacity(ax.len());
+    let mut borrow = 0u8;
+    for i in 0..ax.len() {
+        let ad = ax[i] - b'0';
+        let db = bx.get(i).copied().unwrap_or(b'0') - b'0' + borrow;
+        let (d, br) = if ad >= db { (ad - db, 0) } else { (ad + 10 - db, 1) };
+        out.push(d + b'0');
+        borrow = br;
+    }
+    debug_assert_eq!(borrow, 0);
+    let s: String = out.into_iter().rev().map(|c| c as char).collect();
+    strip_lead_zeros(&s).to_string()
+}
+
+/// Parse a DynamoDB number into (negative, unscaled digits, scale), where
+/// scale counts fraction digits after applying an exponent (negative scale
+/// shifts become trailing zeros). Accepts up to 38 digits without loss.
+fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
+    let t = s.trim();
+    let (neg, body) = match t.as_bytes().first()? {
+        b'-' => (true, &t[1..]),
+        b'+' => (false, &t[1..]),
+        _ => (false, t),
+    };
+    let (mant, exp) = match body.split_once(['e', 'E']) {
+        Some((m, e)) => (m, e.parse::<i64>().ok()?),
+        None => (body, 0),
+    };
+    let (int_part, frac_part) = match mant.split_once('.') {
+        Some((i, f)) => (i, f),
+        None => (mant, ""),
+    };
+    let all_digits =
+        |x: &str| x.chars().all(|c| c.is_ascii_digit());
+    if (int_part.is_empty() && frac_part.is_empty())
+        || !all_digits(int_part)
+        || !all_digits(frac_part)
+    {
+        return None;
+    }
+    let digits = format!("{int_part}{frac_part}");
+    let scale = frac_part.len() as i64 - exp;
+    if scale >= 0 {
+        Some((neg, digits, scale))
+    } else {
+        Some((neg, digits + &"0".repeat((-scale) as usize), 0))
+    }
+}
+
+/// Render (negative, unscaled digits, scale) as a DynamoDB number string,
+/// without leading or trailing zeros ("2.0" renders as "2").
+fn render_decimal(neg: bool, digits: String, scale: usize) -> String {
+    let digits = strip_lead_zeros(&digits);
+    if digits == "0" {
+        return "0".to_string();
+    }
+    let mut s = if scale == 0 {
+        digits.to_string()
+    } else if digits.len() <= scale {
+        format!("0.{:0>width$}", digits, width = scale)
+    } else {
+        let split = digits.len() - scale;
+        format!("{}.{}", &digits[..split], &digits[split..])
+    };
+    // Trim trailing fraction zeros ("2.0" -> "2", "0.0000000000000002" kept).
+    if let Some(p) = s.find('.') {
+        let kept = s[p + 1..].trim_end_matches('0');
+        s = if kept.is_empty() {
+            s[..p].to_string()
+        } else {
+            format!("{}.{}", &s[..p], kept)
+        };
+    }
+    if neg && s != "0" {
+        s = format!("-{s}");
+    }
+    s
+}
+
+/// Exact add on DynamoDB number strings; None falls back to the caller's f64
+/// path (inputs that are not plain decimals, e.g. unresolved values).
+fn dec_add(a: &str, b: &str) -> Option<String> {
+    dec_compute(a, false, b)
+}
+
+/// Exact a - b on DynamoDB number strings.
+fn dec_sub(a: &str, b: &str) -> Option<String> {
+    dec_compute(a, true, b)
+}
+
+/// Common core: align both operands to the max fraction scale, then do
+/// signed digit arithmetic.
+fn dec_compute(a: &str, flip_b: bool, b: &str) -> Option<String> {
+    let (neg_a, d_a, s_a) = parse_decimal(a)?;
+    let (mut neg_b, d_b, s_b) = parse_decimal(b)?;
+    if flip_b {
+        neg_b = !neg_b;
+    }
+    let scale = s_a.max(s_b).max(0);
+    let pad = |d: &str, s: i64| format!("{d}{}", "0".repeat((scale - s).max(0) as usize));
+    let m1 = pad(&d_a, s_a);
+    let m2 = pad(&d_b, s_b);
+    let (neg, digits) = if neg_a == neg_b {
+        (neg_a, add_mag(&m1, &m2))
+    } else {
+        match cmp_mag(&m1, &m2) {
+            std::cmp::Ordering::Equal => (false, "0".to_string()),
+            std::cmp::Ordering::Greater => (neg_a, sub_mag(&m1, &m2)),
+            std::cmp::Ordering::Less => (neg_b, sub_mag(&m2, &m1)),
+        }
+    };
+    Some(render_decimal(neg, digits, scale as usize))
+}
+
+/// Exact numeric comparison of two "N" strings; None falls back to f64.
+fn dec_cmp(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    let (neg_a, d_a, s_a) = parse_decimal(a)?;
+    let (neg_b, d_b, s_b) = parse_decimal(b)?;
+    let zero = |d: &str| strip_lead_zeros(d) == "0";
+    let scale = s_a.max(s_b).max(0);
+    let pad = |d: &str, s: i64| format!("{d}{}", "0".repeat((scale - s).max(0) as usize));
+    match (neg_a, neg_b) {
+        (false, false) => Some(cmp_mag(&pad(&d_a, s_a), &pad(&d_b, s_b))),
+        (true, true) => Some(cmp_mag(&pad(&d_b, s_b), &pad(&d_a, s_a))),
+        (false, true) => {
+            if zero(&d_a) && zero(&d_b) {
+                Some(std::cmp::Ordering::Equal)
+            } else {
+                Some(std::cmp::Ordering::Greater)
+            }
+        }
+        (true, false) => {
+            if zero(&d_a) && zero(&d_b) {
+                Some(std::cmp::Ordering::Equal)
+            } else {
+                Some(std::cmp::Ordering::Less)
+            }
+        }
+    }
+}
+
 /// Equality of two attribute values under DynamoDB semantics.
 pub fn attr_eq(a: &Value, b: &Value) -> bool {
     match (type_of(a), type_of(b)) {
         (Some("S"), Some("S")) | (Some("B"), Some("B")) | (Some("BOOL"), Some("BOOL")) => a == b,
-        (Some("N"), Some("N")) => as_number(a) == as_number(b),
+        (Some("N"), Some("N")) => {
+            let (Some(x), Some(y)) = (
+                a.get("N").and_then(|v| v.as_str()),
+                b.get("N").and_then(|v| v.as_str()),
+            ) else {
+                return as_number(a) == as_number(b);
+            };
+            dec_cmp(x, y)
+                .map(|o| o.is_eq())
+                .unwrap_or_else(|| as_number(a) == as_number(b))
+        }
         (Some("NULL"), Some("NULL")) => true,
         _ => a == b,
     }
@@ -180,20 +424,39 @@ fn attr_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
                 .and_then(|v| v.as_str())?;
             Some(av.cmp(bv))
         }
-        ("N", "N") => as_number(a)?.partial_cmp(&as_number(b)?),
+        ("N", "N") => {
+            let ord = dec_cmp(
+                a.get("N")?.as_str()?,
+                b.get("N")?.as_str()?,
+            );
+            ord.or_else(|| as_number(a)?.partial_cmp(&as_number(b)?))
+        }
         _ => None,
     }
 }
 
-/// The size() of an attribute value.
+/// The size() of an attribute value. B sizes count DECODED bytes;
+/// strings count characters (code points), matching the ground truth twin.
 fn size_of(val: &Value) -> Option<f64> {
     match type_of(val)? {
-        "S" | "B" => val
+        "S" => val
             .as_object()?
             .values()
             .next()
             .and_then(|v| v.as_str())
-            .map(|s| s.len() as f64),
+            .map(|s| s.chars().count() as f64),
+        "B" => val
+            .as_object()?
+            .values()
+            .next()
+            .and_then(|v| v.as_str())
+            .and_then(|s| {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(s)
+                    .ok()
+                    .map(|b| b.len() as f64)
+            }),
         "SS" | "NS" | "BS" => val
             .as_object()?
             .values()
@@ -213,7 +476,8 @@ fn size_of(val: &Value) -> Option<f64> {
 }
 
 /// Look up a possibly-nested attribute path in an item. Intermediate typed
-/// maps ({"M": {...}}) are unwrapped transparently.
+/// maps ({"M": {...}}) are unwrapped transparently. "[N]" segments index
+/// into L lists.
 pub fn lookup<'v>(item: &'v Value, segs: &[String]) -> Option<&'v Value> {
     let mut cur = item;
     for seg in segs {
@@ -224,6 +488,9 @@ pub fn lookup<'v>(item: &'v Value, segs: &[String]) -> Option<&'v Value> {
 
 fn descend<'v>(cur: &'v Value, seg: &str) -> Option<&'v Value> {
     let obj = cur.as_object()?;
+    if let Some(idx) = index_of(seg) {
+        return obj.get("L")?.as_array()?.get(idx);
+    }
     if let Some(v) = obj.get(seg) {
         return Some(v);
     }
@@ -262,14 +529,14 @@ impl Operand {
                 size_of(v).map(|n| json!({ "N": n.to_string() })).ok_or(())
             }
             Operand::Plus(a, b) => {
-                let av = as_number(&a.resolve(item)?).ok_or(())?;
-                let bv = as_number(&b.resolve(item)?).ok_or(())?;
-                Ok(fmt_num(av + bv))
+                let av = a.resolve(item)?;
+                let bv = b.resolve(item)?;
+                num_operation(&av, &bv, false)
             }
             Operand::Minus(a, b) => {
-                let av = as_number(&a.resolve(item)?).ok_or(())?;
-                let bv = as_number(&b.resolve(item)?).ok_or(())?;
-                Ok(fmt_num(av - bv))
+                let av = a.resolve(item)?;
+                let bv = b.resolve(item)?;
+                num_operation(&av, &bv, true)
             }
         }
     }
@@ -283,6 +550,26 @@ impl Operand {
             Operand::Path(segs) => Some(segs),
             Operand::Size(segs) => Some(segs),
             _ => None,
+        }
+    }
+}
+
+/// Exact numeric + / - over N values; falls back to f64 for inputs the
+/// decimal parser does not recognise (DynamoDB numbers reach 38 digits,
+/// beyond f64 precision).
+fn num_operation(a: &Value, b: &Value, sub: bool) -> Result<Value, ()> {
+    let (Some(x), Some(y)) = (
+        a.get("N").and_then(|v| v.as_str()),
+        b.get("N").and_then(|v| v.as_str()),
+    ) else {
+        return Err(());
+    };
+    let result = if sub { dec_sub(x, y) } else { dec_add(x, y) };
+    match result {
+        Some(n) => Ok(json!({ "N": n })),
+        None => {
+            let (av, bv) = (as_number(a).ok_or(())?, as_number(b).ok_or(())?);
+            Ok(fmt_num(if sub { av - bv } else { av + bv }))
         }
     }
 }
@@ -947,7 +1234,9 @@ pub fn apply_update(
         set_paths: Vec::new(),
         add_paths: Vec::new(),
     };
-    let item_view = Value::Object(attrs.clone());
+    // SET actions apply left to right, so each action must see the writes
+    // made by the previous ones (SET a = :one, b = a + :two).
+    let mut item_view = Value::Object(attrs.clone());
 
     for clause in clauses {
         match clause {
@@ -956,25 +1245,35 @@ pub fn apply_update(
                     let val = eval_set_action(&item_view, &act)?;
                     set_path(attrs, &path, val.clone())?;
                     outcome.set_paths.push((path, val));
+                    item_view = Value::Object(attrs.clone());
                 }
             }
             UpdateClause::Remove(paths) => {
                 for path in paths {
                     remove_path(attrs, &path);
                 }
+                item_view = Value::Object(attrs.clone());
             }
             UpdateClause::Add(actions) => {
                 for (path, val) in actions {
                     let updated = add_to_attr(attrs.get_path(&path).cloned(), &val);
                     set_path(attrs, &path, updated.clone())?;
                     outcome.add_paths.push((path, updated));
+                    item_view = Value::Object(attrs.clone());
                 }
             }
             UpdateClause::Delete(actions) => {
                 for (path, val) in actions {
-                    let updated = delete_from_attr(attrs.get_path(&path).cloned(), &val)?;
+                    let Some(updated) =
+                        delete_from_attr(attrs.get_path(&path).cloned(), &val)?
+                    else {
+                        // Attribute absent: DELETE is a no-op, nothing created.
+                        item_view = Value::Object(attrs.clone());
+                        continue;
+                    };
                     set_path(attrs, &path, updated.clone())?;
                     outcome.add_paths.push((path, updated));
+                    item_view = Value::Object(attrs.clone());
                 }
             }
         }
@@ -1028,65 +1327,145 @@ impl MapPathExt for Map<String, Value> {
     }
 }
 
-/// Set a possibly-nested attribute path, creating intermediate maps.
+/// Set a possibly-nested attribute path, creating intermediate maps and
+/// lists. "[N]" segments index into L values; an index past the end appends
+/// (matching the local ground-truth twin's leniency).
 pub fn set_path(attrs: &mut Map<String, Value>, segs: &[String], val: Value) -> Result<(), String> {
-    let mut cur = attrs;
-    for (i, seg) in segs.iter().enumerate() {
-        if i == segs.len() - 1 {
-            cur.insert(seg.clone(), val);
+    let Some((seg, rest)) = segs.split_first() else {
+        return Ok(());
+    };
+    if rest.is_empty() {
+        // A path never starts with an index (lex() binds [N] to a name).
+        attrs.insert(seg.clone(), val);
+        return Ok(());
+    }
+    // The intermediate wrapper type follows how the path continues.
+    let entry = attrs.entry(seg.clone()).or_insert_with(|| {
+        if index_of(&rest[0]).is_some() {
+            json!({ "L": [] })
+        } else {
+            json!({ "M": {} })
+        }
+    });
+    set_in_typed(entry, rest, val)
+}
+
+/// Continue a set within a typed attribute value: "[N]" indexes its L array,
+/// other segments descend through "M".
+fn set_in_typed(cur: &mut Value, segs: &[String], val: Value) -> Result<(), String> {
+    let Some((seg, rest)) = segs.split_first() else {
+        // Ran out of path: the target is this typed value itself.
+        *cur = val;
+        return Ok(());
+    };
+    if let Some(idx) = index_of(seg) {
+        let arr = cur
+            .get_mut("L")
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| "cannot index into a non-list attribute".to_string())?;
+        let at = idx.min(arr.len());
+        if rest.is_empty() {
+            if at == arr.len() {
+                arr.push(val);
+            } else {
+                arr[at] = val;
+            }
             return Ok(());
         }
-        let entry = cur.entry(seg.clone()).or_insert_with(|| json!({ "M": {} }));
-        if !entry.is_object() {
-            return Err(format!("cannot descend into non-map attribute {seg}"));
+        if at == arr.len() {
+            arr.push(json!({ "M": {} }));
         }
-        cur = entry
-            .get_mut("M")
-            .and_then(|m| m.as_object_mut())
-            .ok_or_else(|| format!("cannot descend into non-map attribute {seg}"))?;
+        return set_in_typed(&mut arr[at], rest, val);
     }
-    Ok(())
+    let inner = cur
+        .get_mut("M")
+        .and_then(|m| m.as_object_mut())
+        .ok_or_else(|| "cannot descend into non-map attribute".to_string())?;
+    if rest.is_empty() {
+        inner.insert(seg.clone(), val);
+        return Ok(());
+    }
+    let entry = inner.entry(seg.clone()).or_insert_with(|| {
+        if index_of(&rest[0]).is_some() {
+            json!({ "L": [] })
+        } else {
+            json!({ "M": {} })
+        }
+    });
+    set_in_typed(entry, rest, val)
 }
 
-/// Remove a possibly-nested attribute path (no-op when missing).
+/// Remove a possibly-nested attribute path (no-op when missing). Removing a
+/// list element with "[N]" in range drops it from the list; out of range it
+/// is a no-op.
 pub fn remove_path(attrs: &mut Map<String, Value>, segs: &[String]) {
-    if segs.is_empty() {
+    let Some((last, parents)) = segs.split_last() else {
+        return;
+    };
+    let parent: Option<&mut Value> = if parents.is_empty() {
+        // A top-level path cannot start with an index; "last" is a name.
+        None
+    } else {
+        let Some(head) = attrs.get_mut(&parents[0]) else {
+            return;
+        };
+        nested_value_mut(head, &parents[1..])
+    };
+    let Some(parent) = parent else {
+        if let Some(idx) = index_of(last) {
+            if let Some(arr) = attrs.get_mut("L").and_then(|v| v.as_array_mut()) {
+                if idx < arr.len() {
+                    arr.remove(idx);
+                }
+            }
+            return;
+        }
+        attrs.remove(last);
+        return;
+    };
+    if let Some(idx) = index_of(last) {
+        if let Some(arr) = parent.get_mut("L").and_then(|v| v.as_array_mut()) {
+            if idx < arr.len() {
+                arr.remove(idx);
+            }
+        }
         return;
     }
-    if segs.len() == 1 {
-        attrs.remove(&segs[0]);
-        return;
-    }
-    if let Some(parent) = nested_map_mut(attrs, &segs[..segs.len() - 1]) {
-        parent.remove(&segs[segs.len() - 1]);
+    if let Some(inner) = parent.get_mut("M").and_then(|m| m.as_object_mut()) {
+        inner.remove(last);
     }
 }
 
-fn nested_map_mut<'m>(
-    attrs: &'m mut Map<String, Value>,
-    segs: &[String],
-) -> Option<&'m mut Map<String, Value>> {
-    let mut cur = attrs;
-    for seg in segs {
-        let entry = cur.get_mut(seg)?;
-        cur = entry.get_mut("M").and_then(|m| m.as_object_mut())?;
+/// Recursive mutable lookup inside a typed value ("[N]" through L, names
+/// through M). Used to find the parent of a REMOVE path.
+fn nested_value_mut<'m>(tv: &'m mut Value, segs: &[String]) -> Option<&'m mut Value> {
+    if segs.is_empty() {
+        return Some(tv);
     }
-    Some(cur)
+    let (seg, rest) = segs.split_first()?;
+    let next: Option<&mut Value> = match index_of(seg) {
+        Some(idx) => {
+            let arr = tv.get_mut("L").and_then(|v| v.as_array_mut())?;
+            arr.get_mut(idx)
+        }
+        None => {
+            let inner = tv.get_mut("M").and_then(|m| m.as_object_mut())?;
+            inner.get_mut(seg)
+        }
+    };
+    nested_value_mut(next?, rest)
 }
 
 /// ADD: numeric addition for N, set union for SS/NS/BS, otherwise copy.
 fn add_to_attr(current: Option<Value>, val: &Value) -> Value {
     match (current, type_of(val)) {
         (Some(cur), Some("N")) if type_of(&cur) == Some("N") => {
-            let a = cur
-                .get("N")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok());
-            let b = val
-                .get("N")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok());
-            fmt_num(a.unwrap_or(0.0) + b.unwrap_or(0.0))
+            let a = cur.get("N").and_then(|v| v.as_str()).unwrap_or("0");
+            let b = val.get("N").and_then(|v| v.as_str()).unwrap_or("0");
+            match dec_add(a, b) {
+                Some(n) => json!({ "N": n }),
+                None => fmt_num(a.parse::<f64>().unwrap_or(0.0) + b.parse::<f64>().unwrap_or(0.0)),
+            }
         }
         (Some(cur), Some("SS")) if type_of(&cur) == Some("SS") => merge_sets(&cur, val),
         (Some(cur), Some("NS")) if type_of(&cur) == Some("NS") => merge_sets(&cur, val),
@@ -1109,11 +1488,11 @@ fn add_to_attr(current: Option<Value>, val: &Value) -> Value {
     }
 }
 
-/// DELETE: set difference for SS/NS/BS.
-/// DELETE: set difference for SS/NS/BS. Treats a missing attribute as no-op.
-fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Value, String> {
+/// DELETE: set difference for SS/NS/BS. A missing attribute is a no-op
+/// (None): nothing is created or reported.
+fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Option<Value>, String> {
     let Some(cur) = current else {
-        return Ok(val.clone()); // attribute absent — nothing to delete from
+        return Ok(None); // attribute absent — nothing to delete from
     };
     let tag = type_of(&cur).unwrap_or("SS");
     if !matches!(tag, "SS" | "NS" | "BS") {
@@ -1134,7 +1513,7 @@ fn delete_from_attr(current: Option<Value>, val: &Value) -> Result<Value, String
     {
         out.retain(|e| !attr_eq(e, &needle));
     }
-    Ok(json!({ tag: out }))
+    Ok(Some(json!({ tag: out })))
 }
 
 fn merge_sets(cur: &Value, val: &Value) -> Value {
@@ -1286,6 +1665,53 @@ mod tests {
     }
 
     #[test]
+    fn test_update_sequential_set_sees_prior_writes() {
+        // AWS applies SET actions left to right: the second action sees the
+        // attribute written by the first.
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":one".to_string(), json!({"N": "1"}));
+        values.insert(":two".to_string(), json!({"N": "2"}));
+        apply_update(&mut attrs, "SET a = :one, b = a + :two", &names, &values).unwrap();
+        assert_eq!(attrs.get("a").cloned(), Some(json!({"N": "1"})));
+        assert_eq!(attrs.get("b").cloned(), Some(json!({"N": "3"})));
+        // And a chained overwrite too.
+        apply_update(&mut attrs, "SET a = a + :two, b = a", &names, &values).unwrap();
+        assert_eq!(attrs.get("a").cloned(), Some(json!({"N": "3"})));
+        assert_eq!(attrs.get("b").cloned(), Some(json!({"N": "3"})));
+    }
+
+    #[test]
+    fn test_update_delete_missing_attribute_is_noop() {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}, "tags": {"SS": ["a", "b"]}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":d".to_string(), json!({"SS": ["a"]}));
+        // DELETE on an attribute that never exists must not create it.
+        let outcome = apply_update(
+            &mut attrs,
+            "DELETE tags :d, ghost :d",
+            &names,
+            &values,
+        )
+        .unwrap();
+        assert!(attrs.get("ghost").is_none());
+        assert_eq!(
+            attrs.get("tags").cloned(),
+            Some(json!({"SS": ["b"]}))
+        );
+        assert_eq!(outcome.add_paths.len(), 1, "only the existing attr reported");
+    }
+
+
+    #[test]
     fn test_update_add_delete_sets() {
         let mut attrs: Map<String, Value> = serde_json::from_value(json!({
             "pk": {"S": "x"}, "colors": {"SS": ["red"]}, "tags": {"SS": ["a", "b"]}
@@ -1374,5 +1800,220 @@ mod tests {
             vals.get("L").and_then(|v| v.as_array()).map(|a| a.len()),
             Some(3)
         );
+    }
+
+    #[test]
+    fn test_lookup_lookup_and_index_paths() {
+        let it = json!({"l": {"L": [{"M": {"a": {"S": "x"}}}, {"M": {"a": {"S": "y"}}}]}});
+        assert_eq!(
+            lookup(&it, &["l".into(), "[0]".into(), "a".into()]).cloned(),
+            Some(json!({"S": "x"}))
+        );
+        assert_eq!(
+            lookup(&it, &["l".into(), "[1]".into()]).cloned(),
+            Some(json!({"M": {"a": {"S": "y"}}}))
+        );
+        // Index into a non-list attribute is unresolvable.
+        assert!(lookup(&it, &["l".into(), "a".into(), "[0]".into()]).is_none());
+        // ... and so is an index past a list's end.
+        assert!(lookup(&it, &["l".into(), "[2]".into()]).is_none());
+
+        // Through the lexer / resolver.
+        let mut names = HashMap::new();
+        names.insert("#l".to_string(), "l".to_string());
+        assert_eq!(
+            resolve_path("#l[1].a", &names),
+            vec!["l".to_string(), "[1]".to_string(), "a".to_string()]
+        );
+        assert_eq!(
+            resolve_path("mylist[0]", &names),
+            vec!["mylist".to_string(), "[0]".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_update_set_list_index() {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"},
+            "mylist": {"L": [{"S": "a"}, {"S": "b"}]},
+            "deep": {"L": [{"M": {"a": {"S": "x"}}}]}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":z".to_string(), json!({"S": "z"}));
+        // Replace in place.
+        apply_update(&mut attrs, "SET mylist[0] = :z", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "z"}, {"S": "b"}]}))
+        );
+        // Index past the end appends, like the ground-truth twin.
+        apply_update(&mut attrs, "SET mylist[5] = :z", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "z"}, {"S": "b"}, {"S": "z"}]}))
+        );
+        // Nested element under an index.
+        apply_update(&mut attrs, "SET deep[0].a = :z", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("deep").cloned(),
+            Some(json!({"L": [{"M": {"a": {"S": "z"}}}]}))
+        );
+        // Index into a non-list attribute fails cleanly.
+        let mut attrs2: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}, "plain": {"S": "s"}
+        }))
+        .unwrap();
+        assert!(apply_update(&mut attrs2, "SET plain[0] = :z", &names, &values).is_err());
+    }
+
+    #[test]
+    fn test_remove_list_index_shrinks() {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"},
+            "mylist": {"L": [{"S": "a"}, {"S": "b"}, {"S": "c"}]},
+            "deep": {"L": [{"M": {"a": {"S": "x"}}}, {"M": {"a": {"S": "y"}}}]}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let values: Values = HashMap::new();
+        // In range: the element drops out.
+        apply_update(&mut attrs, "REMOVE mylist[1], deep[0].a", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "a"}, {"S": "c"}]}))
+        );
+        assert_eq!(
+            attrs.get("deep").cloned(),
+            Some(json!({"L": [{"M": {}}, {"M": {"a": {"S": "y"}}}]}))
+        );
+        // Out of range: a no-op.
+        apply_update(&mut attrs, "REMOVE mylist[9]", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "a"}, {"S": "c"}]}))
+        );
+    }
+
+    #[test]
+    fn test_projection_with_index_path() {
+        let mut names: Names = HashMap::new();
+        names.insert("#l".to_string(), "mylist".to_string());
+        let paths = parse_projection("#l[1]", &names).unwrap();
+        let it = json!({
+            "pk": {"S": "a"},
+            "mylist": {"L": [{"S": "a"}, {"S": "b"}, {"S": "c"}]}
+        });
+        let proj = project_item(&it, &paths);
+        assert_eq!(
+            proj.get("mylist").cloned(),
+            Some(json!({"L": [{"S": "b"}]}))
+        );
+    }
+
+    #[test]
+    fn test_condition_on_list_index() {
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":b".to_string(), json!({"S": "b"}));
+        values.insert(":z".to_string(), json!({"S": "z"}));
+        let it = json!({"pk": {"S": "a"}, "mylist": {"L": [{"S": "a"}, {"S": "b"}]}});
+        assert!(eval_condition("mylist[1] = :b", &it, &names, &values).unwrap());
+        assert!(!eval_condition("mylist[0] = :b", &it, &names, &values).unwrap());
+        assert!(!eval_condition("mylist[9] = :b", &it, &names, &values).unwrap());
+        // attribute_not_exists over an index past the end is true.
+        assert!(eval_condition(
+            "attribute_not_exists(mylist[9])",
+            &it,
+            &names,
+            &values
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn test_decimal_add_sub_exact() {
+        // Beyond 2^53 precision and up to the 38-digit limit.
+        assert_eq!(dec_add("9007199254740993", "0").unwrap(), "9007199254740993");
+        assert_eq!(
+            dec_add("999999999999999999999999999999", "1").unwrap(),
+            "1000000000000000000000000000000"
+        );
+        assert_eq!(
+            dec_sub("0", "123456789012345678901234567890").unwrap(),
+            "-123456789012345678901234567890"
+        );
+        assert_eq!(
+            dec_add("123456789012345678901234567890", "1").unwrap(),
+            "123456789012345678901234567891"
+        );
+        // Fraction alignment, signs and zero normalization.
+        assert_eq!(dec_sub("1.0000000000000002", "1").unwrap(), "0.0000000000000002");
+        assert_eq!(dec_add("0.5", "0.5").unwrap(), "1");
+        assert_eq!(dec_add("-2", "-3").unwrap(), "-5");
+        assert_eq!(dec_add("2", "-5").unwrap(), "-3");
+        assert_eq!(dec_sub("5", "2").unwrap(), "3");
+        assert_eq!(dec_add("0001", "0001").unwrap(), "2");
+        assert_eq!(dec_add("0", "-5").unwrap(), "-5");
+        assert_eq!(dec_sub("5", "5").unwrap(), "0");
+        assert_eq!(dec_add("1e4", "0.5").unwrap(), "10000.5");
+        // Unparseable inputs return None so the caller can fall back.
+        assert!(dec_add("abc", "1").is_none());
+    }
+
+    #[test]
+    fn test_decimal_arithmetic_in_expressions() {
+        // SET with big numbers keeps full precision.
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}, "big": {"N": "999999999999999999999999999999"}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":one".to_string(), json!({"N": "1"}));
+        apply_update(&mut attrs, "SET big = big + :one", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("big").cloned(),
+            Some(json!({"N": "1000000000000000000000000000000"}))
+        );
+        // ADD too.
+        apply_update(&mut attrs, "ADD big :one", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("big").cloned(),
+            Some(json!({"N": "1000000000000000000000000000001"}))
+        );
+        // And condition comparisons reject the f64 collision.
+        let diff = json!({"N": "123456789012345678901234567891"});
+        let base = json!({"N": "123456789012345678901234567890"});
+        assert!(!attr_eq(&diff, &base));
+        assert!(dec_cmp(
+            "123456789012345678901234567891",
+            "123456789012345678901234567890"
+        ) == Some(std::cmp::Ordering::Greater));
+    }
+
+    #[test]
+    fn test_size_b_counts_decoded_bytes() {
+        // base64 "aGVsbG8=" encodes the 5 bytes of "hello"; the encoded
+        // string itself is 8 characters.
+        let blob = json!({ "B": "aGVsbG8=" });
+        assert_eq!(size_of(&blob), Some(5.0));
+        // Empty payload.
+        assert_eq!(size_of(&json!({ "B": "" })), Some(0.0));
+        // L counts elements, M counts entries, SS counts elements.
+        assert_eq!(size_of(&json!({ "L": [{"S": "a"}, {"S": "b"}] })), Some(2.0));
+        assert_eq!(size_of(&json!({ "M": {"a": {"S": "x"}, "b": {"S": "y"}} })), Some(2.0));
+        assert_eq!(size_of(&json!({ "SS": ["a", "b", "c"] })), Some(3.0));
+        // Strings measure characters, not UTF-8 bytes ("café" is 4 chars).
+        assert_eq!(size_of(&json!({ "S": "café" })), Some(4.0));
+        // size() resolves through the condition evaluator as well.
+        let mut values: Values = HashMap::new();
+        values.insert(":five".to_string(), json!({"N": "5"}));
+        values.insert(":eight".to_string(), json!({"N": "8"}));
+        let it = json!({"pk": {"S": "s"}, "blob": {"B": "aGVsbG8="}});
+        let names = HashMap::new();
+        assert!(eval_condition("size(blob) = :five", &it, &names, &values).unwrap());
+        assert!(!eval_condition("size(blob) = :eight", &it, &names, &values).unwrap());
     }
 }

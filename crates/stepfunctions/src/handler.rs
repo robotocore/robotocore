@@ -9,7 +9,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct StepfunctionsHandler {
-    state: RwLock<HashMap<(u64, String), StepfunctionsState>>,
+    /// Per-(account, region) state, shared process-wide (see `global_states`).
+    state: &'static RwLock<HashMap<(u64, String), StepfunctionsState>>,
+}
+
+/// Process-global state registry, shared by every handler instance.
+///
+/// Extra handler instances must never fork state, mirroring Moto's
+/// in-process backend semantics (same pattern as the SQS/EventBridge
+/// stores).
+fn global_states() -> &'static RwLock<HashMap<(u64, String), StepfunctionsState>> {
+    use std::sync::OnceLock;
+    static STATES: OnceLock<RwLock<HashMap<(u64, String), StepfunctionsState>>> = OnceLock::new();
+    STATES.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
@@ -24,13 +36,13 @@ fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
 impl StepfunctionsHandler {
     pub fn new() -> Self {
         Self {
-            state: RwLock::new(HashMap::new()),
+            state: global_states(),
         }
     }
 
     fn get_state(&self, account: u64, region: &str) -> StepfunctionsState {
-        let mut states = self.state.write();
-        states
+        self.state
+            .write()
             .entry((account, region.to_string()))
             .or_default()
             .clone()
@@ -948,6 +960,68 @@ mod tests {
     }
 
     #[test]
+    fn test_handler_instances_share_state() {
+        let a = StepfunctionsHandler::new();
+        a.handle(make_req("CreateStateMachine", json!({
+            "stateMachineName": "shared-sm",
+            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+            "definition": "{\"StartAt\": \"Pass\", \"States\": {}}"
+        })));
+        // A second instance must see (and be able to use) the same state.
+        let b = StepfunctionsHandler::new();
+        let resp = b.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:shared-sm"
+            }),
+        ));
+        assert_eq!(resp.status, 200, "second instance sees the machine: {}", resp.body);
+        assert!(resp.body.contains("executionArn"));
+        let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
+        let c = StepfunctionsHandler::new();
+        let desc = body(&c.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
+        // The description comes from shared state, not from instance c's own.
+        assert!(desc.get("executionArn").is_some());
+    }
+
+    #[test]
+    fn test_self_referential_loop_hits_history_cap() {
+        let handler = StepfunctionsHandler::new();
+        handler.handle(make_req("CreateStateMachine", json!({
+            "stateMachineName": "loop-sm",
+            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+            "definition": "{\"StartAt\": \"Loop\", \"States\": {\"Loop\": {\"Type\": \"Pass\", \"Next\": \"Loop\"}}}"
+        })));
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:loop-sm"
+            }),
+        ));
+        let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
+        // The engine must fail the execution once the event history is full.
+        for _ in 0..500 {
+            let exec = handler
+                .get_state(123456789012, "us-east-1")
+                .get_execution(&arn)
+                .unwrap();
+            if !exec.is_running() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let desc = body(&handler.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
+        assert_eq!(desc["status"], "FAILED");
+        assert_eq!(desc["error"], "States.ExceedMaxEventHistoryReached");
+    }
+
+    #[test]
     fn test_choice_executes_to_correct_branch() {
         let handler = StepfunctionsHandler::new();
         let definition = json!({
@@ -998,6 +1072,65 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Value>(desc["output"].as_str().unwrap()).unwrap(),
             json!("big")
+        );
+    }
+
+    #[test]
+    fn test_choice_nested_and_rules() {
+        let handler = StepfunctionsHandler::new();
+        let definition = json!({
+            "StartAt": "ChoiceState",
+            "States": {
+                "ChoiceState": {
+                    "Type": "Choice",
+                    "Choices": [{
+                        "And": [
+                            {"Variable": "$.a", "StringEquals": "1"},
+                            {"Variable": "$.b", "NumericEquals": 2},
+                        ],
+                        "Next": "Both",
+                    }],
+                    "Default": "Small",
+                },
+                "Both": {"Type": "Pass", "Result": "both", "End": true},
+                "Small": {"Type": "Pass", "Result": "small", "End": true},
+            }
+        })
+        .to_string();
+        handler.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "choice-nested-sm",
+                "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                "definition": definition
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "StartExecution",
+            json!({
+                "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:choice-nested-sm",
+                "input": "{\"a\": \"1\", \"b\": 2}"
+            }),
+        ));
+        let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
+        for _ in 0..50 {
+            let exec = handler
+                .get_state(123456789012, "us-east-1")
+                .get_execution(&arn)
+                .unwrap();
+            if !exec.is_running() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let desc = body(&handler.handle(make_req(
+            "DescribeExecution",
+            json!({ "executionArn": arn }),
+        )));
+        assert_eq!(desc["status"], "SUCCEEDED");
+        assert_eq!(
+            serde_json::from_str::<Value>(desc["output"].as_str().unwrap()).unwrap(),
+            json!("both")
         );
     }
 }

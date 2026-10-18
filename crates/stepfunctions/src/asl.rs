@@ -11,6 +11,10 @@ use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
+/// AWS ends an execution once its event history reaches this size; a
+/// self-referential Next cycle otherwise runs forever emitting events.
+pub const MAX_EVENT_HISTORY: usize = 25_000;
+
 pub fn now_f() -> f64 {
     (chrono::Utc::now().timestamp_millis() as f64) / 1000.0
 }
@@ -190,23 +194,24 @@ fn compare_numeric(
     }
 }
 
-/// Evaluate one Choice rule; returns true when it matches.
-fn eval_choice(rule: &Value, input: &Value) -> bool {
+/// Evaluate one Choice rule; returns true when it matches. Only top-level
+/// rules carry `Next`; nested And/Or/Not rules are bare comparator groups.
+fn eval_choice(rule: &Value, input: &Value, top_level: bool) -> bool {
     let Some(obj) = rule.as_object() else {
         return false;
     };
     if let Some(and) = obj.get("And").and_then(|a| a.as_array()) {
-        if !and.iter().all(|r| eval_choice(r, input)) {
+        if !and.iter().all(|r| eval_choice(r, input, false)) {
             return false;
         }
     }
     if let Some(or) = obj.get("Or").and_then(|a| a.as_array()) {
-        if !or.iter().any(|r| eval_choice(r, input)) {
+        if !or.iter().any(|r| eval_choice(r, input, false)) {
             return false;
         }
     }
     if let Some(not) = obj.get("Not") {
-        if eval_choice(not, input) {
+        if eval_choice(not, input, false) {
             return false;
         }
     }
@@ -261,10 +266,12 @@ fn eval_choice(rule: &Value, input: &Value) -> bool {
     }
 
     // A rule matches when all its comparators held and it points somewhere.
+    // Nested rules have no Next of their own: they match once the comparators
+    // held (the surrounding And/Or/Not uses their result).
+    if !top_level {
+        return true;
+    }
     obj.get("Next").and_then(|n| n.as_str()).is_some()
-        || obj.contains_key("And")
-        || obj.contains_key("Or")
-        || obj.contains_key("Not")
 }
 
 fn wait_seconds(obj: &Map<String, Value>, input: &Value) -> f64 {
@@ -333,6 +340,12 @@ pub fn run_flow(
             // Aborted executions leave the engine without changing state.
             return Ok(input);
         }
+        if ctx.exec.events.read().len() >= MAX_EVENT_HISTORY {
+            return Err(FlowError::new(
+                "States.ExceedMaxEventHistoryReached",
+                "Too many events in the execution history".to_string(),
+            ));
+        }
 
         let Some(state) = states.get(&current) else {
             return Err(FlowError::new(
@@ -393,7 +406,7 @@ pub fn run_flow(
                 let mut target: Option<String> = None;
                 if let Some(choices) = obj.get("Choices").and_then(|c| c.as_array()) {
                     for rule in choices {
-                        if eval_choice(rule, &input) {
+                        if eval_choice(rule, &input, true) {
                             target = rule.get("Next").and_then(|n| n.as_str()).map(String::from);
                             break;
                         }
@@ -546,3 +559,39 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nested_choice_rules() {
+        let input = json!({"a": "1", "b": 2});
+        let rel = [
+            json!({"Variable": "$.a", "StringEquals": "1"}),
+            json!({"Variable": "$.b", "NumericEquals": 2}),
+        ];
+        // Nested leaf rules (no Next) match on their comparators alone.
+        let rule = json!({"And": rel, "Next": "Yes"});
+        assert!(eval_choice(&rule, &input, true));
+        assert!(eval_choice(&rule, &input, false));
+        // A nested leaf that does not match keeps the group false.
+        let miss = json!({"And": [rel[0], json!({"Variable": "$.b", "NumericEquals": 9})]});
+        assert!(!eval_choice(&miss, &input, true));
+        // Or / Not leaves.
+        assert!(eval_choice(
+            &json!({"Or": [json!({"Variable": "$.a", "StringEquals": "9"}), rel[1]], "Next": "Y"}),
+            &input,
+            true
+        ));
+        assert!(!eval_choice(
+            &json!({"Not": rel[0], "Next": "N"}),
+            &input,
+            true
+        ));
+        // Top-level rules still need a Next target.
+        assert!(!eval_choice(&json!({"Variable": "$.a", "StringEquals": "1"}), &input, true));
+        assert!(eval_choice(&json!({"Variable": "$.a", "StringEquals": "1"}), &input, false));
+    }
+}
+
