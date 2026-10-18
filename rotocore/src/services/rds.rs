@@ -6436,7 +6436,10 @@ fn create_db_proxy_endpoint(
     };
     let response = ep.clone();
     st.db_proxy_endpoints.insert(ep_name, ep);
-    Ok(Some(db_proxy_endpoint_xml(acct, region, &response)))
+    Ok(Some(format!(
+        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
+        db_proxy_endpoint_xml(acct, region, &response)
+    )))
 }
 
 fn describe_db_proxy_endpoints_xml(
@@ -6493,7 +6496,10 @@ fn delete_db_proxy_endpoint(
     }
     let mut ep = st.db_proxy_endpoints.remove(&ep_name).unwrap();
     ep.status = "deleting".into();
-    Ok(Some(db_proxy_endpoint_xml(acct, region, &ep)))
+    Ok(Some(format!(
+        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
+        db_proxy_endpoint_xml(acct, region, &ep)
+    )))
 }
 
 fn modify_db_proxy_endpoint(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
