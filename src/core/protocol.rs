@@ -330,50 +330,9 @@ fn resolve_rest_op_from_spec(
                 if *spec_method != method {
                     continue;
                 }
-                // Strip version from spec URI
-                let spec_rest = spec_uri.trim_start_matches('/');
-                let spec_rest = if let Some(idx) = spec_rest.find('/') {
-                    &spec_rest[idx + 1..]
-                } else {
-                    spec_rest
-                };
-                // Match: replace {ParamName} with .* and check
-                let mut pattern = String::new();
-                let mut i = 0;
-                while i < spec_rest.len() {
-                    if spec_rest[i..].starts_with('{') {
-                        if let Some(end) = spec_rest[i..].find('}') {
-                            pattern.push_str(".*");
-                            i += end + 1;
-                            continue;
-                        }
-                    }
-                    // Escape regex special chars
-                    i += 1;
-                }
-                // Strip trailing / from pattern
-                let pattern = pattern.trim_end_matches('/');
-                let rest_no_slash = rest.trim_end_matches('/');
-                if rest_no_slash == pattern || (rest_no_slash.starts_with(pattern) && pattern.ends_with(".*")) {
+                let spec_rest = strip_version_prefix(spec_uri);
+                if segments_match(spec_rest, rest) {
                     return Some(op);
-                }
-                // Simple contains check for path params
-                if rest_no_slash.contains('/') && pattern.contains(".*") {
-                    // Check segment by segment
-                    let spec_parts: Vec<&str> = spec_rest.split('/').filter(|s| !s.is_empty() && !s.starts_with('{')).collect();
-                    let req_parts: Vec<&str> = rest_no_slash.split('/').filter(|s| !s.is_empty()).collect();
-                    if spec_parts.len() <= req_parts.len() {
-                        let mut match_ok = true;
-                        for (i, sp) in spec_parts.iter().enumerate() {
-                            if i < req_parts.len() && *sp != req_parts[i] {
-                                match_ok = false;
-                                break;
-                            }
-                        }
-                        if match_ok {
-                            return Some(op);
-                        }
-                    }
                 }
             }
             None
@@ -385,6 +344,33 @@ fn resolve_rest_op_from_spec(
         }
         _ => None,
     }
+}
+
+/// Strip a leading version segment (e.g. "2015-03-31/") from a URI.
+fn strip_version_prefix(uri: &str) -> &str {
+    let trimmed = uri.trim_matches('/');
+    match trimmed.find('/') {
+        Some(idx) => &trimmed[idx + 1..],
+        None => trimmed,
+    }
+}
+
+/// Segment-wise REST path match: spec segments equal request segments,
+/// except `{ParamName}` segments which match any single non-empty segment.
+/// Segment counts must be equal; trailing `/` is ignored on both sides.
+fn segments_match(spec: &str, req: &str) -> bool {
+    let spec_segs: Vec<&str> = spec.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+    let req_segs: Vec<&str> = req.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+    if spec_segs.len() != req_segs.len() {
+        return false;
+    }
+    for (sp, rp) in spec_segs.iter().zip(req_segs.iter()) {
+        let is_param = sp.len() > 2 && sp.starts_with('{') && sp.ends_with('}');
+        if !is_param && sp != rp {
+            return false;
+        }
+    }
+    true
 }
 
 /// Resolve a REST operation from service + method + path.
