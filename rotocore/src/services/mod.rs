@@ -16,12 +16,19 @@ pub mod appmesh;
 pub mod appsync;
 pub mod backup;
 pub mod batch;
+pub mod cognito_idp;
+pub mod databrew;
+pub mod datasync;
 pub mod eks;
 pub mod greengrass;
+pub mod identitystore;
 pub mod inspector2;
+pub mod ivs;
 pub mod kinesisanalyticsv2;
 pub mod lakeformation;
 pub mod macie2;
+pub mod mediapackage;
+pub mod organizations;
 pub mod rds;
 pub mod securityhub;
 
@@ -29,17 +36,27 @@ pub mod securityhub;
 /// rotocore implementation the moment it reaches suite parity.
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
-        "acm" => Some(acm::dispatch(req)),
-        "amp" => Some(amp::dispatch(req)),
-        "appmesh" => Some(appmesh::dispatch(req)),
-        "appsync" => Some(appsync::dispatch(req)),
-        "backup" => backup::dispatch(req),
-        "batch" => batch::dispatch(req),
-        "eks" => eks::dispatch(req),
-        "greengrass" => Some(greengrass::dispatch(req)),        "inspector2" => Some(inspector2::dispatch(req)),        "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
-        "lakeformation" => Some(lakeformation::dispatch(req)),
-        "macie2" => Some(macie2::dispatch(req)),        "rds" => Some(self::rds::dispatch(req)),
-        "securityhub" => Some(securityhub::dispatch(req)),
+"acm" => Some(acm::dispatch(req)),
+"amp" => Some(amp::dispatch(req)),
+"appmesh" => Some(appmesh::dispatch(req)),
+"appsync" => Some(appsync::dispatch(req)),
+"backup" => backup::dispatch(req),
+"batch" => batch::dispatch(req),
+"cognito-idp" => cognito_idp::dispatch(req),
+"databrew" => databrew::dispatch(req),
+"datasync" => datasync::dispatch(req),
+"eks" => eks::dispatch(req),
+"greengrass" => Some(greengrass::dispatch(req)),
+"identitystore" => identitystore::dispatch(req),
+"inspector2" => Some(inspector2::dispatch(req)),
+"ivs" => ivs::dispatch(req),
+"kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
+"lakeformation" => Some(lakeformation::dispatch(req)),
+"macie2" => Some(macie2::dispatch(req)),
+"mediapackage" => mediapackage::dispatch(req),
+"organizations" => organizations::dispatch(req),
+"rds" => Some(self::rds::dispatch(req)),
+"securityhub" => Some(securityhub::dispatch(req)),
         _ => None,
     }
 }
