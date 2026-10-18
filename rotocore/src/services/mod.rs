@@ -7,8 +7,8 @@
 use crate::{Request, Response};
 
 mod cloudtrail;
-mod managedblockchain;
 mod elasticache;
+mod managedblockchain;
 mod opensearchserverless;
 mod resourcegroupstaggingapi;
 mod route53resolver;
