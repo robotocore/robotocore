@@ -13,16 +13,30 @@ use uuid::Uuid;
 
 type StoreMap = Arc<RwLock<HashMap<(u64, String), Arc<SqsStore>>>>;
 
+/// Process-wide store map shared by every `DefaultSqsHandler` instance.
+///
+/// Cross-service callers (SNS message delivery) construct their own handler
+/// instance; sharing the store map lets those instances see the same queues
+/// as the server's registered SQS handler, mirroring Moto's in-process
+/// backend semantics.
+fn global_stores() -> StoreMap {
+    use std::sync::OnceLock;
+    static STORES: OnceLock<StoreMap> = OnceLock::new();
+    STORES
+        .get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+        .clone()
+}
+
 /// The actual SQS handler implementation
 pub struct DefaultSqsHandler {
-    // Store per (account, region)
+    // Store per (account, region), shared process-wide
     stores: StoreMap,
 }
 
 impl DefaultSqsHandler {
     pub fn new() -> Self {
         Self {
-            stores: Arc::new(RwLock::new(HashMap::new())),
+            stores: global_stores(),
         }
     }
 
@@ -279,7 +293,7 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str()).unwrap_or_default().to_string();
             let visibility = entry.get("VisibilityTimeout")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(30) as u64;
+                .unwrap_or(30);
             let mut q = queue_arc.write();
             if q.change_message_visibility(&receipt_handle, visibility as u32) {
                 successful.push(json!({ "Id": id }));
@@ -833,6 +847,7 @@ impl DefaultSqsHandler {
             body,
         })
     }
+    #[allow(dead_code)]
     fn json_stub_batch(&self, params: &Value) -> AwsResponse {
         let entries: Vec<Value> = params.get("Entries")
             .and_then(|v| v.as_array())
@@ -852,6 +867,7 @@ impl DefaultSqsHandler {
         }
     }
 
+    #[allow(dead_code)]
     fn json_success(&self) -> AwsResponse {
         AwsResponse {
             status: 200,
@@ -963,7 +979,7 @@ impl DefaultSqsHandler {
         };
         let store = self.get_store(account, region);
         if let Some(q) = store.get_queue(queue_url) {
-            let mut queue = q.write();
+            let queue = q.write();
             for (k, v) in tags {
                 queue.tags.write().insert(k, v);
             }
@@ -984,7 +1000,7 @@ impl DefaultSqsHandler {
             .unwrap_or_default();
         let store = self.get_store(account, region);
         if let Some(q) = store.get_queue(queue_url) {
-            let mut queue = q.write();
+            let queue = q.write();
             for k in &tag_keys {
                 queue.tags.write().remove(k);
             }

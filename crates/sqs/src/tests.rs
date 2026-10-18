@@ -367,7 +367,16 @@ fn test_list_queues() {
     let urls = list_data["QueueUrls"]
         .as_array()
         .expect("QueueUrls should be array");
-    assert_eq!(urls.len(), 2);
+    // Stores are process-wide, so other tests running in this binary may
+    // have created queues too — only assert on our own entries.
+    let our_urls: Vec<&Value> = urls
+        .iter()
+        .filter(|u| {
+            let s = u.as_str().unwrap_or("");
+            s.ends_with("/queue-a") || s.ends_with("/queue-b")
+        })
+        .collect();
+    assert_eq!(our_urls.len(), 2);
 }
 
 #[test]
