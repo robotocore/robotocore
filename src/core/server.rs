@@ -10,9 +10,11 @@ use axum::{
     Router,
 };
 use http_body_util::BodyExt;
+use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use uuid::Uuid;
 
 use crate::core::account::parse_account_from_key;
@@ -880,13 +882,14 @@ pub async fn catch_all_handler(
     };
 
     // Get service handler
-    let handler = match state.registry.get(&service) {
+    let handler = state.registry.get(&service);
+    bump_service_requests(&service);
+    let handler = match handler {
         Some(h) => h,
         None => {
             // Fall back to Moto proxy for non-native services
             if let Some(proxy) = &state.moto_proxy {
-                if !proxy.is_native(&service) {
-                    match proxy.forward(&parsed_req).await {
+                if !proxy.is_native(&service) {                    match proxy.forward(&parsed_req).await {
                         Ok(resp) => {
                             crate::core::introspection::record(
                                 &service,
@@ -974,6 +977,31 @@ pub const NATIVE_SERVICES: &[&str] = &[
     "ecr", "ecs", "stepfunctions",
 ];
 
+/// Per-service request counters, shared with the audit log.
+pub static SERVICE_REQUESTS: Lazy<std::collections::HashMap<&'static str, AtomicU64>> = Lazy::new(|| {
+    NATIVE_SERVICES
+        .iter()
+        .map(|s| (*s, AtomicU64::new(0)))
+        .collect()
+});
+
+fn bump_service_requests(service: &str) {
+    if let Some((_, counter)) = SERVICE_REQUESTS
+        .iter()
+        .find(|(s, _)| **s == *service)
+    {
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn service_request_count(service: &str) -> u64 {
+    SERVICE_REQUESTS
+        .iter()
+        .find(|(s, _)| **s == *service)
+        .map(|(_, c)| c.load(Ordering::Relaxed))
+        .unwrap_or(0)
+}
+
 fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
     let mut map = serde_json::Map::new();
     for svc in NATIVE_SERVICES {
@@ -982,7 +1010,7 @@ fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
             json!({
                 "status": "running",
                 "type": "native",
-                "requests": 0,
+                "requests": service_request_count(svc),
             }),
         );
     }
