@@ -64,6 +64,25 @@ impl ServiceSpec {
         })
     }
 
+    /// Build a REST operation routing table from the spec.
+    ///
+    /// Returns a list of (method, path_pattern, operation_name) tuples,
+    /// ordered by specificity (longest path first).
+    /// The path_pattern uses `{ParamName}` for path parameters.
+    pub fn build_rest_op_table(&self) -> Vec<(String, String, String)> {
+        let mut entries: Vec<(String, String, String)> = Vec::new();
+        for (op_name, op_data) in &self.operations {
+            if let Some(http) = op_data.get("http") {
+                let method = http.get("method").and_then(|m| m.as_str()).unwrap_or("GET").to_string();
+                let uri = http.get("requestUri").and_then(|u| u.as_str()).unwrap_or("/").to_string();
+                entries.push((method, uri, op_name.clone()));
+            }
+        }
+        // Sort by path length (longest first) so specific paths match before general ones
+        entries.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        entries
+    }
+
     /// Get an operation by name.
     pub fn get_operation(&self, name: &str) -> Option<&Value> {
         self.operations.get(name)
@@ -178,24 +197,5 @@ mod tests {
         let spec = get_spec("nonexistent_service_xyz");
         // May or may not find it depending on environment
         let _ = spec;
-
-    /// Build a REST operation routing table from the spec.
-    ///
-    /// Returns a list of (method, path_pattern, operation_name) tuples,
-    /// ordered by specificity (longest path first).
-    /// The path_pattern uses `{ParamName}` for path parameters.
-    pub fn build_rest_op_table(&self) -> Vec<(String, String, String)> {
-        let mut entries: Vec<(String, String, String)> = Vec::new();
-        for (op_name, op_data) in &self.operations {
-            if let Some(http) = op_data.get("http") {
-                let method = http.get("method").and_then(|m| m.as_str()).unwrap_or("GET").to_string();
-                let uri = http.get("requestUri").and_then(|u| u.as_str()).unwrap_or("/").to_string();
-                entries.push((method, uri, op_name.clone()));
-            }
-        }
-        // Sort by path length (longest first) so specific paths match before general ones
-        entries.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-        entries
-    }
     }
 }

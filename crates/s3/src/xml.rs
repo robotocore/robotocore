@@ -173,7 +173,8 @@ mod tests {
         let xml = error_response("NoSuchBucket", "The specified bucket does not exist");
         assert!(xml.contains("NoSuchBucket"));
         assert!(xml.contains("The specified bucket does not exist"));
-        assert!(xml.contains(S3_NS));
+        // Real S3 error XML carries no xmlns attribute on <Error>
+        assert!(!xml.contains(S3_NS));
     }
 
     #[test]
