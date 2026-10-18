@@ -11,10 +11,9 @@
 
 use std::collections::HashMap;
 
-use crate::proto::{query_response_xml, xml_escape};
+use crate::proto::xml_escape;
 use crate::{Request, Response};
 use bytes::Bytes;
-use serde_json::{json, Value};
 
 /// The elasticache XML namespace (matches the moto-bridge exactly).
 const XMLNS: &str = "http://elasticache.amazonaws.com/doc/2015-02-02/";
@@ -81,10 +80,6 @@ fn listed(params: &HashMap<String, String>, prefix: &str) -> Vec<String> {
 
 // --- XML response helpers ------------------------------------------------------
 
-fn request_id() -> String {
-    uuid::Uuid::new_v4().to_string()
-}
-
 /// Success wrapper: `<Op>Response xmlns=..><Op>Result>{body}</Op>Result><ResponseMetadata>…`
 fn success(action: &str, body: &str) -> Response {
     let root = format!("{}Response", action);
@@ -111,13 +106,6 @@ fn err_response(status: u16, code: &str, message: &str) -> Response {
         rid = uuid::Uuid::new_v4(),
     );
     Response::new(status, "text/xml", Bytes::from(doc))
-}
-
-fn not_implemented(action: &str) -> Response {
-    let doc = format!(
-        r#"<ErrorResponse><Error><Code>NotImplemented</Code><Message>The {action} action has not been implemented</Message></Error></ErrorResponse>"#
-    );
-    Response::new(501, "text/xml", Bytes::from(doc))
 }
 
 type EcError = (u16, String, String);
@@ -208,8 +196,7 @@ fn now_stamp() -> String {
         .to_string()
 }
 
-/// `Foo.member.N` member listings like `SubnetIds.member.1`.
-
+/// `Foo.member.N` member listings like `SubnetIds.member.1`;
 /// `Tags.member.N.Key/Value` collection from raw params.
 fn tag_list(params: &HashMap<String, String>) -> Vec<(String, String)> {
     let mut tags: Vec<(usize, String, String)> = Vec::new();
@@ -283,7 +270,6 @@ struct ReplicationGroup {
     member_clusters: Vec<String>,
     node_type: String,
     engine: String,
-    clustered: bool,
 }
 
 #[derive(Clone)]
@@ -319,7 +305,6 @@ struct ParameterGroup {
     description: String,
     /// modified (name, value) overrides
     overrides: Vec<(String, String)>,
-    modified: Vec<String>,
 }
 
 #[derive(Clone, Default)]
@@ -705,8 +690,7 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                 .get("SnapshotRetentionLimit")
                 .and_then(|n| n.parse::<i64>().ok());
             let updated = with_scope_guard(&slot, req, |st| {
-                let cluster = st.clusters.iter_mut().find(|c| c.id == id);
-                let Some(c) = cluster else {
+                let Some(c) = st.clusters.iter_mut().find(|c| c.id == id) else {
                     return None;
                 };
                 if let Some(r) = retention {
@@ -752,8 +736,7 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                     status: "available".into(),
                     member_clusters: vec![member_cluster.clone()],
                     node_type,
-                    engine,
-                    clustered: false,
+                    engine
                 });
                 let arn = format!("arn:aws:elasticache:{region}:{account}:replicationgroup:{id}");
                 store_tags_static(st, &arn, &tag_list(params));
@@ -1017,7 +1000,7 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                 st.users.push(user.clone());
                 store_tags_static(st, &arn, &tag_list(params));
             });
-            let arn = format!("arn:aws:elasticache:{region}:{account}:user:{id}");
+            let _arn = format!("arn:aws:elasticache:{region}:{account}:user:{id}");
             Ok(user_xml(&user, account, &region))
         }
         "DescribeUsers" => {
@@ -1141,7 +1124,6 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                 family: params.get("CacheParameterGroupFamily").cloned().unwrap_or_default(),
                 description: params.get("Description").cloned().unwrap_or_default(),
                 overrides: Vec::new(),
-                modified: Vec::new(),
             };
             with_scope_guard(&slot, req, |st| st.parameter_groups.push(pg));
             Ok(with_scope_guard(&slot, req, |st| {
@@ -1203,7 +1185,6 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                             family: family.to_string(),
                             description: gdesc.to_string(),
                             overrides: Vec::new(),
-                            modified: Vec::new(),
                         });
                     }
                 }
@@ -1447,7 +1428,7 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
                 st.serverless_snapshots
                     .iter()
                     .filter(|s| name.is_empty() || s.name == name)
-                    .map(|s| serverless_snapshot_xml(&s, account, &region, s.status))
+                    .map(|s| serverless_snapshot_xml(s, account, &region, s.status))
                     .collect()
             });
             let members: String = list
@@ -1517,7 +1498,7 @@ fn handle(req: &Request, params: &HashMap<String, String>) -> Result<String, EcE
             let engine_filter = params.get("Engine").cloned().unwrap_or_default();
             let mut versions = String::new();
             for (engine, version, family, description) in ENGINE_VERSIONS {
-                if !engine_filter.is_empty() && engine != &engine_filter {
+                if !engine_filter.is_empty() && engine != engine_filter {
                     continue;
                 }
                 versions.push_str(&format!(
