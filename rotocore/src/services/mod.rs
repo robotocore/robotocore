@@ -9,10 +9,16 @@ use crate::{Request, Response};
 // Pending ports (stubs live in their modules but are not yet wired):
 // - acm (stub)
 // - ec2 (stub)
-// - cloudformation (stub)
+
+// Modules under active port; dispatch arms land in a final commit when the
+// compatibility suites pass (mod.rs arms are centrally owned).
+pub mod cloudformation;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        // TEMPORARY local-test wiring; the committed mod.rs stays arm-less
+        // until the final commit (arms are centrally owned).
+        "cloudformation" => Some(cloudformation::dispatch(req)),
+        _ => None,
+    }
 }
