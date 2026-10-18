@@ -11,8 +11,12 @@ use crate::{Request, Response};
 // - ec2 (stub)
 // - cloudformation (stub)
 
+pub mod mediapackage;
+
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
+    if let Some(resp) = mediapackage::dispatch(req) {
+        return Some(resp);
+    }
+    // No other service fully ported yet.
     None
 }
