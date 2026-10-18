@@ -6,13 +6,16 @@
 
 use crate::{Request, Response};
 
+pub mod securityhub;
+
 // Pending ports (stubs live in their modules but are not yet wired):
 // - acm (stub)
 // - ec2 (stub)
 // - cloudformation (stub)
 
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        "securityhub" => Some(securityhub::dispatch(req)),
+        _ => None,
+    }
 }
