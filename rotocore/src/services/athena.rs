@@ -744,6 +744,152 @@ fn op_get_query_runtime_statistics(body: &Value, st: &mut AthenaState) -> OpResu
 }
 
 // ---------------------------------------------------------------------------
+// Work groups + resource tags
+// ---------------------------------------------------------------------------
+
+fn op_create_work_group(
+    body: &Value,
+    st: &mut AthenaState,
+    account: u64,
+    region: &str,
+) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if st.work_groups.iter().any(|(key, _)| *key == name) {
+        return Err(invalid_request("WorkGroup already exists"));
+    }
+    let description = body.get("Description").cloned().unwrap_or(Value::Null);
+    let wg = WorkGroup::new(&name, description, body.get("Configuration"));
+    st.work_groups.push((name.clone(), wg));
+    let arn = resource_arn(region, account, "workgroup", &name);
+    st.tagger.tag_resource(&arn, body.get("Tags"));
+    Ok(json!({
+        "CreateWorkGroupResponse": {
+            "ResponseMetadata": {
+                "RequestId": "384ac68d-3775-11df-8963-01868b7c937a",
+            },
+        },
+    }))
+}
+
+fn op_list_work_groups(st: &AthenaState) -> OpResult {
+    let groups: Vec<Value> = st
+        .work_groups
+        .iter()
+        .map(|(key, wg)| {
+            json!({
+                "Name": key,
+                "State": wg.state,
+                "Description": wg.description,
+                "CreationTime": crate::proto::now_unix(),
+            })
+        })
+        .collect();
+    Ok(json!({ "WorkGroups": groups }))
+}
+
+fn op_get_work_group(body: &Value, st: &AthenaState) -> OpResult {
+    let name = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match st.get_work_group(name) {
+        None => Ok(json!({ "WorkGroup": Value::Null })),
+        Some(wg) => Ok(json!({
+            "WorkGroup": {
+                "Name": wg.name,
+                "State": wg.state,
+                "Configuration": wg.configuration,
+                "Description": wg.description,
+                "CreationTime": crate::proto::now_unix(),
+            }
+        })),
+    }
+}
+
+fn op_update_work_group(body: &Value, st: &mut AthenaState) -> OpResult {
+    let name = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let Some((_, wg)) = st.work_groups.iter_mut().find(|(key, _)| *key == name) else {
+        return Err(invalid_request("WorkGroup does not exist"));
+    };
+    if let Some(description) = body.get("Description").filter(|d| !d.is_null()) {
+        wg.description = description.clone();
+    }
+    if let Some(state) = body.get("State").filter(|s| !s.is_null()) {
+        wg.state = state.as_str().unwrap_or_default().to_string();
+    }
+    if let Some(updates) = body
+        .get("ConfigurationUpdates")
+        .and_then(Value::as_object)
+        .filter(|updates| !updates.is_empty())
+    {
+        for (key, value) in updates {
+            wg.configuration.insert(key.clone(), value.clone());
+        }
+    }
+    Ok(json!({}))
+}
+
+fn op_delete_work_group(body: &Value, st: &mut AthenaState) -> OpResult {
+    let name = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    st.work_groups.retain(|(key, _)| *key != name);
+    Ok(json!({}))
+}
+
+fn op_list_tags_for_resource(body: &Value, st: &AthenaState) -> OpResult {
+    let arn = body
+        .get("ResourceARN")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match st.tagger.list(arn) {
+        Some(tags) => Ok(json!({ "Tags": tags })),
+        None => Err(invalid_request(&format!(
+            "Athena Resource, {arn} Does Not Exist"
+        ))),
+    }
+}
+
+fn op_tag_resource(body: &Value, st: &mut AthenaState) -> OpResult {
+    let arn = body
+        .get("ResourceARN")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    st.tagger.tag_resource(&arn, body.get("Tags"));
+    Ok(json!({}))
+}
+
+fn op_untag_resource(body: &Value, st: &mut AthenaState) -> OpResult {
+    let arn = body
+        .get("ResourceARN")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let keys: Vec<String> = body
+        .get("TagKeys")
+        .and_then(Value::as_array)
+        .map(|keys| {
+            keys.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    st.tagger.untag_resource(&arn, &keys);
+    Ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 
@@ -759,6 +905,15 @@ pub fn dispatch(req: &Request) -> Response {
             "BatchGetQueryExecution" => op_batch_get_query_execution(&body, st),
             "GetQueryResults" => op_get_query_results(&body, st),
             "GetQueryRuntimeStatistics" => op_get_query_runtime_statistics(&body, st),
+            // work groups + tags
+            "CreateWorkGroup" => op_create_work_group(&body, st, req.account, &req.region),
+            "ListWorkGroups" => op_list_work_groups(st),
+            "GetWorkGroup" => op_get_work_group(&body, st),
+            "UpdateWorkGroup" => op_update_work_group(&body, st),
+            "DeleteWorkGroup" => op_delete_work_group(&body, st),
+            "ListTagsForResource" => op_list_tags_for_resource(&body, st),
+            "TagResource" => op_tag_resource(&body, st),
+            "UntagResource" => op_untag_resource(&body, st),
             other => Err(json_error(
                 501,
                 "NotImplemented",
@@ -982,6 +1137,163 @@ mod tests {
             json!({"QueryExecutionId": "nope"}),
         );
         assert_eq!(resp.status, 400);
+    }
+
+    // ------------------------------------------------------------------
+    // Family 2: work groups + resource tags
+    // ------------------------------------------------------------------
+
+    fn wg_arn(account: u64, name: &str) -> String {
+        format!("arn:aws:athena:us-east-1:{account}:workgroup/{name}")
+    }
+
+    #[test]
+    fn work_group_crud_cycle() {
+        let account = fresh_account();
+        let resp = run(
+            account,
+            "CreateWorkGroup",
+            json!({"Name": "wg-a", "Configuration": {"ResultConfiguration": {}}}),
+        );
+        assert_eq!(resp.status, 200);
+        let resp = run(account, "GetWorkGroup", json!({"WorkGroup": "wg-a"}));
+        let wg = body_of(&resp)["WorkGroup"].clone();
+        assert_eq!(wg["Name"], "wg-a");
+        assert_eq!(wg["State"], "ENABLED");
+        assert_eq!(
+            wg["Configuration"]["EnforceWorkGroupConfiguration"],
+            Value::Bool(true)
+        );
+        assert_eq!(
+            wg["Configuration"]["EngineVersion"]["SelectedEngineVersion"],
+            "AUTO"
+        );
+
+        // duplicate creation errors like the sidecar
+        let resp = run(account, "CreateWorkGroup", json!({"Name": "wg-a"}));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body_of(&resp)["__type"], "InvalidRequestException");
+
+        // create with explicit configuration values + description
+        run(
+            account,
+            "CreateWorkGroup",
+            json!({
+                "Name": "wg-b",
+                "Description": "mine",
+                "Configuration": {"EnforceWorkGroupConfiguration": true},
+            }),
+        );
+        let wg = body_of(&run(account, "GetWorkGroup", json!({"WorkGroup": "wg-b"})))["WorkGroup"]
+            .clone();
+        assert_eq!(wg["Description"], "mine");
+        // seeded primary exists too
+        let resp = run(account, "ListWorkGroups", json!({}));
+        let list = body_of(&resp)["WorkGroups"].as_array().unwrap().clone();
+        let names: Vec<&str> = list
+            .iter()
+            .map(|g| g["Name"].as_str().unwrap_or_default())
+            .collect();
+        assert!(names.contains(&"primary"));
+        assert!(names.contains(&"wg-a"));
+
+        // update: state + description
+        let resp = run(
+            account,
+            "UpdateWorkGroup",
+            json!({"WorkGroup": "wg-a", "State": "DISABLED"}),
+        );
+        assert_eq!(resp.status, 200);
+        let wg = body_of(&run(account, "GetWorkGroup", json!({"WorkGroup": "wg-a"})))["WorkGroup"]
+            .clone();
+        assert_eq!(wg["State"], "DISABLED");
+        run(
+            account,
+            "UpdateWorkGroup",
+            json!({"WorkGroup": "wg-a", "Description": "updated"}),
+        );
+        let wg = body_of(&run(account, "GetWorkGroup", json!({"WorkGroup": "wg-a"})))["WorkGroup"]
+            .clone();
+        assert_eq!(wg["Description"], "updated");
+        // update on missing group
+        let resp = run(account, "UpdateWorkGroup", json!({"WorkGroup": "zzz"}));
+        assert_eq!(resp.status, 400);
+
+        run(account, "DeleteWorkGroup", json!({"WorkGroup": "wg-a"}));
+        let resp = run(account, "GetWorkGroup", json!({"WorkGroup": "wg-a"}));
+        assert_eq!(body_of(&resp)["WorkGroup"], Value::Null);
+    }
+
+    #[test]
+    fn work_group_tags_resource_arns() {
+        let account = fresh_account();
+        run(
+            account,
+            "CreateWorkGroup",
+            json!({
+                "Name": "wg-tagged",
+                "Tags": [
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "platform"},
+                ],
+            }),
+        );
+        let arn = wg_arn(account, "wg-tagged");
+        let resp = run(account, "ListTagsForResource", json!({"ResourceARN": &arn}));
+        let tags = body_of(&resp)["Tags"].clone();
+        let tags = tags.as_array().unwrap();
+        assert!(tags
+            .iter()
+            .any(|t| t["Key"] == "env" && t["Value"] == "test"));
+        assert!(tags
+            .iter()
+            .any(|t| t["Key"] == "team" && t["Value"] == "platform"));
+
+        // tag_resource accumulates, untag_resource removes
+        run(
+            account,
+            "TagResource",
+            json!({
+                "ResourceARN": &arn,
+                "Tags": [{"Key": "stage", "Value": "x"}],
+            }),
+        );
+        let resp = run(account, "ListTagsForResource", json!({"ResourceARN": &arn}));
+        assert_eq!(body_of(&resp)["Tags"].as_array().unwrap().len(), 3);
+        run(
+            account,
+            "UntagResource",
+            json!({"ResourceARN": &arn, "TagKeys": ["stage"]}),
+        );
+        let resp = run(account, "ListTagsForResource", json!({"ResourceARN": &arn}));
+        let list = body_of(&resp)["Tags"].as_array().unwrap().clone();
+        let keys: Vec<&str> = list
+            .iter()
+            .map(|t| t["Key"].as_str().unwrap_or_default())
+            .collect();
+        assert!(!keys.contains(&"stage"));
+
+        // unknown ARNs error; the seeded primary answers an empty list
+        let resp = run(
+            account,
+            "ListTagsForResource",
+            json!({"ResourceARN": wg_arn(account, "nope")}),
+        );
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            format!(
+                "Athena Resource, {} Does Not Exist",
+                wg_arn(account, "nope")
+            )
+        );
+        let resp = run(
+            account,
+            "ListTagsForResource",
+            json!({"ResourceARN": wg_arn(account, "primary")}),
+        );
+        assert_eq!(resp.status, 200);
+        assert!(body_of(&resp)["Tags"].as_array().unwrap().is_empty());
     }
 
     // ------------------------------------------------------------------
