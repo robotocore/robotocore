@@ -1114,7 +1114,6 @@ impl DefaultSqsHandler {
 
         {
             let mut q = queue_arc.write();
-            super::bridge::drain_pending(account, region, &queue_name, &mut q);
             super::bridge::clear_pending(account, region, &queue_name);
             q.purge();
         }
@@ -1628,7 +1627,6 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
-        let _ = (account, region);
         let task_handle = params
             .get("TaskHandle")
             .and_then(|v| v.as_str())
@@ -1656,7 +1654,6 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
-        let _ = (account, region);
         let source_arn = params
             .get("SourceArn")
             .and_then(|v| v.as_str())
