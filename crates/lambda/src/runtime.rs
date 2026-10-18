@@ -50,7 +50,7 @@ class Ctx:
         self.memory_limit_in_mb = str(meta.get("memory_size", 128))
         self.invoked_function_arn = meta.get("function_arn", "")
         self.log_group_name = f"/aws/lambda/{self.function_name}"
-        self.log_stream_name = "{date}/[$LATEST]{rid}".format(date=time.strftime("%Y/%m/%d"), rid=uuid.uuid4().hex[:32])
+        self.log_stream_name = "{date}/[$LATEST]{rid}".format(date=time.strftime("%Y/%m/%d", time.gmtime()), rid=uuid.uuid4().hex[:32])
         self._timeout_ms = int(meta.get("timeout", 3)) * 1000
 
     def get_remaining_time_in_millis(self):
