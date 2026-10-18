@@ -142,19 +142,36 @@ fn missing_runtime_result(msg: &str) -> ExecResult {
     }
 }
 
-/// Drain a spawned child pipe on a dedicated thread, returning a channel the
-/// caller can wait on with a deadline. Reading blocks until EOF, which never
+/// Cap on captured handler output per stream (stdout, stderr). When a
+/// stream exceeds the cap only the last bytes are kept (tail semantics).
+const OUTPUT_CAP: usize = 128 * 1024;
+
+/// Drain a spawned child pipe on a dedicated thread, keeping at most
+/// `OUTPUT_CAP` bytes (tail semantics) and returning a channel the caller
+/// can wait on with a deadline. Reading blocks until EOF, which never
 /// arrives while a grandchild inherited the pipe, so the caller must bound
 /// how long it waits and abandon the thread (and its text) on timeout.
 fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Receiver<String> {
     use std::io::Read;
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let mut buf = Vec::new();
+        let mut kept: Vec<u8> = Vec::new();
         if let Some(mut p) = pipe {
-            let _ = p.read_to_end(&mut buf);
+            let mut chunk = [0u8; 8192];
+            loop {
+                match p.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        kept.extend_from_slice(&chunk[..n]);
+                        if kept.len() > OUTPUT_CAP {
+                            let excess = kept.len() - OUTPUT_CAP;
+                            kept.drain(..excess);
+                        }
+                    }
+                }
+            }
         }
-        let _ = tx.send(String::from_utf8_lossy(&buf).into_owned());
+        let _ = tx.send(String::from_utf8_lossy(&kept).into_owned());
     });
     rx
 }
@@ -257,6 +274,13 @@ pub fn execute_python(
         Err(e) => return missing_runtime_result(&e.to_string()),
     };
 
+    // Start draining pipes immediately, from dedicated threads. Output
+    // beyond the OS pipe buffer blocks the child's writes until somebody
+    // reads, so waiting here for child exit first would deadlock on any
+    // handler that prints more than a pipe buffer.
+    let stdout_rx = drain_thread(child.stdout.take());
+    let stderr_rx = drain_thread(child.stderr.take());
+
     // Wait up to the function timeout; kill on overrun.
     let wait_secs = u64::from(timeout_secs.max(1)) + 5;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
@@ -277,13 +301,10 @@ pub fn execute_python(
         }
     }
 
-    // The child died or finished — drain pipes on threads bounded by the
-    // timeout budget. A grandchild inheriting the pipes keeps them open past
-    // the child's exit, so a direct read here would block forever; on
-    // deadline the drained text is abandoned alongside the drain thread.
-    let stdout_rx = drain_thread(child.stdout.take());
-    let stderr_rx = drain_thread(child.stderr.take());
-    // Both streams share one absolute deadline.
+    // The child died or finished — drain threads run until EOF, but EOF
+    // never arrives while a grandchild inherited the pipes, so collecting
+    // is bounded by a shared absolute deadline; after it passes the drained
+    // text is abandoned alongside the drain threads.
     let drain_deadline = if timed_out {
         // The function timeout already elapsed; allow a short grace only.
         std::time::Instant::now() + std::time::Duration::from_secs(1)
@@ -468,6 +489,44 @@ mod tests {
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "ValueError");
         assert_eq!(payload["errorMessage"], "boom");
+    }
+
+    #[test]
+    fn test_output_capture_is_capped_tail() {
+        // ~600KB of stdout must not buffer unboundedly; the tail is kept.
+        let code = "def handler(e, c):\n    for i in range(6000):\n        print('x' * 100, i)\n    return 'done'\n";
+        let zip = make_zip(code);
+        let res = execute_python(
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "test-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(
+            res.function_error,
+            None,
+            "exec logs: {} | payload: {}",
+            res.logs,
+            res.payload
+        );
+        assert!(
+            res.logs.len() <= OUTPUT_CAP + 8,
+            "captured {} bytes of output",
+            res.logs.len()
+        );
+        assert!(
+            res.logs.contains("5999"),
+            "tail semantics: end of stream must be kept, got ending {:?}",
+            &res.logs[res.logs.len().saturating_sub(64)..]
+        );
     }
 
     #[test]
