@@ -64,25 +64,6 @@ impl ServiceSpec {
         })
     }
 
-    /// Build a REST operation routing table from the spec.
-    ///
-    /// Returns a list of (method, path_pattern, operation_name) tuples,
-    /// ordered by specificity (longest path first).
-    /// The path_pattern uses `{ParamName}` for path parameters.
-    pub fn build_rest_op_table(&self) -> Vec<(String, String, String)> {
-        let mut entries: Vec<(String, String, String)> = Vec::new();
-        for (op_name, op_data) in &self.operations {
-            if let Some(http) = op_data.get("http") {
-                let method = http.get("method").and_then(|m| m.as_str()).unwrap_or("GET").to_string();
-                let uri = http.get("requestUri").and_then(|u| u.as_str()).unwrap_or("/").to_string();
-                entries.push((method, uri, op_name.clone()));
-            }
-        }
-        // Sort by path length (longest first) so specific paths match before general ones
-        entries.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-        entries
-    }
-
     /// Get an operation by name.
     pub fn get_operation(&self, name: &str) -> Option<&Value> {
         self.operations.get(name)
@@ -193,9 +174,29 @@ mod tests {
 
     #[test]
     fn test_spec_cache_empty() {
-        // Just ensure we can call get_spec
-        let spec = get_spec("nonexistent_service_xyz");
-        // May or may not find it depending on environment
-        let _ = spec;
+        // get_spec on a name that cannot exist returns None without panicking
+        assert!(get_spec("nonexistent_service_xyz_cache_probe").is_none());
+    }
+
+    #[test]
+    fn test_service_spec_lookup() {
+        let mut operations = HashMap::new();
+        operations.insert(
+            "ListThings".to_string(),
+            serde_json::json!({"name": "ListThings", "http": {"method": "POST", "requestUri": "/"}}),
+        );
+        let mut shapes = HashMap::new();
+        shapes.insert("Thing".to_string(), serde_json::json!({"type": "structure"}));
+        let spec = ServiceSpec {
+            protocol: "json".to_string(),
+            service_name: "Test".to_string(),
+            operations,
+            shapes,
+            metadata: serde_json::json!({"protocol": "json"}),
+        };
+        assert!(spec.get_operation("ListThings").is_some());
+        assert!(spec.get_operation("Missing").is_none());
+        assert!(spec.get_shape("Thing").is_some());
+        assert_eq!(spec.protocol, "json");
     }
 }
