@@ -78,6 +78,7 @@ fn require_sg<'a>(state: &'a mut Ec2State, group_id: &str) -> Result<&'a mut Sec
 fn ip_permission_item(account: &str, perm: &IpPermission) -> String {
     let mut out = String::from("<item><ipProtocol>");
     out.push_str(&xml_escape(&perm.protocol));
+    out.push_str("</ipProtocol>");
     if let (Some(fp), Some(tp)) = (perm.from_port, perm.to_port) {
         let _ = write!(out, "<fromPort>{}</fromPort><toPort>{}</toPort>", fp, tp);
     }

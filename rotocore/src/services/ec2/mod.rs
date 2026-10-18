@@ -4,10 +4,12 @@
 //! and the operation switch live here; resource structs live in [`state`];
 //! per-family behavior lives in [`handlers`].
 
+pub mod azones;
 pub mod handlers;
 pub mod handlers_misc;
 pub mod handlers_net;
 pub mod state;
+pub mod tests;
 
 use crate::proto::xml_escape;
 use crate::store::ScopeKey;
@@ -104,20 +106,25 @@ impl Params {
     }
 
     /// Indices `i` where a `prefix.{i}.`-prefixed key exists (container lists
-    /// like `IpPermissions.1.IpProtocol` → [0], plus any index having any sub-field).
+    /// like `IpPermissions.1.IpProtocol` -> [0], plus any index having sub-fields).
     pub fn container_indices(&self, prefix: &str) -> Vec<usize> {
         let start = format!("{prefix}.");
         let mut max = 0usize;
         for (k, _) in &self.map {
             if let Some(rest) = k.strip_prefix(&start) {
-                if let Some((idx, _)) = rest.split_once('.') {
-                    if let Ok(v) = idx.parse::<usize>() {
-                        max = max.max(v);
+                if !rest.is_empty() {
+                    if let Some((idx, _)) = rest.split_once('.') {
+                        if let Ok(v) = idx.parse::<usize>() {
+                            max = max.max(v);
+                        }
                     }
                 }
             }
         }
-        (1..=max).filter(|i| self.has(&format!("{prefix}.{i}."))).map(|i| i - 1).collect()
+        (1..=max)
+            .filter(|i| self.map.iter().any(|(k, _)| k.starts_with(&format!("{start}{i}."))))
+            .map(|i| i - 1)
+            .collect()
     }
 
     /// Sub-field of a container member: `prefix.{i+1}.{field}`.

@@ -635,7 +635,7 @@ impl Ec2State {
                 az: az.clone(),
                 state: "available".into(),
                 map_public_ip: false,
-                availability_zone_id: format!("{}use1-az2", region),
+                availability_zone_id: "use1-az6".into(),
                 is_default: true,
                 ..Default::default()
             });

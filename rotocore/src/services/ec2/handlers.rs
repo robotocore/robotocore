@@ -165,33 +165,49 @@ fn describe_regions(req: &Request, params: &P) -> Response {
 fn describe_availability_zones(req: &Request, params: &P) -> Response {
     let region = req.region.clone();
     let names: Vec<String> = params.list("ZoneName").iter().map(|s| s.to_string()).collect();
-    let fs = filters(params);
-    let suffixes = ["a", "b", "c", "d", "e", "f"];
+    let filterss = filters(params);
+    let known: Vec<(&str, &str)> = super::azones::AZONES
+        .iter()
+        .filter(|(r, _, _)| r == &region)
+        .map(|(_, n, z)| (*n, *z))
+        .collect();
+    let zones: Vec<(String, String)> = if known.is_empty() {
+        let base = region.split('-').next().unwrap_or("az").replace("-", "");
+        (0..6)
+            .map(|i| {
+                (
+                    format!("{region}{}", char::from(b'a' + i as u8)),
+                    format!("{base}{:02?}-az{}", i + 1, i + 1),
+                )
+            })
+            .collect()
+    } else {
+        known.iter().map(|(n, z)| (n.to_string(), z.to_string())).collect()
+    };
     let mut body = String::new();
-    for (idx, suffix) in suffixes.iter().enumerate() {
-        let az = format!("{region}{}", suffix);
-        if !names.is_empty() && !names.iter().any(|n| *n == az) {
+    for (idx, (az, az_id)) in zones.iter().enumerate() {
+        if !names.is_empty() && !names.iter().any(|n| n == az) {
             continue;
         }
         let az2 = az.clone();
         let region2 = region.clone();
-        if !filter_passes(&fs, move |f| match f {
+        if !filter_passes(&filterss, move |f| match f {
             "zoneName" | "zone-name" => vec![az2.clone()],
             "region-name" => vec![region2.clone()],
             "zoneType" | "zone-type" => vec!["availability-zone".to_string()],
             "zoneState" | "zone-state" | "state" => vec!["available".to_string()],
-            "zoneId" | "zone-id" => vec![format!("{}use1-az{}", region2, idx + 2)],
+            "zoneId" | "zone-id" => vec![format!("{az_id}")],
             _ => Vec::new(),
         }) {
             continue;
         }
+        let _ = idx;
         let _ = write!(
             body,
-            "<item><regionName>{}</regionName><zoneName>{}</zoneName><zoneId>{}use1-az{}</zoneId><zoneState>available</zoneState><zoneType>availability-zone</zoneType><messages/></item>",
+            "<item><regionName>{}</regionName><zoneName>{}</zoneName><zoneId>{}</zoneId><zoneState>available</zoneState><zoneType>availability-zone</zoneType><messages/></item>",
             xml_escape(&region),
-            xml_escape(&az),
-            xml_escape(&region),
-            idx + 2
+            xml_escape(az),
+            xml_escape(az_id)
         );
     }
     ec2_xml(
@@ -259,7 +275,7 @@ fn describe_tags(req: &Request, params: &P) -> Response {
     ec2_xml("DescribeTagsResponse", &format!("<tagSet>{}</tagSet>", body))
 }
 
-fn replace_tags(state: &mut Ec2State, ids: &[String], tags: &[(String, String)]) {
+pub fn replace_tags(state: &mut Ec2State, ids: &[String], tags: &[(String, String)]) {
     for id in ids {
         let id: &str = id;
         if let Some(vpc) = state.vpcs.iter_mut().find(|v| v.id == id) {
@@ -339,7 +355,7 @@ fn replace_tags(state: &mut Ec2State, ids: &[String], tags: &[(String, String)])
     }
 }
 
-fn replace_tag_list(existing: &Tags, new: &[(String, String)]) -> Tags {
+pub fn replace_tag_list(existing: &Tags, new: &[(String, String)]) -> Tags {
     // TagSpecifications overwrite values for existing keys, keep others.
     let mut merged: Vec<(String, String)> = existing.clone();
     for (k, v) in new {
@@ -449,7 +465,7 @@ pub fn wire_tags(params: &P) -> Tags {
 }
 
 fn create_tags(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("Resource").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params.list("ResourceId").iter().map(|s| s.to_string()).collect();
     let tags = wire_tags(params);
     with_state(req, move |state| {
         replace_tags(state, &ids, &tags);
@@ -458,7 +474,7 @@ fn create_tags(req: &Request, params: &P) -> Response {
 }
 
 fn delete_tags(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("Resource").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params.list("ResourceId").iter().map(|s| s.to_string()).collect();
     let tags = wire_tags(params);
     with_state(req, move |state| {
         remove_tags(state, &ids, &tags);
@@ -470,7 +486,7 @@ fn delete_tags(req: &Request, params: &P) -> Response {
 // VPC family
 // ---------------------------------------------------------------------------
 
-pub fn vpc_item(account: u64, v: &Vpc) -> String {
+pub fn vpc_fields(account: u64, v: &Vpc) -> String {
     let mut cidrs = format!(
         "<item><associationId>{}</associationId><cidrBlock>{}</cidrBlock><cidrBlockState><state>associated</state></cidrBlockState></item>",
         xml_escape(&v.cidr_assoc_id),
@@ -486,7 +502,7 @@ pub fn vpc_item(account: u64, v: &Vpc) -> String {
         );
     }
     format!(
-        "<item><ownerId>{}</ownerId><instanceTenancy>{}</instanceTenancy><ipv6CidrBlockAssociationSet/><cidrBlockAssociationSet>{}</cidrBlockAssociationSet><isDefault>{}</isDefault>{}<vpcId>{}</vpcId><state>{}</state><cidrBlock>{}</cidrBlock><dhcpOptionsId>{}</dhcpOptionsId></item>",
+        "<ownerId>{}</ownerId><instanceTenancy>{}</instanceTenancy><ipv6CidrBlockAssociationSet/><cidrBlockAssociationSet>{}</cidrBlockAssociationSet><isDefault>{}</isDefault>{}<vpcId>{}</vpcId><state>{}</state><cidrBlock>{}</cidrBlock><dhcpOptionsId>{}</dhcpOptionsId>",
         account,
         xml_escape(&v.tenancy),
         cidrs,
@@ -498,6 +514,10 @@ pub fn vpc_item(account: u64, v: &Vpc) -> String {
         xml_escape(&v.dhcp_options_id)
     )
 }
+pub fn vpc_item(account: u64, v: &Vpc) -> String {
+    format!("<item>{}</item>", vpc_fields(account, v))
+}
+
 fn require_vpc<'a>(state: &'a mut Ec2State, vpc_id: &str) -> Result<&'a mut Vpc, Response> {
     match state.vpcs.iter_mut().find(|v| v.id == vpc_id) {
         Some(v) => Ok(v),
@@ -560,7 +580,7 @@ fn create_vpc(req: &Request, params: &P) -> Response {
         let vpc = state.vpcs.last().unwrap().clone();
         ec2_xml(
             "CreateVpcResponse",
-            &format!("<vpc>{}</vpc>", vpc_item(req.account, &vpc)),
+            &format!("<vpc>{}</vpc>", vpc_fields(req.account, &vpc)),
         )
     })
 }
@@ -716,7 +736,7 @@ fn create_default_vpc(req: &Request, params: &P) -> Response {
         }
         state.ensure_default_vpc(&req.region, req.account);
         let vpc = state.vpcs.last().unwrap().clone();
-        ec2_xml("CreateDefaultVpcResponse", &format!("<vpc>{}</vpc>", vpc_item(req.account, &vpc)))
+        ec2_xml("CreateDefaultVpcResponse", &format!("<vpc>{}</vpc>", vpc_fields(req.account, &vpc)))
     })
 }
 
@@ -875,7 +895,8 @@ fn vpc_encryption_controls(req: &Request, params: &P) -> Response {
 // Subnets
 // ---------------------------------------------------------------------------
 
-pub fn subnet_item(region: &str, account: u64, s: &Subnet) -> String {
+
+pub fn subnet_fields(region: &str, account: u64, s: &Subnet) -> String {
     let mut available_ips: i64 = 251;
     if let Some(bits_str) = s.cidr.split('/').nth(1) {
         if let Ok(bits) = bits_str.parse::<i64>() {
@@ -895,7 +916,7 @@ pub fn subnet_item(region: &str, account: u64, s: &Subnet) -> String {
     }
     let has_ipv6 = !ipv6_set.is_empty();
     format!(
-        "<item><availabilityZoneId>{}</availabilityZoneId><ownerId>{}</ownerId><assignIpv6AddressOnCreation>{}</assignIpv6AddressOnCreation><ipv6CidrBlockAssociationSet>{}</ipv6CidrBlockAssociationSet>{}<subnetArn>arn:aws:ec2:{}:{}:subnet/{}</subnetArn><ipv6Native>false</ipv6Native><subnetId>{}</subnetId><state>{}</state><vpcId>{}</vpcId><cidrBlock>{}</cidrBlock><availableIpAddressCount>{}</availableIpAddressCount><availabilityZone>{}</availabilityZone><defaultForAz>{}</defaultForAz><mapPublicIpOnLaunch>{}</mapPublicIpOnLaunch>{}{}</item>",
+        "<availabilityZoneId>{}</availabilityZoneId><ownerId>{}</ownerId><assignIpv6AddressOnCreation>{}</assignIpv6AddressOnCreation><ipv6CidrBlockAssociationSet>{}</ipv6CidrBlockAssociationSet>{}<subnetArn>arn:aws:ec2:{}:{}:subnet/{}</subnetArn><ipv6Native>false</ipv6Native><subnetId>{}</subnetId><state>{}</state><vpcId>{}</vpcId><cidrBlock>{}</cidrBlock><availableIpAddressCount>{}</availableIpAddressCount><availabilityZone>{}</availabilityZone><defaultForAz>{}</defaultForAz><mapPublicIpOnLaunch>{}</mapPublicIpOnLaunch>{}{}",
         xml_escape(&s.availability_zone_id),
         account,
         has_ipv6,
@@ -917,7 +938,10 @@ pub fn subnet_item(region: &str, account: u64, s: &Subnet) -> String {
     )
 }
 
-fn require_subnet<'a>(state: &'a mut Ec2State, subnet_id: &str) -> Result<usize, Response> {
+pub fn subnet_item(region: &str, account: u64, s: &Subnet) -> String {
+    format!("<item>{}</item>", subnet_fields(region, account, s))
+}
+fn require_subnet(state: &mut Ec2State, subnet_id: &str) -> Result<usize, Response> {
     match state.subnets.iter().position(|s| s.id == subnet_id) {
         Some(i) => Ok(i),
         None => Err(ec2_error(
@@ -941,7 +965,7 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             return require_vpc(state, &vpc_id).err().unwrap();
         }
         if cidr.is_empty() {
-            return ec2_error(400, "MissingParameter", "The request must contain the parameter CidrBlock or Ipv6CidrBlock");
+            return ec2_error(400, "MissingParameter", "The request must contain the parameter CidrBlock");
         }
         let subnet_id = state.next_id("subnet");
         let mine = tag_spec_tags(params);
@@ -953,11 +977,10 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             state: "available".into(),
             ipv6_cidr: ipv6.clone(),
             map_public_ip: false,
-            availability_zone_id: format!("{}use1-az2", req.region),
+            availability_zone_id: format!("{}use1-az6", req.region),
             ..Default::default()
         };
         subnet.ipv6_assocs = ipv6
-            .clone()
             .map(|c| vec![(format!("subnet-cidr-assoc-{}", idhex::hex17()), c)])
             .unwrap_or_default();
         state.subnets.push(subnet);
@@ -970,7 +993,7 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             .unwrap_or_default();
         ec2_xml(
             "CreateSubnetResponse",
-            &format!("<subnet>{}</subnet>", subnet_item(&req.region, req.account, &s)),
+            &format!("<subnet>{}</subnet>", subnet_fields(&req.region, req.account, &s)),
         )
     })
 }
@@ -979,26 +1002,17 @@ fn subnet_cand(s: &Subnet, f: &str) -> Vec<String> {
     match f {
         "subnet-id" | "id" => vec![s.id.clone()],
         "vpc-id" => vec![s.vpc_id.clone()],
-        "cidr" | "cidrBlock" | "cidr-reservation" => vec![s.cidr.clone()],
+        "cidr" | "cidr-block" => vec![s.cidr.clone()],
         "state" => vec![s.state.clone()],
-        "availability-zone" => vec![s.az.clone()],
-        "defaultForAz" | "default-for-az" => vec![if s.is_default {
+        "availability-zone" | "az" => vec![s.az.clone()],
+        "default-for-az" => vec![if s.is_default { "true".to_string() } else { "false".to_string() }],
+        "map-public-ip-on-launch" => vec![if s.map_public_ip {
             "true".to_string()
         } else {
             "false".to_string()
         }],
-        "mapPublicIpOnLaunch" | "map-public-ip-on-launch" => vec![if s.map_public_ip {
-            "true".to_string()
-        } else {
-            "false".to_string()
-        }],
-        "subnet-id" => vec![s.id.clone()],
         "availability-zone-id" => vec![s.availability_zone_id.clone()],
-        "ipv6-cidr-block-association" | "ipv6CidrBlockAssociationSet" => s
-            .ipv6_assocs
-            .iter()
-            .map(|(_, c)| c.clone())
-            .collect(),
+        "subnet-arn" => vec![format!("arn:aws:ec2:{}:{}:subnet/{}", "us-east-1", "acc", s.id)],
         t => tag_candidates(&s.tags, t),
     }
 }
@@ -1008,12 +1022,16 @@ fn describe_subnets(req: &Request, params: &P) -> Response {
     let fs = filters(params);
     with_state(req, move |state| {
         let account = req.account;
+        let region = req.region.clone();
         let items: Vec<String> = state
             .subnets
             .iter()
             .filter(|s| ids.is_empty() || ids.contains(&s.id))
-            .filter(|s| filter_passes(&fs, |f| subnet_cand(s.clone(), f)))
-            .map(|s| subnet_item(&req.region, account, s))
+            .filter(|s| {
+                let s2 = s.clone();
+                filter_passes(&fs, move |f| subnet_cand(&s2, f))
+            })
+            .map(|s| subnet_item(&region, account, s))
             .collect();
         ec2_xml(
             "DescribeSubnetsResponse",
@@ -1025,10 +1043,10 @@ fn describe_subnets(req: &Request, params: &P) -> Response {
 fn delete_subnet(req: &Request, params: &P) -> Response {
     let subnet_id = params.str("SubnetId");
     with_state(req, move |state| {
-        if require_subnet(state, &subnet_id).is_err() {
-            return require_subnet(state, &subnet_id).err().unwrap();
-        }
-        let pos = state.subnets.iter().position(|s| s.id == subnet_id).unwrap_or(0);
+        let pos = match require_subnet(state, &subnet_id) {
+            Ok(i) => i,
+            Err(e) => return e,
+        };
         state.subnets.remove(pos);
         ok_xml("DeleteSubnetResponse")
     })
@@ -1037,13 +1055,11 @@ fn delete_subnet(req: &Request, params: &P) -> Response {
 fn create_default_subnet(req: &Request, params: &P) -> Response {
     let az = params.str("AvailabilityZone");
     with_state(req, move |state| {
-        let vpc = state
+        if state
             .vpcs
             .iter()
-            .cloned()
-            .find(|v| v.is_default)
-            .unwrap_or_default();
-        if vpc.id.is_empty() {
+            .all(|v| !v.is_default)
+        {
             state.ensure_default_vpc(&req.region, req.account);
         }
         let default_vpc = state
@@ -1056,25 +1072,28 @@ fn create_default_subnet(req: &Request, params: &P) -> Response {
         let subnet = Subnet {
             id: subnet_id.clone(),
             vpc_id: default_vpc.id.clone(),
-            cidr: "172.31.0.0/20".into(),
+            cidr: "172.31.32.0/20".into(),
             az: az.clone(),
             state: "available".into(),
-            availability_zone_id: format!("{}use1-az4", req.region),
+            availability_zone_id: format!("{}use1-az1", req.region),
             is_default: true,
             ..Default::default()
         };
         state.subnets.push(subnet.clone());
-        ec2_xml("CreateDefaultSubnetResponse", &format!("<subnet>{}</subnet>", subnet_item(&req.region, req.account, &subnet)))
+        ec2_xml(
+            "CreateDefaultSubnetResponse",
+            &format!("<subnet>{}</subnet>", subnet_fields(&req.region, req.account, &subnet)),
+        )
     })
 }
 
 fn modify_subnet_attribute(req: &Request, params: &P) -> Response {
     let subnet_id = params.str("SubnetId");
     with_state(req, move |state| {
-        if require_subnet(state, &subnet_id).is_err() {
-            return require_subnet(state, &subnet_id).err().unwrap();
-        }
-        let pos = state.subnets.iter().position(|s| s.id == subnet_id).unwrap_or(0);
+        let pos = match require_subnet(state, &subnet_id) {
+            Ok(i) => i,
+            Err(e) => return e,
+        };
         let s = &mut state.subnets[pos];
         if let Some(b) = params.bool("MapPublicIpOnLaunch.Value") {
             s.map_public_ip = b;
@@ -1084,10 +1103,6 @@ fn modify_subnet_attribute(req: &Request, params: &P) -> Response {
         }
         if let Some(b) = params.bool("EnableDns64.Value") {
             s.enable_dns64 = b;
-        }
-        if let Some(b) = params.bool("AssignIpv6AddressOnCreation.Value") {
-            s.ipv6_cidr = None;
-            let _ = b;
         }
         if let Some(b) = params.bool("EnableLniAtDeviceIndex.Value") {
             s.enable_lni_at_device_index = b;
@@ -1103,10 +1118,10 @@ fn associate_subnet_cidr_block(req: &Request, params: &P) -> Response {
     let subnet_id = params.str("SubnetId");
     let cidr = params.str("Ipv6CidrBlock");
     with_state(req, move |state| {
-        if require_subnet(state, &subnet_id).is_err() {
-            return require_subnet(state, &subnet_id).err().unwrap();
-        }
-        let pos = state.subnets.iter().position(|s| s.id == subnet_id).unwrap_or(0);
+        let pos = match require_subnet(state, &subnet_id) {
+            Ok(i) => i,
+            Err(e) => return e,
+        };
         let assoc_id = state.next_id("subnet-cidr-assoc");
         state.subnets[pos].ipv6_cidr = Some(cidr.clone());
         state.subnets[pos]
@@ -1131,7 +1146,6 @@ fn disassociate_subnet_cidr_block(req: &Request, params: &P) -> Response {
                 state.subnets[i]
                     .ipv6_assocs
                     .retain(|(a, _)| a != &assoc_id);
-                state.subnets[i].ipv6_cidr = None;
                 return ok_xml("DisassociateSubnetCidrBlockResponse");
             }
         }
@@ -1148,11 +1162,11 @@ fn create_subnet_cidr_reservation(req: &Request, params: &P) -> Response {
     let cidr = params.str("Cidr");
     let rtype = params.str("ReservationType");
     with_state(req, move |state| {
-        if require_subnet(state, &subnet_id).is_err() {
-            return require_subnet(state, &subnet_id).err().unwrap();
-        }
+        let pos = match require_subnet(state, &subnet_id) {
+            Ok(i) => i,
+            Err(e) => return e,
+        };
         let reservation_id = state.next_id("scr");
-        let pos = state.subnets.iter().position(|s| s.id == subnet_id).unwrap_or(0);
         state.subnets[pos]
             .cidr_reservations
             .push((reservation_id.clone(), cidr.clone(), rtype.clone()));
