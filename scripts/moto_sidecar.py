@@ -24,6 +24,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
+from urllib.parse import parse_qsl
+from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.routing import Map, Rule
 from werkzeug.routing.converters import BaseConverter
 from werkzeug.test import EnvironBuilder
@@ -35,11 +37,18 @@ logger = logging.getLogger("moto_sidecar")
 
 
 class WerkzeugRawBodyRequest(WerkzeugRequest):
-    """Werkzeug request that preserves a raw body for Moto."""
+    """Werkzeug request that preserves a raw body for Moto.
+
+    Moto reads `request.body` (boto-style) and also `request.form`
+    (query-protocol params live in the urlencoded body). Parse the form from
+    the raw body for urlencoded content types so parameters survive, while
+    still exposing the undecoded payload via `.body` / `.data`.
+    """
 
     def __init__(self, environ: dict, body: bytes):
         super().__init__(environ)
         self.body = body
+        self._form_cache: ImmutableMultiDict | None = None
 
     @property
     def data(self) -> bytes:
@@ -50,11 +59,17 @@ class WerkzeugRawBodyRequest(WerkzeugRequest):
 
     @property
     def form(self):
-        return {}
-
-    @property
-    def files(self):
-        return {}
+        if self._form_cache is None:
+            mimetype = (self.mimetype or "").split(";")[0].strip()
+            if mimetype == "application/x-www-form-urlencoded":
+                try:
+                    pairs = parse_qsl(self.body.decode("utf-8"), keep_blank_values=True)
+                except UnicodeDecodeError:
+                    pairs = []
+            else:
+                pairs = []
+            self._form_cache = ImmutableMultiDict(pairs)
+        return self._form_cache
 
 
 class _RegexConverter(BaseConverter):
