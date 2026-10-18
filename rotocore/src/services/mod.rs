@@ -7,6 +7,7 @@
 use crate::{Request, Response};
 
 pub mod acm;
+pub mod apigw_management;
 pub mod cloudformation;
 pub mod comprehend;
 pub mod ec2;
@@ -20,6 +21,7 @@ pub mod transcribe;
 /// service has no ported backend yet (the gateway then uses the fallback).
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
+        "apigatewaymanagementapi" => Some(apigw_management::dispatch(req)),
         "comprehend" => Some(comprehend::dispatch(req)),
         "pipes" => Some(pipes::dispatch(req)),
         "polly" => Some(polly::dispatch(req)),
