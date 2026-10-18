@@ -3909,4 +3909,172 @@ fn create_db_cluster(
 }
 
 
+
+// Cluster lifecycle ----------------------------------------------------------
+
+fn describe_db_clusters_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBClusterIdentifier");
+    let matched: Vec<&DBCluster> = match &filter {
+        Some(rid) => {
+            let found: Vec<&DBCluster> = st
+                .clusters
+                .values()
+                .filter(|c| c.id == rid.to_lowercase())
+                .collect();
+            if found.is_empty() {
+                return Err(RdsError::not_found404(
+                    "DBClusterNotFoundFault",
+                    format!("DBCluster {rid} not found."),
+                ));
+            }
+            found
+        }
+        None => st.clusters.values().collect(),
+    };
+    let mut list = String::new();
+    for cl in &matched {
+        list.push_str(&db_cluster_xml(st, acct, region, cl));
+    }
+    Ok(Some(format!("<DBClusters>{list}</DBClusters>")))
+}
+
+/// Modify* kwargs handled like moto (setattr where the value is present).
+fn modify_core_cluster_fields(cl: &mut DBCluster, p: &Params) {
+    if p_string(p, "DeletionProtection") == Some("false".to_string())
+        || p_bool(p, "DeletionProtection") == Some(false)
+    {
+        cl.deletion_protection = false;
+    } else if p_bool(p, "DeletionProtection") == Some(true) {
+        cl.deletion_protection = true;
+    }
+    if let Some(v) = p_i64(p, "BackupRetentionPeriod") {
+        cl.backup_retention_period = v;
+    }
+    if let Some(v) = p_string(p, "PreferredBackupWindow") {
+        cl.preferred_backup_window = v;
+    }
+    if let Some(v) = p_string(p, "PreferredMaintenanceWindow") {
+        cl.preferred_maintenance_window = v;
+    }
+    if let Some(v) = p_string(p, "DBClusterParameterGroupName") {
+        cl.parameter_group = v;
+    }
+    if let Some(v) = p_string(p, "Port") {
+        if let Some(n) = v.parse::<i64>().ok() {
+            cl.port = n;
+        }
+    }
+    if let Some(v) = p_string(p, "CopyTagsToSnapshot") {
+        cl.copy_tags_to_snapshot = v.eq_ignore_ascii_case("true");
+    }
+    if let Some(v) = p_string(p, "DBSubnetGroupName") {
+        cl.db_subnet_group_name = v;
+    }
+    if let Some(v) = p_string(p, "MasterUserPassword") {
+        cl.kms_key_id = "default_kms_key_id".into();
+        let _ = v; // not echoed back
+    }
+    if let Some(v) = p_bool(p, "IAMDatabaseAuthenticationEnabled").or(p_bool(p, "EnableIAMDatabaseAuthentication")) {
+        cl.iam_auth = v;
+    }
+    let cwl = key_end_log_types(p);
+    for exp in cwl.0 {
+        cl.enabled_cloudwatch_logs_exports.retain(|e| e != &exp);
+    }
+    for exp in cwl.1 {
+        if !cl.enabled_cloudwatch_logs_exports.contains(&exp) {
+            cl.enabled_cloudwatch_logs_exports.push(exp);
+        }
+    }
+    cl.status = if cl.status == "stopped" {
+        "available".into()
+    } else {
+        cl.status.clone()
+    };
+}
+
+fn key_end_log_types(p: &Params) -> (Vec<String>, Vec<String>) {
+    (p_list(p, "DisableLogTypes"), p_list(p, "EnableLogTypes"))
+}
+
+fn modify_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    {
+        let cl = st.clusters.get_mut(&id).unwrap();
+        modify_core_cluster_fields(cl, p);
+    }
+    if let Some(max) = p_i64(p, "MaxCapacity") {
+        let _ = max;
+    }
+    match st.clusters.get(&id) {
+        Some(found) => Ok(Some(db_cluster_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+fn delete_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    let cluster = st.clusters.get(&id).unwrap().clone();
+    if cluster.deletion_protection {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "Cannot delete protected Cluster, please disable deletion protection and try again.",
+        ));
+    }
+    let has_members = st
+        .databases
+        .values()
+        .any(|d| d.db_cluster_identifier.as_deref() == Some(&id));
+    if has_members {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            "Cluster cannot be deleted, it still contains DB instances in non-deleting state.",
+        ));
+    }
+    if let Some(gc_id) = &cluster.global_cluster_identifier {
+        if let Some(gc) = st.global_clusters.get_mut(gc_id) {
+            gc.members.retain(|m| *m != id);
+        }
+    }
+    if let Some(snap_name) = p_string(p, "FinalDBSnapshotIdentifier") {
+        RdsError::check_snapshot_identifier(&snap_name, "FinalDBSnapshotIdentifier")?;
+        if !p_bool(p, "SkipFinalSnapshot").unwrap_or(false) {
+            let snap = cluster_snapshot_from(&cluster, &snap_name, "manual", &[]);
+            st.cluster_snapshots.insert(snap.id.clone(), snap);
+        }
+    }
+    st.clusters.remove(&id);
+    Ok(Some(db_cluster_xml(st, acct, region, &cluster)))
+}
+
+
 // __APPEND_MARKER__
