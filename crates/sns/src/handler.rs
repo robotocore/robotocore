@@ -1671,6 +1671,8 @@ mod tests {
             body: Bytes::new(),
         });
         let got2: Value = serde_json::from_str(&recv2.body).unwrap();
-        assert_eq!(got2["Messages"].as_array().map(Vec::len), Some(0));
+        // ReceiveMessage on an empty queue carries no Messages member
+        let delivered = got2["Messages"].as_array().map(Vec::len).unwrap_or(0);
+        assert_eq!(delivered, 0);
     }
 }
