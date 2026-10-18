@@ -2647,7 +2647,7 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "DescribeLaunchTemplateVersionsResponse",
-            &format!("<launchTemplateVersions>{}</launchTemplateVersions>", items),
+            &format!("<launchTemplateVersionSet>{}</launchTemplateVersionSet>", items),
         )
     })
 }
