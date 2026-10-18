@@ -1149,6 +1149,7 @@ impl DefaultSqsHandler {
         })?;
 
         let mut successful: Vec<Value> = Vec::new();
+        let mut failed: Vec<Value> = Vec::new();
 
         for entry in &entries {
             let id = entry
@@ -1165,8 +1166,10 @@ impl DefaultSqsHandler {
             let mut success = serde_json::Map::new();
             {
                 let mut q = queue_arc.write();
-                match self.prepare_send(&mut q, queue_url, &body, entry)? {
-                    Some(PreparedMessage::Accepted(message)) => {
+                // A bad entry becomes a BatchResultErrorEntry, not a
+                // top-level 400: valid entries in the request still send.
+                match self.prepare_send(&mut q, queue_url, &body, entry) {
+                    Ok(Some(PreparedMessage::Accepted(message))) => {
                         let md5_attrs =
                             Self::md5_of_message_attributes(&message.message_attributes);
                         let sequence_number = message.attributes.get("SequenceNumber").cloned();
@@ -1183,11 +1186,11 @@ impl DefaultSqsHandler {
                             success.insert("MD5OfMessageAttributes".into(), json!(md5_attrs));
                         }
                     }
-                    Some(PreparedMessage::Duplicate {
+                    Ok(Some(PreparedMessage::Duplicate {
                         message_id,
                         md5_of_body,
                         sequence_number,
-                    }) => {
+                    })) => {
                         success.insert("Id".into(), json!(id));
                         success.insert("MessageId".into(), json!(message_id));
                         success.insert("MD5OfMessageBody".into(), json!(md5_of_body));
@@ -1195,7 +1198,16 @@ impl DefaultSqsHandler {
                             success.insert("SequenceNumber".into(), json!(seq));
                         }
                     }
-                    None => {}
+                    Ok(None) => {}
+                    Err(err) => {
+                        failed.push(json!({
+                            "Id": id,
+                            "SenderFault": true,
+                            "Code": err.code(),
+                            "Message": err.message(),
+                        }));
+                        continue;
+                    }
                 }
             }
             if success.is_empty() {
@@ -1206,7 +1218,7 @@ impl DefaultSqsHandler {
 
         let body = json!({
             "Successful": successful,
-            "Failed": Vec::<Value>::new()
+            "Failed": failed
         })
         .to_string();
 

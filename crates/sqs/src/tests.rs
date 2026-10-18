@@ -915,3 +915,47 @@ fn test_fifo_dedup_suppressed_after_original_deleted() {
         .unwrap_or(0);
     assert_eq!(messages, 0, "dedup re-send must not enqueue a message");
 }
+
+#[test]
+fn test_send_message_batch_bad_entry_is_entry_error() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_fifo_queue(&handler, "fifo-batch-err.fifo", false);
+
+    // One good entry (with group id), one bad (missing MessageGroupId).
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "good", "MessageBody": "hello", "MessageGroupId": "g1"},
+                {"Id": "bad", "MessageBody": "no group"}
+            ],
+        }),
+    ));
+    // The bad entry must NOT fail the whole request.
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "good");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "bad");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert!(
+        failed[0]["Code"].as_str().map(|c| !c.is_empty()).unwrap_or(false),
+        "entry failure must carry an error code"
+    );
+
+    // The good entry's message was actually enqueued.
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 10}),
+    ));
+    let recv_data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    assert_eq!(recv_data["Messages"][0]["Body"], "hello");
+    let received = recv_data["Messages"].as_array().unwrap().len();
+    assert_eq!(received, 1);
+}
