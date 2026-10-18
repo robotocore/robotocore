@@ -38,6 +38,8 @@ fn new_message(body: &str) -> SqsMessage {
         first_receive_timestamp: None,
         attributes: HashMap::new(),
         message_attributes: HashMap::new(),
+        available_at: None,
+        deduplication_id: None,
     }
 }
 
