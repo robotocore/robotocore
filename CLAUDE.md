@@ -90,8 +90,8 @@ robotocore/
 │   └── robotocore/            # Python ground-truth server (parity baseline)
 ├── scripts/
 │   ├── moto_sidecar.py        # moto bridge sidecar (cross-service mirroring)
-│   ├── start_parity_servers.sh# three-server dev lane (env-overridable ports)
-│   └── harness/parity.py      # fidelity measurement
+│   ├── start_parity_servers.sh# dev lane: RUST_ONLY=1 (sidecar+rust) or full three-server (env ports)
+│   └── harness/parity.py      # fidelity: --rust-only (baseline expectations) / --dual (py vs rust)
 └── tests/compatibility/       # the contract suites (used for parity)
 ```
 

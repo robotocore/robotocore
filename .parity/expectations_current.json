@@ -1,0 +1,90 @@
+{
+  "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Pass counts are the Python ground-truth equivalents frozen from the last full dual run before the Python server's removal (rust_pass today; py_ground_truth_pass recorded for the audit trail). Regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
+  "generated": "2026-10-18T10:00:21",
+  "per_suite": {
+    "cloudformation": {
+      "pass": 150,
+      "py_ground_truth_pass": 150
+    },
+    "cloudwatch": {
+      "pass": 67,
+      "py_ground_truth_pass": 67
+    },
+    "dynamodb": {
+      "pass": 178,
+      "py_ground_truth_pass": 171
+    },
+    "ec2": {
+      "pass": 717,
+      "py_ground_truth_pass": 720
+    },
+    "ecr": {
+      "pass": 68,
+      "py_ground_truth_pass": 68
+    },
+    "ecs": {
+      "pass": 94,
+      "py_ground_truth_pass": 88
+    },
+    "events": {
+      "pass": 112,
+      "py_ground_truth_pass": 108
+    },
+    "firehose": {
+      "pass": 48,
+      "py_ground_truth_pass": 48
+    },
+    "iam": {
+      "pass": 305,
+      "py_ground_truth_pass": 305
+    },
+    "kinesis": {
+      "pass": 97,
+      "py_ground_truth_pass": 97
+    },
+    "kms": {
+      "pass": 81,
+      "py_ground_truth_pass": 81
+    },
+    "lambda": {
+      "pass": 140,
+      "py_ground_truth_pass": 133
+    },
+    "logs": {
+      "pass": 141,
+      "py_ground_truth_pass": 141
+    },
+    "rds": {
+      "pass": 315,
+      "py_ground_truth_pass": 315
+    },
+    "s3": {
+      "pass": 190,
+      "py_ground_truth_pass": 190
+    },
+    "secretsmanager": {
+      "pass": 46,
+      "py_ground_truth_pass": 45
+    },
+    "sns": {
+      "pass": 100,
+      "py_ground_truth_pass": 100
+    },
+    "sqs": {
+      "pass": 95,
+      "py_ground_truth_pass": 95
+    },
+    "ssm": {
+      "pass": 231,
+      "py_ground_truth_pass": 225
+    },
+    "stepfunctions": {
+      "pass": 71,
+      "py_ground_truth_pass": 69
+    },
+    "sts": {
+      "pass": 49,
+      "py_ground_truth_pass": 49
+    }
+  }
+}

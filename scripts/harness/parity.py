@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
 """Fidelity parity runner for the robotocore Rust port.
 
-Runs the existing Python compat test suites against BOTH the Python server
-(ground truth, :4566) and the Rust server (:4567), classifies every test
-pass/fail in a 4-way diff, cross-references with botocore spec op counts,
-and emits a state file + the single most important next work item.
+Two lanes exist during the port: the Python ground-truth server (:4566) and
+the Rust server (:4567). The endgame keeps only the Rust server.
+
+Modes:
+  --dual       (transitional default) every compat suite runs against BOTH
+               servers; fidelity % = rust_pass / py_pass (py vs rust).
+  --rust-only  (endgame, and fired automatically whenever the Python
+               ground-truth server is absent) every suite runs ONCE against
+               the Rust server; fidelity becomes actual vs expected, where
+               expected = per-suite pass counts in the golden baseline
+               `.parity/expectations_current.json`. Regressions print
+               "EXPECTATIONS DRIFT" and are also recorded in the state file;
+               the run exits 2 when a regression is found.
 
 Usage:
-    parity.py                    # full run, all services
+    parity.py                    # full run, mode auto-detected (see --dual/--rust-only)
     parity.py --services sqs,s3  # subset
+    parity.py --rust-only --services sqs,s3,ec2
+    parity.py --rust-only --update-expectations   # promote a clean full run to the baseline
     parity.py --next             # just re-derive the next work item from state
-    parity.py --state FILE       # where to write/read state (default: .parity/state.json)
+    parity.py --state FILE       # state path (default: .parity/state.json)
+    parity.py --expectations FILE  # baseline path (default: .parity/expectations_current.json)
 
-The headline metric is *fidelity %* per service = rust_pass / py_pass.
-A value < 100% means Rust is losing behavior the Python (moto) server has.
+Ports come from the environment: PY_PORT (4566, unused in rust-only),
+RUST_PORT (4567), SIDECAR_PORT (4568).
+
+In dual mode the headline metric is *fidelity %* per service = rust_pass /
+py_pass; a value < 100% means Rust is losing behavior the Python (moto)
+server has. In rust-only mode it is rust_pass / expected_pass; a value
+< 100% means the Rust server dropped below the frozen baseline.
 """
 from __future__ import annotations
 
@@ -36,6 +53,8 @@ PY_URL = f"http://127.0.0.1:{PY_PORT}"
 RUST_URL = f"http://127.0.0.1:{RUST_PORT}"
 RUST_BIN = str(RUST_REPO / "target/release/robotocore-rust")
 COMPAT_DIR = REPO / "tests/compatibility"
+# Golden baseline: per-suite pass counts the Rust lane must keep matching.
+EXPECTATIONS_FILE = RUST_REPO / ".parity/expectations_current.json"
 
 # Native crate -> botocore service name (for spec op counts)
 NATIVE = {
@@ -79,6 +98,11 @@ def log(msg):
 
 def sh(cmd, **kw):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True, **kw)
+
+
+def python_server_up():
+    """Probe-only check: is a Python ground-truth server listening on PY_URL?"""
+    return sh(f"curl -sf --max-time 3 {PY_URL}/_robotocore/health", timeout=10).returncode == 0
 
 
 def ensure_python_server():
@@ -239,7 +263,7 @@ PER_SUITE_TIMEOUT = int(os.environ.get("PARITY_SUITE_TIMEOUT", "600"))  # second
 
 
 def run_suite(suite_name, endpoint, out_xml):
-    """Run one compat suite against an endpoint, return parsed results.
+    """Run one compat suite against an endpoint, return (results, proc, timed_out).
 
     Uses a hard timeout to catch runaway tests. If the suite times out,
     returns partial results from whatever XML was written.
@@ -264,13 +288,14 @@ def run_suite(suite_name, endpoint, out_xml):
     if timed_out:
         log(f"     [WARN] {suite_name} vs {endpoint} timed out after {PER_SUITE_TIMEOUT}s "
             f"({len(results)} partial results)")
-    return results, r
+    return results, r, timed_out
 
 
 def classify(py_res, rust_res):
     """4-way classification with counts + failing test lists.
 
-    Trust rule: when a run is truncated (suite timeout / collection crash),
+    Trust rule (central, see also classify_rust_only for the single lane):
+    when a run is truncated (suite timeout / collection crash / empty XML),
     the two sides see different test sets, which cannot be compared honestly;
     the caller then omits the fidelity figure instead of publishing fiction.
     """
@@ -295,6 +320,26 @@ def classify(py_res, rust_res):
     }
 
 
+def classify_rust_only(results, timed_out):
+    """Single-lane classification for --rust-only runs.
+
+    Truncation rule is the same trust rule classify() applies for dual runs,
+    applied to the one lane we have: a run that hit the suite timeout or that
+    CRASHed before writing any testcase (empty/missing XML) is marked
+    `truncated` and must not feed fidelity or drift comparisons.
+    """
+    counts = {"pass": 0, "fail": 0, "skip": 0}
+    for v in results.values():
+        counts[v] = counts.get(v, 0) + 1
+    return {
+        "pass": counts["pass"],
+        "fail": counts["fail"],
+        "skip": counts["skip"],
+        "total": len(results),
+        "truncated": bool(timed_out or not results),
+    }
+
+
 def run_all(services, state_dir):
     if not ensure_python_server():
         log("[!!] aborting: Python ground-truth server unavailable")
@@ -313,8 +358,8 @@ def run_all(services, state_dir):
             log(f"[skip] {svc}: no compat suite")
             continue
         log(f"[..] {svc}: running {suite.name} vs both endpoints...")
-        py_res, _ = run_suite(suite.name, PY_URL, str(xml_dir / f"{svc}_py.xml"))
-        rust_res, _ = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
+        py_res, _, _ = run_suite(suite.name, PY_URL, str(xml_dir / f"{svc}_py.xml"))
+        rust_res, _, _ = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
         c = classify(py_res, rust_res)
         py_pass = sum(1 for v in py_res.values() if v == "pass")
         rust_pass = sum(1 for v in rust_res.values() if v == "pass")
@@ -336,6 +381,142 @@ def run_all(services, state_dir):
     return report
 
 
+def run_all_rust_only(services, state_dir, expectations):
+    """Run every suite ONCE against the Rust server; compare to the baseline.
+
+    No Python ground-truth server is contacted: fidelity is actual vs
+    expected, where expected comes from `.parity/expectations_current.json`
+    (per-suite pass counts frozen while the Python ground truth still
+    existed). Regressions are surfaced in the report as
+    `expectations_drift` so the caller can exit non-zero.
+    """
+    if not ensure_rust_server():
+        log("[!!] aborting: Rust server / bridge unavailable")
+        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
+    xml_dir = Path(state_dir) / "xml"
+    xml_dir.mkdir(parents=True, exist_ok=True)
+    report = {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    for svc in services:
+        suite = find_suite(svc)
+        if not suite:
+            report["services"][svc] = {"status": "no_suite", "spec_ops": spec_op_count(svc),
+                                       "crate": "native" if svc in NATIVE else "bridge"}
+            log(f"[skip] {svc}: no compat suite")
+            continue
+        expected = (expectations.get(svc) or {}).get("pass")
+        log(f"[..] {svc}: running {suite.name} vs rust endpoint..." +
+            (f" (baseline {expected})" if expected is not None else " (no baseline entry)"))
+        rust_res, _, timed_out = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
+        r = classify_rust_only(rust_res, timed_out)
+        rec = {
+            "status": "ok",
+            "crate": "native" if svc in NATIVE else "bridge",
+            "spec_ops": spec_op_count(svc),
+            "pass": r["pass"], "fail": r["fail"], "skip": r["skip"],
+            "total": r["total"],
+            "truncated": r["truncated"],
+            "fidelity_pct": None,
+        }
+        if r["truncated"]:
+            # CRASH/empty-XML/timeout run — comparing partial numbers would be fiction.
+            log(f"[WARN] {svc}: truncated rust run ({r['pass']} of {r['total']} tests parsed); "
+                f"fidelity/drift omitted")
+        elif expected is None:
+            log(f"     {svc}: pass={r['pass']}/{r['total']}  (no baseline entry — promote with --update-expectations)")
+        else:
+            rec["expected"] = expected
+            if expected:
+                rec["fidelity_pct"] = round(100.0 * r["pass"] / expected, 1)
+            rec["drift"] = r["pass"] - expected  # negative = regression
+            mark = f"{rec['fidelity_pct']}%" if expected else "-"
+            if rec["fidelity_pct"] is not None and rec["fidelity_pct"] < 100.0:
+                mark += f" [-{rec['drift']} vs baseline {expected}]"
+            log(f"     {svc}: pass={r['pass']}/{r['total']}  fidelity={mark}")
+        report["services"][svc] = rec
+    regressions = drift_regressions(report, expectations)
+    if regressions:
+        log("")
+        log("EXPECTATIONS DRIFT (actual < baseline):")
+        for _, _s, line in regressions:
+            log(f"  {line}")
+    report["expectations_drift"] = [{"suite": s, "line": l} for _, s, l in regressions]
+    return report
+
+
+def drift_regressions(report, expectations):
+    """Return [(deficit, suite, line)] for suites that went below baseline.
+
+    Only complete runs count as regressions: a truncated run is an infra
+    failure (CRASH/timeout), not the Rust server losing fidelity, and
+    suites without a baseline entry have nothing to compare against.
+    """
+    out = []
+    for svc, d in sorted(report["services"].items()):
+        if d.get("status") != "ok" or d.get("truncated"):
+            continue
+        exp = expectations.get(svc) or {}
+        expected, actual = exp.get("pass"), d.get("pass")
+        if expected is None or actual is None or actual >= expected:
+            continue
+        out.append((expected - actual, svc,
+                    f"EXPECTATIONS DRIFT: suite {svc} expected {expected}, got {actual}"))
+    out.sort(reverse=True)
+    return out
+
+
+def load_expectations(path):
+    """Read the golden baseline; return per-suite dict {} when unusable."""
+    if not path.exists():
+        log(f"[warn] no expectations file at {path} — drift comparison skipped "
+            f"(promote a clean full run with --update-expectations)")
+        return {}
+    try:
+        doc = json.loads(path.read_text())
+    except (ValueError, OSError) as e:
+        log(f"[warn] unreadable expectations file {path}: {e}")
+        return {}
+    per = doc.get("per_suite", {})
+    log(f"[ok] baseline loaded: {len(per)} suites from {path}")
+    return per
+
+
+def write_expectations(report, path):
+    """Promote a clean run's pass counts to the golden baseline (merge-safe).
+
+    Suites not part of this run (e.g. a --services subset run) keep their
+    existing baseline entries; truncated/missing suites keep theirs too.
+    """
+    per = {}
+    if path.exists():
+        try:
+            per = json.loads(path.read_text()).get("per_suite", {})
+        except (ValueError, OSError) as e:
+            log(f"[warn] could not read existing expectations ({e}); starting fresh")
+            per = {}
+    kept = refreshed = failed = 0
+    for svc, d in sorted(report["services"].items()):
+        if d.get("status") != "ok" or d.get("truncated"):
+            if svc in per:
+                kept += 1
+            else:
+                failed += 1
+            continue
+        per[svc] = {"pass": d.get("pass", 0)}
+        refreshed += 1
+    doc = {
+        "comment": ("Golden baseline: per-suite compat-suite pass counts the Rust server "
+                    "must keep matching. Frozen from the Python ground-truth era; "
+                    "regenerate with: uv run python scripts/harness/parity.py --rust-only "
+                    "--update-expectations"),
+        "generated": report.get("generated") or time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "per_suite": per,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, indent=2) + "\n")
+    log(f"[ok] expectations written to {path} ({refreshed} refreshed, {kept} kept, {failed} skipped — "
+        f"truncated/failed suites are never promoted)")
+
+
 def derive_next_work(report):
     """Pick the single most impactful next work item.
 
@@ -347,6 +528,13 @@ def derive_next_work(report):
     if not report.get("services"):
         return "No data. Run a full parity run first."
 
+    def rec_gap(d):
+        """Deficit vs this run's reference (py lane in dual, baseline in rust-only)."""
+        if "rust_gap" in d:
+            return d["rust_gap"]
+        drift = d.get("drift", 0) or 0
+        return -drift if drift < 0 else 0
+
     infra = []
     blind = []
     gaps = []
@@ -356,12 +544,13 @@ def derive_next_work(report):
                 blind.append((9999, f"write compat suite for native {svc} (zero coverage)"))
             continue
         if d.get("crate") == "bridge":
-            if d.get("rust_pass", 0) == 0 and svc not in {"rds"}:
-                infra.append((d["rust_gap"], f"FIX BRIDGE: {svc} has 0 passing tests — moto sidecar not routing (infra, not porting)"))
+            lane_pass = d.get("rust_pass", d.get("pass", 0))
+            if lane_pass == 0 and svc not in {"rds"}:
+                infra.append((rec_gap(d), f"FIX BRIDGE: {svc} has 0 passing tests — moto sidecar not routing (infra, not porting)"))
             elif d.get("fidelity_pct") is not None and d["fidelity_pct"] < 80:
-                gaps.append((d["rust_gap"], f"port {svc} to native (bridge fidelity {d['fidelity_pct']}%)"))
+                gaps.append((rec_gap(d), f"port {svc} to native (bridge fidelity {d['fidelity_pct']}%)"))
             continue
-        gap = d.get("rust_gap", 0)
+        gap = rec_gap(d)
         fid = d.get("fidelity_pct")
         if gap > 0:
             gaps.append((gap, f"fix {svc}: {gap} fidelity gap(s) at {fid}% fidelity"))
@@ -378,12 +567,16 @@ def derive_next_work(report):
     return "All native services at 100% fidelity and covered. Next: expand bridge coverage or port a new service."
 
 
-def save_state(report, next_work, state_path):
+def save_state(report, next_work, state_path, mode=None):
     state = {
         "generated": report.get("generated"),
         "services": report.get("services", {}),
         "next_work": next_work,
     }
+    if mode:
+        state["mode"] = mode
+    if report.get("expectations_drift") is not None:
+        state["expectations_drift"] = report["expectations_drift"]
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2))
     log(f"[ok] state written to {state_path}")
@@ -407,6 +600,34 @@ def print_summary(report, next_work):
     log("=" * 72)
 
 
+def print_rust_only_summary(report, next_work):
+    """--rust-only fidelity map: actual pass counts vs the golden baseline."""
+    log("")
+    log("=" * 72)
+    log("EXPECTATIONS MAP (rust-only: pass counts, fidelity = actual / expected)")
+    log("=" * 72)
+    log(f"{'service':15} {'type':7} {'spec':>5} {'rust':>5} {'fid%':>6} {'exp':>6} {'drift':>5}")
+    for svc, d in sorted(report["services"].items()):
+        if d.get("status") != "ok":
+            log(f"{svc:15} {d.get('status','?'):15}")
+            continue
+        exp = d.get("expected")
+        drift = d.get("drift")
+        if d.get("truncated"):
+            fid = drift = "trunc"
+        else:
+            fid = str(d.get("fidelity_pct") or "-")
+            drift = str(drift) if drift is not None else "-"
+        log(f"{svc:15} {d['crate']:7} {str(d.get('spec_ops') or '?'):>5} "
+            f"{d['pass']:>5} {fid:>6} {str(exp if exp is not None else '-'):>6} {drift:>5}")
+    log("=" * 72)
+    if report.get("expectations_drift"):
+        log(f"EXPECTATIONS DRIFT: {len(report['expectations_drift'])} suite(s) below baseline "
+            f"(details above)")
+    log(f"NEXT WORK: {next_work}")
+    log("=" * 72)
+
+
 TOTAL_TIMEOUT = 1800  # 30 minutes max for a full run
 
 
@@ -417,8 +638,19 @@ def main():
     ap.add_argument("--next", action="store_true", help="just re-derive next work from state")
     ap.add_argument("--timeout", type=int, default=TOTAL_TIMEOUT,
                     help="max total seconds for the full run (default 1800)")
+    ap.add_argument("--dual", action="store_true",
+                    help="run each suite vs Python ground truth AND rust (py-vs-rust fidelity)")
+    ap.add_argument("--rust-only", dest="rust_only", action="store_true",
+                    help="run each suite ONCE vs rust; fidelity = actual vs golden baseline "
+                         "(fired automatically when the Python ground-truth server is absent)")
+    ap.add_argument("--update-expectations", dest="update_expectations", action="store_true",
+                    help="after the run, promote its clean pass counts into the baseline "
+                         "(merge-safe; truncated/failed suites are never promoted)")
+    ap.add_argument("--expectations", default=str(EXPECTATIONS_FILE),
+                    help="baseline path (default: .parity/expectations_current.json)")
     args = ap.parse_args()
     state_path = Path(args.state)
+    expectations_path = Path(args.expectations)
 
     if args.next:
         if state_path.exists():
@@ -427,6 +659,18 @@ def main():
             return
         log("No state file. Run a full parity run first.")
         return
+
+    if args.dual and args.rust_only:
+        ap.error("--dual and --rust-only are mutually exclusive")
+
+    mode = "rust-only" if args.rust_only else "dual"
+    if not (args.dual or args.rust_only):
+        # Default: rust-only when the Python ground-truth server is absent.
+        if python_server_up():
+            log("[mode] python ground truth present -> dual")
+        else:
+            log("[mode] python ground truth absent -> rust-only")
+            mode = "rust-only"
 
     services = [s.strip() for s in args.services.split(",") if s.strip()]
     # include bridge spot-checks if not explicitly limited
@@ -443,11 +687,27 @@ def main():
     signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(args.timeout)
 
-    report = run_all(services, state_path.parent)
+    if mode == "rust-only":
+        expectations = load_expectations(expectations_path)
+        report = run_all_rust_only(services, state_path.parent, expectations)
+    else:
+        report = run_all(services, state_path.parent)
     signal.alarm(0)  # cancel the alarm
+    if args.update_expectations:
+        if report.get("aborted"):
+            log("[skip] aborted run — nothing promoted to the baseline")
+        else:
+            write_expectations(report, expectations_path)
     next_work = derive_next_work(report)
-    save_state(report, next_work, state_path)
-    print_summary(report, next_work)
+    if mode == "rust-only":
+        print_rust_only_summary(report, next_work)
+        save_state(report, next_work, state_path, mode=mode)
+        if report.get("expectations_drift"):
+            log("[!!] baseline regression detected (see EXPECTATIONS DRIFT above)")
+            raise SystemExit(2)
+    else:
+        print_summary(report, next_work)
+        save_state(report, next_work, state_path, mode=mode)
 
 
 if __name__ == "__main__":

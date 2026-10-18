@@ -2,6 +2,9 @@
 # Start the Rust server + moto sidecar (+ Python ground-truth) for parity testing.
 # All ports are env-overridable so multiple worktrees can run side by side:
 #   PY_PORT (4566) RUST_PORT (4567) SIDECAR_PORT (4568) LOG_PREFIX (parity)
+# RUST_ONLY=1 starts ONLY the sidecar + the rust server (no python server);
+# the python-lane checks (start, health, PID kill) are skipped entirely —
+# this is the endgame lane once the python ground truth is gone.
 # Tracking: one PID file per server: /tmp/${LOG_PREFIX}_{py,rust,sidecar}.pid
 # Idempotent per LOG_PREFIX: kills the previously recorded PIDs before starting;
 # never touches other LOG_PREFIXes' processes (no pkills by name).
@@ -11,6 +14,7 @@ SIDECAR_PORT=${SIDECAR_PORT:-4568}
 RUST_PORT=${RUST_PORT:-4567}
 PY_PORT=${PY_PORT:-4566}
 LOG_PREFIX=${LOG_PREFIX:-parity}
+RUST_ONLY=${RUST_ONLY:-0}
 
 pid_alive() { # true when the recorded PID is a live process
     local pid="$1"
@@ -87,6 +91,10 @@ fi
 echo "Sidecar up on $SIDECAR_PORT"
 
 # --- Python ground truth ------------------------------------------------------
+if [ "$RUST_ONLY" = "1" ]; then
+    # No python server in this lane; leave anything already bound to PY_PORT alone.
+    echo "RUST_ONLY=1: skipping python ground-truth server"
+else
 if [ -f /tmp/${LOG_PREFIX}_py.pid ]; then
     PY_OLD=$(cat /tmp/${LOG_PREFIX}_py.pid 2>/dev/null || true)
     if ! pid_alive "$PY_OLD"; then PY_OLD=""; fi
@@ -98,6 +106,7 @@ if ! until_up http://127.0.0.1:$PY_PORT/_robotocore/health; then
     echo "Python server failed; see /tmp/${LOG_PREFIX}_py.log"; exit 1
 fi
 echo "Python server up on $PY_PORT"
+fi
 
 # --- Rust server --------------------------------------------------------------
 RUST_OLD=$(cat /tmp/${LOG_PREFIX}_rust.pid 2>/dev/null || true)

@@ -625,6 +625,46 @@ uv run python scripts/analyze_localstack.py            # gaps vs LocalStack
 uv run python scripts/smoke_test.py                    # 20-service smoke test
 ```
 
+### Fidelity parity harness
+
+`scripts/harness/parity.py` measures how faithfully the Rust server holds up
+against the compat suites. One lane, two modes:
+
+**`--rust-only` — the endgame lane.** Runs every compat suite ONCE against the
+Rust server (no Python server — `PY_PORT` is unused here; `RUST_PORT` and
+`SIDECAR_PORT` come from the env):
+
+```bash
+bash scripts/start_parity_servers.sh            # with RUST_ONLY=1: sidecar + rust server only
+uv run python scripts/harness/parity.py                        # auto: rust-only whenever no python ground truth is up
+uv run python scripts/harness/parity.py --rust-only --services sqs,s3,ec2
+```
+
+Pass counts land in `.parity/state.json` and are compared against the golden
+baseline `.parity/expectations_current.json` — per-suite pass counts frozen
+from the Python ground-truth era. Anything below baseline prints a line like
+`EXPECTATIONS DRIFT: suite ec2 expected 717, got 712`, is recorded in the
+state file, and fast-exits the run with code 2 so CI can gate on it
+(improvements and first-time suites are informational only). Truncated runs
+(suite timeout, CRASH, empty XML) are recorded with `"truncated": true` and
+omit fidelity/drift instead of comparing partial numbers.
+
+Promote a clean full run to the new baseline (merge-safe by suite):
+
+```bash
+uv run python scripts/harness/parity.py --rust-only --update-expectations
+```
+
+**`--dual` — the transitional lane.** While the porting fleet still needs
+ground truth, run each suite against BOTH the Python server (:4566) and the
+Rust server (:4567) and diff — the classic py-vs-rust fidelity metric
+(`rust_pass / py_pass`, `gap` = fidelity loss). This is the automatic default
+whenever a Python ground-truth server is listening. Once the Python server is
+deleted, a bare `parity.py` invocation IS rust-only mode reading the baseline.
+
+Artifacts (`.parity/`): `state.json` (last run), `expectations_current.json`
+(golden baseline, tracked file), `xml/` (raw JUnit XML per suite/lane).
+
 ### Build Docker image
 
 ```bash

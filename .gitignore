@@ -36,6 +36,7 @@ site/
 
 /target
 
-# Parity test state (generated)
-.parity/
+# Parity test state (generated); the golden baseline is tracked on purpose
+.parity/*
+!.parity/expectations_current.json
 .worktrees/
