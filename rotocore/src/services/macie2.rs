@@ -213,7 +213,7 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
         ("POST", "findings", "statistics", "") => ok(json!({"countsByGroup": []})),
         ("POST", "findings", "sample", "") => ok(json!({})),
         ("GET", "findings", _, "reveal") if segs.len() == 4 => sensitive_data_availability(svc),
-        ("GET", "findings", "reveal", _) if segs.len() == 3 => sensitive_data_occurrences(svc),
+        ("GET", "findings", _, "reveal") if segs.len() == 3 => sensitive_data_occurrences(svc),
         ("POST", "findingsfilters", "", "") => create_findings_filter(svc),
         ("GET", "findingsfilters", "", "") => list_findings_filters(svc),
         // --- Jobs / data identifiers / allow lists ---
