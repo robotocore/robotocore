@@ -34,10 +34,7 @@ fn downcast_slot<T: Send + Sync + 'static>(
 pub fn slot<T: Default + Send + Sync + 'static>(service: &'static str) -> Slot<T> {
     let mut map = slots().write();
     let entry = map.entry(service).or_insert_with(|| {
-        Box::new(Arc::new(RwLock::new(HashMap::<
-            ScopeKey,
-            T,
-        >::new())) as Slot<T>)
+        Box::new(Arc::new(RwLock::new(HashMap::<ScopeKey, T>::new())) as Slot<T>)
     });
     downcast_slot(entry)
 }

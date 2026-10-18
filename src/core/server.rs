@@ -1049,6 +1049,47 @@ pub async fn catch_all_handler(
     let handler = match handler {
         Some(h) => h,
         None => {
+            // First try rotocore (the in-process moto replacement); the
+            // moto sidecar is only consulted for services rotocore has
+            // not ported yet.
+            let rot_req = rotocore::Request {
+                service: service.clone(),
+                operation: parsed_req.operation.clone(),
+                method: parsed_req.method.clone(),
+                path: parsed_req.path.clone(),
+                query_string: parsed_req.query_string.clone(),
+                headers: parsed_req.headers.clone(),
+                body: parsed_req.body.clone(),
+                account: parsed_req.account,
+                region: parsed_req.region.clone(),
+            };
+            if let Some(resp) = rotocore::dispatch(&rot_req) {
+                audit_out(
+                    Some(&service),
+                    opt_op(&parsed_req.operation),
+                    &req_method,
+                    &req_path,
+                    resp.status,
+                    req_start,
+                    &account_id,
+                    &region_for_audit,
+                    None,
+                );
+                let status =
+                    StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                let mut headers: HashMap<String, String> = HashMap::new();
+                for (k, v) in resp.headers {
+                    headers.insert(k, v);
+                }
+                let parsed = crate::core::protocol::ParsedResponse {
+                    status,
+                    headers,
+                    body: serde_json::Value::Null,
+                    raw: None,
+                    raw_bytes: Some(resp.body),
+                };
+                return response_from_parsed(parsed, &service, &parsed_req.operation);
+            }
             // Fall back to Moto proxy for non-native services
             if let Some(proxy) = &state.moto_proxy {
                 if !proxy.is_native(&service) {

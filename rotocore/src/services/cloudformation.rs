@@ -9,9 +9,6 @@ pub fn dispatch(req: &Request) -> Response {
     error_response(
         501,
         "NotImplemented",
-        &format!(
-            "The {} action has not been implemented",
-            req.operation
-        ),
+        &format!("The {} action has not been implemented", req.operation),
     )
 }

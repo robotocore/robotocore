@@ -57,6 +57,9 @@ urlencoding = "2.1"
 reqwest = { version = "0.12", features = ["json"] }
 clap = { version = "4.0", features = ["derive"] }
 
+# Moto-equivalent engine (Rust)
+rotocore = { path = "rotocore" }
+
 # Native service providers
 sqs = { path = "crates/sqs" }
 s3 = { path = "crates/s3" }
