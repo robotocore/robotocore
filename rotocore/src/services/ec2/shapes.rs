@@ -25,18 +25,11 @@ static SHAPES: std::sync::LazyLock<Value> = std::sync::LazyLock::new(|| {
 });
 
 pub fn shape_of(op: &str) -> Option<&'static Value> {
-    SHAPES
-        .get("ops")
-        .and_then(|o| o.get(op))
+    SHAPES.get("ops").and_then(|o| o.get(op))
 }
 
 /// Render a member node from the shape tree.
-fn render_node(
-    shape: &Value,
-    pykey: &str,
-    fills: &Fills,
-    wire: &str,
-) -> String {
+fn render_node(shape: &Value, pykey: &str, fills: &Fills, wire: &str) -> String {
     match shape.get("t").and_then(|t| t.as_str()).unwrap_or("") {
         "string" | "long" | "integer" | "boolean" | "timestamp" | "double" => {
             match fills.get(pykey) {
@@ -143,10 +136,7 @@ pub fn render_response(op: &str, fills: &Fills, region: &str) -> Option<String> 
         // `<xxxSet/>` are present when the shape has a list member
         if let Some(members) = shape.get("m").and_then(|m| m.as_object()) {
             for (_wire, member) in members {
-                let pykey = member
-                    .get("k")
-                    .and_then(|k| k.as_str())
-                    .unwrap_or_default();
+                let pykey = member.get("k").and_then(|k| k.as_str()).unwrap_or_default();
                 if let Some(Fill::X(x)) = fills.get(pykey) {
                     body.push_str(x);
                 }
@@ -160,9 +150,7 @@ pub fn render_response(op: &str, fills: &Fills, region: &str) -> Option<String> 
         ns = "http://ec2.amazonaws.com/doc/2016-11-15/",
         rid = uuid::Uuid::new_v4()
     );
-    Some(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{xml}"
-    ))
+    Some(format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{xml}"))
 }
 
 /// Render an op whose output root is a single list member: each item is
@@ -210,15 +198,13 @@ pub fn render_list_response(
             inner.push_str(&body);
         }
     }
-    let flattened = members
-        .iter()
-        .any(|(_w, m)| {
-            m.get("k")
-                .and_then(|k| k.as_str())
-                .map(|k| k == list_pykey)
-                .unwrap_or(false)
-                && m.get("f").is_some()
-        });
+    let flattened = members.iter().any(|(_w, m)| {
+        m.get("k")
+            .and_then(|k| k.as_str())
+            .map(|k| k == list_pykey)
+            .unwrap_or(false)
+            && m.get("f").is_some()
+    });
     let body_out = if flattened {
         inner
     } else {
