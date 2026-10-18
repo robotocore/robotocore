@@ -8036,10 +8036,220 @@ fn remove_role_from_db_instance_op(
     Ok(None)
 }
 
+
+// Cluster endpoints + cluster roles ------------------------------------------
+
+fn create_db_cluster_endpoint(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let cluster_name = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    if !st.clusters.contains_key(&cluster_name.to_lowercase()) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {cluster_name} not found."),
+        ));
+    }
+    let identifier = p_string(p, "DBClusterEndpointIdentifier").unwrap_or_default();
+    if st.db_cluster_endpoints.contains_key(&identifier) {
+        return Err(RdsError::client400(
+            "DBClusterEndpointAlreadyExistsFault",
+            format!("The specified custom endpoint {identifier} already exists."),
+        ));
+    }
+    let ep = DBClusterEndpoint {
+        id: identifier.clone(),
+        cluster_identifier: cluster_name.to_lowercase(),
+        endpoint_type: p_string(p, "EndpointType").unwrap_or_else(|| "CUSTOM".into()),
+        custom_endpoint_type: p_string(p, "EndpointType").unwrap_or_else(|| "CUSTOM".into()),
+        static_members: p_list(p, "StaticMembers"),
+        excluded_members: p_list(p, "ExcludedMembers"),
+        tags: tags_param(p),
+        status: "available".into(),
+        resource_id: format!("cluster-endpoint-{}", rand_lower(26)),
+        url_identifier: rand_lower(12),
+    };
+    let response = ep.clone();
+    st.db_cluster_endpoints.insert(identifier, ep);
+    Ok(Some(db_cluster_endpoint_xml(acct, region, &response)))
+}
+
+fn describe_db_cluster_endpoints_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let cluster_filter = p_string(p, "DBClusterIdentifier").map(|s| s.to_lowercase());
+    let ep_filter = p_string(p, "DBClusterEndpointIdentifier");
+    let matched: Vec<&DBClusterEndpoint> = st
+        .db_cluster_endpoints
+        .values()
+        .filter(|e| match &cluster_filter {
+            Some(c) => e.cluster_identifier == *c,
+            None => true,
+        })
+        .filter(|e| match &ep_filter {
+            Some(f) => e.id == *f,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for e in &matched {
+        list.push_str(&db_cluster_endpoint_xml(acct, region, e));
+    }
+    if list.is_empty() {
+        Ok(Some("<DBClusterEndpoints/>".to_string()))
+    } else {
+        Ok(Some(format!("<DBClusterEndpoints>{list}</DBClusterEndpoints>")))
+    }
+}
+
+fn modify_db_cluster_endpoint(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterEndpointIdentifier").unwrap_or_default();
+    if !st.db_cluster_endpoints.contains_key(&identifier) {
+        return Err(RdsError::client400(
+            "DBClusterEndpointNotFoundFault",
+            format!("The specified custom endpoint {identifier} was not found."),
+        ));
+    }
+    let ep = st.db_cluster_endpoints.get_mut(&identifier).unwrap();
+    if let Some(v) = p_string(p, "EndpointType") {
+        ep.endpoint_type = v.clone();
+        ep.custom_endpoint_type = v;
+    }
+    if !p_list(p, "StaticMembers").is_empty() {
+        ep.static_members = p_list(p, "StaticMembers");
+    }
+    if !p_list(p, "ExcludedMembers").is_empty() {
+        ep.excluded_members = p_list(p, "ExcludedMembers");
+    }
+    let response = ep.clone();
+    Ok(Some(db_cluster_endpoint_xml(acct, region, &response)))
+}
+
+fn delete_db_cluster_endpoint(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterEndpointIdentifier").unwrap_or_default();
+    if !st.db_cluster_endpoints.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "DBClusterEndpointNotFoundFault",
+            format!("The specified custom endpoint {identifier} was not found."),
+        ));
+    }
+    let mut ep = st.db_cluster_endpoints.remove(&identifier).unwrap();
+    ep.status = "deleting".into();
+    Ok(Some(db_cluster_endpoint_xml(acct, region, &ep)))
+}
+
+
+
+fn add_role_to_db_cluster_op(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    let cluster = match find_cluster(st, &lower) {
+        Some(c) => c.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBClusterNotFoundFault",
+                format!("DBCluster {identifier} not found."),
+            ))
+        }
+    };
+    if cluster.status != "available" && cluster.status != "creating" {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            format!("Cluster {identifier} should be in a valid state to add role."),
+        ));
+    }
+    let role_arn = p_string(p, "RoleArn").unwrap_or_default();
+    let feature = p_string(p, "FeatureName");
+    for role in &cluster.associated_roles {
+        if let Some(f) = &feature {
+            if role.feature_name.as_deref() == Some(f.as_str()) {
+                return Err(RdsError::client400(
+                    "DBClusterRoleAlreadyExists",
+                    format!("Feature {f} alreday assigned to Cluster {identifier}"),
+                ));
+            }
+        }
+        if role.role_arn == role_arn {
+            return Err(RdsError::client400(
+                "DBClusterRoleAlreadyExists",
+                format!("Role {role_arn} alreday assigned to Cluster {identifier}"),
+            ));
+        }
+    }
+    st.clusters
+        .get_mut(&lower)
+        .unwrap()
+        .associated_roles
+        .push(AssociatedRole {
+            role_arn,
+            feature_name: feature,
+        });
+    Ok(None)
+}
+
+fn remove_role_from_db_cluster_op(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.clusters.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    let role_arn = p_string(p, "RoleArn").unwrap_or_default();
+    let cluster = st.clusters.get_mut(&lower).unwrap();
+    if let Some(feature) = p_string(p, "FeatureName") {
+        cluster
+            .associated_roles
+            .retain(|r| !(r.role_arn == role_arn && r.feature_name.as_deref() == Some(feature.as_str())));
+    } else {
+        cluster.associated_roles.retain(|r| r.role_arn != role_arn);
+    }
+    Ok(None)
+}
+
 // __APPEND_MARKER__
 
 
 // Read replicas + remaining instance ops -------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Cluster endpoints + cluster roles ------------------------------------------
 
 
 
