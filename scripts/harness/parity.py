@@ -268,8 +268,16 @@ def run_suite(suite_name, endpoint, out_xml):
 
 
 def classify(py_res, rust_res):
-    """4-way classification. Returns dict with counts + failing test lists."""
-    names = set(py_res) | set(rust_res)
+    """4-way classification with counts + failing test lists.
+
+    Trust rule: when a run is truncated (suite timeout / collection crash),
+    the two sides see different test sets, which cannot be compared honestly;
+    the caller then omits the fidelity figure instead of publishing fiction.
+    """
+    py_names = set(py_res)
+    rust_names = set(rust_res)
+    names = py_names | rust_names
+    truncated = bool(py_names and rust_names and py_names != rust_names)
     both_pass = [n for n in names if py_res.get(n) == "pass" and rust_res.get(n) == "pass"]
     rust_gap = [n for n in names if py_res.get(n) == "pass" and rust_res.get(n) == "fail"]  # fidelity loss
     py_only_fail = [n for n in names if py_res.get(n) == "fail" and rust_res.get(n) != "pass"]  # env issue
@@ -283,6 +291,7 @@ def classify(py_res, rust_res):
         "skipped": len(skipped),
         "total": len(names),
         "rust_gap_tests": sorted(rust_gap),
+        "truncated": truncated,
     }
 
 
@@ -309,7 +318,12 @@ def run_all(services, state_dir):
         c = classify(py_res, rust_res)
         py_pass = sum(1 for v in py_res.values() if v == "pass")
         rust_pass = sum(1 for v in rust_res.values() if v == "pass")
-        fidelity = round(100.0 * rust_pass / py_pass, 1) if py_pass else None
+        if c["truncated"]:
+            # Test sets differ between runs — a fidelity% would be fiction.
+            fidelity = None
+            log(f"[WARN] {svc}: truncated run (py={len(py_res)} vs rust={len(rust_res)} tests); fidelity omitted")
+        else:
+            fidelity = round(100.0 * rust_pass / py_pass, 1) if py_pass else None
         report["services"][svc] = {
             "status": "ok",
             "crate": "native" if svc in NATIVE else "bridge",
