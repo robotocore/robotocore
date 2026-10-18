@@ -6,6 +6,10 @@
 //!
 //! Ported:
 //! - batch (moto-equivalent, docker-free)
+//! - backup (moto-equivalent rest-json)
+//! - eks (moto-equivalent rest-json)
+//!
+//! Still moto-backed via the sidecar (no module): athena, glue, emr.
 
 mod backup;
 mod batch;
