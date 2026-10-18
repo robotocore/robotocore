@@ -332,8 +332,8 @@ static FAMILIES: &[&Family] = &[
         delete = "DeleteAlgorithm",
         missing = "Could not find algorithm {name}",
         pass = &["AlgorithmDescription", "TrainingSpecification", "InferenceSpecification", "CertifyForMarketplace"],
-        defaults = &[],
-        status = "",
+        defaults = &[( "AlgorithmStatus", Dv::Str("Completed"))],
+        status = "Completed",
     ),
     &fam!("labeling-job", "LabelingJobName", "LabelingJobName", "LabelingJobArn", "labeling-job",
         create = "CreateLabelingJob",
@@ -682,8 +682,6 @@ const RESOURCE_NOT_FOUND_KINDS: &[&str] = &[
     "model-explainability-job-definition",
     "model-quality-job-definition",
     "hyper-parameter-tuning-job",
-    "edge-packaging-job",
-    "optimization-job",
 ];
 
 fn family_of(kind_key: &str) -> &'static Family {
@@ -884,11 +882,28 @@ impl SagemakerState {
             | "StartEdgeDeploymentStage" | "StopEdgeDeploymentStage"
             | "StartEdgeDeploymentPlan" | "StopEdgePackagingJob"
             | "StartMonitoringSchedule" | "StopMonitoringSchedule"
-            | "UpdateMonitoringAlert" | "DeleteModelPackageGroupPolicy"
+            | "DeleteModelPackageGroupPolicy"
             | "StopProcessingJob" | "StopTrainingJob" | "StopTransformJob"
             | "StopCompilationJob" | "StopHyperParameterTuningJob"
             | "StopLabelingJob" | "StopOptimizationJob"
-            | "StopInferenceRecommendationsJob" | "StopAutoMLJob" => return empty(),
+            | "StopInferenceRecommendationsJob" => return empty(),
+            "StopAutoMLJob" => {
+                let name = get(params, "AutoMLJobName").and_then(Value::as_str).unwrap_or_default();
+                if self
+                    .get_arn_by_kind_name("auto-ml-job", name)
+                    .is_none()
+                    && self.get_arn_by_kind_name("auto-ml-job-v2", name).is_none()
+                {
+                    return Response::json_status(
+                        400,
+                        &json!({
+                            "__type": "ResourceNotFound",
+                            "message": format!("Could not find AutoML job {name}")
+                        }),
+                    );
+                }
+                return empty();
+            }
             "ListCandidatesForAutoMLJob" => {
                 return ok(json!({"Candidates": []}))
             }
@@ -1003,12 +1018,30 @@ impl SagemakerState {
             "ListPipelineVersions" => return ok(json!({"PipelineVersionSummaries": []})),
             "ListModelCardVersions" => {
                 let name = get(params, "ModelCardName").and_then(Value::as_str).unwrap_or_default();
-                if self.get_arn_by_kind_name("model-card", name).is_none() {
-                    return resource_not_found_plain(&format!(
-                        "Modelcard {name} does not exist"
-                    ));
+                match self.get_arn_by_kind_name("model-card", name) {
+                    None => {
+                        return resource_not_found_plain(&format!(
+                            "Modelcard {name} does not exist"
+                        ));
+                    }
+                    Some(arn) => {
+                        let created = self
+                            .resources
+                            .get(&SagemakerState::key("model-card", name))
+                            .map(|e| e.created)
+                            .unwrap_or(1704067200.0);
+                        return ok(json!({
+                            "ModelCardVersionSummaryList": [{
+                                "ModelCardName": name,
+                                "ModelCardArn": arn,
+                                "ModelCardVersion": 1,
+                                "ModelCardStatus": "Draft",
+                                "CreationTime": created,
+                            }],
+                            "NextToken": null
+                        }));
+                    }
                 }
-                return ok(json!({"ModelCardVersionSummaries": []}));
             }
             "ListModelCardExportJobs" => {
                 return ok(json!({"ModelCardExportJobSummaries": []}))
@@ -1040,8 +1073,7 @@ impl SagemakerState {
             "DescribeComputeQuota" => {
                 return ok(json!({"ComputeQuotaId": "cq-00000000", "Status": "Completed"}))
             }
-            "DeleteInferenceExperiment" | "DeletePartnerApp" | "DeleteWorkteam"
-            | "DeleteWorkforce" => return empty(),
+            "DeletePartnerApp" | "DeleteWorkteam" | "DeleteWorkforce" => return empty(),
             "StartInferenceExperiment" => {
                 let name = get(params, "Name").and_then(Value::as_str).unwrap_or_default();
                 let Some(e) = self
@@ -1092,7 +1124,15 @@ impl SagemakerState {
                 return ok(json!({"LineageGroupArn": null, "ResourcePolicy": "{}"}))
             }
             "GetDeviceFleetReport" => {
-                return ok(json!({"DeviceFleetArn": null, "DeviceFleetName": get(params, "DeviceFleetName"), "OutputConfig": {}}))
+                let name = get(params, "DeviceFleetName").and_then(Value::as_str).unwrap_or_default();
+                let arn = self
+                    .get_arn_by_kind_name("device-fleet", name)
+                    .unwrap_or_else(|| format!(
+                        "arn:aws:sagemaker:{r}:{a}:device-fleet/{name}",
+                        r = self.region(),
+                        a = self.account
+                    ));
+                return ok(json!({"DeviceFleetArn": arn, "DeviceFleetName": get(params, "DeviceFleetName"), "OutputConfig": {}}));
             }
             "DescribeDevice" => {
                 let name = get(params, "DeviceName").cloned().unwrap_or(json!("d"));
@@ -1500,13 +1540,7 @@ impl SagemakerState {
                         .as_str()
                         .unwrap_or(""));
                 }
-                if matches!(
-                    f.kind,
-                    "hub" | "monitoring-schedule" | "inference-experiment"
-                        | "model-explainability-job-definition"
-                        | "model-quality-job-definition"
-                        | "data-quality-job-definition"
-                ) {
+                if matches!(f.kind, "hub" | "monitoring-schedule") {
                     let synthetic_arn = format!(
                         "arn:aws:sagemaker:{r}:{a}:{path}/{name}",
                         r = self.region(),
@@ -1808,6 +1842,18 @@ impl SagemakerState {
             a = self.account,
             uuid = Uuid::new_v4()
         );
+        self.resources.insert(
+            SagemakerState::key("pipeline-execution", &arn),
+            Entry {
+                kind: "pipeline-execution",
+                name: arn.clone(),
+                arn: arn.clone(),
+                created: now_ts(),
+                modified: None,
+                status: Some("Executing"),
+                props: json!({"PipelineName": name}),
+            },
+        );
         ok(json!({"PipelineExecutionArn": arn}))
     }
 }
@@ -1882,6 +1928,18 @@ impl SagemakerState {
         }
         if op == "StartMlflowTrackingServer" || op == "StopMlflowTrackingServer" {
             return Some(ok(json!({"TrackingServerArn": "_arn"})));
+        }
+        if op == "UpdateMonitoringAlert" {
+            let name = get(params, "MonitoringScheduleName").and_then(Value::as_str).unwrap_or_default();
+            let arn = self
+                .get_arn_by_kind_name("monitoring-schedule", name)
+                .unwrap_or_else(|| format!(
+                    "arn:aws:sagemaker:{r}:{a}:monitoring-schedule/{n}",
+                    r = self.region(),
+                    a = self.account,
+                    n = name
+                ));
+            return Some(ok(json!({"MonitoringScheduleArn": arn})));
         }
         if op == "StopPipelineExecution" {
             return Some(ok(json!({"PipelineExecutionArn": "_arn"})));
@@ -2039,7 +2097,7 @@ impl SagemakerState {
                 // moto hurls the ARN embedded in quotes and a trailing period
                 return Some(validation(&format!("Could not find endpoint \"{arn}\".")));
             }
-            return Some(empty());
+            return Some(ok(json!({"EndpointArn": arn})));
         }
         if op == "CreatePartnerApp" {
             let name = get(params, "Name").and_then(Value::as_str).unwrap_or_default();
