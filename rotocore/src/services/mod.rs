@@ -6,6 +6,7 @@
 
 use crate::{Request, Response};
 
+pub mod inspector2;
 pub mod macie2;
 pub mod securityhub;
 
@@ -16,6 +17,7 @@ pub mod securityhub;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
+        "inspector2" => Some(inspector2::dispatch(req)),
         "macie2" => Some(macie2::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         _ => None,
