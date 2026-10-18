@@ -348,7 +348,6 @@ fn resolve_rest_op_from_spec(
                             continue;
                         }
                     }
-                    let c = spec_rest.as_bytes()[i] as char;
                     // Escape regex special chars
                     i += 1;
                 }
@@ -404,7 +403,7 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
             let m = method;
             if rest == "functions" || rest.starts_with("functions/") {
                 let after = if rest.starts_with("functions/") {
-                    &rest["functions/".len()..]
+                    rest.strip_prefix("functions/").unwrap_or("")
                 } else {
                     ""
                 };
@@ -446,8 +445,7 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
                     else if m == "PUT" { Some("UploadFunction") }
                     else { None }
                 }
-            } else if rest.starts_with("aliases/") {
-                let after = &rest["aliases/".len()..];
+            } else if let Some(after) = rest.strip_prefix("aliases/") {
                 if after.is_empty() {
                     None
                 } else if after.contains('/') {
@@ -469,8 +467,7 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
                     else if m == "DELETE" { Some("DeleteAlias") }
                     else { None }
                 }
-            } else if rest.starts_with("layers/") {
-                let after = &rest["layers/".len()..];
+            } else if let Some(after) = rest.strip_prefix("layers/") {
                 if after.contains("/versions") {
                     if m == "POST" { Some("PublishLayerVersion") }
                     else if m == "GET" && after.contains("/versions/") {

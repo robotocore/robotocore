@@ -119,7 +119,7 @@ fn handle_get_access_key_info(
 fn handle_get_session_token(
     req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    let account = req.account;
+    let _account = req.account;
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetSessionTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -255,7 +255,7 @@ fn handle_assume_root(
 fn handle_get_delegated_access_token(
     req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    let account = req.account;
+    let _account = req.account;
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetDelegatedAccessTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -326,9 +326,8 @@ fn handle_decode_aws_account_id(
 
 /// GetAccessKeyLastUsed operation.
 fn handle_get_access_key_last_used(
-    req: &ParsedRequest,
+    _req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    let account = req.account;
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetAccessKeyLastUsedResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
