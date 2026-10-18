@@ -1,3 +1,7 @@
+        // Preserve the request path + query: rest-json services are bound by
+        // path in moto's URL maps (X-Amz-Target JSON services bind "/"), so
+        // forwarding must mirror the in-process moto bridge, which dispatches
+        // on the original URI.
 //! Moto bridge proxy - forwards non-native service requests to the Python sidecar.
 //!
 //! The Rust server handles native services (our crates) directly.
@@ -44,9 +48,6 @@ impl MotoProxy {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        // Preserve the original path and query: moto handlers route on the
-        // URL shape (rest-json/rest-xml services live at their REST paths,
-        // e.g. POST /restapis for API Gateway; a bare "/" would 501).
         // Preserve the request path + query: rest-json services are bound by
         // path in moto's URL maps (X-Amz-Target JSON services bind "/"), so
         // forwarding must mirror the in-process moto bridge, which dispatches
@@ -56,11 +57,6 @@ impl MotoProxy {
             url.push('?');
             url.push_str(&req.query_string);
         }
-        // Forward the original path + query: REST-JSON services (appmesh,
-        // amp, appsync, greengrass, ...) route on the request URI inside moto,
-        // so posting to "/" would 501 every resource-path call. The original
-        // path is what the moto sidecar's werkzeug routing table matches on.
-        let url = format!("{}{}?{}", self.base_url, req.path, req.query_string);
 
         // Build the proxy request
         let mut proxy_req = self
@@ -91,6 +87,14 @@ impl MotoProxy {
 
         // Send the request
         let resp = proxy_req.send().await?;
+        if url.contains("automated-reasoning-policies") {
+            tracing::info!(
+                "moto-proxy forward: {} {} {}",
+                req.method,
+                url,
+                req.query_string
+            );
+        }
 
         let status = resp.status();
         let headers_map = resp.headers().clone();
@@ -119,11 +123,22 @@ impl MotoProxy {
         }
 
         // Check if it's JSON or raw
-        let content_type = headers
+        let _content_type = headers
             .get("content-type")
             .map(|s| s.as_str())
             .unwrap_or("application/json");
 
+        // Byte-faithful passthrough: moto responses carry exact formatting
+        // (pretty-printed JSON the suites byte-compare) and JSON protocol
+        // clients parse the body themselves, so never re-serialize here.
+        Ok(ParsedResponse {
+            status,
+            headers,
+            body: serde_json::Value::Null,
+            raw: None,
+            raw_bytes: Some(body_bytes.to_vec()),
+        })
+        /*
         if content_type.contains("json") {
             match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
                 Ok(body) => Ok(ParsedResponse {
@@ -153,6 +168,7 @@ impl MotoProxy {
                 raw_bytes: Some(body_bytes.to_vec()),
             })
         }
+        */
     }
 
     /// GET a config record from the sidecar (JSON), for the apigateway executor.

@@ -40,6 +40,61 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 logger = logging.getLogger("moto_sidecar")
 
 
+def _codepipeline_mirror_role(params: dict, account_id: str, region: str):
+    """Mirror a rust-lane IAM role into the moto IAM backend before
+    CreatePipeline dispatches. Moto's codepipeline validates the trust
+    policy with `iam_backend.get_role_by_arn`, which needs the role in the
+    moto-local IAM store; on the rust lane that store is the native IAM
+    crate, so fetch it from there and register it."""
+    import json as _json
+
+    pipeline = params.get("PipelineDefinitionBody") or params.get("pipeline") or {}
+    if isinstance(pipeline, str):
+        try:
+            pipeline = _json.loads(pipeline)
+        except (ValueError, TypeError):
+            pipeline = {}
+    role_arn = pipeline.get("roleArn", "")
+    if not role_arn.startswith("arn:"):
+        return
+    parts = role_arn.split(":role/", 1)
+    if len(parts) != 2:
+        return
+    role_name = parts[1].split("/", 1)[0]
+    # The validating iam_backend is the codepipeline backend's .iam_backend
+    # ([account][partition]); IAM itself is a global service, so fetch a
+    # backend from *that same instance* rather than _moto_backend("iam", ...),
+    # whose region key auto-creates a separate store.
+    cp_backend = _moto_backend("codepipeline", account_id, region)
+    if cp_backend is None:
+        return
+    backend = cp_backend.iam_backend
+    try:
+        if backend.get_role_by_arn(role_arn) is not None:
+            return
+    except Exception:
+        # NoSuchEntity = role not in moto's IAM store yet — mirror it below.
+        pass
+    iam = _boto("iam", account_id, region)
+    resp = iam.get_role(RoleName=role_name)
+    role = resp["Role"]
+    assume = role.get("AssumeRolePolicyDocument", {})
+    trust = assume if isinstance(assume, str) else _json.dumps(assume or {})
+    backend.create_role(
+        role_name=role_name,
+        assume_role_policy_document=trust,
+        path=role.get("Path", "/"),
+        permissions_boundary=role.get("PermissionsBoundary"),
+        description=role.get("Description", ""),
+        tags=[
+            {"Key": t["Key"], "Value": t["Value"]}
+            for t in role.get("Tags", [])
+        ],
+        max_session_duration=role.get("MaxSessionDuration"),
+    )
+    logger.warning("codepipeline mirror: registered %s into moto IAM", role_name)
+
+
 def _error_response(service_name: str, error_code: str, message: str, status_code: int):
     """Protocol-aware error response, mirroring the Python gateway's moto path.
 
@@ -695,6 +750,12 @@ def _cfn_post_process(service, action, params, resp_body, backend, account_id, r
 
 
 class WerkzeugRawBodyRequest(WerkzeugRequest):
+    # Class module carries the werkzeug marker: moto gates its RAW_URI-based
+    # raw_path handling on '"werkzeug" in str(type(request))', so subclass
+    # names living outside the werkzeug package disable it and moto would
+    # re-decode the path (breaking ARN converters).
+    __module__ = "werkzeug.routed_sidecar"
+
     """Werkzeug request that preserves a raw body for Moto.
 
     Moto reads `request.body` (boto-style) and also `request.form`
@@ -943,7 +1004,11 @@ async def moto_handler(request: Request) -> Response:
         except (IndexError, AttributeError):
             pass
 
-    # Build the full URL
+    # Build the full URL. Keep the DECODED path here: moto's handler code
+    # splits self.path on "/" (e.g. jobIdentifier = path.split("/")[-1]) and
+    # its raw_path-based _get_action already reads the encoded RAW_URI from
+    # the environ for regex matching. The py gateway behaves the same way
+    # (starlette url.path feeds full_url).
     full_url = str(request.url)
 
     # Find the Moto backend and dispatcher
@@ -957,9 +1022,20 @@ async def moto_handler(request: Request) -> Response:
             501,
         )
 
+    incoming_raw_path_log = request.scope.get("raw_path", b"")
+    if b"evaluation-job" in incoming_raw_path_log:
+        print("RAW_PATH:", incoming_raw_path_log)
     # Build the Werkzeug environ
     method = request.method
-    path = request.url.path
+    # Prefer the raw (percent-encoded) path: Starlette's url.path decodes
+    # %2F to '/', which breaks moto's "[^/]+" route converters for ARN
+    # path params (bedrock policy ARNs, glacier vault names, ...). The
+    # Python gateway forwards raw_path for exactly this reason.
+    raw_path = getattr(request, "scope", {}).get("raw_path", b"")
+    if raw_path:
+        path = raw_path.decode("latin-1").split("?", 1)[0]
+    else:
+        path = request.url.path
     query = str(request.url.query)
 
     headers = dict(request.headers)
@@ -989,6 +1065,18 @@ async def moto_handler(request: Request) -> Response:
         params[k] = v
     for k, v in parse_qsl(query, keep_blank_values=True):
         params.setdefault(k, v)
+    # JSON-protocol body: flatten top-level keys into params, and expose
+    # the X-Amz-Target suffix as "Action" (CodePipeline etc.).
+    action_from_target = (request.headers.get("x-amz-target") or "").split(".")[-1]
+    if action_from_target and "Action" not in params:
+        params["Action"] = action_from_target
+    try:
+        json_params = json.loads(body) if body else {}
+        if isinstance(json_params, dict):
+            merged = {k: v for k, v in json_params.items() if k != "Action"}
+            params.update({k: v for k, v in merged.items() if k not in params})
+    except (ValueError, TypeError):
+        pass
 
     cfn_backend = None
     if service in ("cloudformation",):
@@ -1032,10 +1120,28 @@ async def moto_handler(request: Request) -> Response:
             except Exception as e:  # noqa: BLE001
                 logger.debug("ec2 detach fill failed: %s", e)
 
+    elif service == "codepipeline":
+        action = params.get("Action", "")
+        if action == "CreatePipeline":
+            try:
+                _codepipeline_mirror_role(params, account_id_from_headers, region)
+            except Exception as e:  # noqa: BLE001
+                logger.debug("codepipeline role mirror failed: %s", e)
+
     # Route to the correct Moto handler
     try:
-        binding = routing_map.bind_to_environ(environ)
-        endpoint, _args = binding.match()
+        # Match on the RAW (percent-encoded) path first: bind_to_environ
+        # reads PATH_INFO, which EnvironBuilder percent-decodes, collapsing
+        # ARN characters into extra '/' and spoiling "[^/]+" converters.
+        raw_path_match = environ.get("REQUEST_URI", "").split("?", 1)[0]
+        endpoint = None
+        try:
+            endpoint, _args = routing_map.bind("localhost").match(raw_path_match)
+        except Exception as _e:
+            import traceback; traceback.print_exc(); endpoint = None
+        if endpoint is None:
+            binding = routing_map.bind_to_environ(environ)
+            endpoint, _args = binding.match()
     except Exception:
         return _error_response(
             service,
