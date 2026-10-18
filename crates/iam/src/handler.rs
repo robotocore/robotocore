@@ -31,7 +31,7 @@ impl IamHandler {
 
     fn get_state(&self, account: u64) -> IamState {
         let mut states = self.state.write();
-        states.entry(account).or_insert_with(IamState::new).clone()
+        states.entry(account).or_default().clone()
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
@@ -2913,7 +2913,7 @@ impl IamHandler {
         let service = if service_part != prefix_part {
             let prefix_cap = prefix_part
                 .split('-')
-                .map(|p| capitalize(p))
+                .map(capitalize)
                 .collect::<String>();
             let base = SERVICE_NAME_CONVERSION.iter()
                 .find(|(s, _)| *s == service_part)
@@ -3329,14 +3329,9 @@ fn string_vec(req: &AwsRequest, key: &str) -> Vec<String> {
     }
     // fall back to explicit keys missing member aggregation
     let mut idx = 1usize;
-    loop {
-        match params.get(&format!("{}.member.{}", key, idx)) {
-            Some(Value::String(s)) => {
-                out.push(s.clone());
-                idx += 1;
-            }
-            _ => break,
-        }
+    while let Some(Value::String(s)) = params.get(&format!("{}.member.{}", key, idx)) {
+        out.push(s.clone());
+        idx += 1;
     }
     out
 }
@@ -3506,6 +3501,10 @@ fn action_matches(doc: &str, action: &str) -> bool {
     false
 }
 
+impl Default for IamHandler {
+    fn default() -> Self { Self::new() }
+}
+
 fn glob_match(pattern: &str, text: &str) -> bool {
     if pattern == "*" {
         return true;
@@ -3553,5 +3552,115 @@ fn collect_keys(v: &Value, keys: &mut Vec<String>) {
             for x in arr { collect_keys(x, keys); }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use serde_json::json;
+
+    fn make_req(operation: &str, params: serde_json::Value) -> AwsRequest {
+        AwsRequest {
+            service: "iam".to_string(),
+            operation: operation.to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+            query: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_create_and_get_user() {
+        let handler = IamHandler::new();
+        handler.handle(make_req("CreateUser", json!({ "UserName": "testuser" })));
+        let resp = handler.handle(make_req("GetUser", json!({ "UserName": "testuser" })));
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.contains("testuser"));
+    }
+
+    #[test]
+    fn test_create_role_with_path_and_max_session() {
+        let handler = IamHandler::new();
+        handler.handle(make_req("CreateRole", json!({
+            "RoleName": "path-role",
+            "AssumeRolePolicyDocument": "{\"Version\":\"2012-10-17\"}",
+            "Path": "/custom/",
+            "MaxSessionDuration": "7200"
+        })));
+        let resp = handler.handle(make_req("GetRole", json!({ "RoleName": "path-role" })));
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.contains("<Path>/custom/</Path>"));
+        assert!(resp.body.contains("<MaxSessionDuration>7200</MaxSessionDuration>"));
+        assert!(resp.body.contains("role/custom/path-role"));
+    }
+
+    #[test]
+    fn test_policy_versions_crud() {
+        let handler = IamHandler::new();
+        let create = handler.handle(make_req("CreatePolicy", json!({
+            "PolicyName": "ver-pol",
+            "PolicyDocument": "{}"
+        })));
+        let arn = create.body.split("<Arn>").nth(1).unwrap().split("<").next().unwrap().to_string();
+        let v2 = handler.handle(make_req("CreatePolicyVersion", json!({
+            "PolicyArn": arn, "PolicyDocument": "{\"a\":1}", "SetAsDefault": "true"
+        })));
+        assert!(v2.body.contains("<VersionId>v2</VersionId>"));
+        let list = handler.handle(make_req("ListPolicyVersions", json!({ "PolicyArn": arn })));
+        assert!(list.body.contains("v1"));
+        assert!(list.body.contains("v2"));
+        assert_eq!(list.body.matches("<member>").count(), 2);
+    }
+
+    #[test]
+    fn test_virtual_mfa_lifecycle() {
+        let handler = IamHandler::new();
+        let create = handler.handle(make_req("CreateVirtualMFADevice", json!({
+            "VirtualMFADeviceName": "vmfa-unit"
+        })));
+        assert!(create.body.contains("Base32StringSeed"));
+        let serial = create.body.split("<SerialNumber>").nth(1).unwrap()
+            .split("<").next().unwrap().to_string();
+        let list = handler.handle(make_req("ListVirtualMFADevices", json!({})));
+        assert!(list.body.contains("vmfa-unit"));
+        handler.handle(make_req("DeleteVirtualMFADevice", json!({ "SerialNumber": serial })));
+        let list2 = handler.handle(make_req("ListVirtualMFADevices", json!({})));
+        assert!(!list2.body.contains("vmfa-unit"));
+        let missing = handler.handle(make_req("DeleteVirtualMFADevice",
+            json!({ "SerialNumber": "arn:aws:iam::123456789012:mfa/nothing" })));
+        assert_eq!(missing.status, 404);
+        assert!(missing.body.contains("NoSuchEntity"));
+    }
+
+    #[test]
+    fn test_oidc_provider_client_ids() {
+        let handler = IamHandler::new();
+        let create = handler.handle(make_req("CreateOpenIDConnectProvider", json!({
+            "Url": "https://unit.example.com",
+            "ThumbprintList": ["a"],
+            "ClientIDList": ["one"]
+        })));
+        let arn = create.body.split("<OpenIDConnectProviderArn>").nth(1).unwrap()
+            .split("<").next().unwrap().to_string();
+        handler.handle(make_req("AddClientIDToOpenIDConnectProvider",
+            json!({ "OpenIDConnectProviderArn": arn, "ClientID": "two" })));
+        let get = handler.handle(make_req("GetOpenIDConnectProvider", json!({
+            "OpenIDConnectProviderArn": arn })));
+        assert!(get.body.contains("<member>one</member>"));
+        assert!(get.body.contains("<member>two</member>"));
+        assert!(get.body.contains("<Url>unit.example.com</Url>"));
+    }
+
+    #[test]
+    fn test_error_codes_and_type_sender() {
+        let handler = IamHandler::new();
+        let resp = handler.handle(make_req("GetUser", json!({ "UserName": "nope" })));
+        assert_eq!(resp.status, 404);
+        assert!(resp.body.contains("<Code>NoSuchEntity</Code>"));
+        assert!(resp.body.contains("<Type>Sender</Type>"));
     }
 }

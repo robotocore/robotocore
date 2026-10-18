@@ -409,7 +409,7 @@ impl IamState {
     }
 
     pub fn create_instance_profile(&self, name: &str) {
-        self.instance_profiles.write().entry(name.to_string()).or_insert_with(Vec::new);
+        self.instance_profiles.write().entry(name.to_string()).or_default();
         self.instance_profile_ids.write().entry(name.to_string())
             .or_insert_with(|| random_id("").chars().take(20).collect());
     }
@@ -435,7 +435,7 @@ impl IamState {
     }
 
     pub fn add_role_to_instance_profile(&self, profile: &str, role: &str) {
-        self.instance_profiles.write().entry(profile.to_string()).or_insert_with(Vec::new).push(role.to_string());
+        self.instance_profiles.write().entry(profile.to_string()).or_default().push(role.to_string());
     }
 
     pub fn remove_role_from_instance_profile(&self, profile: &str, role: &str) {
