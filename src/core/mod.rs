@@ -13,6 +13,7 @@ pub mod introspection;
 pub mod protocol;
 pub mod proxy;
 pub mod server;
+pub mod service_registry;
 pub mod services;
 pub mod signing;
 pub mod spec;

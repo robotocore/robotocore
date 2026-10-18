@@ -14,7 +14,6 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use uuid::Uuid;
 
 use crate::core::account::parse_account_from_key;
@@ -813,16 +812,24 @@ pub async fn catch_all_handler(
     headers: HeaderMap,
     body: axum::body::Body,
 ) -> impl IntoResponse {
+    let req_start = std::time::Instant::now();
+    let req_method = method.as_str().to_string();
+    let req_path = uri.path().to_string();
+
     // Read the body
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
-        Err(_) => return error_response(StatusCode::BAD_REQUEST, "Invalid body"),
+        Err(e) => {
+            audit_out(None, None, &req_method, &req_path, 400, req_start, "", "", Some(format!("Invalid body: {e}")));
+            return error_response(StatusCode::BAD_REQUEST, "Invalid body");
+        }
     };
 
     // Determine service from URI and headers
     let service = match extract_service(&method, &uri, &headers) {
         Ok(s) => s,
         Err(e) => {
+            audit_out(None, None, &req_method, &req_path, 400, req_start, "", "", Some(format!("Could not determine service: {e}")));
             return error_response(
                 StatusCode::BAD_REQUEST,
                 &format!("Could not determine service: {}", e),
@@ -845,6 +852,8 @@ pub async fn catch_all_handler(
     // Extract account from Authorization header or default
     let account = extract_account_from_request(&headers);
     let region = extract_region_from_request(&headers).unwrap_or_else(|| "us-east-1".to_string());
+    let account_id = account.to_string();
+    let region_for_audit = region.clone();
 
     // Parse request parameters based on protocol
     let content_type = headers
@@ -881,43 +890,65 @@ pub async fn catch_all_handler(
 
     // Get service handler
     let handler = state.registry.get(&service);
-    bump_service_requests(&service);
+    crate::core::introspection::bump_requests(&service);
     let handler = match handler {
         Some(h) => h,
         None => {
             // Fall back to Moto proxy for non-native services
             if let Some(proxy) = &state.moto_proxy {
-                if !proxy.is_native(&service) {                    match proxy.forward(&parsed_req).await {
+                if !proxy.is_native(&service) {
+                    match proxy.forward(&parsed_req).await {
                         Ok(resp) => {
-                            crate::core::introspection::record(
-                                &service,
-                                &parsed_req.operation,
+                            audit_out(
+                                Some(&service),
+                                opt_op(&operation),
+                                &req_method,
+                                &req_path,
                                 resp.status.as_u16(),
-                                account,
-                                &parsed_req.region,
+                                req_start,
+                                &account_id,
+                                &region_for_audit,
+                                None,
                             );
                             return response_from_parsed(resp, &service, &parsed_req.operation);
                         }
                         Err(e) => {
-                            return error_response(
-                                StatusCode::SERVICE_UNAVAILABLE,
-                                &format!("Moto proxy failed: {}", e),
-                            )
+                            let msg = format!("Moto proxy failed: {}", e);
+                            audit_out(
+                                Some(&service),
+                                opt_op(&operation),
+                                &req_method,
+                                &req_path,
+                                503,
+                                req_start,
+                                &account_id,
+                                &region_for_audit,
+                                Some(msg.clone()),
+                            );
+                            return error_response(StatusCode::SERVICE_UNAVAILABLE, &msg);
                         }
                     }
                 }
             }
-            return error_response(
-                StatusCode::NOT_IMPLEMENTED,
-                &format!("Service {} not implemented", service),
-            )
+            let msg = format!("Service {} not implemented", service);
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                501,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(msg.clone()),
+            );
+            return error_response(StatusCode::NOT_IMPLEMENTED, &msg);
         }
     };
 
     // Handle request with a timeout to catch runaway tasks
     let handler = handler.clone();
     let parsed_req = Arc::new(parsed_req);
-    let parsed_req_for_log = Arc::clone(&parsed_req);
     let service = service.clone();
     let timeout_secs: u64 = 30;
 
@@ -935,19 +966,61 @@ pub async fn catch_all_handler(
 
     match result {
         Ok(Ok(Ok((resp, op)))) => {
-            crate::core::introspection::record(&service, &op, resp.status.as_u16(), account, &parsed_req_for_log.region);
+            audit_out(
+                Some(&service),
+                opt_op(&op),
+                &req_method,
+                &req_path,
+                resp.status.as_u16(),
+                req_start,
+                &account_id,
+                &region_for_audit,
+                None,
+            );
             response_from_parsed(resp, &service, &op)
         }
         Ok(Ok(Err(e))) => {
-            crate::core::introspection::record(&service, &operation, 500, account, &parsed_req_for_log.region);
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                500,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(e.clone()),
+            );
             error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
         }
-        Ok(Err(e)) => error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("Handler task failed: {}", e),
-        ),
+        Ok(Err(e)) => {
+            let msg = format!("Handler task failed: {}", e);
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                500,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(msg.clone()),
+            );
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &msg)
+        }
         Err(_) => {
             tracing::warn!("Request timed out after {}s: {} {}", timeout_secs, method, uri);
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                504,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(format!("Request timed out after {timeout_secs}s")),
+            );
             error_response(
                 StatusCode::GATEWAY_TIMEOUT,
                 "Request timed out",
@@ -956,12 +1029,44 @@ pub async fn catch_all_handler(
     }
 }
 
+/// Build an audit record for a completed request (Python audit-log shape).
+#[allow(clippy::too_many_arguments)]
+fn audit_out(
+    service: Option<&str>,
+    operation: Option<&str>,
+    method: &str,
+    path: &str,
+    status: u16,
+    start: std::time::Instant,
+    account_id: &str,
+    region: &str,
+    error: Option<String>,
+) {
+    crate::core::introspection::record(crate::core::introspection::AuditEntry {
+        timestamp: crate::core::introspection::epoch_now(),
+        service: service.unwrap_or("unknown").to_string(),
+        operation: operation.map(|s| s.to_string()),
+        method: method.to_string(),
+        path: path.to_string(),
+        status_code: status,
+        // ms with µs (3-decimal) precision, as Python's round(ms, 3)
+        duration_ms: (start.elapsed().as_secs_f64() * 1.0e6).round() / 1.0e3,
+        account_id: account_id.to_string(),
+        region: region.to_string(),
+        error,
+    });
+}
+
+fn opt_op(operation: &str) -> Option<&str> {
+    (!operation.is_empty()).then_some(operation)
+}
+
 /// Health check endpoint
 pub async fn health_handler() -> impl IntoResponse {
     let health = json!({
         "status": "running",
         "version": env!("CARGO_PKG_VERSION"),
-        "uptime_seconds": 0.0,
+        "uptime_seconds": crate::core::introspection::uptime_seconds(),
         "services": registry_service_statuses()
     });
 
@@ -975,51 +1080,35 @@ pub const NATIVE_SERVICES: &[&str] = &[
     "ecr", "ecs", "stepfunctions",
 ];
 
-/// Per-service request counters, shared with the audit log.
-pub static SERVICE_REQUESTS: Lazy<std::collections::HashMap<&'static str, AtomicU64>> = Lazy::new(|| {
-    NATIVE_SERVICES
-        .iter()
-        .map(|s| (*s, AtomicU64::new(0)))
-        .collect()
-});
-
-fn bump_service_requests(service: &str) {
-    if let Some(counter) = SERVICE_REQUESTS.get(service) {
-        counter.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-fn service_request_count(service: &str) -> u64 {
-    SERVICE_REQUESTS
-        .get(service)
-        .map(|c| c.load(Ordering::Relaxed))
-        .unwrap_or(0)
-}
-
 fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
+    // Full sorted registry, like the Python health endpoint: every service
+    // reports status/type/request-count. Native handlers answer in-process;
+    // moto-backed services go through the bridge sidecar when one is wired.
     let mut map = serde_json::Map::new();
-    for svc in NATIVE_SERVICES {
+    for (name, stype, _protocol, _description) in crate::core::service_registry::SERVICE_REGISTRY {
         map.insert(
-            svc.to_string(),
+            name.to_string(),
             json!({
                 "status": "running",
-                "type": "native",
-                "requests": service_request_count(svc),
+                "type": stype,
+                "requests": crate::core::introspection::request_count(name),
             }),
         );
     }
     map
 }
 
-/// Runtime families report. The Rust lambda handler executes Python and
-/// shell-based (custom) handlers in-process; other families are not available.
+/// Runtime families report.
+///
+/// Field contract mirrors the Python endpoint (`available` sorted, `all`
+/// equal to _ALL_RUNTIME_FAMILIES). Honesty rule: a family may only appear in
+/// `available` when the Rust lambda handler can actually execute it — keep
+/// this list truthful, not aspirational. Update when executors land in
+/// `crates/lambda`.
 pub async fn runtimes_handler() -> impl IntoResponse {
-    let all = ["python", "nodejs", "java", "ruby", "dotnet", "go", "custom"];
-    let node_paths = ["/usr/bin/node", "/usr/local/bin/node"];
-    let mut available: Vec<String> = vec!["python".into(), "custom".into()];
-    if node_paths.iter().any(|p| std::path::Path::new(p).exists()) {
-        available.push("nodejs".into());
-    }
+    let all = ["custom", "dotnet", "java", "nodejs", "python", "ruby"];
+    let mut available: Vec<&str> = vec!["custom", "python"];
+    available.sort_unstable();
     (
         StatusCode::OK,
         axum::Json(json!({ "available": available, "all": all })),
@@ -1039,19 +1128,27 @@ pub async fn config_handler() -> impl IntoResponse {
 
 /// Audit endpoint: `?limit=N` recent call records.
 pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
-    let mut limit = 100usize;
-    if let Some(q) = uri.query() {
-        for kv in q.split('&') {
-            if let Some((k, v)) = kv.split_once('=') {
-                if k == "limit" {
-                    if let Ok(n) = v.parse::<usize>() {
-                        limit = n.min(1000);
-                    }
-                }
+    // Python: `?limit=N` (int required; anything non-numeric is a 400)
+    let limit = match uri
+        .query()
+        .and_then(|q| {
+            q.split('&').find_map(|kv| {
+                let (k, v) = kv.split_once('=')?;
+                (k == "limit").then_some(v)
+            })
+        }) {
+        Some(v) => match v.parse::<usize>() {
+            Ok(n) => n,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({"error": "limit must be an integer"})),
+                );
             }
-        }
-    }
-    let entries = crate::core::introspection::recent_entries(limit);
+        },
+        None => 100,
+    };
+    let entries = crate::core::introspection::recent_entries(limit, None, None);
     (
         StatusCode::OK,
         axum::Json(json!({
@@ -1062,35 +1159,20 @@ pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
 }
 
 /// Per-service protocol listing: `GET /_robotocore/services`.
+///
+/// Mirrors the Python server: every registry entry with its
+/// native/moto status, protocol, description and enabled flag,
+/// sorted by name (the table is already sorted).
 pub async fn services_handler() -> impl IntoResponse {
-    let protocols: &[(&str, &str)] = &[
-        ("sqs", "query"),
-        ("sns", "query"),
-        ("secretsmanager", "json"),
-        ("kms", "json"),
-        ("ssm", "json"),
-        ("iam", "query"),
-        ("lambda", "rest-json"),
-        ("logs", "json"),
-        ("events", "json"),
-        ("kinesis", "json"),
-        ("firehose", "json"),
-        ("cloudwatch", "query"),
-        ("ecr", "json"),
-        ("ecs", "json"),
-        ("stepfunctions", "json"),
-        ("dynamodb", "json"),
-        ("sts", "query"),
-        ("s3", "rest-xml"),
-    ];
-    let entries: Vec<serde_json::Value> = protocols
+    let entries: Vec<serde_json::Value> = crate::core::service_registry::SERVICE_REGISTRY
         .iter()
-        .map(|(name, protocol)| {
+        .map(|(name, stype, protocol, description)| {
             json!({
                 "name": name,
+                "status": stype,
                 "protocol": protocol,
-                "description": name,
-                "status": "running",
+                "description": description,
+                "enabled": true,
             })
         })
         .collect();
