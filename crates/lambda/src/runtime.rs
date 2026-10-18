@@ -14,6 +14,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
+use std::sync::mpsc;
 
 /// Result of executing a function handler.
 pub struct ExecResult {
@@ -141,15 +142,30 @@ fn missing_runtime_result(msg: &str) -> ExecResult {
     }
 }
 
-/// Read remaining output of a child pipe and close it.
-fn drain(mut pipe: Option<std::process::ChildStdout>) -> String {
+/// Drain a spawned child pipe on a dedicated thread, returning a channel the
+/// caller can wait on with a deadline. Reading blocks until EOF, which never
+/// arrives while a grandchild inherited the pipe, so the caller must bound
+/// how long it waits and abandon the thread (and its text) on timeout.
+fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Receiver<String> {
     use std::io::Read;
-    if let Some(p) = pipe.take() {
-        let mut buf = String::new();
-        let _ = std::io::BufReader::new(p).read_to_string(&mut buf);
-        return buf;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut p) = pipe {
+            let _ = p.read_to_end(&mut buf);
+        }
+        let _ = tx.send(String::from_utf8_lossy(&buf).into_owned());
+    });
+    rx
+}
+
+/// Take the drained text, bounded by the absolute `deadline`; on timeout
+/// abandon the drain thread and return nothing.
+fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Instant) -> String {
+    match rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())) {
+        Ok(s) => s,
+        Err(_) => String::new(),
     }
-    String::new()
 }
 
 /// Execute a Python Lambda handler in a subprocess shim.
@@ -261,24 +277,21 @@ pub fn execute_python(
         }
     }
 
-    // The child died or finished — drain pipes fully now (process gone, EOF immediate).
-    let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
-        (Some(so), Some(mut se)) => {
-            let s = drain(Some(so));
-            use std::io::Read;
-            let mut buf = String::new();
-            let _ = se.read_to_string(&mut buf);
-            (s, buf)
-        }
-        (Some(so), None) => (drain(Some(so)), String::new()),
-        (None, Some(mut se)) => {
-            use std::io::Read;
-            let mut buf = String::new();
-            let _ = se.read_to_string(&mut buf);
-            (String::new(), buf)
-        }
-        (None, None) => (String::new(), String::new()),
+    // The child died or finished — drain pipes on threads bounded by the
+    // timeout budget. A grandchild inheriting the pipes keeps them open past
+    // the child's exit, so a direct read here would block forever; on
+    // deadline the drained text is abandoned alongside the drain thread.
+    let stdout_rx = drain_thread(child.stdout.take());
+    let stderr_rx = drain_thread(child.stderr.take());
+    // Both streams share one absolute deadline.
+    let drain_deadline = if timed_out {
+        // The function timeout already elapsed; allow a short grace only.
+        std::time::Instant::now() + std::time::Duration::from_secs(1)
+    } else {
+        deadline
     };
+    let stdout = collect_by(&stdout_rx, drain_deadline);
+    let stderr = collect_by(&stderr_rx, drain_deadline);
 
     let result_raw = fs::read_to_string(work.join("result.json")).unwrap_or_default();
     cleanup(&work);
@@ -399,6 +412,38 @@ mod tests {
             serde_json::from_str::<Value>(&res.payload).unwrap()["ok"],
             json!(42)
         );
+    }
+
+    #[test]
+    fn test_grandchild_holding_pipes_does_not_block() {
+        // A grandchild that inherits stdout/stderr keeps the pipes open past
+        // the handler process's exit; result delivery must stay bounded.
+        let code = "import subprocess, sys\ndef handler(e, c):\n    subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n    return 'spawned'\n";
+        let zip = make_zip(code);
+        let started = std::time::Instant::now();
+        let res = execute_python(
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "test-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
+            &HashMap::new(),
+            1,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        // The shim's own timeout budget is timeout_secs + 5; previously this
+        // scenario blocked until the grandchild (30s sleep) exited.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "invocation blocked on grandchild-inherited pipes for {:?}",
+            started.elapsed()
+        );
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        assert_eq!(res.payload, json!("spawned").to_string());
     }
 
     #[test]
