@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use crate::proto::parse_json_body;
-use crate::store::{self, ScopeKey};
+use crate::store;
 use crate::{Request, Response};
 use serde_json::{json, Value};
 
@@ -28,7 +28,6 @@ pub struct BlockchainState {
 struct Network {
     id: String,
     name: String,
-    description: Option<String>,
     edition: String,
     voting_policy: Value,
 }
@@ -147,14 +146,6 @@ fn ok_json(value: &Value) -> Response {
         200,
         "application/json",
         serde_json::to_vec(value).unwrap_or_default(),
-    )
-}
-
-fn ok_json_body(value: Value) -> Response {
-    Response::new(
-        200,
-        "application/json",
-        serde_json::to_vec(&value).unwrap_or_default(),
     )
 }
 
@@ -598,10 +589,6 @@ fn create_network(scope: &mut BlockchainState, body: &Value) -> Result<Response,
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string(),
-        description: body
-            .get("Description")
-            .and_then(|v| v.as_str())
-            .map(String::from),
         edition,
         voting_policy: body.get("VotingPolicy").cloned().unwrap_or(json!({})),
     });
@@ -1053,7 +1040,7 @@ fn vote_on_proposal(
         .map(|m| m.name.clone())
         .unwrap_or_default();
 
-    let mut approved = false;
+    let mut approved;
     {
         let proposals = scope.proposals.iter_mut().filter(|p| p.id == pid);
         for p in proposals {
