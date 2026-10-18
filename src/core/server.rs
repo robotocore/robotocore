@@ -1585,8 +1585,16 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("Authorization", "AWS4-HMAC-SHA256 Credential=123456789012/20230101/us-east-1/sts/aws4_request, SignedHeaders=host;x-amz-date, Signature=xyz".parse().unwrap());
 
-        let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
+        let account = extract_account_from_request(&headers, "");
         assert_eq!(account, 123456789012);
+    }
+
+    #[test]
+    fn test_extract_account_from_presigned_query() {
+        // X-Amz-Credential in the query string routes to that account too
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(&headers, "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=222222222222%2F20260101%2Fus-east-1%2Fs3%2Faws4_request");
+        assert_eq!(account, 222222222222);
     }
 
     #[test]
