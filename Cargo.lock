@@ -1116,6 +1116,7 @@ dependencies = [
  "chrono",
  "http",
  "parking_lot",
+ "s3",
  "serde",
  "serde_json",
  "sha2",

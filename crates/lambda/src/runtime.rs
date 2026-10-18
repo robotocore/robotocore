@@ -11,7 +11,6 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
 use std::sync::mpsc;
@@ -162,7 +161,6 @@ const OUTPUT_CAP: usize = 128 * 1024;
 /// arrives while a grandchild inherited the pipe, so the caller must bound
 /// how long it waits and abandon the thread (and its text) on timeout.
 fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Receiver<String> {
-    use std::io::Read;
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut kept: Vec<u8> = Vec::new();
@@ -189,10 +187,7 @@ fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Rec
 /// Take the drained text, bounded by the absolute `deadline`; on timeout
 /// abandon the drain thread and return nothing.
 fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Instant) -> String {
-    match rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())) {
-        Ok(s) => s,
-        Err(_) => String::new(),
-    }
+    rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())).unwrap_or_default()
 }
 
 /// Execute a Python Lambda handler in a subprocess shim.
