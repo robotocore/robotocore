@@ -7,12 +7,14 @@
 use crate::{Request, Response};
 
 // Pending ports (stubs live in their modules but are not yet wired):
-// - acm (stub)
 // - ec2 (stub)
 // - cloudformation (stub)
 
+mod acm;
+
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        "acm" => Some(acm::dispatch(req)),
+        _ => None,
+    }
 }
