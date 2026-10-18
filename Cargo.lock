@@ -416,6 +416,7 @@ dependencies = [
 name = "dynamodb"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bytes",
  "chrono",
  "http",

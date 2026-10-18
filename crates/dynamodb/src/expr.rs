@@ -435,15 +435,28 @@ fn attr_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
     }
 }
 
-/// The size() of an attribute value.
+/// The size() of an attribute value. B sizes count DECODED bytes;
+/// strings count characters (code points), matching the ground truth twin.
 fn size_of(val: &Value) -> Option<f64> {
     match type_of(val)? {
-        "S" | "B" => val
+        "S" => val
             .as_object()?
             .values()
             .next()
             .and_then(|v| v.as_str())
-            .map(|s| s.len() as f64),
+            .map(|s| s.chars().count() as f64),
+        "B" => val
+            .as_object()?
+            .values()
+            .next()
+            .and_then(|v| v.as_str())
+            .and_then(|s| {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(s)
+                    .ok()
+                    .map(|b| b.len() as f64)
+            }),
         "SS" | "NS" | "BS" => val
             .as_object()?
             .values()
@@ -1978,5 +1991,29 @@ mod tests {
             "123456789012345678901234567891",
             "123456789012345678901234567890"
         ) == Some(std::cmp::Ordering::Greater));
+    }
+
+    #[test]
+    fn test_size_b_counts_decoded_bytes() {
+        // base64 "aGVsbG8=" encodes the 5 bytes of "hello"; the encoded
+        // string itself is 8 characters.
+        let blob = json!({ "B": "aGVsbG8=" });
+        assert_eq!(size_of(&blob), Some(5.0));
+        // Empty payload.
+        assert_eq!(size_of(&json!({ "B": "" })), Some(0.0));
+        // L counts elements, M counts entries, SS counts elements.
+        assert_eq!(size_of(&json!({ "L": [{"S": "a"}, {"S": "b"}] })), Some(2.0));
+        assert_eq!(size_of(&json!({ "M": {"a": {"S": "x"}, "b": {"S": "y"}} })), Some(2.0));
+        assert_eq!(size_of(&json!({ "SS": ["a", "b", "c"] })), Some(3.0));
+        // Strings measure characters, not UTF-8 bytes ("café" is 4 chars).
+        assert_eq!(size_of(&json!({ "S": "café" })), Some(4.0));
+        // size() resolves through the condition evaluator as well.
+        let mut values: Values = HashMap::new();
+        values.insert(":five".to_string(), json!({"N": "5"}));
+        values.insert(":eight".to_string(), json!({"N": "8"}));
+        let it = json!({"pk": {"S": "s"}, "blob": {"B": "aGVsbG8="}});
+        let names = HashMap::new();
+        assert!(eval_condition("size(blob) = :five", &it, &names, &values).unwrap());
+        assert!(!eval_condition("size(blob) = :eight", &it, &names, &values).unwrap());
     }
 }
