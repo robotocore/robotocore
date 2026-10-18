@@ -14,6 +14,7 @@ mod opensearch;
 mod opensearchserverless;
 mod resourcegroupstaggingapi;
 mod route53resolver;
+mod sesv2;
 
 // Pending ports (stubs live in their modules but are not yet wired):
 // - acm (stub)
@@ -31,6 +32,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "route53resolver" => Some(route53resolver::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
+        "sesv2" => Some(sesv2::dispatch(req)),
         _ => None,
     }
 }
