@@ -40,6 +40,61 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 logger = logging.getLogger("moto_sidecar")
 
 
+def _codepipeline_mirror_role(params: dict, account_id: str, region: str):
+    """Mirror a rust-lane IAM role into the moto IAM backend before
+    CreatePipeline dispatches. Moto's codepipeline validates the trust
+    policy with `iam_backend.get_role_by_arn`, which needs the role in the
+    moto-local IAM store; on the rust lane that store is the native IAM
+    crate, so fetch it from there and register it."""
+    import json as _json
+
+    pipeline = params.get("PipelineDefinitionBody") or params.get("pipeline") or {}
+    if isinstance(pipeline, str):
+        try:
+            pipeline = _json.loads(pipeline)
+        except (ValueError, TypeError):
+            pipeline = {}
+    role_arn = pipeline.get("roleArn", "")
+    if not role_arn.startswith("arn:"):
+        return
+    parts = role_arn.split(":role/", 1)
+    if len(parts) != 2:
+        return
+    role_name = parts[1].split("/", 1)[0]
+    # The validating iam_backend is the codepipeline backend's .iam_backend
+    # ([account][partition]); IAM itself is a global service, so fetch a
+    # backend from *that same instance* rather than _moto_backend("iam", ...),
+    # whose region key auto-creates a separate store.
+    cp_backend = _moto_backend("codepipeline", account_id, region)
+    if cp_backend is None:
+        return
+    backend = cp_backend.iam_backend
+    try:
+        if backend.get_role_by_arn(role_arn) is not None:
+            return
+    except Exception:
+        # NoSuchEntity = role not in moto's IAM store yet — mirror it below.
+        pass
+    iam = _boto("iam", account_id, region)
+    resp = iam.get_role(RoleName=role_name)
+    role = resp["Role"]
+    assume = role.get("AssumeRolePolicyDocument", {})
+    trust = assume if isinstance(assume, str) else _json.dumps(assume or {})
+    backend.create_role(
+        role_name=role_name,
+        assume_role_policy_document=trust,
+        path=role.get("Path", "/"),
+        permissions_boundary=role.get("PermissionsBoundary"),
+        description=role.get("Description", ""),
+        tags=[
+            {"Key": t["Key"], "Value": t["Value"]}
+            for t in role.get("Tags", [])
+        ],
+        max_session_duration=role.get("MaxSessionDuration"),
+    )
+    logger.warning("codepipeline mirror: registered %s into moto IAM", role_name)
+
+
 def _error_response(service_name: str, error_code: str, message: str, status_code: int):
     """Protocol-aware error response, mirroring the Python gateway's moto path.
 
@@ -1010,6 +1065,18 @@ async def moto_handler(request: Request) -> Response:
         params[k] = v
     for k, v in parse_qsl(query, keep_blank_values=True):
         params.setdefault(k, v)
+    # JSON-protocol body: flatten top-level keys into params, and expose
+    # the X-Amz-Target suffix as "Action" (CodePipeline etc.).
+    action_from_target = (request.headers.get("x-amz-target") or "").split(".")[-1]
+    if action_from_target and "Action" not in params:
+        params["Action"] = action_from_target
+    try:
+        json_params = json.loads(body) if body else {}
+        if isinstance(json_params, dict):
+            merged = {k: v for k, v in json_params.items() if k != "Action"}
+            params.update({k: v for k, v in merged.items() if k not in params})
+    except (ValueError, TypeError):
+        pass
 
     cfn_backend = None
     if service in ("cloudformation",):
@@ -1052,6 +1119,14 @@ async def moto_handler(request: Request) -> Response:
                 )
             except Exception as e:  # noqa: BLE001
                 logger.debug("ec2 detach fill failed: %s", e)
+
+    elif service == "codepipeline":
+        action = params.get("Action", "")
+        if action == "CreatePipeline":
+            try:
+                _codepipeline_mirror_role(params, account_id_from_headers, region)
+            except Exception as e:  # noqa: BLE001
+                logger.debug("codepipeline role mirror failed: %s", e)
 
     # Route to the correct Moto handler
     try:
