@@ -695,6 +695,12 @@ def _cfn_post_process(service, action, params, resp_body, backend, account_id, r
 
 
 class WerkzeugRawBodyRequest(WerkzeugRequest):
+    # Class module carries the werkzeug marker: moto gates its RAW_URI-based
+    # raw_path handling on '"werkzeug" in str(type(request))', so subclass
+    # names living outside the werkzeug package disable it and moto would
+    # re-decode the path (breaking ARN converters).
+    __module__ = "werkzeug.routed_sidecar"
+
     """Werkzeug request that preserves a raw body for Moto.
 
     Moto reads `request.body` (boto-style) and also `request.form`
@@ -943,18 +949,12 @@ async def moto_handler(request: Request) -> Response:
         except (IndexError, AttributeError):
             pass
 
-    # Build the full URL from the RAW path: full_url feeds moto's
-    # BaseResponse.setup_class → parsed_url → raw_path, and starlette's
-    # url.path would collapse %2F into '/', breaking moto's [^/]+ converters
-    # on ARN-style path params.
-    raw_full_path = request.scope.get("raw_path", b"")
-    if raw_full_path:
-        raw_full_path = raw_full_path.decode("latin-1").split("?", 1)[0]
-    else:
-        raw_full_path = request.url.path
-    full_url = f"http://localhost{raw_full_path}"
-    if str(request.url.query):
-        full_url += f"?{request.url.query}"
+    # Build the full URL. Keep the DECODED path here: moto's handler code
+    # splits self.path on "/" (e.g. jobIdentifier = path.split("/")[-1]) and
+    # its raw_path-based _get_action already reads the encoded RAW_URI from
+    # the environ for regex matching. The py gateway behaves the same way
+    # (starlette url.path feeds full_url).
+    full_url = str(request.url)
 
     # Find the Moto backend and dispatcher
     try:
