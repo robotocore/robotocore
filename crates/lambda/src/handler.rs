@@ -438,7 +438,18 @@ impl LambdaHandler {
             *func.memory_size.write() = m as u32;
         }
         // Deployment package: ZipFile arrives base64-encoded by botocore.
-        let zip = decode_zip(req.params.get("Code").and_then(|c| c.get("ZipFile")));
+        // Without an inline package, fall back to the S3 source (S3Bucket +
+        // S3Key), reading the object straight from the S3 crate's store.
+        let code = req.params.get("Code");
+        let zip = match resolve_code_source(
+            req,
+            decode_zip(code.and_then(|c| c.get("ZipFile"))),
+            code.and_then(|c| c.get("S3Bucket")),
+            code.and_then(|c| c.get("S3Key")),
+        ) {
+            Ok(zip) => zip,
+            Err(resp) => return resp,
+        };
         *func.code_zip.write() = zip.clone();
         *func.code_size.write() = zip.len() as u64;
         *func.code_sha256.write() = sha_b64(&zip);
@@ -592,8 +603,18 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        // UpdateFunctionCode carries ZipFile at the top level of the body.
-        let zip = decode_zip(req.params.get("ZipFile"));
+        // UpdateFunctionCode carries ZipFile at the top level of the body,
+        // or an S3 source (S3Bucket + S3Key) resolved from the S3 store.
+        let zip = match resolve_code_source(
+            req,
+            decode_zip(req.params.get("ZipFile")),
+            req.params.get("S3Bucket"),
+            req.params.get("S3Key"),
+        ) {
+            Ok(zip) => zip,
+            Err(resp) => return resp,
+        };
+
         if !zip.is_empty() {
             *func.code_zip.write() = zip.clone();
             *func.code_size.write() = zip.len() as u64;
@@ -2335,6 +2356,39 @@ fn decode_zip(v: Option<&Value>) -> Vec<u8> {
     }
 }
 
+/// Resolve a deployment package: keep an inline (ZipFile) package as-is and
+/// otherwise read the object content from the S3 crate's store for the
+/// request's (account, region, S3Bucket, S3Key). Mirrors moto: a missing
+/// bucket fails the operation as InvalidParameterValueException; a missing
+/// key in an existing bucket yields empty code.
+fn resolve_code_source(
+    req: &AwsRequest,
+    zip: Vec<u8>,
+    s3_bucket: Option<&Value>,
+    s3_key: Option<&Value>,
+) -> Result<Vec<u8>, AwsResponse> {
+    if !zip.is_empty() {
+        return Ok(zip);
+    }
+    let (Some(bucket), Some(key)) = (
+        s3_bucket.and_then(Value::as_str),
+        s3_key.and_then(Value::as_str),
+    ) else {
+        return Ok(zip);
+    };
+    if bucket.is_empty() || key.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !s3::bridge::bucket_exists(req.account, &req.region, bucket) {
+        return Err(AwsResponse::error(
+            400,
+            "InvalidParameterValueException",
+            "Error occurred while GetObject. S3 Error Code: NoSuchBucket. S3 Error Message: The specified bucket does not exist",
+        ));
+    }
+    Ok(s3::bridge::get_object_body(req.account, &req.region, bucket, key).unwrap_or_default())
+}
+
 fn decode_b64(s: &str) -> Vec<u8> {
     base64::engine::general_purpose::STANDARD
         .decode(s.trim())
@@ -2381,6 +2435,60 @@ mod tests {
             query_string: String::new(),
             headers: std::collections::HashMap::new(),
         }
+    }
+
+    fn make_s3_req(req: s3::AwsRequest) -> s3::AwsResponse {
+        s3::DefaultS3Handler::new().handle(req)
+    }
+
+    #[test]
+    fn test_create_function_from_s3_source() {
+        // Store a package in S3, then create a function whose code points at
+        // it (S3Bucket + S3Key) — the body is read via s3::bridge.
+        let s3_resp = make_s3_req(s3::AwsRequest {
+            service: "s3".to_string(),
+            operation: "CreateBucket".to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some("lam-bridge-bkt".to_string()),
+            key: None,
+            query_params: std::collections::HashMap::new(),
+            headers: std::collections::HashMap::new(),
+            method: "PUT".to_string(),
+            body: Bytes::new(),
+            params: serde_json::Value::Null,
+        });
+        assert_eq!(s3_resp.status, 200, "bucket create failed");
+
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({
+                "FunctionName": "s3-src-fn",
+                "Runtime": "python3.12",
+                "Handler": "lambda_function.handler",
+                "Code": {
+                    "S3Bucket": "lam-bridge-bkt",
+                    "S3Key": "missing-with-bucket-is-ok.zip",
+                }
+            }),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+
+        // Missing bucket is rejected like moto's GetObject failure.
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({
+                "FunctionName": "s3-src-bad",
+                "Runtime": "python3.12",
+                "Handler": "lambda_function.handler",
+                "Code": {"S3Bucket": "lam-no-such-bkt", "S3Key": "k.zip"}
+            }),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(resp.body.contains("NoSuchBucket"), "body: {}", resp.body);
     }
 
     #[test]
