@@ -6,14 +6,13 @@
 //! communication/attachment read paths.
 
 use crate::proto::parse_json_body;
-use crate::store::{self, ScopeKey};
+use crate::store::{self};
 use crate::{Request, Response};
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-static SLOT: Lazy<store::Slot<SupportState>> =
-    Lazy::new(|| store::slot::<SupportState>("support"));
+static SLOT: Lazy<store::Slot<SupportState>> = Lazy::new(|| store::slot::<SupportState>("support"));
 
 static ADVISOR_CHECKS: Lazy<Value> = Lazy::new(|| {
     serde_json::from_slice(include_bytes!("support_checks.json")).expect("advisor checks json")
@@ -92,14 +91,10 @@ pub fn dispatch(req: &Request) -> Response {
                 .collect();
             Response::json_status(200, &json!({"statuses": statuses}))
         }
-        "DescribeServices" => Response::json_status(
-            200,
-            &json!({"services": support_services()}),
-        ),
-        "DescribeSeverityLevels" => Response::json_status(
-            200,
-            &json!({"severityLevels": support_severity_levels()}),
-        ),
+        "DescribeServices" => Response::json_status(200, &json!({"services": support_services()})),
+        "DescribeSeverityLevels" => {
+            Response::json_status(200, &json!({"severityLevels": support_severity_levels()}))
+        }
         "DescribeTrustedAdvisorCheckResult" => {
             let check_id = params.get("checkId").and_then(Value::as_str).unwrap_or("");
             Response::json_status(
@@ -124,15 +119,11 @@ pub fn dispatch(req: &Request) -> Response {
                 .iter()
                 .map(|cid| {
                     let mut e = ta_check_entry(cid);
-                    e.as_object_mut()
-                        .map(|o| o.remove("flaggedResources"));
+                    e.as_object_mut().map(|o| o.remove("flaggedResources"));
                     e
                 })
                 .collect();
-            Response::json_status(
-                200,
-                &json!({"summaries": summaries}),
-            )
+            Response::json_status(200, &json!({"summaries": summaries}))
         }
         "AddCommunicationToCase" => {
             let case_id = params
@@ -176,10 +167,7 @@ pub fn dispatch(req: &Request) -> Response {
             if let Some(extra) = st.communications.get(&case_id) {
                 comms.extend(extra.iter().cloned());
             }
-            Response::json_status(
-                200,
-                &json!({"communications": comms, "nextToken": null}),
-            )
+            Response::json_status(200, &json!({"communications": comms, "nextToken": null}))
         }
         _ => crate::proto::json_error(
             501,
@@ -211,45 +199,45 @@ fn ta_check_entry(check_id: &str) -> Value {
 
 fn support_services() -> Vec<Value> {
     vec![
-    json!({
-        "code": "amazon-dynamodb",
-        "name": "Amazon DynamoDB",
-        "categories": [
-            {"code": "apis", "name": "APIs"},
-            {"code": "other", "name": "Other"},
-        ],
-    }),
-    json!({
-        "code": "amazon-s3",
-        "name": "Amazon Simple Storage Service",
-        "categories": [
-            {"code": "general-guidance", "name": "General Guidance"},
-            {"code": "other", "name": "Other"},
-        ],
-    }),
-    json!({
-        "code": "amazon-ec2",
-        "name": "Amazon Elastic Compute Cloud",
-        "categories": [
-            {"code": "instance-issue", "name": "Instance Issue"},
-            {"code": "other", "name": "Other"},
-        ],
-    }),
-    json!({
-        "code": "amazon-rds",
-        "name": "Amazon Relational Database Service",
-        "categories": [{"code": "other", "name": "Other"}],
-    }),
-    json!({
-        "code": "amazon-sqs",
-        "name": "Amazon Simple Queue Service",
-        "categories": [{"code": "other", "name": "Other"}],
-    }),
-    json!({
-        "code": "general-info",
-        "name": "General Info and Getting Started",
-        "categories": [{"code": "other", "name": "Other"}],
-    })
+        json!({
+            "code": "amazon-dynamodb",
+            "name": "Amazon DynamoDB",
+            "categories": [
+                {"code": "apis", "name": "APIs"},
+                {"code": "other", "name": "Other"},
+            ],
+        }),
+        json!({
+            "code": "amazon-s3",
+            "name": "Amazon Simple Storage Service",
+            "categories": [
+                {"code": "general-guidance", "name": "General Guidance"},
+                {"code": "other", "name": "Other"},
+            ],
+        }),
+        json!({
+            "code": "amazon-ec2",
+            "name": "Amazon Elastic Compute Cloud",
+            "categories": [
+                {"code": "instance-issue", "name": "Instance Issue"},
+                {"code": "other", "name": "Other"},
+            ],
+        }),
+        json!({
+            "code": "amazon-rds",
+            "name": "Amazon Relational Database Service",
+            "categories": [{"code": "other", "name": "Other"}],
+        }),
+        json!({
+            "code": "amazon-sqs",
+            "name": "Amazon Simple Queue Service",
+            "categories": [{"code": "other", "name": "Other"}],
+        }),
+        json!({
+            "code": "general-info",
+            "name": "General Info and Getting Started",
+            "categories": [{"code": "other", "name": "Other"}],
+        }),
     ]
 }
 
@@ -293,7 +281,9 @@ fn next_severity(current: &str) -> String {
 }
 
 fn now_iso() -> String {
-    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6f").to_string()
+    chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.6f")
+        .to_string()
 }
 
 impl SupportState {
@@ -444,7 +434,13 @@ impl SupportState {
         let entry = self.attachment_sets.entry(set_id.clone()).or_default();
         for att in attachments {
             let mut att = att.clone();
-            let att_id = format!("{}-{}", Uid::hex32(), att.get("fileName").and_then(Value::as_str).unwrap_or("file"));
+            let att_id = format!(
+                "{}-{}",
+                Uid::hex32(),
+                att.get("fileName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("file")
+            );
             att["attachmentId"] = json!(att_id);
             self.attachments.insert(att_id.clone(), att.clone());
             entry.push(att);
@@ -481,10 +477,7 @@ impl Uid {
         bytes
             .as_bytes()
             .iter()
-            .map(|b| {
-                "0123456789ABCDEFGHIJKLMabcdefghijklm"
-                    .as_bytes()[(*b % 37) as usize] as char
-            })
+            .map(|b| "0123456789ABCDEFGHIJKLMabcdefghijklm".as_bytes()[(*b % 37) as usize] as char)
             .collect()
     }
 

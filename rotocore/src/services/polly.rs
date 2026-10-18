@@ -142,7 +142,10 @@ fn describe_voices(query: &str) -> Response {
         .map(|v| {
             let mut m = serde_json::Map::new();
             if !v.additional_language_codes.is_empty() {
-                m.insert("AdditionalLanguageCodes".into(), json!(v.additional_language_codes));
+                m.insert(
+                    "AdditionalLanguageCodes".into(),
+                    json!(v.additional_language_codes),
+                );
             }
             m.insert("Gender".into(), json!(v.gender));
             m.insert("Id".into(), json!(v.id));
@@ -214,9 +217,8 @@ impl PollyState {
     }
 
     fn put_lexicon(&mut self, name: &str, body: &[u8]) -> Response {
-        let valid_name = !name.is_empty()
-            && name.len() <= 20
-            && name.chars().all(|c| c.is_ascii_alphanumeric());
+        let valid_name =
+            !name.is_empty() && name.len() <= 20 && name.chars().all(|c| c.is_ascii_alphanumeric());
         if !valid_name {
             return json_error(
                 400,
@@ -270,7 +272,9 @@ fn synthesize_speech(body: &[u8], st: &PollyState) -> Response {
 
     let mut sample_rate: i64 = 22050;
     if let Some(sr) = params.get("SampleRate") {
-        let sr = sr.as_i64().or_else(|| sr.as_str().and_then(|s| s.parse().ok()));
+        let sr = sr
+            .as_i64()
+            .or_else(|| sr.as_str().and_then(|s| s.parse().ok()));
         match sr {
             Some(v) if [8000, 16000, 22050].contains(&v) => sample_rate = v,
             _ => {
@@ -392,7 +396,10 @@ mod tests {
     #[test]
     fn lexicon_lifecycle() {
         let content = r#"<?xml version="1.0" encoding="UTF-8"?><lexicon version="1.0" xmlns="x" alphabet="ipa" xml:lang="en-US"><lexeme><grapheme>W3C</grapheme><alias>WWW</alias></lexeme></lexicon>"#;
-        let body = format!(r#"{{"Content": {}}}"#, serde_json::to_string(content).unwrap());
+        let body = format!(
+            r#"{{"Content": {}}}"#,
+            serde_json::to_string(content).unwrap()
+        );
         let r = dispatch(&req("PUT", "/v1/lexicons/compat01", &body));
         assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
 
@@ -401,13 +408,22 @@ mod tests {
         let body: Value = serde_json::from_slice(&r.body).unwrap();
         assert_eq!(body["Lexicon"]["Name"], "compat01");
         assert!(body["Lexicon"]["Content"].as_str().is_some());
-        assert!(Value::Object(body["LexiconAttributes"].as_object().expect("attrs").clone())["LexiconArn"]
+        assert!(Value::Object(
+            body["LexiconAttributes"]
+                .as_object()
+                .expect("attrs")
+                .clone()
+        )["LexiconArn"]
             .as_str()
             .is_some());
 
         let r = dispatch(&req("GET", "/v1/lexicons", ""));
         let body: Value = serde_json::from_slice(&r.body).unwrap();
-        assert!(body["Lexicons"].as_array().unwrap().iter().any(|l| l["Name"] == "compat01"));
+        assert!(body["Lexicons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["Name"] == "compat01"));
 
         let r = dispatch(&req("DELETE", "/v1/lexicons/compat01", ""));
         assert_eq!(r.status, 200);
@@ -419,13 +435,11 @@ mod tests {
 
     #[test]
     fn synthesize_speech_mp3() {
-        let r = dispatch(
-            &req(
-                "POST",
-                "/v1/speech",
-                r#"{"OutputFormat": "mp3", "Text": "Hello", "VoiceId": "Joanna"}"#,
-            ),
-        );
+        let r = dispatch(&req(
+            "POST",
+            "/v1/speech",
+            r#"{"OutputFormat": "mp3", "Text": "Hello", "VoiceId": "Joanna"}"#,
+        ));
         assert_eq!(r.status, 200);
         assert_eq!(r.headers[0].1, "audio/mpeg");
         assert!(!r.body.is_empty());

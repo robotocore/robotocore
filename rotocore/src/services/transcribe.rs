@@ -171,11 +171,17 @@ fn now_ts() -> f64 {
 }
 
 fn bad_request(message: &str) -> Response {
-    Response::json_status(400, &json!({ "__type": "BadRequestException", "message": message }))
+    Response::json_status(
+        400,
+        &json!({ "__type": "BadRequestException", "message": message }),
+    )
 }
 
 fn conflict(message: &str) -> Response {
-    Response::json_status(400, &json!({ "__type": "ConflictException", "message": message }))
+    Response::json_status(
+        400,
+        &json!({ "__type": "ConflictException", "message": message }),
+    )
 }
 
 fn ok(body: Value) -> Response {
@@ -296,9 +302,8 @@ impl TranscriptionJob {
         job_type: String,
         settings: Option<Value>,
     ) -> Self {
-        let medical_settings = settings.unwrap_or_else(|| {
-            json!({"ChannelIdentification": false, "ShowAlternatives": false})
-        });
+        let medical_settings = settings
+            .unwrap_or_else(|| json!({"ChannelIdentification": false, "ShowAlternatives": false}));
         let mut job = Self::regular(
             name,
             language_code,
@@ -350,13 +355,12 @@ impl TranscriptionJob {
                         .and_then(|uri| uri.rsplit('.').next())
                         .unwrap_or("")
                         .to_lowercase();
-                    self.media_format = Some(
-                        if ["mp3", "mp4", "wav", "flac"].contains(&ext.as_str()) {
+                    self.media_format =
+                        Some(if ["mp3", "mp4", "wav", "flac"].contains(&ext.as_str()) {
                             ext
                         } else {
                             "mp3".to_string()
-                        },
-                    );
+                        });
                 }
                 if self.identify_language == Some(true) {
                     self.identified_language_score = Some(0.999645948);
@@ -401,8 +405,7 @@ impl TranscriptionJob {
                         ),
                     }
                 };
-                self.transcript =
-                    Some(json!({"TranscriptFileUri": format!("{prefix}.json")}));
+                self.transcript = Some(json!({"TranscriptFileUri": format!("{prefix}.json")}));
                 let formats = self
                     .subtitles
                     .get("Formats")
@@ -603,18 +606,26 @@ impl TranscribeState {
         }
         let job = TranscriptionJob::regular(
             name,
-            p.get("LanguageCode").and_then(Value::as_str).map(String::from),
+            p.get("LanguageCode")
+                .and_then(Value::as_str)
+                .map(String::from),
             p.get("MediaSampleRateHertz").cloned(),
-            p.get("MediaFormat").and_then(Value::as_str).map(String::from),
+            p.get("MediaFormat")
+                .and_then(Value::as_str)
+                .map(String::from),
             p.get("Media").cloned().unwrap_or_else(|| json!({})),
-            p.get("OutputBucketName").and_then(Value::as_str).map(String::from),
+            p.get("OutputBucketName")
+                .and_then(Value::as_str)
+                .map(String::from),
             p.get("OutputKey").and_then(Value::as_str).map(String::from),
             settings,
             p.get("JobExecutionSettings").cloned(),
             p.get("IdentifyLanguage").and_then(Value::as_bool),
             p.get("IdentifyMultipleLanguages").and_then(Value::as_bool),
             p.get("LanguageOptions").cloned(),
-            p.get("Subtitles").cloned().unwrap_or_else(|| json!({"Formats": [], "OutputStartIndex": 0})),
+            p.get("Subtitles")
+                .cloned()
+                .unwrap_or_else(|| json!({"Formats": [], "OutputStartIndex": 0})),
         );
         self.transcription_jobs.insert(name.to_string(), job);
         let job = &self.transcription_jobs[name];
@@ -684,10 +695,7 @@ impl TranscribeState {
     // ------------------------------------------------------------------
 
     fn op_start_medical_transcription_job(&mut self, p: &Value) -> Response {
-        let Some(name) = p
-            .get("MedicalTranscriptionJobName")
-            .and_then(Value::as_str)
-        else {
+        let Some(name) = p.get("MedicalTranscriptionJobName").and_then(Value::as_str) else {
             return bad_request("A medical transcription job name is required.");
         };
         if self.medical_transcription_jobs.contains_key(name) {
@@ -706,13 +714,25 @@ impl TranscribeState {
         }
         let job = TranscriptionJob::medical(
             name,
-            p.get("LanguageCode").and_then(Value::as_str).map(String::from),
+            p.get("LanguageCode")
+                .and_then(Value::as_str)
+                .map(String::from),
             p.get("MediaSampleRateHertz").cloned(),
-            p.get("MediaFormat").and_then(Value::as_str).map(String::from),
+            p.get("MediaFormat")
+                .and_then(Value::as_str)
+                .map(String::from),
             p.get("Media").cloned().unwrap_or_else(|| json!({})),
-            p.get("OutputBucketName").and_then(Value::as_str).map(String::from),
-            p.get("Specialty").and_then(Value::as_str).unwrap_or("").to_string(),
-            p.get("Type").and_then(Value::as_str).unwrap_or("").to_string(),
+            p.get("OutputBucketName")
+                .and_then(Value::as_str)
+                .map(String::from),
+            p.get("Specialty")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            p.get("Type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             settings,
         );
         self.medical_transcription_jobs
@@ -788,7 +808,9 @@ impl TranscribeState {
         if !medical {
             if phrases.is_some() == file_uri.is_some() {
                 // exactly one of the two must be provided
-                return bad_request("Either Phrases or VocabularyFileUri field should be provided.");
+                return bad_request(
+                    "Either Phrases or VocabularyFileUri field should be provided.",
+                );
             }
             if let Some(list) = phrases.and_then(Value::as_array) {
                 if list.is_empty() {
@@ -844,7 +866,10 @@ impl TranscribeState {
     }
 
     fn op_get_vocabulary(&mut self, p: &Value) -> Response {
-        let name = p.get("VocabularyName").and_then(Value::as_str).unwrap_or("");
+        let name = p
+            .get("VocabularyName")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let store = if self.vocabularies.contains_key(name) {
             self.vocabularies.get_mut(name)
         } else {
@@ -906,7 +931,10 @@ impl TranscribeState {
     }
 
     fn op_delete_vocabulary(&mut self, p: &Value, medical: bool) -> Response {
-        let name = p.get("VocabularyName").and_then(Value::as_str).unwrap_or("");
+        let name = p
+            .get("VocabularyName")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let removed = if medical {
             self.medical_vocabularies.remove(name)
         } else {
@@ -921,7 +949,10 @@ impl TranscribeState {
     }
 
     fn op_update_medical_vocabulary(&mut self, p: &Value) -> Response {
-        let name = p.get("VocabularyName").and_then(Value::as_str).unwrap_or("");
+        let name = p
+            .get("VocabularyName")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let Some(v) = self.medical_vocabularies.get_mut(name) else {
             return bad_request(
                 "The requested vocabulary couldn't be found. Check the vocabulary name and try your request again.",
@@ -961,8 +992,14 @@ impl TranscribeState {
         self.vocabulary_filters.insert(
             name.to_string(),
             VocabularyFilter {
-                language_code: p.get("LanguageCode").and_then(Value::as_str).map(String::from),
-                file_uri: p.get("VocabularyFilterFileUri").filter(|x| !x.is_null()).cloned(),
+                language_code: p
+                    .get("LanguageCode")
+                    .and_then(Value::as_str)
+                    .map(String::from),
+                file_uri: p
+                    .get("VocabularyFilterFileUri")
+                    .filter(|x| !x.is_null())
+                    .cloned(),
                 data_access_role_arn: p.get("DataAccessRoleArn").filter(|x| !x.is_null()).cloned(),
                 last_modified_time: now_ts(),
             },
@@ -1263,7 +1300,8 @@ impl TranscribeState {
         if self.call_analytics_jobs.contains_key(name) {
             return conflict("The requested job name already exists. Use a different job name.");
         }
-        self.call_analytics_jobs.insert(name.to_string(), SimpleJob::from(p));
+        self.call_analytics_jobs
+            .insert(name.to_string(), SimpleJob::from(p));
         let job = self.call_analytics_jobs[name].clone();
         ok(json!({
             "CallAnalyticsJob": without_nulls(&json!({
@@ -1354,7 +1392,8 @@ impl TranscribeState {
         if self.medical_scribe_jobs.contains_key(name) {
             return conflict("The requested job name already exists. Use a different job name.");
         }
-        self.medical_scribe_jobs.insert(name.to_string(), SimpleJob::from(p));
+        self.medical_scribe_jobs
+            .insert(name.to_string(), SimpleJob::from(p));
         let job = self.medical_scribe_jobs[name].clone();
         ok(json!({
             "MedicalScribeJob": without_nulls(&json!({
@@ -1545,10 +1584,7 @@ impl SimpleJob {
                 .get("Settings")
                 .filter(|x| x.as_object().is_some_and(|o| !o.is_empty()))
                 .cloned(),
-            data_access_role_arn: p
-                .get("DataAccessRoleArn")
-                .filter(|x| !x.is_null())
-                .cloned(),
+            data_access_role_arn: p.get("DataAccessRoleArn").filter(|x| !x.is_null()).cloned(),
             channel_definitions: p
                 .get("ChannelDefinitions")
                 .filter(|x| x.as_array().is_some_and(|a| !a.is_empty()))
@@ -1607,14 +1643,29 @@ mod tests {
         assert_eq!(j["Settings"]["ShowSpeakerLabels"], false);
         assert!(j["CreationTime"].as_f64().is_some());
 
-        let (s, r) = call(acct, "GetTranscriptionJob", json!({"TranscriptionJobName": "j1"}));
+        let (s, r) = call(
+            acct,
+            "GetTranscriptionJob",
+            json!({"TranscriptionJobName": "j1"}),
+        );
         assert_eq!(s, 200);
         assert_eq!(r["TranscriptionJob"]["TranscriptionJobStatus"], "QUEUED");
-        let (s, r) = call(acct, "GetTranscriptionJob", json!({"TranscriptionJobName": "j1"}));
-        assert_eq!(r["TranscriptionJob"]["TranscriptionJobStatus"], "IN_PROGRESS");
+        let (s, r) = call(
+            acct,
+            "GetTranscriptionJob",
+            json!({"TranscriptionJobName": "j1"}),
+        );
+        assert_eq!(
+            r["TranscriptionJob"]["TranscriptionJobStatus"],
+            "IN_PROGRESS"
+        );
         assert_eq!(r["TranscriptionJob"]["MediaSampleRateHertz"], 44100);
         assert_eq!(r["TranscriptionJob"]["MediaFormat"], "wav");
-        let (s, r) = call(acct, "GetTranscriptionJob", json!({"TranscriptionJobName": "j1"}));
+        let (s, r) = call(
+            acct,
+            "GetTranscriptionJob",
+            json!({"TranscriptionJobName": "j1"}),
+        );
         assert_eq!(r["TranscriptionJob"]["TranscriptionJobStatus"], "COMPLETED");
         assert!(r["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
             .as_str()
@@ -1630,10 +1681,18 @@ mod tests {
             .collect();
         assert!(names.contains(&"j1"));
 
-        let (s, r) = call(acct, "DeleteTranscriptionJob", json!({"TranscriptionJobName": "j1"}));
+        let (s, r) = call(
+            acct,
+            "DeleteTranscriptionJob",
+            json!({"TranscriptionJobName": "j1"}),
+        );
         assert_eq!(s, 200);
         assert_eq!(r, json!({}));
-        let (s, _) = call(acct, "GetTranscriptionJob", json!({"TranscriptionJobName": "j1"}));
+        let (s, _) = call(
+            acct,
+            "GetTranscriptionJob",
+            json!({"TranscriptionJobName": "j1"}),
+        );
         assert_eq!(s, 400);
     }
 
@@ -1654,11 +1713,19 @@ mod tests {
         assert_eq!(s, 400);
         assert_eq!(r["__type"], "ConflictException");
 
-        let (s, r) = call(acct, "GetTranscriptionJob", json!({"TranscriptionJobName": "zzz"}));
+        let (s, r) = call(
+            acct,
+            "GetTranscriptionJob",
+            json!({"TranscriptionJobName": "zzz"}),
+        );
         assert_eq!(s, 400);
         assert_eq!(r["__type"], "BadRequestException");
         // delete-missing is also BadRequest
-        let (s, _) = call(acct, "DeleteTranscriptionJob", json!({"TranscriptionJobName": "zzz"}));
+        let (s, _) = call(
+            acct,
+            "DeleteTranscriptionJob",
+            json!({"TranscriptionJobName": "zzz"}),
+        );
         assert_eq!(s, 400);
     }
 
@@ -1682,7 +1749,11 @@ mod tests {
         assert_eq!(r["Status"], "IN_PROGRESS");
         assert_eq!(r["TranscriptionJobSummaries"].as_array().unwrap().len(), 0);
 
-        let (s, r) = call(acct, "ListTranscriptionJobs", json!({"JobNameContains": "lm-"}));
+        let (s, r) = call(
+            acct,
+            "ListTranscriptionJobs",
+            json!({"JobNameContains": "lm-"}),
+        );
         assert_eq!(r["TranscriptionJobSummaries"].as_array().unwrap().len(), 2);
 
         let (s, r) = call(acct, "ListTranscriptionJobs", json!({"MaxResults": 1}));
@@ -1722,7 +1793,10 @@ mod tests {
         // get advances PENDING -> READY
         let (s, r) = call(acct, "GetVocabulary", json!({"VocabularyName": "v1"}));
         assert_eq!(r["VocabularyState"], "PENDING");
-        assert!(r["DownloadUri"].as_str().unwrap().contains("aws-transcribe-dictionary-model"));
+        assert!(r["DownloadUri"]
+            .as_str()
+            .unwrap()
+            .contains("aws-transcribe-dictionary-model"));
         let (s, r) = call(acct, "GetVocabulary", json!({"VocabularyName": "v1"}));
         assert_eq!(r["VocabularyState"], "READY");
 
@@ -1747,9 +1821,17 @@ mod tests {
                 "VocabularyFileUri": "s3://b/v.txt"
             }),
         );
-        let (s, r) = call(acct, "GetMedicalVocabulary", json!({"VocabularyName": "mv1"}));
+        let (s, r) = call(
+            acct,
+            "GetMedicalVocabulary",
+            json!({"VocabularyName": "mv1"}),
+        );
         assert_eq!(r["VocabularyState"], "PENDING");
-        let (s, r) = call(acct, "GetMedicalVocabulary", json!({"VocabularyName": "mv1"}));
+        let (s, r) = call(
+            acct,
+            "GetMedicalVocabulary",
+            json!({"VocabularyName": "mv1"}),
+        );
         assert_eq!(r["VocabularyState"], "READY");
         let (s, r) = call(
             acct,
@@ -1770,7 +1852,11 @@ mod tests {
             json!({"VocabularyFilterName": "f1", "LanguageCode": "en-US", "Words": ["x"]}),
         );
         assert_eq!(s, 200);
-        let (s, r) = call(acct, "GetVocabularyFilter", json!({"VocabularyFilterName": "f1"}));
+        let (s, r) = call(
+            acct,
+            "GetVocabularyFilter",
+            json!({"VocabularyFilterName": "f1"}),
+        );
         assert_eq!(r["VocabularyFilterName"], "f1");
         let (s, r) = call(
             acct,
@@ -1778,16 +1864,25 @@ mod tests {
             json!({"VocabularyFilterName": "f1", "Words": ["y"]}),
         );
         assert_eq!(r["VocabularyFilterName"], "f1");
-        let (s, _) = call(acct, "DeleteVocabularyFilter", json!({"VocabularyFilterName": "f1"}));
+        let (s, _) = call(
+            acct,
+            "DeleteVocabularyFilter",
+            json!({"VocabularyFilterName": "f1"}),
+        );
         assert_eq!(s, 200);
-        let (s, _) = call(acct, "GetVocabularyFilter", json!({"VocabularyFilterName": "f1"}));
+        let (s, _) = call(
+            acct,
+            "GetVocabularyFilter",
+            json!({"VocabularyFilterName": "f1"}),
+        );
         assert_eq!(s, 400);
     }
 
     #[test]
     fn language_model_crud() {
         let acct = next_account();
-        let input = json!({"S3Uri": "s3://b/d/", "DataAccessRoleArn": "arn:aws:iam::123456789012:role/t"});
+        let input =
+            json!({"S3Uri": "s3://b/d/", "DataAccessRoleArn": "arn:aws:iam::123456789012:role/t"});
         let (s, r) = call(
             acct,
             "CreateLanguageModel",
@@ -1830,12 +1925,23 @@ mod tests {
             "UpdateCallAnalyticsCategory",
             json!({"CategoryName": "c1", "Rules": [{"NonTalkTimeFilter": {"Threshold": 90}}]}),
         );
-        assert_eq!(r["CategoryProperties"]["Rules"][0]["NonTalkTimeFilter"]["Threshold"], 90);
+        assert_eq!(
+            r["CategoryProperties"]["Rules"][0]["NonTalkTimeFilter"]["Threshold"],
+            90
+        );
         let (s, r) = call(acct, "ListCallAnalyticsCategories", json!({}));
         assert!(r["Categories"].as_array().unwrap().len() >= 1);
-        let (s, _) = call(acct, "DeleteCallAnalyticsCategory", json!({"CategoryName": "c1"}));
+        let (s, _) = call(
+            acct,
+            "DeleteCallAnalyticsCategory",
+            json!({"CategoryName": "c1"}),
+        );
         assert_eq!(s, 200);
-        let (s, r) = call(acct, "GetCallAnalyticsCategory", json!({"CategoryName": "c1"}));
+        let (s, r) = call(
+            acct,
+            "GetCallAnalyticsCategory",
+            json!({"CategoryName": "c1"}),
+        );
         assert_eq!(s, 400);
     }
 
@@ -1859,7 +1965,11 @@ mod tests {
         assert_eq!(summary["CallAnalyticsJobName"], "ca1");
         // Media is shape-pruned from summaries
         assert!(summary.get("Media").is_none());
-        let (s, _) = call(acct, "DeleteCallAnalyticsJob", json!({"CallAnalyticsJobName": "ca1"}));
+        let (s, _) = call(
+            acct,
+            "DeleteCallAnalyticsJob",
+            json!({"CallAnalyticsJobName": "ca1"}),
+        );
         assert_eq!(s, 200);
     }
 
@@ -1881,7 +1991,10 @@ mod tests {
         assert_eq!(j["MedicalScribeJobStatus"], "COMPLETED");
         assert_eq!(j["LanguageCode"], "en-US");
         let (s, r) = call(acct, "ListMedicalScribeJobs", json!({}));
-        assert_eq!(r["MedicalScribeJobSummaries"][0]["MedicalScribeJobName"], "ms1");
+        assert_eq!(
+            r["MedicalScribeJobSummaries"][0]["MedicalScribeJobName"],
+            "ms1"
+        );
     }
 
     #[test]
@@ -1904,7 +2017,10 @@ mod tests {
             "GetMedicalTranscriptionJob",
             json!({"MedicalTranscriptionJobName": "mj1"}),
         );
-        assert_eq!(r["MedicalTranscriptionJob"]["TranscriptionJobStatus"], "QUEUED");
+        assert_eq!(
+            r["MedicalTranscriptionJob"]["TranscriptionJobStatus"],
+            "QUEUED"
+        );
         call(
             acct,
             "GetMedicalTranscriptionJob",
@@ -1951,7 +2067,11 @@ mod tests {
         assert_eq!(s, 200);
         let (s, r) = call(acct, "ListTagsForResource", json!({"ResourceArn": arn}));
         assert_eq!(r["Tags"][0]["Key"], "env");
-        call(acct, "UntagResource", json!({"ResourceArn": arn, "TagKeys": ["env"]}));
+        call(
+            acct,
+            "UntagResource",
+            json!({"ResourceArn": arn, "TagKeys": ["env"]}),
+        );
         let (s, r) = call(acct, "ListTagsForResource", json!({"ResourceArn": arn}));
         assert_eq!(r["Tags"].as_array().unwrap().len(), 0);
         // unknown ARN -> BadRequest

@@ -6,14 +6,11 @@
 //! shape. Create/Update/Start/Stop emit the six-key envelope plus
 //! pipe-specific members pruned of nulls; Delete flips DELETING/DELETED.
 
-use crate::store::{self, ScopeKey};
+use crate::store::{self};
 use crate::{Request, Response};
 use once_cell::sync::Lazy;
-use parking_lot::RwLock;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
-use std::sync::Arc;
-use uuid::Uuid;
 
 static SLOT: Lazy<store::Slot<PipesState>> = Lazy::new(|| store::slot::<PipesState>("pipes"));
 
@@ -29,7 +26,7 @@ pub fn dispatch(req: &Request) -> Response {
     let params = crate::proto::parse_json_body(&req.body);
     let slot = store::slot::<PipesState>("pipes");
     let mut guard = slot.write();
-    let mut st = guard.entry((req.account, req.region.clone())).or_default();
+    let st = guard.entry((req.account, req.region.clone())).or_default();
     if st.region.is_empty() {
         st.region = req.region.clone();
         st.account = req.account.to_string();
@@ -39,7 +36,7 @@ pub fn dispatch(req: &Request) -> Response {
     // /v1/pipes/{name}[/start|/stop], /v1/pipes, /tags/{arn}
     match (req.method.as_str(), segments.as_slice()) {
         ("POST", ["v1", "pipes"]) => st.op_create(&params, req.operation.as_str(), path),
-        ("POST", ["v1", "pipes", name]) => st.op_create(&params, req.operation.as_str(), path),
+        ("POST", ["v1", "pipes", _name]) => st.op_create(&params, req.operation.as_str(), path),
         ("POST", ["v1", "pipes", name, "start"]) => st.op_toggle(name, "start"),
         ("POST", ["v1", "pipes", name, "stop"]) => st.op_toggle(name, "stop"),
         ("GET", ["v1", "pipes"]) => st.op_list(req),
@@ -87,7 +84,11 @@ impl PipesState {
             return bad(400, "ValidationException", "Target is a required parameter");
         }
         if role.is_null() {
-            return bad(400, "ValidationException", "RoleArn is a required parameter");
+            return bad(
+                400,
+                "ValidationException",
+                "RoleArn is a required parameter",
+            );
         }
         let arn = format!(
             "arn:aws:pipes:{r}:{a}:pipe/{name}",
@@ -138,28 +139,47 @@ impl PipesState {
 
     fn op_describe(&mut self, name: &str) -> Response {
         match self.pipes.get(name) {
-            Some(pipe) => Response::json_status(
-                200,
-                &without_nulls_entries(pipe.clone()),
+            Some(pipe) => Response::json_status(200, &without_nulls_entries(pipe.clone())),
+            None => bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe {name} does not exist."),
             ),
-            None => bad(404, "NotFoundException", &format!("Pipe {name} does not exist.")),
         }
     }
 
     fn op_update(&mut self, name: &str, p: &Value) -> Response {
         let Some(pipe) = self.pipes.get_mut(name) else {
-            return bad(404, "NotFoundException", &format!("Pipe {name} does not exist."));
+            return bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe {name} does not exist."),
+            );
         };
-        for key in ["SourceParameters", "Enrichment", "EnrichmentParameters", "Target",
-                    "TargetParameters", "RoleArn", "Description", "DesiredState"] {
+        for key in [
+            "SourceParameters",
+            "Enrichment",
+            "EnrichmentParameters",
+            "Target",
+            "TargetParameters",
+            "RoleArn",
+            "Description",
+            "DesiredState",
+        ] {
             if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
                 pipe[key] = v.clone();
             }
         }
         pipe["LastModifiedTime"] = json!(now_secs());
         // state machine from the py provider
-        let desired = pipe["DesiredState"].as_str().unwrap_or("RUNNING").to_string();
-        let current = pipe["CurrentState"].as_str().unwrap_or("STOPPED").to_string();
+        let desired = pipe["DesiredState"]
+            .as_str()
+            .unwrap_or("RUNNING")
+            .to_string();
+        let current = pipe["CurrentState"]
+            .as_str()
+            .unwrap_or("STOPPED")
+            .to_string();
         if desired == "RUNNING" && current != "RUNNING" {
             pipe["CurrentState"] = json!("RUNNING");
         } else if desired == "STOPPED" && current == "RUNNING" {
@@ -180,7 +200,11 @@ impl PipesState {
 
     fn op_toggle(&mut self, name: &str, dir: &str) -> Response {
         let Some(pipe) = self.pipes.get_mut(name) else {
-            return bad(404, "NotFoundException", &format!("Pipe {name} does not exist."));
+            return bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe {name} does not exist."),
+            );
         };
         if dir == "start" {
             pipe["DesiredState"] = json!("RUNNING");
@@ -205,7 +229,11 @@ impl PipesState {
 
     fn op_delete(&mut self, name: &str) -> Response {
         let Some(mut pipe) = self.pipes.remove(name) else {
-            return bad(404, "NotFoundException", &format!("Pipe {name} does not exist."));
+            return bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe {name} does not exist."),
+            );
         };
         pipe["CurrentState"] = json!("DELETING");
         Response::json_status(
@@ -243,7 +271,11 @@ impl PipesState {
         }
         let wanted = |prefix_key: &str, field: &str, pipe: &Value| -> bool {
             if let Some(expect) = params.get(prefix_key) {
-                return prefix_matches(pipe[field].as_str().unwrap_or_default(), expect.as_str(), prefix_key);
+                return prefix_matches(
+                    pipe[field].as_str().unwrap_or_default(),
+                    expect.as_str(),
+                    prefix_key,
+                );
             }
             true
         };
@@ -251,7 +283,7 @@ impl PipesState {
             .pipes
             .values()
             .filter(|pipe| {
-                let name = pipe["Name"].as_str().unwrap_or_default().to_string();
+                let _name = pipe["Name"].as_str().unwrap_or_default().to_string();
                 if !(wanted("NamePrefix", "Name", pipe) || wanted("namePrefix", "Name", pipe)) {
                     return false;
                 }
@@ -283,16 +315,35 @@ impl PipesState {
 
     fn op_list_tags(&mut self, path: &str) -> Response {
         let arn = urldecode(path.strip_prefix("/tags/").unwrap_or(path));
-        let Some(pipe) = self.pipes.values().find(|p| p["Arn"].as_str() == Some(&arn)) else {
-            return bad(404, "NotFoundException", &format!("Pipe does not exist: {arn}"));
+        let Some(pipe) = self
+            .pipes
+            .values()
+            .find(|p| p["Arn"].as_str() == Some(&arn))
+        else {
+            return bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe does not exist: {arn}"),
+            );
         };
-        Response::json_status(200, &json!({"tags": pipe.get("Tags").cloned().unwrap_or(json!({}))}))
+        Response::json_status(
+            200,
+            &json!({"tags": pipe.get("Tags").cloned().unwrap_or(json!({}))}),
+        )
     }
 
     fn op_tag(&mut self, path: &str, p: &Value) -> Response {
         let arn = urldecode(path.strip_prefix("/tags/").unwrap_or(path));
-        let Some(pipe) = self.pipes.values_mut().find(|p| p["Arn"].as_str() == Some(&arn)) else {
-            return bad(404, "NotFoundException", &format!("Pipe does not exist: {arn}"));
+        let Some(pipe) = self
+            .pipes
+            .values_mut()
+            .find(|p| p["Arn"].as_str() == Some(&arn))
+        else {
+            return bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe does not exist: {arn}"),
+            );
         };
         let Some(tags) = p.get("Tags").or_else(|| p.get("tags")) else {
             return bad(400, "ValidationException", "Tags is a required parameter");
@@ -305,15 +356,29 @@ impl PipesState {
     }
 
     fn op_untag(&mut self, req: &Request, path: &str) -> Response {
-        let arn = urldecode(path.strip_prefix("/tags/").unwrap_or(path).split('?').next().unwrap_or(""));
+        let arn = urldecode(
+            path.strip_prefix("/tags/")
+                .unwrap_or(path)
+                .split('?')
+                .next()
+                .unwrap_or(""),
+        );
         let keys: Vec<String> = req
             .query_string
             .split('&')
             .filter_map(|kv| kv.strip_prefix("tagKeys="))
             .map(|v| urldecode(v).trim_matches('"').to_string())
             .collect();
-        let Some(pipe) = self.pipes.values_mut().find(|p| p["Arn"].as_str() == Some(&arn)) else {
-            return bad(404, "NotFoundException", &format!("Pipe does not exist: {arn}"));
+        let Some(pipe) = self
+            .pipes
+            .values_mut()
+            .find(|p| p["Arn"].as_str() == Some(&arn))
+        else {
+            return bad(
+                404,
+                "NotFoundException",
+                &format!("Pipe does not exist: {arn}"),
+            );
         };
         if let Some(tags) = pipe["Tags"].as_object_mut() {
             for k in keys {
@@ -398,7 +463,12 @@ mod tests {
 
     #[test]
     fn create_describe_update_start_stop_delete() {
-        let r = dispatch(&request("POST", "/v1/pipes/p1", json!({"Name": "p1", "Source": "sqs", "Target": "fn", "RoleArn": "arn:role"}), ""));
+        let r = dispatch(&request(
+            "POST",
+            "/v1/pipes/p1",
+            json!({"Name": "p1", "Source": "sqs", "Target": "fn", "RoleArn": "arn:role"}),
+            "",
+        ));
         assert_eq!(r.status, 200);
         let v: Value = serde_json::from_slice(&r.body).unwrap();
         assert!(v["Arn"].as_str().is_some());
@@ -408,7 +478,12 @@ mod tests {
         let v: Value = serde_json::from_slice(&r.body).unwrap();
         assert_eq!(v["Target"], "fn");
 
-        let r = dispatch(&request("PUT", "/v1/pipes/p1", json!({"Description": "upd", "DesiredState": "STOPPED"}), ""));
+        let r = dispatch(&request(
+            "PUT",
+            "/v1/pipes/p1",
+            json!({"Description": "upd", "DesiredState": "STOPPED"}),
+            "",
+        ));
         let v: Value = serde_json::from_slice(&r.body).unwrap();
         assert_eq!(v["DesiredState"], "STOPPED");
 

@@ -120,549 +120,1242 @@ macro_rules! fam {
 }
 
 macro_rules! fam_opt {
-    () => { "" };
-    ($l:literal) => { $l };
+    () => {
+        ""
+    };
+    ($l:literal) => {
+        $l
+    };
 }
 
 static FAMILIES: &[&Family] = &[
-    &fam!("model", "ModelName", "ModelName", "ModelArn", "model",
+    &fam!(
+        "model",
+        "ModelName",
+        "ModelName",
+        "ModelArn",
+        "model",
         create = "CreateModel",
-        describe = "DescribeModel", desc_key = None,
-        list = "ListModels", "Models",
+        describe = "DescribeModel",
+        desc_key = None,
+        list = "ListModels",
+        "Models",
         delete = "DeleteModel",
         missing = "Could not find model {arn}",
-        pass = &["ExecutionRoleArn", "PrimaryContainer", "Containers", "VpcConfig", "EnableNetworkIsolation"],
-        defaults = &[("Containers", Dv::EmptyArr), ("EnableNetworkIsolation", Dv::Bool(false))],
+        pass = &[
+            "ExecutionRoleArn",
+            "PrimaryContainer",
+            "Containers",
+            "VpcConfig",
+            "EnableNetworkIsolation"
+        ],
+        defaults = &[
+            ("Containers", Dv::EmptyArr),
+            ("EnableNetworkIsolation", Dv::Bool(false))
+        ],
         status = "",
     ),
-    &fam!("endpoint-config", "EndpointConfigName", "EndpointConfigName", "EndpointConfigArn", "endpoint-config",
+    &fam!(
+        "endpoint-config",
+        "EndpointConfigName",
+        "EndpointConfigName",
+        "EndpointConfigArn",
+        "endpoint-config",
         create = "CreateEndpointConfig",
-        describe = "DescribeEndpointConfig", desc_key = None,
-        list = "ListEndpointConfigs", "EndpointConfigs",
+        describe = "DescribeEndpointConfig",
+        desc_key = None,
+        list = "ListEndpointConfigs",
+        "EndpointConfigs",
         delete = "DeleteEndpointConfig",
         missing = "Could not find endpoint configuration '{arn}'.",
-        pass = &["ProductionVariants", "KmsKeyId", "DataCaptureConfig", "ShadowProductionVariants", "AsyncInferenceConfig", "ExplainerConfig"],
+        pass = &[
+            "ProductionVariants",
+            "KmsKeyId",
+            "DataCaptureConfig",
+            "ShadowProductionVariants",
+            "AsyncInferenceConfig",
+            "ExplainerConfig"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("endpoint", "EndpointName", "EndpointName", "EndpointArn", "endpoint",
+    &fam!(
+        "endpoint",
+        "EndpointName",
+        "EndpointName",
+        "EndpointArn",
+        "endpoint",
         create = "CreateEndpoint",
-        describe = "DescribeEndpoint", desc_key = None,
-        list = "ListEndpoints", "Endpoints",
+        describe = "DescribeEndpoint",
+        desc_key = None,
+        list = "ListEndpoints",
+        "Endpoints",
         delete = "DeleteEndpoint",
         missing = "Could not find endpoint '{arn}'.",
-        pass = &["EndpointConfigName", "DataCaptureConfig", "DeploymentConfig"],
-        defaults = &[("EndpointConfigName", Dv::Str("")), ("ProductionVariants", Dv::EmptyArr)],
+        pass = &[
+            "EndpointConfigName",
+            "DataCaptureConfig",
+            "DeploymentConfig"
+        ],
+        defaults = &[
+            ("EndpointConfigName", Dv::Str("")),
+            ("ProductionVariants", Dv::EmptyArr)
+        ],
         status = "InService",
     ),
-    &fam!("experiment", "ExperimentName", "ExperimentName", "ExperimentArn", "experiment",
+    &fam!(
+        "experiment",
+        "ExperimentName",
+        "ExperimentName",
+        "ExperimentArn",
+        "experiment",
         create = "CreateExperiment",
-        describe = "DescribeExperiment", desc_key = None,
-        list = "ListExperiments", "ExperimentSummaries",
+        describe = "DescribeExperiment",
+        desc_key = None,
+        list = "ListExperiments",
+        "ExperimentSummaries",
         delete = "DeleteExperiment",
         missing = "Could not find experiment configuration '{arn}'.",
         pass = &["DisplayName", "Description", "Source"],
         defaults = &[("DisplayName", Dv::Str(""))],
         status = "",
     ),
-    &fam!("experiment-trial", "TrialName", "TrialName", "TrialArn", "experiment-trial",
+    &fam!(
+        "experiment-trial",
+        "TrialName",
+        "TrialName",
+        "TrialArn",
+        "experiment-trial",
         create = "CreateTrial",
-        describe = "DescribeTrial", desc_key = None,
-        list = "ListTrials", "TrialSummaries",
+        describe = "DescribeTrial",
+        desc_key = None,
+        list = "ListTrials",
+        "TrialSummaries",
         delete = "DeleteTrial",
         missing = "Could not find trial '{arn}'.",
         pass = &["ExperimentName", "DisplayName"],
         defaults = &[],
         status = "",
     ),
-    &fam!("experiment-trial-component", "TrialComponentName", "TrialComponentName", "TrialComponentArn", "experiment-trial-component",
+    &fam!(
+        "experiment-trial-component",
+        "TrialComponentName",
+        "TrialComponentName",
+        "TrialComponentArn",
+        "experiment-trial-component",
         create = "CreateTrialComponent",
-        describe = "DescribeTrialComponent", desc_key = None,
-        list = "ListTrialComponents", "TrialComponentSummaries",
+        describe = "DescribeTrialComponent",
+        desc_key = None,
+        list = "ListTrialComponents",
+        "TrialComponentSummaries",
         delete = "DeleteTrialComponent",
         missing = "Could not find trial component '{arn}'",
-        pass = &["DisplayName", "Status", "StartTime", "EndTime", "Parameters", "InputArtifacts", "OutputArtifacts", "Metrics", "Sources"],
-        defaults = &[("Parameters", Dv::EmptyObj), ("InputArtifacts", Dv::EmptyObj), ("OutputArtifacts", Dv::EmptyObj), ("Metrics", Dv::EmptyArr), ("Sources", Dv::EmptyArr), ("CreatedBy", Dv::EmptyObj), ("LastModifiedBy", Dv::EmptyObj)],
+        pass = &[
+            "DisplayName",
+            "Status",
+            "StartTime",
+            "EndTime",
+            "Parameters",
+            "InputArtifacts",
+            "OutputArtifacts",
+            "Metrics",
+            "Sources"
+        ],
+        defaults = &[
+            ("Parameters", Dv::EmptyObj),
+            ("InputArtifacts", Dv::EmptyObj),
+            ("OutputArtifacts", Dv::EmptyObj),
+            ("Metrics", Dv::EmptyArr),
+            ("Sources", Dv::EmptyArr),
+            ("CreatedBy", Dv::EmptyObj),
+            ("LastModifiedBy", Dv::EmptyObj)
+        ],
         status = "",
     ),
-    &fam!("pipeline", "PipelineName", "PipelineName", "PipelineArn", "pipeline",
+    &fam!(
+        "pipeline",
+        "PipelineName",
+        "PipelineName",
+        "PipelineArn",
+        "pipeline",
         create = "CreatePipeline",
-        describe = "DescribePipeline", desc_key = None,
-        list = "ListPipelines", "PipelineSummaries",
+        describe = "DescribePipeline",
+        desc_key = None,
+        list = "ListPipelines",
+        "PipelineSummaries",
         delete = "DeletePipeline",
         missing = "Could not find pipeline with PipelineName {name}.",
-        pass = &["PipelineDefinition", "PipelineDescription", "RoleArn", "PipelineDisplayName"],
-        defaults = &[("PipelineDescription", Dv::Str("")), ("PipelineStatus", Dv::Str("Active"))],
+        pass = &[
+            "PipelineDefinition",
+            "PipelineDescription",
+            "RoleArn",
+            "PipelineDisplayName"
+        ],
+        defaults = &[
+            ("PipelineDescription", Dv::Str("")),
+            ("PipelineStatus", Dv::Str("Active"))
+        ],
         status = "Active",
     ),
-    &fam!("notebook-instance", "NotebookInstanceName", "NotebookInstanceName", "NotebookInstanceArn", "notebook-instance",
+    &fam!(
+        "notebook-instance",
+        "NotebookInstanceName",
+        "NotebookInstanceName",
+        "NotebookInstanceArn",
+        "notebook-instance",
         create = "CreateNotebookInstance",
-        describe = "DescribeNotebookInstance", desc_key = None,
-        list = "ListNotebookInstances", "NotebookInstances",
+        describe = "DescribeNotebookInstance",
+        desc_key = None,
+        list = "ListNotebookInstances",
+        "NotebookInstances",
         delete = "DeleteNotebookInstance",
         missing = "Could not find notebook instance {name}",
-        pass = &["InstanceType", "RoleArn", "SubnetId", "SecurityGroupIds", "KmsKeyId", "LifecycleConfigName", "DirectInternetAccess", "VolumeSizeInGB", "AcceleratorTypes", "RootAccess"],
-        defaults = &[("NotebookInstanceStatus", Dv::Str("InService")), ("InstanceType", Dv::Str("ml.t2.medium"))],
+        pass = &[
+            "InstanceType",
+            "RoleArn",
+            "SubnetId",
+            "SecurityGroupIds",
+            "KmsKeyId",
+            "LifecycleConfigName",
+            "DirectInternetAccess",
+            "VolumeSizeInGB",
+            "AcceleratorTypes",
+            "RootAccess"
+        ],
+        defaults = &[
+            ("NotebookInstanceStatus", Dv::Str("InService")),
+            ("InstanceType", Dv::Str("ml.t2.medium"))
+        ],
         status = "InService",
     ),
-    &fam!("notebook-instance-lifecycle-config", "NotebookInstanceLifecycleConfigName", "NotebookInstanceLifecycleConfigName", "NotebookInstanceLifecycleConfigArn", "notebook-instance-lifecycle-config",
+    &fam!(
+        "notebook-instance-lifecycle-config",
+        "NotebookInstanceLifecycleConfigName",
+        "NotebookInstanceLifecycleConfigName",
+        "NotebookInstanceLifecycleConfigArn",
+        "notebook-instance-lifecycle-config",
         create = "CreateNotebookInstanceLifecycleConfig",
-        describe = "DescribeNotebookInstanceLifecycleConfig", desc_key = None,
-        list = "ListNotebookInstanceLifecycleConfigs", "NotebookInstanceLifecycleConfigs",
+        describe = "DescribeNotebookInstanceLifecycleConfig",
+        desc_key = None,
+        list = "ListNotebookInstanceLifecycleConfigs",
+        "NotebookInstanceLifecycleConfigs",
         delete = "DeleteNotebookInstanceLifecycleConfig",
         missing = "Could not find notebook instance lifecycle config {name}",
         pass = &["OnCreate", "OnStart"],
         defaults = &[],
         status = "",
     ),
-    &fam!("model-package-group", "ModelPackageGroupName", "ModelPackageGroupName", "ModelPackageGroupArn", "model-package-group",
+    &fam!(
+        "model-package-group",
+        "ModelPackageGroupName",
+        "ModelPackageGroupName",
+        "ModelPackageGroupArn",
+        "model-package-group",
         create = "CreateModelPackageGroup",
-        describe = "DescribeModelPackageGroup", desc_key = None,
-        list = "ListModelPackageGroups", "ModelPackageGroupSummaryList",
+        describe = "DescribeModelPackageGroup",
+        desc_key = None,
+        list = "ListModelPackageGroups",
+        "ModelPackageGroupSummaryList",
         delete = "DeleteModelPackageGroup",
         missing = "Could not find model package group '{arn}'.",
         pass = &["ModelPackageGroupDescription", "Tags"],
         defaults = &[],
         status = "Completed",
     ),
-    &fam!("model-package", "ModelPackageName", "ModelPackageName", "ModelPackageArn", "model-package",
+    &fam!(
+        "model-package",
+        "ModelPackageName",
+        "ModelPackageName",
+        "ModelPackageArn",
+        "model-package",
         create = "CreateModelPackage",
-        describe = "DescribeModelPackage", desc_key = None,
-        list = "ListModelPackages", "ModelPackageSummaryList",
+        describe = "DescribeModelPackage",
+        desc_key = None,
+        list = "ListModelPackages",
+        "ModelPackageSummaryList",
         delete = "DeleteModelPackage",
         missing = "Could not find model package {arn}",
-        pass = &["ModelPackageDescription", "InferenceSpecification", "ValidationSpecification", "ModelMetrics", "SourceModelSpecification", "CertifyForMarketplace"],
+        pass = &[
+            "ModelPackageDescription",
+            "InferenceSpecification",
+            "ValidationSpecification",
+            "ModelMetrics",
+            "SourceModelSpecification",
+            "CertifyForMarketplace"
+        ],
         defaults = &[],
         status = "Completed",
     ),
-    &fam!("model-card", "ModelCardName", "ModelCardName", "ModelCardArn", "model-card",
+    &fam!(
+        "model-card",
+        "ModelCardName",
+        "ModelCardName",
+        "ModelCardArn",
+        "model-card",
         create = "CreateModelCard",
-        describe = "DescribeModelCard", desc_key = None,
-        list = "ListModelCards", "ModelCardSummaries",
+        describe = "DescribeModelCard",
+        desc_key = None,
+        list = "ListModelCards",
+        "ModelCardSummaries",
         delete = "DeleteModelCard",
         missing = "Modelcard {name} does not exist",
         pass = &["Content", "ModelCardStatus", "ModelId", "SecurityConfig"],
         defaults = &[],
         status = "Draft",
     ),
-    &fam!("feature-group", "FeatureGroupName", "FeatureGroupName", "FeatureGroupArn", "feature-group",
+    &fam!(
+        "feature-group",
+        "FeatureGroupName",
+        "FeatureGroupName",
+        "FeatureGroupArn",
+        "feature-group",
         create = "CreateFeatureGroup",
-        describe = "DescribeFeatureGroup", desc_key = None,
-        list = "ListFeatureGroups", "FeatureGroupSummaries",
+        describe = "DescribeFeatureGroup",
+        desc_key = None,
+        list = "ListFeatureGroups",
+        "FeatureGroupSummaries",
         delete = "DeleteFeatureGroup",
         missing = "Could not find feature group {name}",
-        pass = &["RecordIdentifierFeatureName", "EventTimeFeatureName", "FeatureDefinitions", "OfflineStoreConfig", "OnlineStoreConfig", "Description", "RoleArn"],
+        pass = &[
+            "RecordIdentifierFeatureName",
+            "EventTimeFeatureName",
+            "FeatureDefinitions",
+            "OfflineStoreConfig",
+            "OnlineStoreConfig",
+            "Description",
+            "RoleArn"
+        ],
         defaults = &[],
         status = "Created",
     ),
-    &fam!("flow-definition", "FlowDefinitionName", "FlowDefinitionName", "FlowDefinitionArn", "flow-definition",
+    &fam!(
+        "flow-definition",
+        "FlowDefinitionName",
+        "FlowDefinitionName",
+        "FlowDefinitionArn",
+        "flow-definition",
         create = "CreateFlowDefinition",
-        describe = "DescribeFlowDefinition", desc_key = None,
-        list = "ListFlowDefinitions", "FlowDefinitionSummaries",
+        describe = "DescribeFlowDefinition",
+        desc_key = None,
+        list = "ListFlowDefinitions",
+        "FlowDefinitionSummaries",
         delete = "DeleteFlowDefinition",
         missing = "Could not find flow definition {name}",
         pass = &["OutputConfig", "RoleArn", "HumanLoopConfig"],
         defaults = &[("FlowDefinitionStatus", Dv::Str("Active"))],
         status = "Active",
     ),
-    &fam!("human-task-ui", "HumanTaskUiName", "HumanTaskUiName", "HumanTaskUiArn", "human-task-ui",
+    &fam!(
+        "human-task-ui",
+        "HumanTaskUiName",
+        "HumanTaskUiName",
+        "HumanTaskUiArn",
+        "human-task-ui",
         create = "CreateHumanTaskUi",
-        describe = "DescribeHumanTaskUi", desc_key = None,
-        list = "ListHumanTaskUis", "HumanTaskUiSummaries",
+        describe = "DescribeHumanTaskUi",
+        desc_key = None,
+        list = "ListHumanTaskUis",
+        "HumanTaskUiSummaries",
         delete = "DeleteHumanTaskUi",
         missing = "Could not find human task ui {name}",
         pass = &["UiTemplate", "Tags"],
         defaults = &[],
         status = "",
     ),
-    &fam!("studio-lifecycle-config", "StudioLifecycleConfigName", "StudioLifecycleConfigName", "StudioLifecycleConfigArn", "studio-lifecycle-config",
+    &fam!(
+        "studio-lifecycle-config",
+        "StudioLifecycleConfigName",
+        "StudioLifecycleConfigName",
+        "StudioLifecycleConfigArn",
+        "studio-lifecycle-config",
         create = "CreateStudioLifecycleConfig",
-        describe = "DescribeStudioLifecycleConfig", desc_key = None,
-        list = "ListStudioLifecycleConfigs", "StudioLifecycleConfigs",
+        describe = "DescribeStudioLifecycleConfig",
+        desc_key = None,
+        list = "ListStudioLifecycleConfigs",
+        "StudioLifecycleConfigs",
         delete = "DeleteStudioLifecycleConfig",
         missing = "Could not find studio lifecycle config {name}",
-        pass = &["StudioLifecycleConfigContent", "StudioLifecycleConfigAppType"],
+        pass = &[
+            "StudioLifecycleConfigContent",
+            "StudioLifecycleConfigAppType"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("app-image-config", "AppImageConfigName", "AppImageConfigName", "AppImageConfigArn", "app-image-config",
+    &fam!(
+        "app-image-config",
+        "AppImageConfigName",
+        "AppImageConfigName",
+        "AppImageConfigArn",
+        "app-image-config",
         create = "CreateAppImageConfig",
-        describe = "DescribeAppImageConfig", desc_key = None,
-        list = "ListAppImageConfigs", "AppImageConfigs",
+        describe = "DescribeAppImageConfig",
+        desc_key = None,
+        list = "ListAppImageConfigs",
+        "AppImageConfigs",
         delete = "DeleteAppImageConfig",
         missing = "Could not find app image config {name}",
-        pass = &["KernelGatewayImageConfig", "JupyterLabImageConfig", "CodeEditorImageConfig"],
+        pass = &[
+            "KernelGatewayImageConfig",
+            "JupyterLabImageConfig",
+            "CodeEditorImageConfig"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("code-repository", "CodeRepositoryName", "CodeRepositoryName", "CodeRepositoryArn", "code-repository",
+    &fam!(
+        "code-repository",
+        "CodeRepositoryName",
+        "CodeRepositoryName",
+        "CodeRepositoryArn",
+        "code-repository",
         create = "CreateCodeRepository",
-        describe = "DescribeCodeRepository", desc_key = None,
-        list = "ListCodeRepositories", "CodeRepositorySummaryList",
+        describe = "DescribeCodeRepository",
+        desc_key = None,
+        list = "ListCodeRepositories",
+        "CodeRepositorySummaryList",
         delete = "DeleteCodeRepository",
         missing = "Could not find code repository {name}",
         pass = &["GitConfig"],
         defaults = &[],
         status = "",
     ),
-    &fam!("image", "ImageName", "ImageName", "ImageArn", "image",
+    &fam!(
+        "image",
+        "ImageName",
+        "ImageName",
+        "ImageArn",
+        "image",
         create = "CreateImage",
-        describe = "DescribeImage", desc_key = None,
-        list = "ListImages", "Images",
+        describe = "DescribeImage",
+        desc_key = None,
+        list = "ListImages",
+        "Images",
         delete = "DeleteImage",
         missing = "Could not find image {name}",
         pass = &["RoleArn", "DisplayName", "Description"],
-        defaults = &[( "ImageStatus", Dv::Str("CREATED"))],
+        defaults = &[("ImageStatus", Dv::Str("CREATED"))],
         status = "CREATED",
     ),
-    &fam!("device-fleet", "DeviceFleetName", "DeviceFleetName", "DeviceFleetArn", "device-fleet",
+    &fam!(
+        "device-fleet",
+        "DeviceFleetName",
+        "DeviceFleetName",
+        "DeviceFleetArn",
+        "device-fleet",
         create = "CreateDeviceFleet",
-        describe = "DescribeDeviceFleet", desc_key = None,
-        list = "ListDeviceFleets", "DeviceFleetSummaries",
+        describe = "DescribeDeviceFleet",
+        desc_key = None,
+        list = "ListDeviceFleets",
+        "DeviceFleetSummaries",
         delete = "DeleteDeviceFleet",
         missing = "Could not find device fleet {name}",
-        pass = &["OutputConfig", "RoleArn", "Description", "Tags", "IotRoleAlias"],
+        pass = &[
+            "OutputConfig",
+            "RoleArn",
+            "Description",
+            "Tags",
+            "IotRoleAlias"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("algorithm", "AlgorithmName", "AlgorithmName", "AlgorithmArn", "algorithm",
+    &fam!(
+        "algorithm",
+        "AlgorithmName",
+        "AlgorithmName",
+        "AlgorithmArn",
+        "algorithm",
         create = "CreateAlgorithm",
-        describe = "DescribeAlgorithm", desc_key = None,
-        list = "ListAlgorithms", "AlgorithmSummaryList",
+        describe = "DescribeAlgorithm",
+        desc_key = None,
+        list = "ListAlgorithms",
+        "AlgorithmSummaryList",
         delete = "DeleteAlgorithm",
         missing = "Could not find algorithm {name}",
-        pass = &["AlgorithmDescription", "TrainingSpecification", "InferenceSpecification", "CertifyForMarketplace"],
-        defaults = &[( "AlgorithmStatus", Dv::Str("Completed"))],
+        pass = &[
+            "AlgorithmDescription",
+            "TrainingSpecification",
+            "InferenceSpecification",
+            "CertifyForMarketplace"
+        ],
+        defaults = &[("AlgorithmStatus", Dv::Str("Completed"))],
         status = "Completed",
     ),
-    &fam!("labeling-job", "LabelingJobName", "LabelingJobName", "LabelingJobArn", "labeling-job",
+    &fam!(
+        "labeling-job",
+        "LabelingJobName",
+        "LabelingJobName",
+        "LabelingJobArn",
+        "labeling-job",
         create = "CreateLabelingJob",
-        describe = "DescribeLabelingJob", desc_key = None,
-        list = "ListLabelingJobs", "LabelingJobSummaryList",
+        describe = "DescribeLabelingJob",
+        desc_key = None,
+        list = "ListLabelingJobs",
+        "LabelingJobSummaryList",
         delete = "DeleteLabelingJob",
         missing = "Could not find labeling job {name}",
-        pass = &["LabelAttributeName", "InputConfig", "OutputConfig", "RoleArn", "Locale", "LabelingJobAlgorithmsConfig", "HumanTaskConfig", "StoppingConditions"],
+        pass = &[
+            "LabelAttributeName",
+            "InputConfig",
+            "OutputConfig",
+            "RoleArn",
+            "Locale",
+            "LabelingJobAlgorithmsConfig",
+            "HumanTaskConfig",
+            "StoppingConditions"
+        ],
         defaults = &[("LabelingJobStatus", Dv::Str("InProgress"))],
         status = "InProgress",
     ),
-    &fam!("compilation-job", "CompilationJobName", "CompilationJobName", "CompilationJobArn", "compilation-job",
+    &fam!(
+        "compilation-job",
+        "CompilationJobName",
+        "CompilationJobName",
+        "CompilationJobArn",
+        "compilation-job",
         create = "CreateCompilationJob",
-        describe = "DescribeCompilationJob", desc_key = None,
-        list = "ListCompilationJobs", "CompilationJobSummaries",
+        describe = "DescribeCompilationJob",
+        desc_key = None,
+        list = "ListCompilationJobs",
+        "CompilationJobSummaries",
         delete = "DeleteCompilationJob",
         missing = "Could not find compilation job {name}",
-        pass = &["RoleArn", "InputConfig", "OutputConfig", "StoppingCondition", "InputConfig_Broken"],
-        defaults = &[( "CompilationJobStatus", Dv::Str("COMPLETED"))],
+        pass = &[
+            "RoleArn",
+            "InputConfig",
+            "OutputConfig",
+            "StoppingCondition",
+            "InputConfig_Broken"
+        ],
+        defaults = &[("CompilationJobStatus", Dv::Str("COMPLETED"))],
         status = "COMPLETED",
     ),
-    &fam!("processing-job", "ProcessingJobName", "ProcessingJobName", "ProcessingJobArn", "processing-job",
+    &fam!(
+        "processing-job",
+        "ProcessingJobName",
+        "ProcessingJobName",
+        "ProcessingJobArn",
+        "processing-job",
         create = "CreateProcessingJob",
-        describe = "DescribeProcessingJob", desc_key = None,
-        list = "ListProcessingJobs", "ProcessingJobSummaries",
+        describe = "DescribeProcessingJob",
+        desc_key = None,
+        list = "ListProcessingJobs",
+        "ProcessingJobSummaries",
         delete = "DeleteProcessingJob",
         missing = "Could not find processing job {name}",
-        pass = &["RoleArn", "ProcessingResources", "AppSpecification", "ProcessingInputs", "ProcessingOutputConfig", "StoppingCondition", "Environment"],
-        defaults = &[( "ProcessingJobStatus", Dv::Str("Completed"))],
+        pass = &[
+            "RoleArn",
+            "ProcessingResources",
+            "AppSpecification",
+            "ProcessingInputs",
+            "ProcessingOutputConfig",
+            "StoppingCondition",
+            "Environment"
+        ],
+        defaults = &[("ProcessingJobStatus", Dv::Str("Completed"))],
         status = "Completed",
     ),
-    &fam!("training-job", "TrainingJobName", "TrainingJobName", "TrainingJobArn", "training-job",
+    &fam!(
+        "training-job",
+        "TrainingJobName",
+        "TrainingJobName",
+        "TrainingJobArn",
+        "training-job",
         create = "CreateTrainingJob",
-        describe = "DescribeTrainingJob", desc_key = None,
-        list = "ListTrainingJobs", "TrainingJobSummaries",
+        describe = "DescribeTrainingJob",
+        desc_key = None,
+        list = "ListTrainingJobs",
+        "TrainingJobSummaries",
         delete = "DeleteTrainingJob",
         missing = "Could not find training job {name}",
-        pass = &["RoleArn", "AlgorithmSpecification", "InputDataConfig", "OutputDataConfig", "ResourceConfig", "StoppingCondition", "HyperParameters", "VpcConfig", "EnableNetworkIsolation", "DebugHookConfig", "ProfilerConfig", "Environment", "OutputDataConfig_Path"],
-        defaults = &[( "TrainingJobStatus", Dv::Str("Completed")), ("SecondaryStatus", Dv::Str("Completed"))],
+        pass = &[
+            "RoleArn",
+            "AlgorithmSpecification",
+            "InputDataConfig",
+            "OutputDataConfig",
+            "ResourceConfig",
+            "StoppingCondition",
+            "HyperParameters",
+            "VpcConfig",
+            "EnableNetworkIsolation",
+            "DebugHookConfig",
+            "ProfilerConfig",
+            "Environment",
+            "OutputDataConfig_Path"
+        ],
+        defaults = &[
+            ("TrainingJobStatus", Dv::Str("Completed")),
+            ("SecondaryStatus", Dv::Str("Completed"))
+        ],
         status = "Completed",
     ),
-    &fam!("transform-job", "TransformJobName", "TransformJobName", "TransformJobArn", "transform-job",
+    &fam!(
+        "transform-job",
+        "TransformJobName",
+        "TransformJobName",
+        "TransformJobArn",
+        "transform-job",
         create = "CreateTransformJob",
-        describe = "DescribeTransformJob", desc_key = None,
-        list = "ListTransformJobs", "TransformJobSummaries",
+        describe = "DescribeTransformJob",
+        desc_key = None,
+        list = "ListTransformJobs",
+        "TransformJobSummaries",
         delete = "DeleteTransformJob",
         missing = "Could not find transform job {name}",
-        pass = &["ModelName", "TransformInput", "TransformOutput", "TransformResources", "BatchStrategy", "Environment", "MaxConcurrentTransforms", "MaxPayloadInMB"],
-        defaults = &[( "TransformJobStatus", Dv::Str("Completed"))],
+        pass = &[
+            "ModelName",
+            "TransformInput",
+            "TransformOutput",
+            "TransformResources",
+            "BatchStrategy",
+            "Environment",
+            "MaxConcurrentTransforms",
+            "MaxPayloadInMB"
+        ],
+        defaults = &[("TransformJobStatus", Dv::Str("Completed"))],
         status = "Completed",
     ),
-    &fam!("hyper-parameter-tuning-job", "HyperParameterTuningJobName", "HyperParameterTuningJobName", "HyperParameterTuningJobArn", "hyper-parameter-tuning-job",
+    &fam!(
+        "hyper-parameter-tuning-job",
+        "HyperParameterTuningJobName",
+        "HyperParameterTuningJobName",
+        "HyperParameterTuningJobArn",
+        "hyper-parameter-tuning-job",
         create = "CreateHyperParameterTuningJob",
-        describe = "DescribeHyperParameterTuningJob", desc_key = None,
-        list = "ListHyperParameterTuningJobs", "HyperParameterTuningJobSummaries",
+        describe = "DescribeHyperParameterTuningJob",
+        desc_key = None,
+        list = "ListHyperParameterTuningJobs",
+        "HyperParameterTuningJobSummaries",
         delete = "DeleteHyperParameterTuningJob",
         missing = "Could not find hyper parameter tuning job {name}",
-        pass = &["HyperParameterTuningJobConfig", "TrainingJobDefinition", "TrainingJobDefinitions", "WarmStartConfig"],
-        defaults = &[( "HyperParameterTuningJobStatus", Dv::Str("Completed"))],
+        pass = &[
+            "HyperParameterTuningJobConfig",
+            "TrainingJobDefinition",
+            "TrainingJobDefinitions",
+            "WarmStartConfig"
+        ],
+        defaults = &[("HyperParameterTuningJobStatus", Dv::Str("Completed"))],
         status = "Completed",
     ),
-    &fam!("auto-ml-job", "AutoMLJobName", "AutoMLJobName", "AutoMLJobArn", "automl-job",
+    &fam!(
+        "auto-ml-job",
+        "AutoMLJobName",
+        "AutoMLJobName",
+        "AutoMLJobArn",
+        "automl-job",
         create = "CreateAutoMLJob",
-        describe = "DescribeAutoMLJob", desc_key = None,
-        list = "ListAutoMLJobs", "AutoMLJobSummaries",
+        describe = "DescribeAutoMLJob",
+        desc_key = None,
+        list = "ListAutoMLJobs",
+        "AutoMLJobSummaries",
         delete = "DeleteAutoMLJob",
         missing = "Could not find AutoML job {name}",
-        pass = &["InputDataConfig", "OutputDataConfig", "RoleArn", "AutoMLJobObjective", "AutoMLJobConfig", "ProblemType"],
-        defaults = &[( "AutoMLJobStatus", Dv::Str("InProgress")), ("AutoMLJobSecondaryStatus", Dv::Str("Starting"))],
+        pass = &[
+            "InputDataConfig",
+            "OutputDataConfig",
+            "RoleArn",
+            "AutoMLJobObjective",
+            "AutoMLJobConfig",
+            "ProblemType"
+        ],
+        defaults = &[
+            ("AutoMLJobStatus", Dv::Str("InProgress")),
+            ("AutoMLJobSecondaryStatus", Dv::Str("Starting"))
+        ],
         status = "InProgress",
     ),
-    &fam!("model-bias-job-definition", "JobDefinitionName", "JobDefinitionName", "JobDefinitionArn", "model-bias-job-definition",
+    &fam!(
+        "model-bias-job-definition",
+        "JobDefinitionName",
+        "JobDefinitionName",
+        "JobDefinitionArn",
+        "model-bias-job-definition",
         create = "CreateModelBiasJobDefinition",
-        describe = "DescribeModelBiasJobDefinition", desc_key = None,
-        list = "ListModelBiasJobDefinitions", "JobDefinitionSummaries",
+        describe = "DescribeModelBiasJobDefinition",
+        desc_key = None,
+        list = "ListModelBiasJobDefinitions",
+        "JobDefinitionSummaries",
         delete = "DeleteModelBiasJobDefinition",
         missing = "Job definition {name} not found",
-        pass = &["ModelBiasAppSpecification", "ModelBiasJobInput", "ModelBiasJobOutputConfig", "RoleArn", "JobResources", "StoppingCondition", "Tags"],
+        pass = &[
+            "ModelBiasAppSpecification",
+            "ModelBiasJobInput",
+            "ModelBiasJobOutputConfig",
+            "RoleArn",
+            "JobResources",
+            "StoppingCondition",
+            "Tags"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("model-explainability-job-definition", "JobDefinitionName", "JobDefinitionName", "JobDefinitionArn", "model-explainability-job-definition",
+    &fam!(
+        "model-explainability-job-definition",
+        "JobDefinitionName",
+        "JobDefinitionName",
+        "JobDefinitionArn",
+        "model-explainability-job-definition",
         create = "CreateModelExplainabilityJobDefinition",
-        describe = "DescribeModelExplainabilityJobDefinition", desc_key = None,
-        list = "ListModelExplainabilityJobDefinitions", "JobDefinitionSummaries",
+        describe = "DescribeModelExplainabilityJobDefinition",
+        desc_key = None,
+        list = "ListModelExplainabilityJobDefinitions",
+        "JobDefinitionSummaries",
         delete = "DeleteModelExplainabilityJobDefinition",
         missing = "Could not find model explainability job definition with name '{name}'.",
-        pass = &["ModelExplainabilityAppSpecification", "ModelExplainabilityJobInput", "ModelExplainabilityJobOutputConfig", "RoleArn", "JobResources"],
+        pass = &[
+            "ModelExplainabilityAppSpecification",
+            "ModelExplainabilityJobInput",
+            "ModelExplainabilityJobOutputConfig",
+            "RoleArn",
+            "JobResources"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("model-quality-job-definition", "JobDefinitionName", "JobDefinitionName", "JobDefinitionArn", "model-quality-job-definition",
+    &fam!(
+        "model-quality-job-definition",
+        "JobDefinitionName",
+        "JobDefinitionName",
+        "JobDefinitionArn",
+        "model-quality-job-definition",
         create = "CreateModelQualityJobDefinition",
-        describe = "DescribeModelQualityJobDefinition", desc_key = None,
-        list = "ListModelQualityJobDefinitions", "JobDefinitionSummaries",
+        describe = "DescribeModelQualityJobDefinition",
+        desc_key = None,
+        list = "ListModelQualityJobDefinitions",
+        "JobDefinitionSummaries",
         delete = "DeleteModelQualityJobDefinition",
         missing = "Could not find model quality job definition '{name}'.",
-        pass = &["ModelQualityAppSpecification", "ModelQualityJobInput", "ModelQualityJobOutputConfig", "RoleArn", "JobResources"],
+        pass = &[
+            "ModelQualityAppSpecification",
+            "ModelQualityJobInput",
+            "ModelQualityJobOutputConfig",
+            "RoleArn",
+            "JobResources"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("data-quality-job-definition", "JobDefinitionName", "JobDefinitionName", "JobDefinitionArn", "data-quality-job-definition",
+    &fam!(
+        "data-quality-job-definition",
+        "JobDefinitionName",
+        "JobDefinitionName",
+        "JobDefinitionArn",
+        "data-quality-job-definition",
         create = "CreateDataQualityJobDefinition",
-        describe = "DescribeDataQualityJobDefinition", desc_key = None,
-        list = "ListDataQualityJobDefinitions", "JobDefinitionSummaries",
+        describe = "DescribeDataQualityJobDefinition",
+        desc_key = None,
+        list = "ListDataQualityJobDefinitions",
+        "JobDefinitionSummaries",
         delete = "DeleteDataQualityJobDefinition",
         missing = "Could not find data quality job definition with name '{name}'.",
-        pass = &["DataQualityAppSpecification", "DataQualityJobInput", "DataQualityJobOutputConfig", "RoleArn", "JobResources"],
+        pass = &[
+            "DataQualityAppSpecification",
+            "DataQualityJobInput",
+            "DataQualityJobOutputConfig",
+            "RoleArn",
+            "JobResources"
+        ],
         defaults = &[],
         status = "",
     ),
-    &fam!("project", "ProjectName", "ProjectName", "ProjectArn", "project",
+    &fam!(
+        "project",
+        "ProjectName",
+        "ProjectName",
+        "ProjectArn",
+        "project",
         create = "CreateProject",
-        describe = "DescribeProject", desc_key = None,
-        list = "ListProjects", "ProjectSummaryList",
+        describe = "DescribeProject",
+        desc_key = None,
+        list = "ListProjects",
+        "ProjectSummaryList",
         delete = "DeleteProject",
         missing = "Could not find project {name}",
-        pass = &["ServiceCatalogProvisioningDetails", "ProjectDescription", "Tags"],
-        defaults = &[( "ProjectStatus", Dv::Str("Pending"))],
+        pass = &[
+            "ServiceCatalogProvisioningDetails",
+            "ProjectDescription",
+            "Tags"
+        ],
+        defaults = &[("ProjectStatus", Dv::Str("Pending"))],
         status = "Pending",
     ),
-    &fam!("edge-deployment-plan", "EdgeDeploymentPlanName", "EdgeDeploymentPlanName", "EdgeDeploymentPlanArn", "edge-deployment",
+    &fam!(
+        "edge-deployment-plan",
+        "EdgeDeploymentPlanName",
+        "EdgeDeploymentPlanName",
+        "EdgeDeploymentPlanArn",
+        "edge-deployment",
         create = "CreateEdgeDeploymentPlan",
-        describe = "DescribeEdgeDeploymentPlan", desc_key = None,
-        list = "ListEdgeDeploymentPlans", "EdgeDeploymentPlanSummaries",
+        describe = "DescribeEdgeDeploymentPlan",
+        desc_key = None,
+        list = "ListEdgeDeploymentPlans",
+        "EdgeDeploymentPlanSummaries",
         delete = "DeleteEdgeDeploymentPlan",
         missing = "Could not find edge deployment plan {name}",
         pass = &["DeviceFleetName", "ModelConfigs", "Stages"],
-        defaults = &[( "Status", Dv::Str("Idle"))],
+        defaults = &[("Status", Dv::Str("Idle"))],
         status = "Idle",
     ),
-    &fam!("edge-packaging-job", "EdgePackagingJobName", "EdgePackagingJobName", "EdgePackagingJobArn", "edge-packaging-job",
+    &fam!(
+        "edge-packaging-job",
+        "EdgePackagingJobName",
+        "EdgePackagingJobName",
+        "EdgePackagingJobArn",
+        "edge-packaging-job",
         create = "CreateEdgePackagingJob",
-        describe = "DescribeEdgePackagingJob", desc_key = None,
-        list = "ListEdgePackagingJobs", "EdgePackagingJobSummaries",
+        describe = "DescribeEdgePackagingJob",
+        desc_key = None,
+        list = "ListEdgePackagingJobs",
+        "EdgePackagingJobSummaries",
         delete = "DeleteEdgePackagingJob",
         missing = "Could not find edge packaging job {name}",
-        pass = &["CompilationJobName", "ModelName", "ModelVersion", "RoleArn", "OutputConfig", "ResourceConfig", "Tags", "EdgePresetDeploymentOutput"],
-        defaults = &[( "EdgePackagingJobStatus", Dv::Str("Started"))],
+        pass = &[
+            "CompilationJobName",
+            "ModelName",
+            "ModelVersion",
+            "RoleArn",
+            "OutputConfig",
+            "ResourceConfig",
+            "Tags",
+            "EdgePresetDeploymentOutput"
+        ],
+        defaults = &[("EdgePackagingJobStatus", Dv::Str("Started"))],
         status = "Started",
     ),
-    &fam!("inference-experiment", "Name", "Name", "InferenceExperimentArn", "inference-experiment",
+    &fam!(
+        "inference-experiment",
+        "Name",
+        "Name",
+        "InferenceExperimentArn",
+        "inference-experiment",
         create = "CreateInferenceExperiment",
-        describe = "DescribeInferenceExperiment", desc_key = None,
-        list = "ListInferenceExperiments", "InferenceExperiments",
+        describe = "DescribeInferenceExperiment",
+        desc_key = None,
+        list = "ListInferenceExperiments",
+        "InferenceExperiments",
         delete = "DeleteInferenceExperiment",
         missing = "Could not find inference experiment {name}",
-        pass = &["Type", "RoleArn", "EndpointName", "ModelVariants", "DataStorageConfig", "Schedule", "Description"],
-        defaults = &[( "Status", Dv::Str("Creating"))],
+        pass = &[
+            "Type",
+            "RoleArn",
+            "EndpointName",
+            "ModelVariants",
+            "DataStorageConfig",
+            "Schedule",
+            "Description"
+        ],
+        defaults = &[("Status", Dv::Str("Creating"))],
         status = "Creating",
     ),
-    &fam!("inference-recommendations-job", "JobName", "JobName", "JobArn", "inference-recommendations-job",
+    &fam!(
+        "inference-recommendations-job",
+        "JobName",
+        "JobName",
+        "JobArn",
+        "inference-recommendations-job",
         create = "CreateInferenceRecommendationsJob",
-        describe = "DescribeInferenceRecommendationsJob", desc_key = None,
-        list = "ListInferenceRecommendationsJobs", "InferenceRecommendationsJobs",
+        describe = "DescribeInferenceRecommendationsJob",
+        desc_key = None,
+        list = "ListInferenceRecommendationsJobs",
+        "InferenceRecommendationsJobs",
         delete = "DeleteInferenceRecommendationsJob",
         missing = "Could not find inference recommendations job {name}",
-        pass = &["JobType", "RoleArn", "InputConfig", "OutputConfig", "StoppingCondition", "Tags"],
-        defaults = &[( "Status", Dv::Str("COMPLETED"))],
+        pass = &[
+            "JobType",
+            "RoleArn",
+            "InputConfig",
+            "OutputConfig",
+            "StoppingCondition",
+            "Tags"
+        ],
+        defaults = &[("Status", Dv::Str("COMPLETED"))],
         status = "COMPLETED",
     ),
-    &fam!("optimization-job", "OptimizationJobName", "OptimizationJobName", "OptimizationJobArn", "optimization-job",
+    &fam!(
+        "optimization-job",
+        "OptimizationJobName",
+        "OptimizationJobName",
+        "OptimizationJobArn",
+        "optimization-job",
         create = "CreateOptimizationJob",
-        describe = "DescribeOptimizationJob", desc_key = None,
-        list = "ListOptimizationJobs", "OptimizationJobSummaries",
+        describe = "DescribeOptimizationJob",
+        desc_key = None,
+        list = "ListOptimizationJobs",
+        "OptimizationJobSummaries",
         delete = "DeleteOptimizationJob",
         missing = "Could not find optimization job {name}",
-        pass = &["RoleArn", "ModelSource", "DeploymentInstanceType", "OptimizationConfig", "OutputConfig", "StoppingCondition", "VpcConfig"],
-        defaults = &[( "OptimizationJobStatus", Dv::Str("Completed")), ("OptimizationStartTime", Dv::Null)],
+        pass = &[
+            "RoleArn",
+            "ModelSource",
+            "DeploymentInstanceType",
+            "OptimizationConfig",
+            "OutputConfig",
+            "StoppingCondition",
+            "VpcConfig"
+        ],
+        defaults = &[
+            ("OptimizationJobStatus", Dv::Str("Completed")),
+            ("OptimizationStartTime", Dv::Null)
+        ],
         status = "Completed",
     ),
-    &fam!("monitoring-schedule", "MonitoringScheduleName", "MonitoringScheduleName", "MonitoringScheduleArn", "monitoring-schedule",
+    &fam!(
+        "monitoring-schedule",
+        "MonitoringScheduleName",
+        "MonitoringScheduleName",
+        "MonitoringScheduleArn",
+        "monitoring-schedule",
         create = "CreateMonitoringSchedule",
-        describe = "DescribeMonitoringSchedule", desc_key = None,
-        list = "ListMonitoringSchedules", "MonitoringScheduleSummaries",
+        describe = "DescribeMonitoringSchedule",
+        desc_key = None,
+        list = "ListMonitoringSchedules",
+        "MonitoringScheduleSummaries",
         delete = "DeleteMonitoringSchedule",
         missing = "Could not find monitoring schedule {name}",
-        pass = &["MonitoringScheduleConfig", "EndpointName", "MonitoringType", "Tags"],
-        defaults = &[( "MonitoringScheduleStatus", Dv::Str("Scheduled")), ("LastModifiedTime", Dv::F64(0.0))],
+        pass = &[
+            "MonitoringScheduleConfig",
+            "EndpointName",
+            "MonitoringType",
+            "Tags"
+        ],
+        defaults = &[
+            ("MonitoringScheduleStatus", Dv::Str("Scheduled")),
+            ("LastModifiedTime", Dv::F64(0.0))
+        ],
         status = "Scheduled",
     ),
-    &fam!("cluster", "ClusterName", "ClusterName", "ClusterArn", "cluster",
+    &fam!(
+        "cluster",
+        "ClusterName",
+        "ClusterName",
+        "ClusterArn",
+        "cluster",
         create = "CreateCluster",
-        describe = "DescribeCluster", desc_key = None,
-        list = "ListClusters", "ClusterSummaries",
+        describe = "DescribeCluster",
+        desc_key = None,
+        list = "ListClusters",
+        "ClusterSummaries",
         delete = "DeleteCluster",
         missing = "Could not find cluster '{name}'.",
-        pass = &["InstanceGroups", "RoleArn", "VpcConfig", "Policies", "RestrictedInstanceGroups", "AutoScaling", "Tags"],
-        defaults = &[( "ClusterStatus", Dv::Str("InProgress")), ("CreationTime", Dv::Null)],
+        pass = &[
+            "InstanceGroups",
+            "RoleArn",
+            "VpcConfig",
+            "Policies",
+            "RestrictedInstanceGroups",
+            "AutoScaling",
+            "Tags"
+        ],
+        defaults = &[
+            ("ClusterStatus", Dv::Str("InProgress")),
+            ("CreationTime", Dv::Null)
+        ],
         status = "InProgress",
     ),
-    &fam!("workteam", "WorkteamName", "WorkteamName", "WorkteamArn", "workteam",
+    &fam!(
+        "workteam",
+        "WorkteamName",
+        "WorkteamName",
+        "WorkteamArn",
+        "workteam",
         create = "CreateWorkteam",
-        describe = "DescribeWorkteam", desc_key = None,
-        list = "ListWorkteams", "Workteams",
+        describe = "DescribeWorkteam",
+        desc_key = None,
+        list = "ListWorkteams",
+        "Workteams",
         delete = "DeleteWorkteam",
         missing = "Could not find workteam {name}",
-        pass = &["MemberDefinitions", "Description", "NotificationConfiguration", "WorkerAccessConfiguration", "Tags"],
-        defaults = &[( "SubDomain", Dv::Str(""))],
+        pass = &[
+            "MemberDefinitions",
+            "Description",
+            "NotificationConfiguration",
+            "WorkerAccessConfiguration",
+            "Tags"
+        ],
+        defaults = &[("SubDomain", Dv::Str(""))],
         status = "",
     ),
-    &fam!("workforce", "WorkforceName", "WorkforceName", "WorkforceArn", "workforce",
+    &fam!(
+        "workforce",
+        "WorkforceName",
+        "WorkforceName",
+        "WorkforceArn",
+        "workforce",
         create = "CreateWorkforce",
-        describe = "DescribeWorkforce", desc_key = None,
-        list = "ListWorkforces", "Workforces",
+        describe = "DescribeWorkforce",
+        desc_key = None,
+        list = "ListWorkforces",
+        "Workforces",
         delete = "DeleteWorkforce",
         missing = "Could not find workforce {name}",
         pass = &["CognitoConfig", "OidcConfig", "SourceIpConfig", "Tags"],
-        defaults = &[( "Status", Dv::Str("Active"))],
+        defaults = &[("Status", Dv::Str("Active"))],
         status = "Active",
     ),
-    &fam!("mlflow-tracking-server", "TrackingServerName", "TrackingServerName", "TrackingServerArn", "mlflow-tracking-server",
+    &fam!(
+        "mlflow-tracking-server",
+        "TrackingServerName",
+        "TrackingServerName",
+        "TrackingServerArn",
+        "mlflow-tracking-server",
         create = "CreateMlflowTrackingServer",
-        describe = "DescribeMlflowTrackingServer", desc_key = None,
-        list = "ListMlflowTrackingServers", "TrackingServerSummaries",
+        describe = "DescribeMlflowTrackingServer",
+        desc_key = None,
+        list = "ListMlflowTrackingServers",
+        "TrackingServerSummaries",
         delete = "DeleteMlflowTrackingServer",
         missing = "Could not find mlflow tracking server {name}",
-        pass = &["ArtifactStoreUri", "RoleArn", "TrackingServerSize", "WeeklyMaintenanceWindow", "MlflowVersion"],
-        defaults = &[( "TrackingServerStatus", Dv::Str("Created"))],
+        pass = &[
+            "ArtifactStoreUri",
+            "RoleArn",
+            "TrackingServerSize",
+            "WeeklyMaintenanceWindow",
+            "MlflowVersion"
+        ],
+        defaults = &[("TrackingServerStatus", Dv::Str("Created"))],
         status = "Created",
     ),
-    &fam!("hub", "HubName", "HubName", "HubArn", "hub",
+    &fam!(
+        "hub",
+        "HubName",
+        "HubName",
+        "HubArn",
+        "hub",
         create = "CreateHub",
-        describe = "DescribeHub", desc_key = None,
-        list = "ListHubs", "HubSummaries",
+        describe = "DescribeHub",
+        desc_key = None,
+        list = "ListHubs",
+        "HubSummaries",
         delete = "DeleteHub",
         missing = "Could not find hub {name}",
-        pass = &["HubDescription", "HubDisplayName", "S3StorageConfig", "HubSearchKeywords", "Tags"],
-        defaults = &[( "CreationTime", Dv::EmptyObj)],
+        pass = &[
+            "HubDescription",
+            "HubDisplayName",
+            "S3StorageConfig",
+            "HubSearchKeywords",
+            "Tags"
+        ],
+        defaults = &[("CreationTime", Dv::EmptyObj)],
         status = "InService",
     ),
-    &fam!("user-profile", "UserProfileName", "UserProfileName", "UserProfileArn", "user-profile",
+    &fam!(
+        "user-profile",
+        "UserProfileName",
+        "UserProfileName",
+        "UserProfileArn",
+        "user-profile",
         create = "CreateUserProfile",
-        describe = "DescribeUserProfile", desc_key = None,
-        list = "ListUserProfiles", "UserProfiles",
+        describe = "DescribeUserProfile",
+        desc_key = None,
+        list = "ListUserProfiles",
+        "UserProfiles",
         delete = "DeleteUserProfile",
         missing = "Could not find user profile {name}",
-        pass = &["DomainId", "SingleSignOnUserIdentifier", "UserSettings", "Tags"],
-        defaults = &[( "Status", Dv::Str("InService")), ("HomeEfsFileSystemUid", Dv::Str("00000000"))],
+        pass = &[
+            "DomainId",
+            "SingleSignOnUserIdentifier",
+            "UserSettings",
+            "Tags"
+        ],
+        defaults = &[
+            ("Status", Dv::Str("InService")),
+            ("HomeEfsFileSystemUid", Dv::Str("00000000"))
+        ],
         status = "InService",
     ),
-    &fam!("space", "SpaceName", "SpaceName", "SpaceArn", "space",
+    &fam!(
+        "space",
+        "SpaceName",
+        "SpaceName",
+        "SpaceArn",
+        "space",
         create = "CreateSpace",
-        describe = "DescribeSpace", desc_key = None,
-        list = "ListSpaces", "Spaces",
+        describe = "DescribeSpace",
+        desc_key = None,
+        list = "ListSpaces",
+        "Spaces",
         delete = "DeleteSpace",
         missing = "Could not find space {name}",
         pass = &["DomainId", "SpaceSettings", "SpaceDisplayName", "Tags"],
-        defaults = &[( "Status", Dv::Str("InService")), ("HomeEfsFileSystemUid", Dv::Str("00000000"))],
+        defaults = &[
+            ("Status", Dv::Str("InService")),
+            ("HomeEfsFileSystemUid", Dv::Str("00000000"))
+        ],
         status = "InService",
     ),
-    &fam!("action", "ActionName", "ActionName", "ActionArn", "action",
+    &fam!(
+        "action",
+        "ActionName",
+        "ActionName",
+        "ActionArn",
+        "action",
         create = "CreateAction",
-        describe = "DescribeAction", desc_key = None,
-        list = "ListActions", "ActionSummaries",
+        describe = "DescribeAction",
+        desc_key = None,
+        list = "ListActions",
+        "ActionSummaries",
         delete = "DeleteAction",
         missing = "Could not find action {name}",
         pass = &["Source", "ActionType", "Description", "Properties", "Tags"],
-        defaults = &[( "Status", Dv::Nothing)],
+        defaults = &[("Status", Dv::Nothing)],
         status = "",
     ),
-    &fam!("context", "ContextName", "ContextName", "ContextArn", "context",
+    &fam!(
+        "context",
+        "ContextName",
+        "ContextName",
+        "ContextArn",
+        "context",
         create = "CreateContext",
-        describe = "DescribeContext", desc_key = None,
-        list = "ListContexts", "ContextSummaries",
+        describe = "DescribeContext",
+        desc_key = None,
+        list = "ListContexts",
+        "ContextSummaries",
         delete = "DeleteContext",
         missing = "Could not find context {name}",
         pass = &["Source", "ContextType", "Description", "Properties", "Tags"],
         defaults = &[],
         status = "",
     ),
-    &fam!("artifact", "ArtifactName", "ArtifactName", "ArtifactArn", "artifact",
+    &fam!(
+        "artifact",
+        "ArtifactName",
+        "ArtifactName",
+        "ArtifactArn",
+        "artifact",
         create = "CreateArtifact",
-        describe = "DescribeArtifact", desc_key = None,
-        list = "ListArtifacts", "ArtifactSummaries",
+        describe = "DescribeArtifact",
+        desc_key = None,
+        list = "ListArtifacts",
+        "ArtifactSummaries",
         delete = "DeleteArtifact",
         missing = "Could not find artifact {name}",
         pass = &["Source", "ArtifactType", "Properties", "Tags"],
         defaults = &[],
         status = "",
     ),
-    &fam!("inference-component", "InferenceComponentName", "InferenceComponentName", "InferenceComponentArn", "inference-component",
+    &fam!(
+        "inference-component",
+        "InferenceComponentName",
+        "InferenceComponentName",
+        "InferenceComponentArn",
+        "inference-component",
         create = "CreateInferenceComponent",
-        describe = "DescribeInferenceComponent", desc_key = None,
-        list = "ListInferenceComponents", "InferenceComponents",
+        describe = "DescribeInferenceComponent",
+        desc_key = None,
+        list = "ListInferenceComponents",
+        "InferenceComponents",
         delete = "DeleteInferenceComponent",
         missing = "Could not find inference component {name}",
-        pass = &["EndpointName", "VariantName", "Specification", "RuntimeConfig", "Tags"],
-        defaults = &[( "Status", Dv::Str("InService"))],
+        pass = &[
+            "EndpointName",
+            "VariantName",
+            "Specification",
+            "RuntimeConfig",
+            "Tags"
+        ],
+        defaults = &[("Status", Dv::Str("InService"))],
         status = "InService",
     ),
-    &fam!("domain", "DomainName", "DomainName", "DomainArn", "domain",
+    &fam!(
+        "domain",
+        "DomainName",
+        "DomainName",
+        "DomainArn",
+        "domain",
         create = "CreateDomain",
-        describe = "DescribeDomain", desc_key = None,
-        list = "ListDomains", "Domains",
+        describe = "DescribeDomain",
+        desc_key = None,
+        list = "ListDomains",
+        "Domains",
         delete = "DeleteDomain",
         missing = "Could not find domain '{name}'.",
-        pass = &["AuthMode", "DefaultUserSettings", "SubnetIds", "VpcId", "DomainSettings", "Tags", "AppNetworkAccessType"],
-        defaults = &[( "DomainStatus", Dv::Str("InService"))],
+        pass = &[
+            "AuthMode",
+            "DefaultUserSettings",
+            "SubnetIds",
+            "VpcId",
+            "DomainSettings",
+            "Tags",
+            "AppNetworkAccessType"
+        ],
+        defaults = &[("DomainStatus", Dv::Str("InService"))],
         status = "InService",
     ),
-    &fam!("auto-ml-job-v2", "AutoMLJobName", "AutoMLJobName", "AutoMLJobArn", "automl-job",
+    &fam!(
+        "auto-ml-job-v2",
+        "AutoMLJobName",
+        "AutoMLJobName",
+        "AutoMLJobArn",
+        "automl-job",
         create = "CreateAutoMLJobV2",
-        describe = "DescribeAutoMLJobV2", desc_key = None,
-        list = "ListAutoMLJobs", "AutoMLJobSummaries",
+        describe = "DescribeAutoMLJobV2",
+        desc_key = None,
+        list = "ListAutoMLJobs",
+        "AutoMLJobSummaries",
         delete = "DeleteAutoMLJobV2",
         missing = "Could not find AutoML job {name}",
-        pass = &["AutoMLJobObjective", "AutoMLProblemTypeConfig", "AutoMLProblemTypeConfigName", "DataSplitConfig", "AutoMLJobInputDataConfig", "OutputDataConfig", "RoleArn", "AutoMLJobConfig"],
-        defaults = &[( "AutoMLJobStatus", Dv::Str("InProgress")), ("AutoMLJobSecondaryStatus", Dv::Str("Starting"))],
+        pass = &[
+            "AutoMLJobObjective",
+            "AutoMLProblemTypeConfig",
+            "AutoMLProblemTypeConfigName",
+            "DataSplitConfig",
+            "AutoMLJobInputDataConfig",
+            "OutputDataConfig",
+            "RoleArn",
+            "AutoMLJobConfig"
+        ],
+        defaults = &[
+            ("AutoMLJobStatus", Dv::Str("InProgress")),
+            ("AutoMLJobSecondaryStatus", Dv::Str("Starting"))
+        ],
         status = "InProgress",
     ),
-    &fam!("mlflow-app", "Name", "Name", "Arn", "mlflow-app",
+    &fam!(
+        "mlflow-app",
+        "Name",
+        "Name",
+        "Arn",
+        "mlflow-app",
         create = "CreateMlflowApp",
-        describe = "DescribeMlflowApp", desc_key = None,
-        list = "ListMlflowApps", "MlflowApps",
+        describe = "DescribeMlflowApp",
+        desc_key = None,
+        list = "ListMlflowApps",
+        "MlflowApps",
         delete = "DeleteMlflowApp",
         missing = "Could not find mlflow app {name}",
-        pass = &["ArtifactStoreUri", "RoleArn", "ProvisioningParameters", "Tags"],
+        pass = &[
+            "ArtifactStoreUri",
+            "RoleArn",
+            "ProvisioningParameters",
+            "Tags"
+        ],
         defaults = &[],
         status = "Created",
     ),
-    &fam!("app", "AppName", "AppName", "AppArn", "app",
+    &fam!(
+        "app",
+        "AppName",
+        "AppName",
+        "AppArn",
+        "app",
         create = "CreateApp",
-        describe = "DescribeApp", desc_key = None,
-        list = "ListApps", "Apps",
+        describe = "DescribeApp",
+        desc_key = None,
+        list = "ListApps",
+        "Apps",
         delete = "DeleteApp",
         missing = "Could not find app {name}",
-        pass = &["DomainId", "UserProfileName", "AppType", "SpaceName", "AppSettings", "Tags"],
-        defaults = &[( "Status", Dv::Str("InService"))],
+        pass = &[
+            "DomainId",
+            "UserProfileName",
+            "AppType",
+            "SpaceName",
+            "AppSettings",
+            "Tags"
+        ],
+        defaults = &[("Status", Dv::Str("InService"))],
         status = "InService",
     ),
 ];
@@ -704,11 +1397,17 @@ fn empty() -> Response {
 }
 
 fn validation(message: &str) -> Response {
-    Response::json_status(400, &json!({ "__type": "ValidationException", "message": message }))
+    Response::json_status(
+        400,
+        &json!({ "__type": "ValidationException", "message": message }),
+    )
 }
 
 fn conflict(message: &str) -> Response {
-    Response::json_status(400, &json!({ "__type": "ConflictException", "message": message }))
+    Response::json_status(
+        400,
+        &json!({ "__type": "ConflictException", "message": message }),
+    )
 }
 
 /// Prune null-valued members of an object (moto serializer behavior).
@@ -728,16 +1427,16 @@ fn without_nulls(v: &Value) -> Value {
 }
 
 fn resource_not_found_plain(message: &str) -> Response {
-    Response::json_status(400, &json!({ "__type": "ResourceNotFound", "message": message }))
+    Response::json_status(
+        400,
+        &json!({ "__type": "ResourceNotFound", "message": message }),
+    )
 }
 
 /// Dispose the missing-resource message per family: {name}, {arn} and {label}
 /// placeholders; extra formats handled inline by callers.
 fn missing_body(f: &Family, name: &str, arn: &str) -> Value {
-    let message = f
-        .missing_msg
-        .replace("{name}", name)
-        .replace("{arn}", arn);
+    let message = f.missing_msg.replace("{name}", name).replace("{arn}", arn);
     if RESOURCE_NOT_FOUND_KINDS.contains(&f.kind) {
         return json!({ "__type": "ResourceNotFound", "message": message });
     }
@@ -763,7 +1462,11 @@ pub fn dispatch(req: &Request) -> Response {
 
 impl SagemakerState {
     fn region(&self) -> &str {
-        if self.region.is_empty() { "us-east-1" } else { &self.region }
+        if self.region.is_empty() {
+            "us-east-1"
+        } else {
+            &self.region
+        }
     }
 
     fn arn_for(&self, kind: &Family, name: &str) -> String {
@@ -794,7 +1497,11 @@ impl SagemakerState {
             .filter(|e| e.kind == kind)
             .cloned()
             .collect();
-        items.sort_by(|a, b| a.created.partial_cmp(&b.created).unwrap_or(std::cmp::Ordering::Equal));
+        items.sort_by(|a, b| {
+            a.created
+                .partial_cmp(&b.created)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         items
             .iter()
             .map(|e| {
@@ -813,9 +1520,14 @@ impl SagemakerState {
                 match e.kind {
                     "algorithm" => summary["AlgorithmName"] = json!(e.name),
                     "notebook-instance" => {}
-                    "training-job" | "processing-job" | "transform-job"
-                    | "compilation-job" | "hyper-parameter-tuning-job" | "auto-ml-job"
-                    | "labeling-job" | "inference-experiment" => {
+                    "training-job"
+                    | "processing-job"
+                    | "transform-job"
+                    | "compilation-job"
+                    | "hyper-parameter-tuning-job"
+                    | "auto-ml-job"
+                    | "labeling-job"
+                    | "inference-experiment" => {
                         summary["CreationTime"] = json!(e.created);
                     }
                     "model-package-group" => {
@@ -865,33 +1577,51 @@ impl SagemakerState {
             "QueryLineage" => return ok(json!({"Vertices": [], "Edges": []})),
             "GetSearchSuggestions" => return ok(json!({"PropertyNameSuggestions": []})),
             "BatchDescribeModelPackage" => {
-                return ok(json!({"ModelPackageSummaries": {}, "BatchDescribeModelPackageErrorMap": {}}))
+                return ok(
+                    json!({"ModelPackageSummaries": {}, "BatchDescribeModelPackageErrorMap": {}}),
+                )
             }
             "ListModelMetadata" => return ok(json!({"ModelMetadataSummaries": []})),
             "ListAliases" => return ok(json!({"SageMakerImageVersionAliases": []})),
             "ListResourceCatalogs" => return ok(json!({"ResourceCatalogs": []})),
-            "UpdateNotebookInstance" | "UpdateNotebookInstanceLifecycleConfig"
+            "UpdateNotebookInstance"
+            | "UpdateNotebookInstanceLifecycleConfig"
             | "UpdateNotebookInstanceLifecycle" => return empty(),
-            "UpdateFeatureMetadata" | "UpdateInferenceComponentRuntimeConfig"
-            | "UpdateDevices" | "RegisterDevices" | "DeregisterDevices"
-            | "BatchAddClusterNodes" | "BatchDeleteClusterNodes"
-            | "BatchRebootClusterNodes" | "BatchReplaceClusterNodes"
-            | "AttachClusterNodeVolume" | "DetachClusterNodeVolume"
-            | "DescribeClusterEvent" | "ListClusterEvents"
-            | "CreateEdgeDeploymentStage" | "DeleteEdgeDeploymentStage"
-            | "StartEdgeDeploymentStage" | "StopEdgeDeploymentStage"
-            | "StartEdgeDeploymentPlan" | "StopEdgePackagingJob"
-            | "StartMonitoringSchedule" | "StopMonitoringSchedule"
+            "UpdateFeatureMetadata"
+            | "UpdateInferenceComponentRuntimeConfig"
+            | "UpdateDevices"
+            | "RegisterDevices"
+            | "DeregisterDevices"
+            | "BatchAddClusterNodes"
+            | "BatchDeleteClusterNodes"
+            | "BatchRebootClusterNodes"
+            | "BatchReplaceClusterNodes"
+            | "AttachClusterNodeVolume"
+            | "DetachClusterNodeVolume"
+            | "DescribeClusterEvent"
+            | "ListClusterEvents"
+            | "CreateEdgeDeploymentStage"
+            | "DeleteEdgeDeploymentStage"
+            | "StartEdgeDeploymentStage"
+            | "StopEdgeDeploymentStage"
+            | "StartEdgeDeploymentPlan"
+            | "StopEdgePackagingJob"
+            | "StartMonitoringSchedule"
+            | "StopMonitoringSchedule"
             | "DeleteModelPackageGroupPolicy"
-            | "StopProcessingJob" | "StopTrainingJob" | "StopTransformJob"
-            | "StopCompilationJob" | "StopHyperParameterTuningJob"
-            | "StopLabelingJob" | "StopOptimizationJob"
+            | "StopProcessingJob"
+            | "StopTrainingJob"
+            | "StopTransformJob"
+            | "StopCompilationJob"
+            | "StopHyperParameterTuningJob"
+            | "StopLabelingJob"
+            | "StopOptimizationJob"
             | "StopInferenceRecommendationsJob" => return empty(),
             "StopAutoMLJob" => {
-                let name = get(params, "AutoMLJobName").and_then(Value::as_str).unwrap_or_default();
-                if self
-                    .get_arn_by_kind_name("auto-ml-job", name)
-                    .is_none()
+                let name = get(params, "AutoMLJobName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if self.get_arn_by_kind_name("auto-ml-job", name).is_none()
                     && self.get_arn_by_kind_name("auto-ml-job-v2", name).is_none()
                 {
                     return Response::json_status(
@@ -904,9 +1634,7 @@ impl SagemakerState {
                 }
                 return empty();
             }
-            "ListCandidatesForAutoMLJob" => {
-                return ok(json!({"Candidates": []}))
-            }
+            "ListCandidatesForAutoMLJob" => return ok(json!({"Candidates": []})),
             "ListAssociations" => return ok(json!({"AssociationSummaries": []})),
             "ListClusterSchedulerConfigs" => {
                 return ok(json!({"ClusterSchedulerConfigSummaries": []}))
@@ -926,17 +1654,25 @@ impl SagemakerState {
             "ImportHubContent" => return ok(json!({"HubArn": "_arn", "HubContentArn": "_arn"})),
             "CreateTrainingPlan" => return ok(json!({"TrainingPlanArn": "_arn"})),
             "DescribeTrainingPlan" => {
-                let name = get(params, "TrainingPlanName").and_then(Value::as_str).unwrap_or_default();
-                return ok(json!({"TrainingPlanArn": "_arn", "TrainingPlanName": name, "Status": "Active"}));
+                let name = get(params, "TrainingPlanName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                return ok(
+                    json!({"TrainingPlanArn": "_arn", "TrainingPlanName": name, "Status": "Active"}),
+                );
             }
             "DescribeReservedCapacity" => {
                 return ok(json!({"ReservedCapacityArn": "_arn", "Status": "Active"}))
             }
             "DescribeSubscribedWorkteam" => {
-                return ok(json!({"SubscribedWorkteam": {"WorkteamArn": "_arn", "ListingId": "listing-00000000"}}))
+                return ok(
+                    json!({"SubscribedWorkteam": {"WorkteamArn": "_arn", "ListingId": "listing-00000000"}}),
+                )
             }
             "DescribeLineageGroup" => {
-                let name = get(params, "LineageGroupName").and_then(Value::as_str).unwrap_or_default();
+                let name = get(params, "LineageGroupName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 return ok(json!({"LineageGroupName": name, "LineageGroupArn": "_arn"}));
             }
             "GetLineageGroupPolicy" => {
@@ -944,7 +1680,9 @@ impl SagemakerState {
                 return ok(json!({"LineageGroupArn": "_arn", "ResourcePolicy": "{}"}));
             }
             "DescribeModelCardExportJob" => {
-                let name = get(params, "ModelCardExportJobName").and_then(Value::as_str).unwrap_or_default();
+                let name = get(params, "ModelCardExportJobName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 return ok(json!({
                     "ModelCardExportJobName": name,
                     "ModelCardExportJobArn": "_arn",
@@ -959,8 +1697,12 @@ impl SagemakerState {
                 return ok(json!({"ModelCardExportJobArn": "_arn"}));
             }
             "DescribeFeatureMetadata" => {
-                let fg = get(params, "FeatureGroupName").and_then(Value::as_str).unwrap_or_default();
-                let fname = get(params, "FeatureName").and_then(Value::as_str).unwrap_or_default();
+                let fg = get(params, "FeatureGroupName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let fname = get(params, "FeatureName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 return ok(json!({
                     "FeatureGroupArn": "_arn",
                     "FeatureGroupName": fg,
@@ -970,7 +1712,9 @@ impl SagemakerState {
                 }));
             }
             "DescribeHubContent" => {
-                let hc = get(params, "HubContentName").and_then(Value::as_str).unwrap_or_default();
+                let hc = get(params, "HubContentName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 return ok(json!({
                     "HubContentName": hc,
                     "HubContentArn": "_arn",
@@ -980,19 +1724,27 @@ impl SagemakerState {
                 }));
             }
             "DescribeImageVersion" => {
-                return ok(json!({"ImageVersionArn": "_arn", "ImageVersionStatus": "CREATED", "Version": 1}))
+                return ok(
+                    json!({"ImageVersionArn": "_arn", "ImageVersionStatus": "CREATED", "Version": 1}),
+                )
             }
             "GetScalingConfigurationRecommendation" => return empty(),
             "DescribeClusterNode" => {
-                let cluster = get(params, "ClusterName").and_then(Value::as_str).unwrap_or_default();
+                let cluster = get(params, "ClusterName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 if self.get_arn_by_kind_name("cluster", cluster).is_none() {
                     return validation(&format!("Could not find cluster '{cluster}'."));
                 }
                 return empty();
             }
             "AssociateTrialComponent" | "DisassociateTrialComponent" => {
-                let tc = get(params, "TrialComponentName").and_then(Value::as_str).unwrap_or_default();
-                let trial = get(params, "TrialName").and_then(Value::as_str).unwrap_or_default();
+                let tc = get(params, "TrialComponentName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let trial = get(params, "TrialName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 return ok(json!({
                     "TrialComponentArn": format!("arn:aws:sagemaker:{}:{}:experiment-trial-component/{tc}", self.region(), self.account),
                     "TrialArn": format!("arn:aws:sagemaker:{}:{}:experiment-trial/{trial}", self.region(), self.account),
@@ -1002,22 +1754,20 @@ impl SagemakerState {
             "ListMonitoringAlerts" => return ok(json!({"MonitoringAlertSummaries": []})),
             "ListMonitoringAlerts" => return ok(json!({"MonitoringAlertSummaries": []})),
             "ListMonitoringAlertHistory" => return ok(json!({"MonitoringAlertHistory": []})),
-            "ListMonitoringExecutions" => {
-                return ok(json!({"MonitoringExecutionSummaries": []}))
-            }
-            "ListPipelineExecutionSteps" => {
-                return ok(json!({"PipelineExecutionSteps": []}))
-            }
+            "ListMonitoringExecutions" => return ok(json!({"MonitoringExecutionSummaries": []})),
+            "ListPipelineExecutionSteps" => return ok(json!({"PipelineExecutionSteps": []})),
             "ListPipelineParametersForExecution" => {
                 return ok(json!({"PipelineExecutionParameters": []}))
             }
-            "RetryPipelineExecution" | "SendPipelineExecutionStepSuccess"
-            | "SendPipelineExecutionStepFailure" | "StopPipelineExecution" => {
-                return ok(json!({"PipelineExecutionArn": "_arn"}))
-            }
+            "RetryPipelineExecution"
+            | "SendPipelineExecutionStepSuccess"
+            | "SendPipelineExecutionStepFailure"
+            | "StopPipelineExecution" => return ok(json!({"PipelineExecutionArn": "_arn"})),
             "ListPipelineVersions" => return ok(json!({"PipelineVersionSummaries": []})),
             "ListModelCardVersions" => {
-                let name = get(params, "ModelCardName").and_then(Value::as_str).unwrap_or_default();
+                let name = get(params, "ModelCardName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 match self.get_arn_by_kind_name("model-card", name) {
                     None => {
                         return resource_not_found_plain(&format!(
@@ -1043,28 +1793,26 @@ impl SagemakerState {
                     }
                 }
             }
-            "ListModelCardExportJobs" => {
-                return ok(json!({"ModelCardExportJobSummaries": []}))
-            }
+            "ListModelCardExportJobs" => return ok(json!({"ModelCardExportJobSummaries": []})),
             "ListTrainingPlans" => return ok(json!({"TrainingPlanSummaries": []})),
             "ListTrainingJobsForHyperParameterTuningJob" => {
                 return ok(json!({"TrainingJobSummaries": []}))
             }
             "ListSubscribedWorkteams" => return ok(json!({"SubscribedWorkteams": []})),
-            "ListLabelingJobsForWorkteam" => {
-                return ok(json!({"LabelingJobSummaryList": []}))
-            }
+            "ListLabelingJobsForWorkteam" => return ok(json!({"LabelingJobSummaryList": []})),
             "ListLineageGroups" => return ok(json!({"LineageGroupSummaries": []})),
             "ListInferenceRecommendationsJobSteps" => return ok(json!({"Steps": []})),
-            "SearchTrainingPlanOfferings" => {
-                return ok(json!({"TrainingPlanOfferings": []}))
-            }
+            "SearchTrainingPlanOfferings" => return ok(json!({"TrainingPlanOfferings": []})),
             "ListUltraServersByReservedCapacity" => return ok(json!({})),
             "CreateClusterSchedulerConfig" => {
-                return ok(json!({"ClusterSchedulerConfigArn": "_arn", "ClusterSchedulerConfigId": "csc-00000000"}))
+                return ok(
+                    json!({"ClusterSchedulerConfigArn": "_arn", "ClusterSchedulerConfigId": "csc-00000000"}),
+                )
             }
             "DescribeClusterSchedulerConfig" => {
-                return ok(json!({"ClusterSchedulerConfigId": "csc-00000000", "Status": "Completed"}))
+                return ok(
+                    json!({"ClusterSchedulerConfigId": "csc-00000000", "Status": "Completed"}),
+                )
             }
             "DeleteClusterSchedulerConfig" | "DeleteComputeQuota" => return empty(),
             "CreateComputeQuota" => {
@@ -1075,7 +1823,9 @@ impl SagemakerState {
             }
             "DeletePartnerApp" | "DeleteWorkteam" | "DeleteWorkforce" => return empty(),
             "StartInferenceExperiment" => {
-                let name = get(params, "Name").and_then(Value::as_str).unwrap_or_default();
+                let name = get(params, "Name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 let Some(e) = self
                     .resources
                     .get_mut(&SagemakerState::key("inference-experiment", name))
@@ -1088,7 +1838,9 @@ impl SagemakerState {
                 return ok(json!({"InferenceExperimentArn": arn}));
             }
             "StopInferenceExperiment" => {
-                let name = get(params, "Name").and_then(Value::as_str).unwrap_or_default();
+                let name = get(params, "Name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 let Some(e) = self
                     .resources
                     .get_mut(&SagemakerState::key("inference-experiment", name))
@@ -1103,19 +1855,19 @@ impl SagemakerState {
             "StartNotebookInstance" => return self.op_start_notebook(params),
             "StopNotebookInstance" => return self.op_stop_notebook(params),
             "Search" => return self.op_search(params),
-            "GetModelPackageGroupPolicy" => {
-                return ok(json!({"ResourcePolicy": "{}"}))
-            }
+            "GetModelPackageGroupPolicy" => return ok(json!({"ResourcePolicy": "{}"})),
             "PutModelPackageGroupPolicy" => {
                 if let Some(g) = get(params, "ModelPackageGroupName") {
                     let arn = self
                         .get_arn_by_kind_name("model-package-group", g.as_str().unwrap_or(""))
-                        .unwrap_or_else(|| format!(
-                            "arn:aws:sagemaker:{}:{}:model-package-group/{}",
-                            self.region(),
-                            self.account,
-                            g.as_str().unwrap_or("")
-                        ));
+                        .unwrap_or_else(|| {
+                            format!(
+                                "arn:aws:sagemaker:{}:{}:model-package-group/{}",
+                                self.region(),
+                                self.account,
+                                g.as_str().unwrap_or("")
+                            )
+                        });
                     return ok(json!({"ModelPackageGroupArn": arn}));
                 }
                 return ok(json!({"ModelPackageGroupArn": null}));
@@ -1124,24 +1876,32 @@ impl SagemakerState {
                 return ok(json!({"LineageGroupArn": null, "ResourcePolicy": "{}"}))
             }
             "GetDeviceFleetReport" => {
-                let name = get(params, "DeviceFleetName").and_then(Value::as_str).unwrap_or_default();
+                let name = get(params, "DeviceFleetName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 let arn = self
                     .get_arn_by_kind_name("device-fleet", name)
-                    .unwrap_or_else(|| format!(
-                        "arn:aws:sagemaker:{r}:{a}:device-fleet/{name}",
-                        r = self.region(),
-                        a = self.account
-                    ));
-                return ok(json!({"DeviceFleetArn": arn, "DeviceFleetName": get(params, "DeviceFleetName"), "OutputConfig": {}}));
+                    .unwrap_or_else(|| {
+                        format!(
+                            "arn:aws:sagemaker:{r}:{a}:device-fleet/{name}",
+                            r = self.region(),
+                            a = self.account
+                        )
+                    });
+                return ok(
+                    json!({"DeviceFleetArn": arn, "DeviceFleetName": get(params, "DeviceFleetName"), "OutputConfig": {}}),
+                );
             }
             "DescribeDevice" => {
                 let name = get(params, "DeviceName").cloned().unwrap_or(json!("d"));
-                let fleet = get(params, "DeviceFleetName").cloned().unwrap_or(json!("df"));
-                return ok(json!({"DeviceName": name, "DeviceFleetName": fleet, "RegistrationTime": 1704067200.0}));
+                let fleet = get(params, "DeviceFleetName")
+                    .cloned()
+                    .unwrap_or(json!("df"));
+                return ok(
+                    json!({"DeviceName": name, "DeviceFleetName": fleet, "RegistrationTime": 1704067200.0}),
+                );
             }
-            "ListDevices" => {
-                return ok(json!({"DeviceSummaries": []}))
-            }
+            "ListDevices" => return ok(json!({"DeviceSummaries": []})),
             "DescribeEdgePackagingJob" => {
                 // edge-packaging family handles its own describes
             }
@@ -1155,10 +1915,7 @@ impl SagemakerState {
 
         // --- family-driven operations --------------------------------------
         let found = FAMILIES.iter().find(|f| {
-            f.create_op == op
-                || f.describe_op == op
-                || f.list_op == op
-                || f.delete_op == op
+            f.create_op == op || f.describe_op == op || f.list_op == op || f.delete_op == op
         });
         let Some(f) = found else {
             return crate::proto::json_error(
@@ -1215,13 +1972,30 @@ impl SagemakerState {
                     }
                     return empty();
                 }
-                if matches!(uf.kind, "action" | "context" | "flow-definition" | "hub"
-                    | "code-repository" | "image" | "workforce" | "workteam"
-                    | "project" | "app" | "space" | "user-profile" | "device-fleet"
-                    | "monitoring-schedule" | "inference-experiment"
-                    | "inference-component" | "human-task-ui" | "model-card"
-                    | "endpoint-config" | "experiment-trial-component" | "artifact")
-                {
+                if matches!(
+                    uf.kind,
+                    "action"
+                        | "context"
+                        | "flow-definition"
+                        | "hub"
+                        | "code-repository"
+                        | "image"
+                        | "workforce"
+                        | "workteam"
+                        | "project"
+                        | "app"
+                        | "space"
+                        | "user-profile"
+                        | "device-fleet"
+                        | "monitoring-schedule"
+                        | "inference-experiment"
+                        | "inference-component"
+                        | "human-task-ui"
+                        | "model-card"
+                        | "endpoint-config"
+                        | "experiment-trial-component"
+                        | "artifact"
+                ) {
                     let synthetic_arn = format!(
                         "arn:aws:sagemaker:{r}:{a}:{path}/{name}",
                         r = self.region(),
@@ -1261,7 +2035,9 @@ impl SagemakerState {
                 let n = self
                     .resources
                     .values()
-                    .filter(|e| e.kind == "model-package" && e.name.starts_with(&format!("{group}/")))
+                    .filter(|e| {
+                        e.kind == "model-package" && e.name.starts_with(&format!("{group}/"))
+                    })
                     .count()
                     + 1;
                 name = format!("{group}/{n}");
@@ -1278,9 +2054,18 @@ impl SagemakerState {
                 "model-card" => {
                     return conflict(&format!("Modelcard {name} already exists"));
                 }
-                "model-package-group" | "model-package" | "experiment"
-                | "pipeline" | "code-repository" | "image" | "action" | "context"
-                | "artifact" | "human-task-ui" | "workteam" | "workforce" => {
+                "model-package-group"
+                | "model-package"
+                | "experiment"
+                | "pipeline"
+                | "code-repository"
+                | "image"
+                | "action"
+                | "context"
+                | "artifact"
+                | "human-task-ui"
+                | "workteam"
+                | "workforce" => {
                     // moto allows duplicates for these (returns same shape)
                 }
                 _ => {
@@ -1302,7 +2087,11 @@ impl SagemakerState {
             arn: arn.clone(),
             created,
             modified: None,
-            status: if f.status.is_empty() { None } else { Some(f.status) },
+            status: if f.status.is_empty() {
+                None
+            } else {
+                Some(f.status)
+            },
             props: Value::Object(props),
         };
         if let Some(tags) = get(params, "Tags").and_then(Value::as_array) {
@@ -1373,8 +2162,13 @@ impl SagemakerState {
                 "endpoint" => "EndpointStatus",
                 "notebook-instance" => "NotebookInstanceStatus",
                 "pipeline" | "pipeline-execution" => "PipelineExecutionStatus",
-                "compilation-job" | "processing-job" | "training-job" | "transform-job"
-                | "hyper-parameter-tuning-job" | "auto-ml-job" | "labeling-job" => "JobStatus",
+                "compilation-job"
+                | "processing-job"
+                | "training-job"
+                | "transform-job"
+                | "hyper-parameter-tuning-job"
+                | "auto-ml-job"
+                | "labeling-job" => "JobStatus",
                 "model-package" | "model-package-group" => "ModelPackageStatus",
                 "model-card" => "ModelCardStatus",
                 "cluster" => "ClusterStatus",
@@ -1426,7 +2220,8 @@ impl SagemakerState {
                 body["DirectInternetAccess"] = json!("Enabled");
                 body["InstanceMetadataServiceRoute"] = json!(null);
                 body["SubnetId"] = body.get("SubnetId").cloned().unwrap_or(Value::Null);
-                body["SecurityGroupIds"] = body.get("SecurityGroupIds").cloned().unwrap_or(json!([]));
+                body["SecurityGroupIds"] =
+                    body.get("SecurityGroupIds").cloned().unwrap_or(json!([]));
             }
             "domain" => {
                 body["DomainId"] = json!(format!("d-{}", e.name));
@@ -1536,9 +2331,11 @@ impl SagemakerState {
                         a = self.account,
                         path = f.arn_path
                     );
-                    return validation(&missing_body(f, &name, &synthetic_arn)["message"]
-                        .as_str()
-                        .unwrap_or(""));
+                    return validation(
+                        &missing_body(f, &name, &synthetic_arn)["message"]
+                            .as_str()
+                            .unwrap_or(""),
+                    );
                 }
                 if matches!(f.kind, "hub" | "monitoring-schedule") {
                     let synthetic_arn = format!(
@@ -1550,9 +2347,7 @@ impl SagemakerState {
                     return Response::json_status(400, &missing_body(f, &name, &synthetic_arn));
                 }
                 if f.kind == "model-card" {
-                    return resource_not_found_plain(&format!(
-                        "Modelcard {name} does not exist."
-                    ));
+                    return resource_not_found_plain(&format!("Modelcard {name} does not exist."));
                 }
                 if f.kind == "model" {
                     // moto models render an S3-style XML error for missing models
@@ -1618,7 +2413,9 @@ impl SagemakerState {
 
     /// moto's list_tags paginates per resource; the suite passes ResourceArn.
     fn op_list_tags(&mut self, params: &Value) -> Response {
-        let arn = get(params, "ResourceArn").and_then(Value::as_str).unwrap_or("");
+        let arn = get(params, "ResourceArn")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let Some(base) = resolve_resource_arn(self, arn) else {
             return ok(json!({"Tags": [], "NextToken": null}));
         };
@@ -1627,7 +2424,9 @@ impl SagemakerState {
     }
 
     fn op_describe_tags(&mut self, params: &Value) -> Response {
-        let arn = get(params, "ResourceArn").and_then(Value::as_str).unwrap_or("");
+        let arn = get(params, "ResourceArn")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let Some(base) = resolve_resource_arn(self, arn) else {
             return ok(json!({"Tags": []}));
         };
@@ -1636,7 +2435,9 @@ impl SagemakerState {
     }
 
     fn op_add_tags(&mut self, params: &Value) -> Response {
-        let arn = get(params, "ResourceArn").and_then(Value::as_str).unwrap_or("");
+        let arn = get(params, "ResourceArn")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let Some(base) = resolve_resource_arn(self, arn) else {
             return ok(json!({"Tags": []}));
         };
@@ -1657,7 +2458,9 @@ impl SagemakerState {
     }
 
     fn op_delete_tags(&mut self, params: &Value) -> Response {
-        let arn = get(params, "ResourceArn").and_then(Value::as_str).unwrap_or("");
+        let arn = get(params, "ResourceArn")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let Some(base) = resolve_resource_arn(self, arn) else {
             return empty();
         };
@@ -1689,7 +2492,18 @@ impl SagemakerState {
         // moto returns every resource of the requested type; the suite calls
         // this with Experiment/TrainingJob/Model etc. after creations.
         let mut results = Vec::new();
-        for kw in ["Experiment", "Trial", "TrialComponent", "Model", "EndpointConfig", "TrainingJob", "ProcessingJob", "Pipeline", "FeatureGroup", "HyperParameterTuningJob"] {
+        for kw in [
+            "Experiment",
+            "Trial",
+            "TrialComponent",
+            "Model",
+            "EndpointConfig",
+            "TrainingJob",
+            "ProcessingJob",
+            "Pipeline",
+            "FeatureGroup",
+            "HyperParameterTuningJob",
+        ] {
             let _ = kw;
         }
         // generic: one result group per matching resource, keyed by kind name
@@ -1706,7 +2520,7 @@ impl SagemakerState {
             "Pipeline" => "pipeline",
             "FeatureGroup" => "feature-group",
             "HyperParameterTuningJob" => "hyper-parameter-tuning-job",
-            "ModelDomain"|"DataZoneDomain" => "domain",
+            "ModelDomain" | "DataZoneDomain" => "domain",
             _ => "",
         };
         if !want.is_empty() {
@@ -1796,7 +2610,9 @@ fn apply_list_filters(f: &Family, params: &Value, mut items: Vec<Value>) -> Vec<
 
 /// MaxResults/NextToken pagination; token = index of the first unconsumed item.
 fn paginate(params: &Value, items: &[Value]) -> (Vec<Value>, Option<usize>) {
-    let max = get(params, "MaxResults").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let max = get(params, "MaxResults")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
     if max == 0 {
         return (items.to_vec(), None);
     }
@@ -1910,7 +2726,9 @@ impl SagemakerState {
             return Some(ok(json!({"HubArn": "_arn", "HubContentArn": "_arn"})));
         }
         if op == "UpdateModelPackage" {
-            let arn = get(params, "ModelPackageArn").and_then(Value::as_str).unwrap_or("");
+            let arn = get(params, "ModelPackageArn")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             if let Some(e) = self
                 .resources
                 .values_mut()
@@ -1930,15 +2748,19 @@ impl SagemakerState {
             return Some(ok(json!({"TrackingServerArn": "_arn"})));
         }
         if op == "UpdateMonitoringAlert" {
-            let name = get(params, "MonitoringScheduleName").and_then(Value::as_str).unwrap_or_default();
+            let name = get(params, "MonitoringScheduleName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let arn = self
                 .get_arn_by_kind_name("monitoring-schedule", name)
-                .unwrap_or_else(|| format!(
-                    "arn:aws:sagemaker:{r}:{a}:monitoring-schedule/{n}",
-                    r = self.region(),
-                    a = self.account,
-                    n = name
-                ));
+                .unwrap_or_else(|| {
+                    format!(
+                        "arn:aws:sagemaker:{r}:{a}:monitoring-schedule/{n}",
+                        r = self.region(),
+                        a = self.account,
+                        n = name
+                    )
+                });
             return Some(ok(json!({"MonitoringScheduleArn": arn})));
         }
         if op == "StopPipelineExecution" {
@@ -1954,8 +2776,14 @@ impl SagemakerState {
             return Some(ok(json!({"ComputeQuotaArn": "_arn"})));
         }
         if op == "DescribePipelineExecution" {
-            let arn = get(params, "PipelineExecutionArn").and_then(Value::as_str).unwrap_or_default();
-            if let Some(e) = self.resources.values().find(|e| e.kind == "pipeline-execution" && e.arn == arn) {
+            let arn = get(params, "PipelineExecutionArn")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if let Some(e) = self
+                .resources
+                .values()
+                .find(|e| e.kind == "pipeline-execution" && e.arn == arn)
+            {
                 return Some(ok(json!({
                     "PipelineExecutionArn": arn,
                     "PipelineExecutionStatus": "Executing",
@@ -1975,11 +2803,29 @@ impl SagemakerState {
             )));
         }
         if op == "DescribePipelineDefinitionForExecution" {
-            let arn = get(params, "PipelineExecutionArn").and_then(Value::as_str).unwrap_or_default();
-            if let Some(e) = self.resources.values().find(|e| e.kind == "pipeline-execution" && e.arn == arn) {
-                let pname = e.props.get("PipelineName").and_then(Value::as_str).unwrap_or_default();
-                if let Some(p) = self.resources.values().find(|e2| e2.kind == "pipeline" && e2.name == pname) {
-                    let definition = p.props.get("PipelineDefinition").cloned().unwrap_or(json!({}));
+            let arn = get(params, "PipelineExecutionArn")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if let Some(e) = self
+                .resources
+                .values()
+                .find(|e| e.kind == "pipeline-execution" && e.arn == arn)
+            {
+                let pname = e
+                    .props
+                    .get("PipelineName")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if let Some(p) = self
+                    .resources
+                    .values()
+                    .find(|e2| e2.kind == "pipeline" && e2.name == pname)
+                {
+                    let definition = p
+                        .props
+                        .get("PipelineDefinition")
+                        .cloned()
+                        .unwrap_or(json!({}));
                     return Some(ok(json!({"PipelineDefinition": definition})));
                 }
             }
@@ -1993,7 +2839,9 @@ impl SagemakerState {
             )));
         }
         if op == "ListPipelineExecutions" {
-            let name = get(params, "PipelineName").and_then(Value::as_str).unwrap_or_default();
+            let name = get(params, "PipelineName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let items: Vec<Value> = self
                 .resources
                 .values()
@@ -2011,8 +2859,14 @@ impl SagemakerState {
             return Some(ok(json!({"PipelineExecutionSummaries": items})));
         }
         if op == "DescribeEdgePackagingJob" {
-            let name = get(params, "EdgePackagingJobName").and_then(Value::as_str).unwrap_or_default();
-            if let Some(e) = self.resources.values().find(|e| e.kind == "edge-packaging-job" && e.name == name) {
+            let name = get(params, "EdgePackagingJobName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if let Some(e) = self
+                .resources
+                .values()
+                .find(|e| e.kind == "edge-packaging-job" && e.name == name)
+            {
                 return Some(ok(json!({
                     "EdgePackagingJobArn": e.arn,
                     "EdgePackagingJobName": e.name,
@@ -2026,8 +2880,14 @@ impl SagemakerState {
             })));
         }
         if op == "DescribeInferenceRecommendationsJob" {
-            let name = get(params, "JobName").and_then(Value::as_str).unwrap_or_default();
-            if let Some(e) = self.resources.values().find(|e| e.kind == "inference-recommendations-job" && e.name == name) {
+            let name = get(params, "JobName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if let Some(e) = self
+                .resources
+                .values()
+                .find(|e| e.kind == "inference-recommendations-job" && e.name == name)
+            {
                 return Some(ok(json!({
                     "JobName": name, "Status": "COMPLETED", "JobArn": e.arn
                 })));
@@ -2039,7 +2899,9 @@ impl SagemakerState {
             })));
         }
         if op == "DescribeAutoMLJob" {
-            let name = get(params, "AutoMLJobName").and_then(Value::as_str).unwrap_or_default();
+            let name = get(params, "AutoMLJobName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             return Some(ok(json!({
                 "AutoMLJobName": name,
                 "AutoMLJobArn": format!("arn:aws:sagemaker{}{}:automl-job/{name}", self.region(), self.account),
@@ -2059,8 +2921,14 @@ impl SagemakerState {
             return Some(ok(json!({"MonitoringScheduleArn": "_arn"})));
         }
         if op == "UpdateModelCard" {
-            let name = get(params, "ModelCardName").and_then(Value::as_str).unwrap_or_default();
-            if let Some(e) = self.resources.values_mut().find(|e| e.kind == "model-card" && e.name == name) {
+            let name = get(params, "ModelCardName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if let Some(e) = self
+                .resources
+                .values_mut()
+                .find(|e| e.kind == "model-card" && e.name == name)
+            {
                 if let Some(status) = get(params, "ModelCardStatus") {
                     e.props["ModelCardStatus"] = status.clone();
                     e.modified = Some(now_ts());
@@ -2100,7 +2968,9 @@ impl SagemakerState {
             return Some(ok(json!({"EndpointArn": arn})));
         }
         if op == "CreatePartnerApp" {
-            let name = get(params, "Name").and_then(Value::as_str).unwrap_or_default();
+            let name = get(params, "Name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let arn = format!(
                 "arn:aws:sagemaker:{r}:{a}:partner-app/{name}",
                 r = self.region(),
@@ -2180,9 +3050,16 @@ impl SagemakerState {
                 }
                 return Some(ok(json!({"PipelineArn": arn})));
             }
-            if matches!(uf.kind, "training-job" | "trial" | "experiment" | "mlflow-app"
-                | "partner-app" | "image-version" | "pipeline-execution")
-            {
+            if matches!(
+                uf.kind,
+                "training-job"
+                    | "trial"
+                    | "experiment"
+                    | "mlflow-app"
+                    | "partner-app"
+                    | "image-version"
+                    | "pipeline-execution"
+            ) {
                 // moto returns the null-key variant for these
                 return Some(ok(json!({ uf.arn_key: "_arn" })));
             }
@@ -2193,15 +3070,34 @@ impl SagemakerState {
             // apply modification passthrough into props? keep simple: no change
             return Some(ok(json!({ key: arn })));
         }
-        if matches!(uf.kind, "action" | "context" | "flow-definition" | "hub"
-            | "code-repository" | "image" | "workforce" | "workteam"
-            | "project" | "app" | "space" | "user-profile" | "device-fleet"
-            | "monitoring-schedule" | "inference-experiment"
-            | "inference-component" | "human-task-ui" | "model-card"
-            | "endpoint-config" | "experiment-trial-component" | "artifact"
-            | "model-package" | "app-image-config" | "mlflow-tracking-server"
-            | "mlflow-app")
-        {
+        if matches!(
+            uf.kind,
+            "action"
+                | "context"
+                | "flow-definition"
+                | "hub"
+                | "code-repository"
+                | "image"
+                | "workforce"
+                | "workteam"
+                | "project"
+                | "app"
+                | "space"
+                | "user-profile"
+                | "device-fleet"
+                | "monitoring-schedule"
+                | "inference-experiment"
+                | "inference-component"
+                | "human-task-ui"
+                | "model-card"
+                | "endpoint-config"
+                | "experiment-trial-component"
+                | "artifact"
+                | "model-package"
+                | "app-image-config"
+                | "mlflow-tracking-server"
+                | "mlflow-app"
+        ) {
             if uf.kind == "mlflow-app" {
                 return Some(validation("Could not find mlflow app None"));
             }
@@ -2209,7 +3105,9 @@ impl SagemakerState {
                 return Some(validation(&format!("Model package {}/None not found", raw)));
             }
             if uf.kind == "model-card" {
-                return Some(resource_not_found_plain(&format!("Modelcard {raw} does not exist.")));
+                return Some(resource_not_found_plain(&format!(
+                    "Modelcard {raw} does not exist."
+                )));
             }
             let synthetic_arn = format!(
                 "arn:aws:sagemaker:{r}:{a}:{path}/{name}",

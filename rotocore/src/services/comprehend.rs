@@ -44,23 +44,45 @@ pub fn dispatch(req: &Request) -> Response {
     match req.operation.as_str() {
         "ListEntityRecognizers" => st.op_list_entity_recognizers(&params),
         "CreateEntityRecognizer" => st.op_create_entity_recognizer(&params),
-        "DescribeEntityRecognizer" => st.op_describe_by_arn(&params, "EntityRecognizerArn", "recognizers", "EntityRecognizerProperties"),
-        "StopTrainingEntityRecognizer" => st.op_stop_training(&params, "EntityRecognizerArn", "recognizers", "TRAINED"),
-        "DeleteEntityRecognizer" => st.op_delete_by_arn(&params, "EntityRecognizerArn", "recognizers"),
+        "DescribeEntityRecognizer" => st.op_describe_by_arn(
+            &params,
+            "EntityRecognizerArn",
+            "recognizers",
+            "EntityRecognizerProperties",
+        ),
+        "StopTrainingEntityRecognizer" => {
+            st.op_stop_training(&params, "EntityRecognizerArn", "recognizers", "TRAINED")
+        }
+        "DeleteEntityRecognizer" => {
+            st.op_delete_by_arn(&params, "EntityRecognizerArn", "recognizers")
+        }
         "ListDocumentClassifiers" => st.op_list_document_classifiers(&params),
         "CreateDocumentClassifier" => st.op_create_document_classifier(&params),
-        "DescribeDocumentClassifier" => st.op_describe_by_arn(&params, "DocumentClassifierArn", "classifiers", "DocumentClassifierProperties"),
-        "StopTrainingDocumentClassifier" => st.op_stop_training(&params, "DocumentClassifierArn", "classifiers", "TRAINING"),
-        "DeleteDocumentClassifier" => st.op_delete_by_arn(&params, "DocumentClassifierArn", "classifiers"),
+        "DescribeDocumentClassifier" => st.op_describe_by_arn(
+            &params,
+            "DocumentClassifierArn",
+            "classifiers",
+            "DocumentClassifierProperties",
+        ),
+        "StopTrainingDocumentClassifier" => {
+            st.op_stop_training(&params, "DocumentClassifierArn", "classifiers", "TRAINING")
+        }
+        "DeleteDocumentClassifier" => {
+            st.op_delete_by_arn(&params, "DocumentClassifierArn", "classifiers")
+        }
         "ListDocumentClassifierSummaries" => st.op_list_classifier_summaries(),
         "ListEntityRecognizerSummaries" => st.op_list_recognizer_summaries(),
         "CreateEndpoint" => st.op_create_endpoint(&params),
-        "DescribeEndpoint" => st.op_describe_by_arn(&params, "EndpointArn", "endpoints", "EndpointProperties"),
+        "DescribeEndpoint" => {
+            st.op_describe_by_arn(&params, "EndpointArn", "endpoints", "EndpointProperties")
+        }
         "UpdateEndpoint" => st.op_update_endpoint(&params),
         "DeleteEndpoint" => st.op_delete_by_arn(&params, "EndpointArn", "endpoints"),
         "ListEndpoints" => st.op_list_endpoints(&params),
         "CreateFlywheel" => st.op_create_flywheel(&params),
-        "DescribeFlywheel" => st.op_describe_by_arn(&params, "FlywheelArn", "flywheels", "FlywheelProperties"),
+        "DescribeFlywheel" => {
+            st.op_describe_by_arn(&params, "FlywheelArn", "flywheels", "FlywheelProperties")
+        }
         "UpdateFlywheel" => st.op_update_flywheel(&params),
         "DeleteFlywheel" => st.op_delete_by_arn(&params, "FlywheelArn", "flywheels"),
         "ListFlywheels" => st.op_list_flywheels(&params),
@@ -133,7 +155,9 @@ const JOB_TYPES: [&str; 9] = [
 // --- Shared helpers --------------------------------------------------------
 
 fn now_iso() -> String {
-    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.6f+00:00").to_string()
+    chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.6f+00:00")
+        .to_string()
 }
 
 fn json_error(status: u16, code: &str, message: &str) -> Response {
@@ -231,7 +255,13 @@ impl ComprehendState {
     // ------------------------------------------------------------------
 
     /// Describe{Resource} against one of the arn-keyed stores.
-    fn op_describe_by_arn(&mut self, p: &Value, param: &str, store: &str, wrapper: &str) -> Response {
+    fn op_describe_by_arn(
+        &mut self,
+        p: &Value,
+        param: &str,
+        store: &str,
+        wrapper: &str,
+    ) -> Response {
         let arn = p.get(param).and_then(Value::as_str).unwrap_or("");
         let found = match store {
             "recognizers" => self.recognizers.get(arn),
@@ -266,7 +296,13 @@ impl ComprehendState {
         ok(json!({}))
     }
 
-    fn op_stop_training(&mut self, p: &Value, param: &str, store: &str, training_status: &str) -> Response {
+    fn op_stop_training(
+        &mut self,
+        p: &Value,
+        param: &str,
+        store: &str,
+        training_status: &str,
+    ) -> Response {
         let arn = p.get(param).and_then(Value::as_str).unwrap_or("");
         let found = match store {
             "recognizers" => self.recognizers.get_mut(arn),
@@ -451,7 +487,10 @@ impl ComprehendState {
             .get("EndpointName")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let model_arn = p.get("ModelArn").and_then(Value::as_str).unwrap_or_default();
+        let model_arn = p
+            .get("ModelArn")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let arn = format!(
             "arn:aws:comprehend:{r}:{a}:endpoint/{name}/{model_arn}",
             r = self.region(),
@@ -539,7 +578,9 @@ impl ComprehendState {
         });
         self.flywheels.insert(arn.clone(), props.clone());
         self.tag_init(&arn, p);
-        ok(json!({"FlywheelArn": arn, "activeModelArn": p.get("ActiveModelArn").cloned().unwrap_or(Value::Null)}))
+        ok(
+            json!({"FlywheelArn": arn, "activeModelArn": p.get("ActiveModelArn").cloned().unwrap_or(Value::Null)}),
+        )
     }
 
     fn op_update_flywheel(&mut self, p: &Value) -> Response {
@@ -617,7 +658,10 @@ impl ComprehendState {
         if !self.flywheels.contains_key(flywheel_arn) {
             return resource_not_found();
         }
-        let name = p.get("DatasetName").and_then(Value::as_str).unwrap_or_default();
+        let name = p
+            .get("DatasetName")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let tail = flywheel_arn.rsplit('/').next().unwrap_or("");
         let arn = format!(
             "arn:aws:comprehend:{r}:{a}:flywheel/{tail}/dataset/{name}",
@@ -785,7 +829,10 @@ impl ComprehendState {
     }
 
     fn tag_init(&mut self, arn: &str, p: &Value) {
-        if let Some(tags) = p.get("Tags").filter(|t| t.as_array().is_some_and(|a| !a.is_empty())) {
+        if let Some(tags) = p
+            .get("Tags")
+            .filter(|t| t.as_array().is_some_and(|a| !a.is_empty()))
+        {
             if let Some(arr) = tags.as_array() {
                 let entry = self.tags.entry(arn.to_string()).or_default();
                 entry.extend(arr.clone());
@@ -798,7 +845,11 @@ impl ComprehendState {
     // ------------------------------------------------------------------
 
     fn op_detect_sentiment(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 5000) {
             return response;
         }
@@ -809,7 +860,11 @@ impl ComprehendState {
     }
 
     fn op_detect_key_phrases(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 100000) {
             return response;
         }
@@ -820,7 +875,11 @@ impl ComprehendState {
     }
 
     fn op_detect_pii_entities(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 100000) {
             return response;
         }
@@ -831,7 +890,11 @@ impl ComprehendState {
     }
 
     fn op_detect_dominant_language(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 100000) {
             return response;
         }
@@ -839,7 +902,11 @@ impl ComprehendState {
     }
 
     fn op_detect_entities(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 100000) {
             return response;
         }
@@ -850,7 +917,11 @@ impl ComprehendState {
     }
 
     fn op_detect_syntax(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 5000) {
             return response;
         }
@@ -861,7 +932,11 @@ impl ComprehendState {
     }
 
     fn op_detect_targeted_sentiment(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 5000) {
             return response;
         }
@@ -872,7 +947,11 @@ impl ComprehendState {
     }
 
     fn op_contains_pii_entities(&mut self, p: &Value) -> Response {
-        let text_len = p.get("Text").and_then(Value::as_str).map(str::len).unwrap_or(0);
+        let text_len = p
+            .get("Text")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
         if let Some(response) = check_text_size(text_len, 100000) {
             return response;
         }
@@ -933,9 +1012,7 @@ impl ComprehendState {
         let result_list: Vec<Value> = texts
             .iter()
             .enumerate()
-            .map(|(i, _)| {
-                json!({"Index": i, "Languages": [{"LanguageCode": "en", "Score": 0.99}]})
-            })
+            .map(|(i, _)| json!({"Index": i, "Languages": [{"LanguageCode": "en", "Score": 0.99}]}))
             .collect();
         ok(json!({"ResultList": result_list, "ErrorList": []}))
     }
@@ -956,7 +1033,6 @@ impl ComprehendState {
         ok(json!({"ResultList": result_list, "ErrorList": []}))
     }
 }
-
 
 /// Map minus one key.
 fn drop_key(v: &Value, key: &str) -> Value {
@@ -1216,7 +1292,11 @@ mod tests {
         let (s, r) = call("DetectDominantLanguage", json!({"Text": "hi"}), acct);
         assert_eq!(r["Languages"][0]["LanguageCode"], "en");
 
-        let (s, r) = call("ContainsPiiEntities", json!({"Text": "x", "LanguageCode": "en"}), acct);
+        let (s, r) = call(
+            "ContainsPiiEntities",
+            json!({"Text": "x", "LanguageCode": "en"}),
+            acct,
+        );
         let labels = r["Labels"].as_array().unwrap();
         assert!(labels.is_empty());
 
@@ -1254,19 +1334,22 @@ mod tests {
             acct,
         );
         assert_eq!(r["JobStatus"], "SUBMITTED");
-        assert!(r["JobArn"].as_str().unwrap().contains("sentiment-detection-job"));
+        assert!(r["JobArn"]
+            .as_str()
+            .unwrap()
+            .contains("sentiment-detection-job"));
         let job_id = r["JobId"].as_str().unwrap().to_string();
 
-        let (s, r) = call("DescribeSentimentDetectionJob", json!({"JobId": job_id.clone()}), acct);
+        let (s, r) = call(
+            "DescribeSentimentDetectionJob",
+            json!({"JobId": job_id.clone()}),
+            acct,
+        );
         let props = &r["SentimentDetectionJobProperties"];
         assert_eq!(props["JobStatus"], "SUBMITTED");
         assert!(props["SubmitTime"].as_str().unwrap().ends_with("+00:00"));
 
-        let (s, r) = call(
-            "StopSentimentDetectionJob",
-            json!({"JobId": job_id}),
-            acct,
-        );
+        let (s, r) = call("StopSentimentDetectionJob", json!({"JobId": job_id}), acct);
         assert_eq!(r["JobStatus"], "STOP_REQUESTED");
 
         let (s, r) = call("ListSentimentDetectionJobs", json!({}), acct);
@@ -1276,10 +1359,20 @@ mod tests {
 
         // wrong family list stays empty
         let (s, r) = call("ListTopicsDetectionJobs", json!({}), acct);
-        assert_eq!(r["TopicsDetectionJobPropertiesList"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            r["TopicsDetectionJobPropertiesList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
 
         // missing job -> ResourceNotFound
-        let (s, _) = call("DescribeSentimentDetectionJob", json!({"JobId": "nope"}), acct);
+        let (s, _) = call(
+            "DescribeSentimentDetectionJob",
+            json!({"JobId": "nope"}),
+            acct,
+        );
         assert_eq!(s, 400);
     }
 
@@ -1304,10 +1397,18 @@ mod tests {
         );
         let arn = r["FlywheelArn"].as_str().unwrap().to_string();
 
-        let (s, r) = call("DescribeFlywheel", json!({"FlywheelArn": arn.clone()}), acct);
+        let (s, r) = call(
+            "DescribeFlywheel",
+            json!({"FlywheelArn": arn.clone()}),
+            acct,
+        );
         assert_eq!(r["FlywheelProperties"]["Status"], "ACTIVE");
 
-        let (s, _) = call("StartFlywheelIteration", json!({"FlywheelArn": arn.clone()}), acct);
+        let (s, _) = call(
+            "StartFlywheelIteration",
+            json!({"FlywheelArn": arn.clone()}),
+            acct,
+        );
         let (s, r) = call(
             "StartFlywheelIteration",
             json!({"FlywheelArn": "arn:aws:comprehend:us-east-1:971000000001:flywheel/zzz"}),

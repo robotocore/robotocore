@@ -3,7 +3,6 @@
 //! (account, region)-scoped state; missing connections behave like the py
 //! gateway: GET/POST → 410, DELETE → 204 silently.
 
-use crate::proto::parse_json_body;
 use crate::store;
 use crate::{Request, Response};
 use once_cell::sync::Lazy;

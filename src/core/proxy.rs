@@ -86,7 +86,12 @@ impl MotoProxy {
         // Send the request
         let resp = proxy_req.send().await?;
         if url.contains("automated-reasoning-policies") {
-            tracing::info!("moto-proxy forward: {} {} {}", req.method, url, req.query_string);
+            tracing::info!(
+                "moto-proxy forward: {} {} {}",
+                req.method,
+                url,
+                req.query_string
+            );
         }
 
         let status = resp.status();
@@ -116,7 +121,7 @@ impl MotoProxy {
         }
 
         // Check if it's JSON or raw
-        let content_type = headers
+        let _content_type = headers
             .get("content-type")
             .map(|s| s.as_str())
             .unwrap_or("application/json");
