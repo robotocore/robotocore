@@ -11,9 +11,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-env:
-  CI_LOG_PREFIX: ci
-
 jobs:
   # Kept as an advisory check (keys on src/tests/scripts, which still exist in
   # this phase); no longer a hard gate since the python server is being ported.
@@ -84,9 +81,17 @@ jobs:
           python-version: "3.12"
       - run: uv sync
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run parity harness (rust-only)
         run: uv run python scripts/harness/parity.py --rust-only
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-logs-compat-rust
+          path: |
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   # ── pytest rigs against the rust server ───────────────────────────────────
   # The python driver stays as THE test rig; the server under test is the
@@ -120,7 +125,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run per-service compatibility tests (${{ matrix.shard }})
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -139,8 +144,8 @@ jobs:
         with:
           name: server-logs-compat-${{ matrix.shard }}
           path: |
-            /tmp/${CI_LOG_PREFIX}_rust.log
-            /tmp/${CI_LOG_PREFIX}_sidecar.log
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   # Roll-up so the "compatibility-tests" branch protection rule resolves.
   # The matrix shards report as "compat: a-g" etc., not "compatibility-tests".
@@ -171,7 +176,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run cross-service integration tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -191,8 +196,8 @@ jobs:
         with:
           name: server-logs-cross-service
           path: |
-            /tmp/${CI_LOG_PREFIX}_rust.log
-            /tmp/${CI_LOG_PREFIX}_sidecar.log
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   iac-tests:
     name: "iac: CloudFormation + SAM + Serverless"
@@ -209,7 +214,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run IaC tests (CFN, SAM, Serverless)
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -231,8 +236,8 @@ jobs:
         with:
           name: server-logs-iac
           path: |
-            /tmp/${CI_LOG_PREFIX}_rust.log
-            /tmp/${CI_LOG_PREFIX}_sidecar.log
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   # ── Docker + final gates ───────────────────────────────────────────────────
 
