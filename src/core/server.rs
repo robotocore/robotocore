@@ -1003,8 +1003,10 @@ pub async fn catch_all_handler(
     .unwrap_or_default();
 
     // Extract account from Authorization header or default
-    let account = extract_account_from_request(&headers);
-    let region = extract_region_from_request(&headers).unwrap_or_else(|| "us-east-1".to_string());
+    let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
+    let region = extract_region_from_request(&headers)
+        .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+        .unwrap_or_else(|| "us-east-1".to_string());
     let account_id = account.to_string();
     let region_for_audit = region.clone();
 
@@ -1432,7 +1434,7 @@ fn extract_service(method: &Method, uri: &Uri, headers: &HeaderMap) -> Result<St
 }
 
 /// Extract account ID from Authorization header.
-fn extract_account_from_request(headers: &HeaderMap) -> u64 {
+fn extract_account_from_request(headers: &HeaderMap, query_string: &str) -> u64 {
     // Try to get account from Authorization header
     if let Some(auth) = headers.get("Authorization") {
         if let Ok(auth_str) = auth.to_str() {
@@ -1442,6 +1444,20 @@ fn extract_account_from_request(headers: &HeaderMap) -> u64 {
                     return parse_account_from_key(access_key);
                 }
             }
+        }
+    }
+
+    // Presigned requests carry credentials in the query string instead of
+    // the Authorization header: X-Amz-Credential=KEY/DATE/REGION/SVC/aws4_request
+    if let Some(cred) = query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        if k != "X-Amz-Credential" {
+            return None;
+        }
+        urlencoding::decode(v).ok().map(|c| c.into_owned())
+    }) {
+        if let Some(access_key) = cred.split('/').next() {
+            return parse_account_from_key(access_key);
         }
     }
 
@@ -1455,6 +1471,18 @@ fn extract_account_from_request(headers: &HeaderMap) -> u64 {
     }
 
     123456789012
+}
+
+/// Extract region from headers.
+fn extract_region_from_query(query_string: &str) -> Option<String> {
+    query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        if k != "X-Amz-Credential" {
+            return None;
+        }
+        let cred = urlencoding::decode(v).ok()?;
+        cred.split('/').nth(2).map(|s| s.to_string())
+    })
 }
 
 /// Extract region from headers.
@@ -1522,13 +1550,19 @@ fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) ->
     response
 }
 
-/// Build an error response.
+/// Build an error response shaped like an AWS SDK error so clients parse it.
 fn error_response(status: StatusCode, message: &str) -> Response {
     let error = json!({
-        "error": message
+        "__type": "InternalError",
+        "message": message,
     });
 
-    (status, axum::Json(error)).into_response()
+    (
+        status,
+        [("x-amzn-errortype", "InternalError".to_string())],
+        axum::Json(error),
+    )
+        .into_response()
 }
 
 #[cfg(test)]
@@ -1551,7 +1585,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("Authorization", "AWS4-HMAC-SHA256 Credential=123456789012/20230101/us-east-1/sts/aws4_request, SignedHeaders=host;x-amz-date, Signature=xyz".parse().unwrap());
 
-        let account = extract_account_from_request(&headers);
+        let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
         assert_eq!(account, 123456789012);
     }
 
