@@ -28,7 +28,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 RUST_REPO = Path(os.environ.get("RUST_REPO", REPO))
-PYV = os.environ.get("ROBOTOCORE_PYTHON", "uv run python")
+# When invoked via `uv run python`, sys.executable IS the project venv python.
+PYV = os.environ.get("ROBOTOCORE_PYTHON", sys.executable)
 PY_PORT = os.environ.get("PY_PORT", "4566")
 RUST_PORT = os.environ.get("RUST_PORT", "4567")
 PY_URL = f"http://127.0.0.1:{PY_PORT}"
@@ -102,7 +103,8 @@ def ensure_python_server():
     return False
 
 
-SIDECAR_URL = "http://127.0.0.1:4568"
+SIDECAR_PORT = os.environ.get("SIDECAR_PORT", "4568")
+SIDECAR_URL = f"http://127.0.0.1:{SIDECAR_PORT}"
 SIDECAR_HEALTH = f"{SIDECAR_URL}/_sidecar/health"
 SIDECAR_SCRIPT = str(RUST_REPO / "scripts/moto_sidecar.py")
 state_dir_global = Path("/tmp/parity")
@@ -195,7 +197,7 @@ def _restart_sidecar():
     sh("pkill -9 -f moto_sidecar 2>/dev/null; true", timeout=10)
     time.sleep(1)
     script = str(REPO / "scripts/moto_sidecar.py")
-    log_cmd = f"cd {REPO} && nohup {PYV} {script} --port 4568 > /tmp/parity_sidecar.log 2>&1 &"
+    log_cmd = f"cd {REPO} && nohup {PYV} {script} --port {SIDECAR_PORT} > /tmp/parity_sidecar.log 2>&1 &"
     subprocess.Popen(log_cmd, shell=True, cwd=str(REPO), start_new_session=True)
     time.sleep(5)
 
