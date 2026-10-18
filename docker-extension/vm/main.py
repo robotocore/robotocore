@@ -21,7 +21,7 @@ from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
 
-ROBOTOCORE_IMAGE = os.environ.get("ROBOTOCORE_IMAGE", "jackdanger/robotocore:latest")
+ROBOTOCORE_IMAGE = os.environ.get("ROBOTOCORE_IMAGE", "ghcr.io/robotocore/robotocore:latest")
 ROBOTOCORE_CONTAINER = os.environ.get("ROBOTOCORE_CONTAINER", "robotocore")
 ROBOTOCORE_PORT = int(os.environ.get("ROBOTOCORE_PORT", "4566"))
 DOCKER_SOCKET = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")

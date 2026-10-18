@@ -1,88 +1,42 @@
-# ---- Builder stage: install deps + project, then discard build artifacts ----
-FROM python:3.12-slim AS builder
+# syntax=docker/dockerfile:1
+# Robotocore — pure-Rust AWS emulator image (no Python).
+#
+# Stage 1 builds the `robotocore-rust` binary with cargo; stage 2 is a
+# distroless runtime that ships only the stripped binary plus a static
+# busybox used solely for the HTTP healthcheck (distroless has no shell,
+# curl or wget of its own).
 
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+FROM rust:1.89-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates pkg-config \
     && rm -rf /var/lib/apt/lists/*
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-ARG HATCH_VCS_FALLBACK_VERSION=0.0.0.dev0
-ENV HATCH_VCS_FALLBACK_VERSION=${HATCH_VCS_FALLBACK_VERSION}
-
-# Copy moto source from vendor (no git history — .dockerignore excludes it)
-COPY vendor/moto/ vendor/moto/
-
-# Copy project metadata and lockfile
-COPY .git/ .git/
-COPY pyproject.toml uv.lock* README.md ./
-
-# Rewrite moto source from git remote to local vendor copy (avoids ~123MB clone)
-RUN sed -i 's|^moto = .*|moto = { path = "vendor/moto" }|' pyproject.toml \
-    && rm -f uv.lock
-
-# Install dependencies from local moto + PyPI
-RUN uv sync --no-dev --no-install-project \
-    && uv cache clean
-
-# Copy source and install the project itself
+COPY Cargo.toml Cargo.lock ./
+COPY rotocore/ rotocore/
+COPY crates/ crates/
 COPY src/ src/
-RUN uv sync --no-dev
 
-# Strip build artifacts and unused transitive deps (~90MB savings)
-RUN find /app/.venv -name '.git' -type d -exec rm -rf {} + 2>/dev/null; \
-    rm -rf /app/.git /app/.venv/src/*/.git /root/.cache/uv \
-    /app/vendor \
-    /app/.venv/lib/python3.12/site-packages/cfnlint \
-    /app/.venv/lib/python3.12/site-packages/cfn_lint*.dist-info \
-    /app/.venv/lib/python3.12/site-packages/sympy \
-    /app/.venv/lib/python3.12/site-packages/sympy*.dist-info \
-    /app/.venv/lib/python3.12/site-packages/networkx \
-    /app/.venv/lib/python3.12/site-packages/networkx*.dist-info \
-    /app/.venv/lib/python3.12/site-packages/mpmath \
-    /app/.venv/lib/python3.12/site-packages/mpmath*.dist-info \
-    /app/.venv/lib/python3.12/site-packages/setuptools \
-    /app/.venv/lib/python3.12/site-packages/setuptools*.dist-info
+RUN cargo build --release && strip target/release/robotocore-rust
 
-# ---- Runtime stage: slim image with just python + venv ----
-FROM python:3.12-slim
+FROM gcr.io/distroless/cc AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+ARG ROBOTOCORE_VERSION=1.0.0
+ENV ROBOTOCORE_VERSION=${ROBOTOCORE_VERSION}
 
-RUN groupadd -r robotocore && useradd -r -g robotocore -d /app robotocore
-
-WORKDIR /app
-
-# Copy the fully-built venv from the builder (no git, no uv, no caches)
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/src /app/src
-COPY --from=builder /app/pyproject.toml /app/
-
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-# Create init hook directories
-RUN mkdir -p /etc/robotocore/init/boot.d \
-    /etc/robotocore/init/ready.d \
-    /etc/robotocore/init/shutdown.d \
-    /etc/robotocore/extensions \
-    /tmp/robotocore/state
-
-RUN chown -R robotocore:robotocore /app /tmp/robotocore /etc/robotocore
+COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
+# Static busybox binary, only for the healthcheck below.
+COPY --from=busybox:1.36.1 /bin/busybox /busybox
 
 EXPOSE 4566
 
-ARG HATCH_VCS_FALLBACK_VERSION=0.0.0.dev0
-ENV ROBOTOCORE_HOST=0.0.0.0
-ENV ROBOTOCORE_PORT=4566
-ENV MOTO_ALLOW_NONEXISTENT_REGION=true
-ENV ROBOTOCORE_VERSION=${HATCH_VCS_FALLBACK_VERSION}
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=6 \
+    CMD ["/busybox", "wget", "-q", "--spider", "-T", "2", "http://127.0.0.1:4566/_robotocore/health"]
 
-USER robotocore
-
-HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:4566/_localstack/health || exit 1
-
-ENTRYPOINT ["/entrypoint.sh"]
+# NOTE: the binary currently listens on 127.0.0.1 only; publishing ports with
+# `docker run -p` won't be reachable from the host until src/bin gains a
+# bind-address flag (post-python phase). Healthcheck + --network host runs
+# work today; the in-container probe hits the server over loopback.
+ENTRYPOINT ["/server/robotocore-rust", "--port", "4566"]
