@@ -6,6 +6,7 @@
 
 use crate::{Request, Response};
 
+mod managedblockchain;
 mod resourcegroupstaggingapi;
 
 // Pending ports (stubs live in their modules but are not yet wired):
@@ -15,6 +16,7 @@ mod resourcegroupstaggingapi;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
+        "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
         _ => None,
     }
