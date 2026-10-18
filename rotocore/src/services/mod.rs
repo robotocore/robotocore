@@ -11,10 +11,14 @@ use crate::{Request, Response};
 // - ec2 (stub)
 // - cloudformation (stub)
 
+pub mod identitystore;
 pub mod mediapackage;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     if let Some(resp) = mediapackage::dispatch(req) {
+        return Some(resp);
+    }
+    if let Some(resp) = identitystore::dispatch(req) {
         return Some(resp);
     }
     // No other service fully ported yet.
