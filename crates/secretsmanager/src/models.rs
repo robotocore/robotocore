@@ -1,12 +1,13 @@
 //! Secrets Manager in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// A secret version.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretVersion {
     pub version_id: String,
     pub secret_string: Option<String>,
@@ -16,26 +17,36 @@ pub struct SecretVersion {
 }
 
 /// A secret.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Secret {
     pub name: String,
     pub arn: String,
     pub owner: u64,
     pub region: String,
     pub created_date: f64,
+    #[serde(with = "crate::snapshot::rw")]
     pub versions: RwLock<HashMap<String, SecretVersion>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub description: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub deletion_date: RwLock<Option<f64>>,
     /// Set when the secret is scheduled for deletion (recoverable).
+    #[serde(with = "crate::snapshot::rw")]
     pub removed: RwLock<bool>,
     /// Resource policy JSON (PutResourcePolicy / GetResourcePolicy).
+    #[serde(with = "crate::snapshot::rw")]
     pub resource_policy: RwLock<Option<String>>,
     /// Rotation state (RotateSecret / CancelRotateSecret / DescribeSecret).
+    #[serde(with = "crate::snapshot::rw")]
     pub rotation_enabled: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub rotation_lambda_arn: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub rotation_rules: RwLock<Option<Value>>,
     /// Replica region names registered via ReplicateSecretToRegions.
+    #[serde(with = "crate::snapshot::rw")]
     pub replicas: RwLock<Vec<String>>,
 }
 

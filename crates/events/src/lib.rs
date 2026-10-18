@@ -6,6 +6,7 @@ pub mod handler;
 pub mod models;
 pub mod pattern;
 pub mod protocol;
+pub mod snapshot;
 
 pub use handler::publish_event_to_bus;
 pub use protocol::{AwsRequest, AwsResponse};

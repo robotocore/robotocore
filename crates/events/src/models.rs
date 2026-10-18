@@ -1,6 +1,7 @@
 //! EventBridge in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 pub type RuleMap = HashMap<(String, String), Arc<Rule>>;
 
 /// An EventBridge rule.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Rule {
     pub name: String,
     pub bus_name: String,
@@ -17,10 +18,12 @@ pub struct Rule {
     pub description: String,
     /// Event pattern as a JSON string ("" when the rule only has a schedule).
     pub event_pattern: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub state: RwLock<String>,
     pub role_arn: Option<String>,
     pub schedule_expression: Option<String>,
     pub created: f64,
+    #[serde(with = "crate::snapshot::rw")]
     pub targets: RwLock<Vec<Value>>,
 }
 

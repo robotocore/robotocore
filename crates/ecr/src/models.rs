@@ -1,10 +1,11 @@
 //! ECR in-memory state models.
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// A pushed image inside a repository.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EcrImage {
     pub digest: String,
     pub tags: Vec<String>,
@@ -17,21 +18,33 @@ pub struct EcrImage {
     pub scanned_at: Option<i64>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EcrState {
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub repositories: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub images: Arc<RwLock<HashMap<String, Vec<EcrImage>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub repository_policies: Arc<RwLock<HashMap<String, String>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub lifecycle_policies: Arc<RwLock<HashMap<String, String>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub tags: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     /// Per-repository scanning configuration
     /// (`{repositoryArn, repositoryName, scanOnPush, scanFrequency, appliedScanFilters}`).
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub scanning_configs: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub registry_policy: Arc<RwLock<Option<String>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub replication_configuration: Arc<RwLock<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub registry_scanning_configuration: Arc<RwLock<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub pull_through_cache_rules: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub repository_creation_templates: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub account_settings: Arc<RwLock<HashMap<String, String>>>,
 }
 

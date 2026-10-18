@@ -1,39 +1,53 @@
 //! KMS in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// A KMS key.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Key {
     /// Raw KMS key id (uuid hex without dashes, or `mrk-<hex>` for multi-region keys).
     pub key_id: String,
     pub arn: String,
     pub owner: u64,
     pub region: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub key_state: RwLock<String>,
     pub key_usage: String,
     pub key_spec: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub description: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub enabled: RwLock<bool>,
     /// Key material for symmetric/HMAC keys (random bytes).
+    #[serde(with = "crate::snapshot::rw_b64")]
     pub key_material: RwLock<Vec<u8>>,
     pub created_ms: u64,
+    #[serde(with = "crate::snapshot::rw")]
     pub origin: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub multi_region: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub rotation_enabled: RwLock<bool>,
     /// Timestamp (ms) of the last on-demand rotation, if any.
+    #[serde(with = "crate::snapshot::rw")]
     pub last_rotation_ms: RwLock<Option<u64>>,
     /// Key policies by policy name (always at least `default`).
+    #[serde(with = "crate::snapshot::rw")]
     pub policies: RwLock<HashMap<String, String>>,
     /// True once `ImportKeyMaterial` succeeded on an EXTERNAL-origin key.
+    #[serde(with = "crate::snapshot::rw")]
     pub has_imported_material: RwLock<bool>,
     /// RSA private key for asymmetric RSA specs.
+    #[serde(skip)]
     pub rsa_key: RwLock<Option<rsa::RsaPrivateKey>>,
     /// EC secret key for ECC specs.
+    #[serde(skip)]
     pub ec_key: RwLock<Option<p256::SecretKey>>,
 }
 
@@ -152,7 +166,7 @@ impl Key {
 }
 
 /// A KMS grant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Grant {
     pub grant_id: String,
     pub grant_token: String,
@@ -168,13 +182,16 @@ pub struct Grant {
 }
 
 /// A custom key store (CloudHSM-backed).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CustomKeyStore {
     pub id: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub name: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub cloud_hsm_cluster_id: RwLock<String>,
     pub trust_anchor_certificate: String,
     pub key_store_password: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub connection_state: RwLock<String>,
     pub creation_date_ms: u64,
 }

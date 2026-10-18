@@ -6,6 +6,7 @@ pub mod error;
 pub mod handler;
 pub mod models;
 pub mod protocol;
+pub mod snapshot;
 
 pub use protocol::{AwsRequest, AwsResponse};
 
@@ -29,5 +30,22 @@ impl DefaultSnsHandler {
 impl Default for DefaultSnsHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl DefaultSnsHandler {
+    /// Serialize the full service state to JSON (state snapshot channel).
+    pub fn snapshot_json(&self) -> serde_json::Value {
+        self.inner.snapshot_json()
+    }
+
+    /// Replace the service state from JSON (state snapshot channel).
+    pub fn restore_json(&self, v: &serde_json::Value) {
+        self.inner.restore_json(v)
+    }
+
+    /// Clear all service state (state snapshot channel).
+    pub fn reset(&self) {
+        self.inner.reset()
     }
 }

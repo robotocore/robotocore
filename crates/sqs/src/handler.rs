@@ -42,7 +42,7 @@ enum PreparedMessage {
 /// The actual SQS handler implementation
 pub struct DefaultSqsHandler {
     // Store per (account, region), shared process-wide
-    stores: StoreMap,
+    pub(crate) stores: StoreMap,
 }
 
 impl DefaultSqsHandler {
@@ -52,7 +52,7 @@ impl DefaultSqsHandler {
         }
     }
 
-    fn get_store(&self, account: u64, region: &str) -> Arc<SqsStore> {
+    pub(crate) fn get_store(&self, account: u64, region: &str) -> Arc<SqsStore> {
         let mut stores = self.stores.write();
         stores
             .entry((account, region.to_string()))

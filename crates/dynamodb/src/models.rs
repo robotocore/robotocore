@@ -2,6 +2,7 @@
 
 use chrono::Utc;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 pub type AttrValue = Value;
 
 /// A single DynamoDB item.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     pub attributes: HashMap<String, AttrValue>,
 }
@@ -26,31 +27,48 @@ impl Item {
 }
 
 /// A DynamoDB table definition.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Table {
     pub table_id: String,
     pub name: String,
     pub account: u64,
     pub region: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub status: RwLock<String>,
     pub created_at: u64,
     pub key_schema: Vec<KeySchema>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attribute_definitions: RwLock<Vec<AttributeDefinition>>,
     pub billing_mode: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub provisioned_rcu: RwLock<i64>,
+    #[serde(with = "crate::snapshot::rw")]
     pub provisioned_wcu: RwLock<i64>,
+    #[serde(with = "crate::snapshot::rw")]
     pub items: RwLock<HashMap<String, Arc<Item>>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub global_secondary_indexes: RwLock<Vec<IndexDefinition>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub local_secondary_indexes: RwLock<Vec<IndexDefinition>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub stream_enabled: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub stream_view_type: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub ttl_enabled: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub ttl_attribute: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub pitr_enabled: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub policy: RwLock<Option<ResourcePolicy>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub kinesis_destinations: RwLock<Vec<KinesisDestination>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub contributor_insights: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub table_arn: RwLock<String>,
 }
 
@@ -103,22 +121,23 @@ impl Table {
 }
 
 /// A resource-based policy attached to a table.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourcePolicy {
     pub document: String,
     pub revision_id: String,
 }
 
 /// A Kinesis streaming destination registered on a table.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisDestination {
     pub stream_arn: String,
     pub status: String,
+    #[serde(default)]
     pub precision: Option<String>,
 }
 
 /// A stored backup of a table.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Backup {
     pub arn: String,
     pub name: String,
@@ -136,7 +155,7 @@ pub struct Backup {
 }
 
 /// A table export record.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Export {
     pub arn: String,
     pub table_arn: String,
@@ -148,7 +167,7 @@ pub struct Export {
 }
 
 /// A global table (multi-region replication) record.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalTable {
     pub name: String,
     pub arn: String,
@@ -171,11 +190,12 @@ pub fn compute_key_from_attrs(
 }
 
 /// A DynamoDB table index definition (GSI or LSI).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexDefinition {
     pub name: String,
     pub key_schema: Vec<KeySchema>,
     pub projection: String,
+    #[serde(default)]
     pub non_key_attributes: Vec<String>,
 }
 
@@ -240,14 +260,14 @@ impl Default for DynamoDbState {
 }
 
 /// Key schema element.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeySchema {
     pub attribute_name: String,
     pub key_type: String, // HASH or RANGE
 }
 
 /// Attribute definition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttributeDefinition {
     pub attribute_name: String,
     pub attribute_type: String, // S, N, or B

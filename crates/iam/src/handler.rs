@@ -14,7 +14,7 @@ use crate::protocol::{get_param, AwsRequest, AwsResponse};
 use crate::models::{Group, Policy, Role};
 
 pub struct IamHandler {
-    state: RwLock<HashMap<u64, IamState>>,
+    pub(crate) state: RwLock<HashMap<u64, IamState>>,
 }
 
 /// service-name -> role-name segment (mirrors moto's SERVICE_NAME_CONVERSION).
@@ -31,7 +31,7 @@ impl IamHandler {
         }
     }
 
-    fn get_state(&self, account: u64) -> IamState {
+    pub(crate) fn get_state(&self, account: u64) -> IamState {
         let mut states = self.state.write();
         states.entry(account).or_default().clone()
     }

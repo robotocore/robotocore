@@ -24,7 +24,7 @@ const ACCOUNT_SETTING_NAMES: &[&str] = &[
 ];
 
 pub struct EcsHandler {
-    state: RwLock<HashMap<(u64, String), EcsState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), EcsState>>,
 }
 
 impl Default for EcsHandler {
@@ -40,7 +40,7 @@ impl EcsHandler {
         Self::default()
     }
 
-    fn get_state(&self, account: u64, region: &str) -> EcsState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> EcsState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

@@ -7,6 +7,7 @@ pub mod error;
 pub mod handler;
 pub mod models;
 pub mod protocol;
+pub mod snapshot;
 
 pub use handler::DefaultSqsHandler;
 pub use protocol::{AwsRequest, AwsResponse, SqsHandler};

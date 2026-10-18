@@ -16,7 +16,7 @@ type AttrMap = HashMap<String, Value>;
 
 /// The DynamoDB service handler.
 pub struct DynamoDbHandler {
-    state: RwLock<HashMap<(u64, String), DynamoDbState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), DynamoDbState>>,
 }
 
 impl DynamoDbHandler {
@@ -26,7 +26,7 @@ impl DynamoDbHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> DynamoDbState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> DynamoDbState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

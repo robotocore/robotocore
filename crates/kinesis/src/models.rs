@@ -2,6 +2,7 @@
 
 use base64::Engine as _;
 use parking_lot::{Mutex, RwLock};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -10,9 +11,10 @@ use std::sync::Arc;
 pub const MAX_HASH_KEY: u128 = u128::MAX;
 
 /// A stored Kinesis record.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisRecord {
     pub partition_key: String,
+    #[serde(with = "crate::snapshot::b64")]
     pub data: Vec<u8>,
     /// Zero-padded 20-digit sequence number.
     pub sequence_number: String,
@@ -32,15 +34,19 @@ impl KinesisRecord {
 }
 
 /// Stream shard with record storage.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Shard {
     pub shard_id: String,
+    #[serde(with = "crate::snapshot::u128_str")]
     pub hash_key_start: u128,
+    #[serde(with = "crate::snapshot::u128_str")]
     pub hash_key_end: u128,
     pub starting_sequence_number: String,
     pub parent_id: Option<String>,
-    records: Mutex<Vec<KinesisRecord>>,
-    sequence_counter: Mutex<u64>,
+    #[serde(with = "crate::snapshot::mutex_serde")]
+    pub(crate) records: Mutex<Vec<KinesisRecord>>,
+    #[serde(with = "crate::snapshot::mutex_u64")]
+    pub(crate) sequence_counter: Mutex<u64>,
 }
 
 impl Shard {
@@ -130,7 +136,7 @@ pub fn parse_sequence(seq: &str) -> u128 {
 }
 
 /// A registered (enhanced fan-out) consumer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsumerInfo {
     pub name: String,
     pub arn: String,
@@ -150,20 +156,28 @@ impl ConsumerInfo {
 }
 
 /// A Kinesis stream.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct KinesisStream {
     pub name: String,
     pub arn: String,
     pub status: String,
     pub shard_count: u32,
+    #[serde(with = "crate::snapshot::rw")]
     pub retention_hours: RwLock<u32>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<BTreeMap<String, String>>,
     pub created: f64,
+    #[serde(with = "crate::snapshot::rw")]
     pub encryption_type: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub key_id: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub consumers: RwLock<BTreeMap<String, ConsumerInfo>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub shard_level_metrics: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub stream_mode: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub shards: RwLock<Vec<Arc<Shard>>>,
 }
 

@@ -6,7 +6,7 @@ license = "MIT"
 description = "Native SNS service for robotocore"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 bytes = "1.5"
 thiserror = "1.0"
