@@ -9,6 +9,7 @@
 
 mod backup;
 mod batch;
+mod eks;
 
 use crate::{Request, Response};
 
@@ -22,5 +23,7 @@ use crate::{Request, Response};
 /// Returns `None` when no ported backend exists for `service` (bin routes
 /// the request to its own crate table).
 pub fn dispatch(req: &Request) -> Option<Response> {
-    batch::dispatch(req).or_else(|| backup::dispatch(req))
+    batch::dispatch(req)
+        .or_else(|| backup::dispatch(req))
+        .or_else(|| eks::dispatch(req))
 }
