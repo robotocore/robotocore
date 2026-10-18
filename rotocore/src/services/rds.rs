@@ -106,19 +106,20 @@ impl Val {
 
 /// Parse urlencoded key/value pairs into a nested tree.
 fn parse_params(req: &Request) -> BTreeMap<String, Val> {
-    let mut root: BTreeMap<String, Val> = BTreeMap::new();
+    let mut tree = Val::M(BTreeMap::new());
     let mut pairs = decode_pairs(&req.body);
     pairs.extend(decode_pairs(req.query_string.as_bytes()));
     for (key, value) in pairs {
         if key.is_empty() || key == "Action" || key == "Version" {
             continue;
         }
-        let mut node = Val::None;
         let segments: Vec<&str> = key.split('.').collect();
-        insert_val(&mut node, &segments, &Val::S(value));
-        root.insert(key, node);
+        insert_val(&mut tree, &segments, &Val::S(value));
     }
-    root
+    match tree {
+        Val::M(m) => m,
+        _ => BTreeMap::new(),
+    }
 }
 
 fn decode_pairs(bytes: &[u8]) -> Vec<(String, String)> {
@@ -175,6 +176,8 @@ fn form_decode(s: &str) -> String {
 /// - `X.member.N.Field` — wrapped struct list (Auth.member.1.AuthScheme)
 /// - `X.Suffix.N`       — flattened scalar list (SubnetIds.SubnetIdentifier.1)
 /// - `X.Tag.N.Field`    — flattened struct list (Tags.Tag.1.Key)
+///
+/// `node` must always end up a map: list entries live as map values.
 fn insert_val(node: &mut Val, segments: &[&str], value: &Val) {
     let Some(head) = segments.first() else {
         *node = value.clone();
@@ -195,9 +198,16 @@ fn insert_val(node: &mut Val, segments: &[&str], value: &Val) {
         },
         None => None,
     };
+    into_map(node);
+    let entry: &mut Val = match node {
+        Val::M(map) => map.entry(head.to_string()).or_insert(Val::None),
+        _ => return,
+    };
     if let Some((n, rest_in)) = idx_and_rest {
-        into_list(node);
-        if let Val::L(items) = node {
+        if !matches!(entry, Val::L(_)) {
+            *entry = Val::L(Vec::new());
+        }
+        if let Val::L(items) = entry {
             while items.len() < n {
                 items.push(Val::M(BTreeMap::new()));
             }
@@ -205,25 +215,12 @@ fn insert_val(node: &mut Val, segments: &[&str], value: &Val) {
             if rest_in.is_empty() {
                 *slot = value.clone();
             } else {
-                if matches!(slot, Val::S(_) | Val::None) {
-                    *slot = Val::M(BTreeMap::new());
-                }
                 insert_val(slot, rest_in, value);
             }
         }
         return;
     }
-    into_map(node);
-    let _ = head;
-    if let Val::M(map) = node {
-        insert_val(map.entry(head.to_string()).or_default(), rest, value);
-    }
-}
-
-fn into_list(node: &mut Val) {
-    if !matches!(node, Val::L(_)) {
-        *node = Val::L(Vec::new());
-    }
+    insert_val(entry, rest, value);
 }
 
 fn into_map(node: &mut Val) {
@@ -312,9 +309,12 @@ impl RdsError {
         } else {
             Err(Self::client400(
                 "InvalidParameterValue",
-                "The parameter DBInstanceIdentifier is not a valid identifier. \
-                 Identifiers must begin with a letter; must contain only ASCII letters, digits, \
-                 and hyphens; and must not end with a hyphen or contain two consecutive hyphens.",
+                format!(
+                    "The parameter DBInstanceIdentifier [{ident:?}] len={} is not a valid identifier. \
+                     Identifiers must begin with a letter; must contain only ASCII letters, digits, \
+                     and hyphens; and must not end with a hyphen or contain two consecutive hyphens.",
+                    ident.len()
+                ),
             ))
         }
     }
@@ -2812,9 +2812,10 @@ fn grab_tag(text: &str, tag: &str) -> Option<String> {
 }
 
 /// Entry point: route an RDS op to its handler.
-pub fn dispatch(req: &Request) -> Option<Response> {
+pub fn dispatch(req: &Request) -> Response {
     if req.service != "rds" {
-        return None;
+        let e = RdsError::new(501, "NotImplemented", "rds handled via match");
+        return error_response(&e);
     }
     let op = req.operation.trim().to_string();
     let params = parse_params(req);
@@ -2823,9 +2824,28 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     let mut map = slots.write();
     let key = (req.account, req.region.clone());
     let state = map.entry(key).or_default();
+    let dbg_body = String::from_utf8_lossy(&req.body).to_string();
+    let dbg_body_prefix: String = dbg_body.chars().take(120).collect();
+    let dbg_query: String = req.query_string.chars().take(80).collect();
+    let dbg_method: String = req.method.clone();
+    let dbg_op: String = req.operation.clone();
+    let svc_keys: Vec<String> = dbg_body.split('&').take(3).map(|s| s.split('=').take(1).collect()).collect();
+    let dbg_keys: String = svc_keys.join(",");
     match run_op(req, state, &op, &params, subnet_info) {
-        Ok(body) => Some(response_xml(&op, body)),
-        Err(e) => Some(error_response(&e)),
+        Ok(body) => response_xml(&op, body),
+        Err(e) => {
+            let mut resp = error_response(&e);
+            let dbg_pairs = decode_pairs(&req.body);
+            resp.headers.push((
+                "X-Roto-Debug-V2".to_string(),
+                format!(
+                    "body=[{dbg_body_prefix}] q=[{dbg_query}] op={dbg_op} pairs={}",
+                    dbg_pairs.len()
+                ),
+            ));
+            let _ = &dbg_pairs;
+            resp
+        }
     }
 }
 
@@ -8703,3 +8723,32 @@ fn run_op(
 
 
 // __APPEND_MARKER__
+
+#[cfg(test)]
+mod parser_tests {
+    use super::*;
+
+    fn req_with_body(body: &str) -> Request {
+        Request {
+            service: "rds".into(),
+            operation: "CreateDBInstance".into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: Default::default(),
+            body: body.to_string().into_bytes().into(),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    #[test]
+    fn parses_flat_and_wrapped_lists() {
+        let body = "DBInstanceIdentifier=mydb-1&Engine=mysql&TagKeys.member.1=k&view=v";
+        let p = parse_params(&req_with_body(body));
+        assert_eq!(p.len(), 4, "keys: {:?}", p.keys().collect::<Vec<_>>());
+        assert_eq!(p_string(&p, "DBInstanceIdentifier").unwrap(), "mydb-1");
+        assert_eq!(p_string(&p, "Engine").unwrap(), "mysql");
+        assert_eq!(param(&p, "TagKeys").list(), vec!["k"]);
+    }
+}

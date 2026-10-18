@@ -14,7 +14,8 @@ use crate::{Request, Response};
 mod rds;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        "rds" => Some(self::rds::dispatch(req)),
+        _ => None,
+    }
 }
