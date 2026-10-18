@@ -4077,4 +4077,345 @@ fn delete_db_cluster(
 }
 
 
+
+// Cluster lifecycle: start/stop/failover/promote/reboot ----------------------
+
+fn transition_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+    from: &[&str],
+    to: &str,
+    next_status: &str,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    let status = st.clusters.get(&id).unwrap().status.clone();
+    if !from.contains(&forwarded_status(&st, &id).as_str()) {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            format!(
+                "DbCluster {identifier} is in {shown} state but expected it to be one of {expected}.",
+                shown = forwarded_status(st, &id),
+                expected = from.join(",")
+            ),
+        ));
+    }
+    st.clusters.get_mut(&id).unwrap().status = next_status.to_string();
+    let cl = st.clusters.get(&id).unwrap().clone();
+    let _ = (status, to);
+    Ok(Some(db_cluster_xml(st, acct, region, &with_status(
+        &cl, to,
+    ))))
+}
+
+fn forwarded_status(st: &RdsState, id: &str) -> String {
+    st.clusters.get(id).map(|c| c.status.clone()).unwrap_or_default()
+}
+
+fn with_status(cl: &DBCluster, status: &str) -> DBCluster {
+    use std::sync::atomic::Ordering;
+    DBCluster {
+        status: status.to_string(),
+        status_shown: std::sync::atomic::AtomicBool::new(
+            cl.status_shown.load(Ordering::SeqCst),
+        ),
+        ..cl.clone()
+    }
+}
+
+fn stop_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    let status = forwarded_status(st, &id);
+    if status != "available" {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            format!("DbCluster {identifier} is in {status} state but expected it to be one of available."),
+        ));
+    }
+    let cl = st.clusters.get(&id).unwrap().clone();
+    st.clusters.get_mut(&id).unwrap().status = "stopped".into();
+    Ok(Some(db_cluster_xml(st, acct, region, &cl)))
+}
+
+fn start_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    let status = forwarded_status(st, &id);
+    if status != "stopped" {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            format!(
+                "DbCluster {identifier} is in {status} state but expected it to be one of stopped,inaccessible-encryption-credentials-recoverable."
+            ),
+        ));
+    }
+    let started = with_status(st.clusters.get(&id).unwrap(), "started");
+    st.clusters.get_mut(&id).unwrap().status = "available".into();
+    Ok(Some(db_cluster_xml(st, acct, region, &started)))
+}
+
+fn failover_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("The source cluster could not be found or cannot be accessed: {identifier}"),
+        ));
+    }
+    let target = p_string(p, "TargetDBInstanceIdentifier");
+    if let Some(target) = &target {
+        if !st.databases.contains_key(&target.to_lowercase()) {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                format!("Cannot find target instance: {target}"),
+            ));
+        }
+    }
+    let member_count = st
+        .databases
+        .values()
+        .filter(|d| d.db_cluster_identifier.as_deref() == Some(&id))
+        .count();
+    if member_count < 2 {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            format!("Database cluster:{id} should have at least two database instances for failover"),
+        ));
+    }
+    let cluster = st.clusters.get(&id).unwrap().clone();
+    Ok(Some(db_cluster_xml(st, acct, region, &with_status(
+        &cluster,
+        "available",
+    ))))
+}
+
+fn reboot_db_cluster(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let id = identifier.to_lowercase();
+    if !st.clusters.contains_key(&id) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {identifier} not found."),
+        ));
+    }
+    let cluster = st.clusters.get(&id).unwrap().clone();
+    Ok(Some(db_cluster_xml(st, acct, region, &cluster)))
+}
+
+// Cluster snapshots ----------------------------------------------------------
+
+fn create_db_cluster_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let snapshot_id = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
+    let cluster_name = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let snap_id = snapshot_id.to_lowercase();
+    let cluster_id = cluster_name.to_lowercase();
+    if st.cluster_snapshots.contains_key(&snap_id) {
+        return Err(RdsError::client400(
+            "DBClusterSnapshotAlreadyExistsFault",
+            format!("Cannot create the snapshot because a snapshot with the identifier {snap_id} already exists."),
+        ));
+    }
+    let cluster = match st.clusters.get(&cluster_id) {
+        Some(cl) => cl.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBClusterNotFoundFault",
+                format!("DBCluster {cluster_name} not found."),
+            ))
+        }
+    };
+    let snapshot_type = p_string(p, "SnapshotType").unwrap_or_else(|| "manual".into());
+    let snapshot = cluster_snapshot_from(&cluster, &snapshot_id, &snapshot_type, &tags_param(p));
+    let response = snapshot.clone();
+    st.cluster_snapshots.insert(snap_id, snapshot);
+    Ok(Some(format!(
+        "<DBClusterSnapshot>{}</DBClusterSnapshot>",
+        cluster_snapshot_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_cluster_snapshots_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let cluster_filter = p_string(p, "DBClusterIdentifier").map(|s| s.to_lowercase());
+    let snap_filter = p_string(p, "DBClusterSnapshotIdentifier").map(|s| s.to_lowercase());
+    let matched: Vec<&DBClusterSnapshot> = st
+        .cluster_snapshots
+        .values()
+        .filter(|s| match &cluster_filter {
+            Some(cid) => s.cluster.id == *cid,
+            None => true,
+        })
+        .filter(|s| match &snap_filter {
+            Some(snap_id) => s.id == *snap_id,
+            None => true,
+        })
+        .collect();
+    if let Some(snap_id) = &snap_filter {
+        if matched.is_empty() && cluster_filter.is_none() {
+            return Err(RdsError::not_found404(
+                "DBClusterSnapshotNotFoundFault",
+                format!("DBClusterSnapshot {snap_id} not found."),
+            ));
+        }
+    }
+    let _ = tags_param(p);
+    Ok(Some(cluster_snapshot_list_xml(acct, region, &matched, true)))
+}
+
+
+
+fn cluster_snapshot_list_xml(
+    acct: u64,
+    region: &str,
+    matched: &[&DBClusterSnapshot],
+    include_tags: bool,
+) -> String {
+    let _ = include_tags;
+    let mut list = String::new();
+    for snap in matched {
+        list.push_str(&cluster_snapshot_xml(acct, region, snap));
+    }
+    format!("<DBClusterSnapshots>{list}</DBClusterSnapshots>")
+}
+
+fn delete_db_cluster_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
+    let snap_id = ident.to_lowercase();
+    if !st.cluster_snapshots.contains_key(&snap_id) {
+        return Err(RdsError::not_found404(
+            "DBClusterSnapshotNotFoundFault",
+            format!("DBClusterSnapshot {ident} not found."),
+        ));
+    }
+    let snapshot = st.cluster_snapshots.remove(&snap_id).unwrap();
+    Ok(Some(format!(
+        "<DBClusterSnapshot>{}</DBClusterSnapshot>",
+        cluster_snapshot_xml(acct, region, &snapshot)
+    )))
+}
+
+fn copy_db_cluster_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let target = p_string(p, "TargetDBClusterSnapshotIdentifier").unwrap_or_default();
+    let source = p_string(p, "SourceDBClusterSnapshotIdentifier").unwrap_or_default();
+    let source_id = identifier_from_arn(&source).to_lowercase();
+    let src = match find_cluster_snapshot(st, &source_id).cloned() {
+        Some(s) => s,
+        None => {
+            return Err(RdsError::not_found404(
+                "DBClusterSnapshotNotFoundFault",
+                format!("DBClusterSnapshot {source} not found."),
+            ))
+        }
+    };
+    let target_id = target.to_lowercase();
+    if st.cluster_snapshots.contains_key(&target_id) {
+        return Err(RdsError::client400(
+            "DBClusterSnapshotAlreadyExistsFault",
+            format!("Cannot create the snapshot because a snapshot with the identifier {target_id} already exists."),
+        ));
+    }
+    let mut snapshot = cluster_snapshot_from(&src.cluster, &target, &src.snapshot_type, &[]);
+    let tags = tags_param(p);
+    if !tags.is_empty() {
+        snapshot.tags = tags;
+    } else if p_bool(p, "CopyTags").unwrap_or(false) && !src.tags.is_empty() {
+        snapshot.tags = src.tags.clone();
+    }
+    let out = snapshot.clone();
+    st.cluster_snapshots.insert(target_id, snapshot);
+    Ok(Some(format!(
+        "<DBClusterSnapshot>{}</DBClusterSnapshot>",
+        cluster_snapshot_xml(acct, region, &out)
+    )))
+}
+
+fn cluster_snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> String {
+    let mut items = String::new();
+    for (name, values) in attrs {
+        items.push_str(&format!(
+            "<DBClusterSnapshotAttributes><AttributeName>{}</AttributeName>{}\
+             </DBClusterSnapshotAttributes>",
+            esc(name),
+            list_xml("AttributeValues", "AttributeValue", values)
+        ));
+    }
+    if items.is_empty() {
+        format!(
+            "<DBClusterSnapshotAttributesResult>\
+             <DBClusterSnapshotIdentifier>{}</DBClusterSnapshotIdentifier>\
+             <DBClusterSnapshotAttributes/>\
+             </DBClusterSnapshotAttributesResult>",
+            esc(identifier)
+        )
+    } else {
+        format!(
+            "<DBClusterSnapshotAttributesResult>\
+             <DBClusterSnapshotIdentifier>{}</DBClusterSnapshotIdentifier>{items}\
+             </DBClusterSnapshotAttributesResult>",
+            esc(identifier)
+        )
+    }
+}
+
 // __APPEND_MARKER__
