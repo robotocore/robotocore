@@ -6436,10 +6436,7 @@ fn create_db_proxy_endpoint(
     };
     let response = ep.clone();
     st.db_proxy_endpoints.insert(ep_name, ep);
-    Ok(Some(format!(
-        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
-        db_proxy_endpoint_xml(acct, region, &response)
-    )))
+    Ok(Some(db_proxy_endpoint_xml(acct, region, &response)))
 }
 
 fn describe_db_proxy_endpoints_xml(
@@ -6496,10 +6493,7 @@ fn delete_db_proxy_endpoint(
     }
     let mut ep = st.db_proxy_endpoints.remove(&ep_name).unwrap();
     ep.status = "deleting".into();
-    Ok(Some(format!(
-        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
-        db_proxy_endpoint_xml(acct, region, &ep)
-    )))
+    Ok(Some(db_proxy_endpoint_xml(acct, region, &ep)))
 }
 
 fn modify_db_proxy_endpoint(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -6608,10 +6602,7 @@ fn start_export_task(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
 }
 
 fn export_task_response(t: &ExportTask) -> Result<Body, RdsError> {
-    Ok(Some(format!(
-        "<ExportTask>{}</ExportTask>",
-        export_task_xml(t)
-    )))
+    Ok(Some(export_task_xml(t)))
 }
 
 fn cancel_export_task(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -6820,10 +6811,7 @@ fn create_db_shard_group(
     };
     let response = group.clone();
     st.shard_groups.insert(lower, group);
-    Ok(Some(format!(
-        "<DBShardGroup>{}</DBShardGroup>",
-        shard_group_xml(acct, region, &response)
-    )))
+    Ok(Some(shard_group_xml(acct, region, &response)))
 }
 
 fn describe_db_shard_groups_xml(
@@ -6895,10 +6883,7 @@ fn modify_db_shard_group(
         st.shard_groups.get_mut(&key).unwrap().compute_redundancy = Some(c);
     }
     let group = st.shard_groups.get(&key).unwrap().clone();
-    Ok(Some(format!(
-        "<DBShardGroup>{}</DBShardGroup>",
-        shard_group_xml(acct, region, &group)
-    )))
+    Ok(Some(shard_group_xml(acct, region, &group)))
 }
 
 fn delete_db_shard_group(
@@ -6914,10 +6899,7 @@ fn delete_db_shard_group(
     let key = ident.to_lowercase();
     let mut group = st.shard_groups.remove(&key).unwrap();
     group.status = "deleting".into();
-    Ok(Some(format!(
-        "<DBShardGroup>{}</DBShardGroup>",
-        shard_group_xml(acct, region, &group)
-    )))
+    Ok(Some(shard_group_xml(acct, region, &group)))
 }
 
 fn reboot_db_shard_group(
@@ -6932,10 +6914,7 @@ fn reboot_db_shard_group(
     }
     let key = ident.to_lowercase();
     let group = st.shard_groups.get(&key).unwrap().clone();
-    Ok(Some(format!(
-        "<DBShardGroup>{}</DBShardGroup>",
-        shard_group_xml(acct, region, &group)
-    )))
+    Ok(Some(shard_group_xml(acct, region, &group)))
 }
 
 // Activity streams -----------------------------------------------------------
