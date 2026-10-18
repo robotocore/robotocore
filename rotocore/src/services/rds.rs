@@ -6538,4 +6538,408 @@ impl ModifyProxyEndpointResult {
     }
 }
 
+
+// Export tasks ---------------------------------------------------------------
+
+fn start_export_task(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "ExportTaskIdentifier").unwrap_or_default();
+    if identifier.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The value of ExportTaskIdentifier is not valid.",
+        ));
+    }
+    let source_arn = p_string(p, "SourceArn").unwrap_or_default();
+    let parts: Vec<&str> = source_arn.split(':').collect();
+    let snapshot_id = parts.last().unwrap_or(&"").to_string();
+    let snapshot_type_raw = parts.iter().rev().nth(1).unwrap_or(&"").to_string();
+    if parts.len() >= 7 {
+        // arn:aws:rds:region:account:snapshot:name
+    }
+    let source = match snapshot_type_raw.as_str() {
+        "snapshot" => {
+            if !st.database_snapshots.contains_key(&snapshot_id) {
+                return Err(RdsError::not_found404(
+                    "DBSnapshotNotFound",
+                    format!("DBSnapshot {snapshot_id} not found."),
+                ));
+            }
+            "SNAPSHOT".to_string()
+        }
+        "cluster-snapshot" => {
+            if !st.cluster_snapshots.contains_key(&snapshot_id) {
+                return Err(RdsError::not_found404(
+                    "DBClusterSnapshotNotFoundFault",
+                    format!("DBClusterSnapshot {snapshot_id} not found."),
+                ));
+            }
+            "CLUSTER".to_string()
+        }
+        _ => {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                format!("Invalid source ARN: {source_arn}. ARN must refer to a snapshot or cluster-snapshot."),
+            ))
+        }
+    };
+    if st.export_tasks.contains_key(&identifier) {
+        return Err(RdsError::client400(
+            "ExportTaskAlreadyExists",
+            format!("Cannot start export task because a task with the identifier {identifier} already exists."),
+        ));
+    }
+    let task = ExportTask {
+        id: identifier.clone(),
+        kms_key_id: p_string(p, "KmsKeyId").or(Some("default_kms_key_id".to_string())),
+        source_arn: source_arn.clone(),
+        iam_role_arn: p_string(p, "IamRoleArn"),
+        s3_bucket: p_string(p, "S3BucketName"),
+        s3_prefix: p_string(p, "S3Prefix").unwrap_or_default(),
+        export_only: p_list(p, "ExportOnly"),
+        status: "complete".into(),
+        created: Utc::now(),
+        source_type: source,
+    };
+    let response = task.clone();
+    st.export_tasks.insert(identifier, task);
+    export_task_response(&response)
+}
+
+fn export_task_response(t: &ExportTask) -> Result<Body, RdsError> {
+    Ok(Some(export_task_xml(t)))
+}
+
+fn cancel_export_task(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "ExportTaskIdentifier").unwrap_or_default();
+    if !st.export_tasks.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "ExportTaskNotFound",
+            format!("Cannot cancel export task because a task with the identifier {identifier} is not exist."),
+        ));
+    }
+    let task = st.export_tasks.get_mut(&identifier).unwrap();
+    task.status = "canceled".into();
+    let response = task.clone();
+    export_task_response(&response)
+}
+
+fn describe_export_tasks_xml(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "ExportTaskIdentifier");
+    let matched: Vec<&ExportTask> = st
+        .export_tasks
+        .values()
+        .filter(|t| match &ident {
+            Some(i) => t.id == *i,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for t in &matched {
+        list.push_str(&export_task_xml(t));
+    }
+    Ok(Some(format!("<ExportTasks>{list}</ExportTasks>")))
+}
+
+// Blue/green deployments -----------------------------------------------------
+
+fn create_blue_green_deployment(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "BlueGreenDeploymentName").unwrap_or_default();
+    let source = p_string(p, "Source").unwrap_or_default();
+    for bg in st.blue_green_deployments.values() {
+        if bg.name == name {
+            return Err(RdsError::client400(
+                "BlueGreenDeploymentAlreadyExistsFault",
+                format!("A blue/green deployment with the specified name {name} already exists."),
+            ));
+        }
+    }
+    let (instance_id, is_cluster) = {
+        let source_id = identifier_from_arn(&source);
+        let is_cluster = source.split(':').nth(5) == Some("cluster");
+        let exists = if is_cluster {
+            st.clusters.contains_key(&source_id.to_lowercase())
+        } else {
+            st.databases.contains_key(&source_id.to_lowercase())
+        };
+        if exists {
+            (source_id, is_cluster)
+        } else {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                format!("Provided string is not a valid arn {source}"),
+            ));
+        }
+    };
+    let target = if is_cluster {
+        format!("{}-green-{}", instance_id, rand_lower(6))
+    } else {
+        format!("{}-green-{}", instance_id, rand_lower(6))
+    };
+    let id = format!("bgd-{}", rand_lower(16));
+    let bg = BlueGreenDeployment {
+        id: id.clone(),
+        name,
+        source: source.clone(),
+        target,
+        status: "PROVISIONING".into(),
+        status_details: None,
+        tags: tags_param(p),
+        created: Utc::now(),
+    };
+    let response = bg.clone();
+    st.blue_green_deployments.insert(id, bg);
+    let _ = (acct, region);
+    Ok(Some(format!(
+        "<BlueGreenDeployment>{}</BlueGreenDeployment>",
+        blue_green_xml(&response)
+    )))
+}
+
+fn describe_blue_green_deployments_xml(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "BlueGreenDeploymentIdentifier");
+    let matched: Vec<&BlueGreenDeployment> = st
+        .blue_green_deployments
+        .values()
+        .filter(|b| match &ident {
+            Some(i) => b.id == *i,
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && ident.is_some() {
+        return Err(RdsError::not_found404(
+            "BlueGreenDeploymentNotFoundFault",
+            format!(
+                "BlueGreenDeploymentIdentifier {} doesn't refer to an existing blue/green deployment.",
+                ident.unwrap_or_default()
+            ),
+        ));
+    }
+    let mut list = String::new();
+    for b in &matched {
+        list.push_str(&blue_green_xml(b));
+    }
+    Ok(Some(format!(
+        "<BlueGreenDeployments>{list}</BlueGreenDeployments>"
+    )))
+}
+
+fn switchover_blue_green_deployment(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "BlueGreenDeploymentIdentifier").unwrap_or_default();
+    if !st.blue_green_deployments.contains_key(&ident) {
+        return Err(RdsError::not_found404(
+            "BlueGreenDeploymentNotFoundFault",
+            format!(
+                "BlueGreenDeploymentIdentifier {ident} doesn't refer to an existing blue/green deployment."
+            ),
+        ));
+    }
+    let bg = st.blue_green_deployments.get(&ident).unwrap();
+    if bg.status != "AVAILABLE" {
+        return Err(RdsError::client400(
+            "InvalidBlueGreenDeploymentStateFault",
+            format!("The blue/green deployment {ident} can't be switched over or deleted because there is an invalid configuration in the green environment."),
+        ));
+    }
+    Ok(None)
+}
+
+fn delete_blue_green_deployment(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "BlueGreenDeploymentIdentifier").unwrap_or_default();
+    if !st.blue_green_deployments.contains_key(&ident) {
+        return Err(RdsError::not_found404(
+            "BlueGreenDeploymentNotFoundFault",
+            format!(
+                "BlueGreenDeploymentIdentifier {ident} doesn't refer to an existing blue/green deployment."
+            ),
+        ));
+    }
+    let mut bg = st.blue_green_deployments.remove(&ident).unwrap();
+    bg.status = "DELETING".into();
+    Ok(Some(format!(
+        "<BlueGreenDeployment>{}</BlueGreenDeployment>",
+        blue_green_xml(&bg)
+    )))
+}
+
+// Shard groups + activity streams + tenant databases integrations CEVs gap ops
+
+fn create_db_shard_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBShardGroupIdentifier").unwrap_or_default();
+    let cluster_name = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if st.shard_groups.contains_key(&lower) {
+        return Err(RdsError::client400(
+            "DBShardGroupAlreadyExists",
+            format!("DB Shard Group {identifier} already exists."),
+        ));
+    }
+    if !st.clusters.contains_key(&cluster_name.to_lowercase()) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {cluster_name} not found."),
+        ));
+    }
+    if let Some(min) = p_f64(p, "MinACU") {
+        let max = p_f64(p, "MaxACU").unwrap_or_default();
+        let parsed_min: f64 = min.parse().unwrap_or(0.0);
+        let parsed_max: f64 = max.parse().unwrap_or(0.0);
+        if parsed_min >= parsed_max && !min.is_empty() && !max.is_empty() {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                "min_acu cannot be larger than max_acu",
+            ));
+        }
+    }
+    let compute = p_i64(p, "ComputeRedundancy");
+    if let Some(c) = compute {
+        if !(0..=2).contains(&c) {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                format!("Invalid ComputeRedundancy value: '{c}'. Valid values are 0 (no standby), 1 (1 standby AZ), 2 (2 standby AZs)."),
+            ));
+        }
+    }
+    let group = DBShardGroup {
+        id: lower.clone(),
+        cluster_identifier: cluster_name.to_lowercase(),
+        compute_redundancy: compute,
+        max_acu: p_f64(p, "MaxACU"),
+        min_acu: p_f64(p, "MinACU"),
+        status: "available".into(),
+        tags: tags_param(p),
+        created: Utc::now(),
+    };
+    let response = group.clone();
+    st.shard_groups.insert(lower, group);
+    Ok(Some(shard_group_xml(acct, region, &response)))
+}
+
+fn describe_db_shard_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBShardGroupIdentifier").map(|s| s.to_lowercase());
+    let matched: Vec<&DBShardGroup> = st
+        .shard_groups
+        .values()
+        .filter(|g| match &filter {
+            Some(f) => g.id == *f,
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && filter.is_some() {
+        return Err(RdsError::not_found404(
+            "DBShardGroupNotFound",
+            format!("DBShardGroup {} not found.", filter.unwrap_or_default()),
+        ));
+    }
+    let mut list = String::new();
+    for g in &matched {
+        list.push_str(&shard_group_xml(acct, region, g));
+    }
+    Ok(Some(format!("<DBShardGroups>{list}</DBShardGroups>")))
+}
+
+fn shard_group_exists(st: &RdsState, ident: &str) -> bool {
+    st.shard_groups.contains_key(&ident.to_lowercase())
+}
+
+fn missing_shard_group(ident: &str) -> RdsError {
+    RdsError::not_found404(
+        "DBShardGroupNotFound",
+        format!("DBShardGroup {ident} not found."),
+    )
+}
+
+fn modify_db_shard_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBShardGroupIdentifier").unwrap_or_default();
+    if !shard_group_exists(st, &ident) {
+        return Err(missing_shard_group(&ident));
+    }
+    let key = ident.to_lowercase();
+    if let Some(max) = p_f64(p, "MaxACU") {
+        st.shard_groups.get_mut(&key).unwrap().max_acu = Some(max);
+    }
+    if let Some(min) = p_f64(p, "MinACU") {
+        st.shard_groups.get_mut(&key).unwrap().min_acu = Some(min);
+    }
+    if let Some(c) = p_i64(p, "ComputeRedundancy") {
+        if !(0..=2).contains(&c) {
+            return Err(RdsError::client400(
+                "InvalidParameterValue",
+                format!("Invalid ComputeRedundancy value: '{c}'. Valid values are 0 (no standby), 1 (1 standby AZ), 2 (2 standby AZs)."),
+            ));
+        }
+        st.shard_groups.get_mut(&key).unwrap().compute_redundancy = Some(c);
+    }
+    let group = st.shard_groups.get(&key).unwrap().clone();
+    Ok(Some(shard_group_xml(acct, region, &group)))
+}
+
+fn delete_db_shard_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBShardGroupIdentifier").unwrap_or_default();
+    if !shard_group_exists(st, &ident) {
+        return Err(missing_shard_group(&ident));
+    }
+    let key = ident.to_lowercase();
+    let mut group = st.shard_groups.remove(&key).unwrap();
+    group.status = "deleting".into();
+    Ok(Some(shard_group_xml(acct, region, &group)))
+}
+
+fn reboot_db_shard_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBShardGroupIdentifier").unwrap_or_default();
+    if !shard_group_exists(st, &ident) {
+        return Err(missing_shard_group(&ident));
+    }
+    let key = ident.to_lowercase();
+    let group = st.shard_groups.get(&key).unwrap().clone();
+    Ok(Some(shard_group_xml(acct, region, &group)))
+}
+
 // __APPEND_MARKER__
