@@ -705,3 +705,257 @@ fn test_receive_message_max_count_validation() {
     // The handler clamps to 10, so this should succeed with empty result
     assert_eq!(recv_resp.status, 200);
 }
+
+#[test]
+fn test_bridged_message_gets_real_receipt_handle() {
+    let handler = DefaultSqsHandler::new();
+
+    let create_resp = handler.handle(make_request(
+        "CreateQueue",
+        json!({"QueueName": "bridge-queue"}),
+    ));
+    assert_eq!(create_resp.status, 200);
+    let queue_data: Value = serde_json::from_str(&create_resp.body).expect("Invalid JSON");
+    let queue_url = queue_data["QueueUrl"]
+        .as_str()
+        .expect("Missing QueueUrl")
+        .to_string();
+
+    // Cross-service delivery (EventBridge/S3 fanout path) before any receive.
+    assert!(crate::bridge::deliver_to_queue(
+        123456789012,
+        "us-east-1",
+        "bridge-queue",
+        "bridged body"
+    ));
+
+    let recv_resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert_eq!(recv_resp.status, 200);
+    let recv_data: Value = serde_json::from_str(&recv_resp.body).expect("Invalid JSON");
+    let msg = &recv_data["Messages"][0];
+    assert_eq!(msg["Body"].as_str().unwrap(), "bridged body");
+    let receipt_handle = msg["ReceiptHandle"].as_str().expect("Missing handle");
+    assert!(!receipt_handle.is_empty(), "receipt handle must be minted");
+
+    // The handle must be usable to delete the bridged message.
+    let del_resp = handler.handle(make_request(
+        "DeleteMessage",
+        json!({"QueueUrl": &queue_url, "ReceiptHandle": receipt_handle}),
+    ));
+    assert_eq!(del_resp.status, 200);
+
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let again_data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    let remaining = again_data
+        .get("Messages")
+        .map(|a| a.as_array().map(|a| a.len()).unwrap_or(0))
+        .unwrap_or(0);
+    assert_eq!(remaining, 0);
+}
+
+fn create_fifo_queue(handler: &DefaultSqsHandler, name: &str, content_dedup: bool) -> String {
+    let attrs = if content_dedup {
+        json!({"FifoQueue": "true", "ContentBasedDeduplication": "true"})
+    } else {
+        json!({"FifoQueue": "true"})
+    };
+    let resp = handler.handle(make_request(
+        "CreateQueue",
+        json!({"QueueName": name, "Attributes": attrs}),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    data["QueueUrl"].as_str().expect("Missing QueueUrl").to_string()
+}
+
+#[test]
+fn test_fifo_second_message_blocked_while_first_in_flight() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_fifo_queue(&handler, "fifo-block.fifo", false);
+
+    for i in 0..3 {
+        let resp = handler.handle(make_request(
+            "SendMessage",
+            json!({"QueueUrl": &queue_url, "MessageBody": format!("m{i}"), "MessageGroupId": "g1"}),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    // First receive: m0. Short visibility window so the test stays fast.
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 1}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    assert_eq!(data["Messages"][0]["Body"], "m0");
+
+    // While m0 is in flight, g1's later messages must not be delivered.
+    let recv2 = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "WaitTimeSeconds": 0}),
+    ));
+    let data2: Value = serde_json::from_str(&recv2.body).expect("Invalid JSON");
+    assert!(
+        data2.get("Messages").is_none()
+            || data2["Messages"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(true),
+        "g1 second message must be blocked while m0 is in flight"
+    );
+
+    // Long poll: the worker waiting for g1 must be released once m0's
+    // visibility expires. AWS redelivers m0 (it is still undeleted), never
+    // skipping to m1.
+    let recv3 = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "WaitTimeSeconds": 5, "VisibilityTimeout": 1}),
+    ));
+    let data3: Value = serde_json::from_str(&recv3.body).expect("Invalid JSON");
+    assert_eq!(data3["Messages"][0]["Body"], "m0");
+
+    // Delete the redelivered m0; only then may m1 be delivered.
+    handler.handle(make_request(
+        "DeleteMessage",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": data3["Messages"][0]["ReceiptHandle"].as_str().unwrap(),
+        }),
+    ));
+    let recv4 = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "WaitTimeSeconds": 5, "VisibilityTimeout": 1}),
+    ));
+    let data4: Value = serde_json::from_str(&recv4.body).expect("Invalid JSON");
+    assert_eq!(data4["Messages"][0]["Body"], "m1");
+}
+
+#[test]
+fn test_fifo_other_groups_may_deliver_while_group_blocked() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_fifo_queue(&handler, "fifo-groups.fifo", false);
+
+    let resp = handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "a", "MessageGroupId": "gA"}),
+    ));
+    assert_eq!(resp.status, 200);
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    assert_eq!(data["Messages"][0]["Body"], "a");
+
+    let resp2 = handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b", "MessageGroupId": "gB"}),
+    ));
+    assert_eq!(resp2.status, 200);
+
+    // gA is blocked (its message is in flight); gB's message still delivers.
+    let recv2 = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let data2: Value = serde_json::from_str(&recv2.body).expect("Invalid JSON");
+    assert_eq!(data2["Messages"][0]["Body"], "b");
+}
+
+#[test]
+fn test_fifo_dedup_suppressed_after_original_deleted() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_fifo_queue(&handler, "fifo-retract.fifo", true);
+
+    let send = handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "dup", "MessageGroupId": "g1"}),
+    ));
+    let data: Value = serde_json::from_str(&send.body).expect("Invalid JSON");
+    let original_id = data["MessageId"].as_str().unwrap().to_string();
+
+    // Receive and delete the original message.
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    handler.handle(make_request(
+        "DeleteMessage",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": data["Messages"][0]["ReceiptHandle"].as_str().unwrap(),
+        }),
+    ));
+
+    // Dedup window runs 5 minutes from the first send: the re-send must be
+    // suppressed (respond with the original's id, no new message enqueued).
+    let resend = handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "dup", "MessageGroupId": "g1"}),
+    ));
+    assert_eq!(resend.status, 200);
+    let data: Value = serde_json::from_str(&resend.body).expect("Invalid JSON");
+    assert_eq!(data["MessageId"].as_str().unwrap(), original_id);
+
+    let recv2 = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 10}),
+    ));
+    let data2: Value = serde_json::from_str(&recv2.body).expect("Invalid JSON");
+    let messages = data2
+        .get("Messages")
+        .map(|a| a.as_array().map(|a| a.len()).unwrap_or(0))
+        .unwrap_or(0);
+    assert_eq!(messages, 0, "dedup re-send must not enqueue a message");
+}
+
+#[test]
+fn test_send_message_batch_bad_entry_is_entry_error() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_fifo_queue(&handler, "fifo-batch-err.fifo", false);
+
+    // One good entry (with group id), one bad (missing MessageGroupId).
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "good", "MessageBody": "hello", "MessageGroupId": "g1"},
+                {"Id": "bad", "MessageBody": "no group"}
+            ],
+        }),
+    ));
+    // The bad entry must NOT fail the whole request.
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "good");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "bad");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert!(
+        failed[0]["Code"].as_str().map(|c| !c.is_empty()).unwrap_or(false),
+        "entry failure must carry an error code"
+    );
+
+    // The good entry's message was actually enqueued.
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 10}),
+    ));
+    let recv_data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    assert_eq!(recv_data["Messages"][0]["Body"], "hello");
+    let received = recv_data["Messages"].as_array().unwrap().len();
+    assert_eq!(received, 1);
+}

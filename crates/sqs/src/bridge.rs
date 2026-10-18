@@ -31,6 +31,7 @@ fn new_message(body: &str) -> SqsMessage {
         message_id: uuid::Uuid::new_v4().to_string(),
         body: body.to_string(),
         md5_of_body: format!("{:x}", md5sum::compute(body.as_bytes())),
+        // Real handle is minted at drain time (see drain_pending).
         receipt_handle: String::new(),
         sent_timestamp: (Utc::now().timestamp_millis()) as u64,
         visibility_until: None,
@@ -73,6 +74,11 @@ pub fn deliver_to_queue(account: u64, region: &str, queue_name: &str, body: &str
 
 /// Drain any pending cross-service messages for a queue into the queue's
 /// message list so they are returned by the next receive.
+///
+/// Receipt handles are minted here (at drain time) with the same generation
+/// logic `DefaultSqsHandler` uses at send time, so bridged messages behave
+/// like ordinary SQS messages (valid `ReceiptHandle` in receive responses,
+/// deletable via `DeleteMessage`).
 pub fn drain_pending(account: u64, region: &str, queue_name: &str, queue: &mut Queue) {
     let drained: Vec<SqsMessage> = {
         let mut pend = pending().write();
@@ -87,7 +93,9 @@ pub fn drain_pending(account: u64, region: &str, queue_name: &str, queue: &mut Q
         }
         drained
     };
-    for msg in drained {
+    for mut msg in drained {
+        msg.receipt_handle =
+            crate::handler::DefaultSqsHandler::generate_receipt_handle(&msg.message_id, &queue.url);
         queue.send_message(msg);
     }
 }
