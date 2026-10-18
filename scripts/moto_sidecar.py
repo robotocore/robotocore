@@ -943,8 +943,18 @@ async def moto_handler(request: Request) -> Response:
         except (IndexError, AttributeError):
             pass
 
-    # Build the full URL
-    full_url = str(request.url)
+    # Build the full URL from the RAW path: full_url feeds moto's
+    # BaseResponse.setup_class → parsed_url → raw_path, and starlette's
+    # url.path would collapse %2F into '/', breaking moto's [^/]+ converters
+    # on ARN-style path params.
+    raw_full_path = request.scope.get("raw_path", b"")
+    if raw_full_path:
+        raw_full_path = raw_full_path.decode("latin-1").split("?", 1)[0]
+    else:
+        raw_full_path = request.url.path
+    full_url = f"http://localhost{raw_full_path}"
+    if str(request.url.query):
+        full_url += f"?{request.url.query}"
 
     # Find the Moto backend and dispatcher
     try:
@@ -957,6 +967,9 @@ async def moto_handler(request: Request) -> Response:
             501,
         )
 
+    incoming_raw_path_log = request.scope.get("raw_path", b"")
+    if b"evaluation-job" in incoming_raw_path_log:
+        print("RAW_PATH:", incoming_raw_path_log)
     # Build the Werkzeug environ
     method = request.method
     # Prefer the raw (percent-encoded) path: Starlette's url.path decodes
@@ -1042,8 +1055,18 @@ async def moto_handler(request: Request) -> Response:
 
     # Route to the correct Moto handler
     try:
-        binding = routing_map.bind_to_environ(environ)
-        endpoint, _args = binding.match()
+        # Match on the RAW (percent-encoded) path first: bind_to_environ
+        # reads PATH_INFO, which EnvironBuilder percent-decodes, collapsing
+        # ARN characters into extra '/' and spoiling "[^/]+" converters.
+        raw_path_match = environ.get("REQUEST_URI", "").split("?", 1)[0]
+        endpoint = None
+        try:
+            endpoint, _args = routing_map.bind("localhost").match(raw_path_match)
+        except Exception as _e:
+            import traceback; traceback.print_exc(); endpoint = None
+        if endpoint is None:
+            binding = routing_map.bind_to_environ(environ)
+            endpoint, _args = binding.match()
     except Exception:
         return _error_response(
             service,
