@@ -109,7 +109,10 @@ pub fn key_values(params: &HashMap<String, String>, base: &str) -> Vec<(String, 
     let mut out = Vec::new();
     let mut i = 1;
     while let Some(k) = params.get(&format!("{base}.member.{i}.Key")) {
-        let v = params.get(&format!("{base}.member.{i}.Value")).cloned().unwrap_or_default();
+        let v = params
+            .get(&format!("{base}.member.{i}.Value"))
+            .cloned()
+            .unwrap_or_default();
         out.push((k.clone(), v));
         i += 1;
     }

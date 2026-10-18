@@ -53,13 +53,14 @@ pub fn callback_base() -> String {
 
 fn client() -> ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(|| {
-        ureq::AgentBuilder::new()
-            .timeout_connect(std::time::Duration::from_secs(5))
-            .timeout_read(std::time::Duration::from_secs(20))
-            .build()
-    })
-    .clone()
+    AGENT
+        .get_or_init(|| {
+            ureq::AgentBuilder::new()
+                .timeout_connect(std::time::Duration::from_secs(5))
+                .timeout_read(std::time::Duration::from_secs(20))
+                .build()
+        })
+        .clone()
 }
 
 fn base_headers(account: &str, region: &str, service: &str) -> Vec<(String, String)> {
@@ -131,8 +132,10 @@ pub fn form_call(
     account: &str,
     region: &str,
 ) -> MirrorCall {
-    let mut pairs: Vec<(&str, String)> =
-        vec![("Action", action.to_string()), ("Version", version.to_string())];
+    let mut pairs: Vec<(&str, String)> = vec![
+        ("Action", action.to_string()),
+        ("Version", version.to_string()),
+    ];
     pairs.extend_from_slice(params);
     let mut headers = base_headers(account, region, service);
     headers.push((
@@ -307,12 +310,7 @@ fn policy_json(v: &Value) -> String {
     }
 }
 
-pub fn create_dynamodb_table(
-    props: &Value,
-    name: &str,
-    account: &str,
-    region: &str,
-) -> bool {
+pub fn create_dynamodb_table(props: &Value, name: &str, account: &str, region: &str) -> bool {
     let mut body = json!({ "TableName": name });
     if let Some(obj) = props.as_object() {
         for key in [
@@ -450,8 +448,13 @@ pub fn delete_managed_policy(arn: &str, account: &str) {
     );
 }
 
-pub fn create_instance_profile(name: &str, roles: &[String], account: &str) -> Option<(String, Value)> {
-    let mut params: Vec<(String, String)> = vec![("InstanceProfileName".to_string(), name.to_string())];
+pub fn create_instance_profile(
+    name: &str,
+    roles: &[String],
+    account: &str,
+) -> Option<(String, Value)> {
+    let mut params: Vec<(String, String)> =
+        vec![("InstanceProfileName".to_string(), name.to_string())];
     for (i, r) in roles.iter().enumerate() {
         params.push((format!("Roles.member.{}", i + 1), r.clone()));
     }
@@ -459,8 +462,16 @@ pub fn create_instance_profile(name: &str, roles: &[String], account: &str) -> O
         .iter()
         .map(|(k, v)| (k.as_str(), v.clone()))
         .collect();
-    let resp = form_call("iam", "CreateInstanceProfile", "2010-05-08", &params_ref, account, "global");
-    let arn = text(&resp.body, "Arn").unwrap_or_else(|| format!("arn:aws:iam::{account}:instance-profile/{name}"));
+    let resp = form_call(
+        "iam",
+        "CreateInstanceProfile",
+        "2010-05-08",
+        &params_ref,
+        account,
+        "global",
+    );
+    let arn = text(&resp.body, "Arn")
+        .unwrap_or_else(|| format!("arn:aws:iam::{account}:instance-profile/{name}"));
     Some((name.to_string(), json!({"Arn": arn})))
 }
 
@@ -473,7 +484,8 @@ pub fn create_iam_user(name: &str, account: &str) -> Option<(String, Value)> {
         account,
         "global",
     );
-    let arn = text(&resp.body, "Arn").unwrap_or_else(|| format!("arn:aws:iam::{account}:user/{name}"));
+    let arn =
+        text(&resp.body, "Arn").unwrap_or_else(|| format!("arn:aws:iam::{account}:user/{name}"));
     Some((name.to_string(), json!({"Arn": arn})))
 }
 
@@ -486,7 +498,8 @@ pub fn create_iam_group(name: &str, account: &str) -> Option<(String, Value)> {
         account,
         "global",
     );
-    let arn = text(&resp.body, "Arn").unwrap_or_else(|| format!("arn:aws:iam::{account}:group/{name}"));
+    let arn =
+        text(&resp.body, "Arn").unwrap_or_else(|| format!("arn:aws:iam::{account}:group/{name}"));
     Some((name.to_string(), json!({"Arn": arn})))
 }
 
@@ -495,7 +508,10 @@ pub fn put_ssm_parameter(props: &Value, name: &str, account: &str, region: &str)
         Value::String(s) => s.clone(),
         other => other.to_string(),
     };
-    let ptype = props.get("Type").and_then(Value::as_str).unwrap_or("String");
+    let ptype = props
+        .get("Type")
+        .and_then(Value::as_str)
+        .unwrap_or("String");
     let mut body = json!({"Name": name, "Value": value, "Type": ptype, "Overwrite": true});
     if ptype == "SecureString" {
         if let Some(kid) = props.get("KeyId").and_then(Value::as_str) {
@@ -590,10 +606,9 @@ pub fn put_events_rule(
             if let Some(v) = obj.get(src) {
                 if !v.is_null() {
                     if key == "EventPattern" {
-                        body.as_object_mut().unwrap().insert(
-                            key.to_string(),
-                            Value::String(policy_json(v)),
-                        );
+                        body.as_object_mut()
+                            .unwrap()
+                            .insert(key.to_string(), Value::String(policy_json(v)));
                     } else {
                         body.as_object_mut()
                             .unwrap()
@@ -602,7 +617,10 @@ pub fn put_events_rule(
                 }
             }
         }
-        let state = obj.get("State").and_then(Value::as_str).unwrap_or("ENABLED");
+        let state = obj
+            .get("State")
+            .and_then(Value::as_str)
+            .unwrap_or("ENABLED");
         body.as_object_mut()
             .unwrap()
             .insert("State".to_string(), Value::String(state.to_string()));
@@ -614,7 +632,14 @@ pub fn put_events_rule(
             }
         }
     }
-    let resp = json_call("CloudWatchEvents.PutRule", "events", "/", body, account, region);
+    let resp = json_call(
+        "CloudWatchEvents.PutRule",
+        "events",
+        "/",
+        body,
+        account,
+        region,
+    );
     if !resp.ok() {
         return None;
     }
@@ -636,12 +661,11 @@ pub fn delete_events_rule(name: &str, account: &str, region: &str) {
     );
 }
 
-pub fn create_kms_key(
-    props: &Value,
-    account: &str,
-    region: &str,
-) -> Option<(String, Value)> {
-    let desc = props.get("Description").and_then(Value::as_str).unwrap_or("");
+pub fn create_kms_key(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let desc = props
+        .get("Description")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let key_usage = props
         .get("KeyUsage")
         .and_then(Value::as_str)
@@ -688,11 +712,26 @@ pub fn delete_kms_key(key_id: &str, account: &str, region: &str) {
 }
 
 pub fn create_kms_alias(name: &str, target: &str, account: &str, region: &str) -> bool {
-    json_call("TrentService.CreateAlias", "kms", "/", json!({"AliasName": name, "TargetKeyId": target}), account, region).ok()
+    json_call(
+        "TrentService.CreateAlias",
+        "kms",
+        "/",
+        json!({"AliasName": name, "TargetKeyId": target}),
+        account,
+        region,
+    )
+    .ok()
 }
 
 pub fn delete_kms_alias(name: &str, account: &str, region: &str) {
-    let _ = json_call("TrentService.DeleteAlias", "kms", "/", json!({"AliasName": name}), account, region);
+    let _ = json_call(
+        "TrentService.DeleteAlias",
+        "kms",
+        "/",
+        json!({"AliasName": name}),
+        account,
+        region,
+    );
 }
 
 pub fn create_lambda_function(
@@ -701,7 +740,10 @@ pub fn create_lambda_function(
     account: &str,
     region: &str,
 ) -> Option<(String, Value)> {
-    let runtime = props.get("Runtime").and_then(Value::as_str).unwrap_or("python3.12");
+    let runtime = props
+        .get("Runtime")
+        .and_then(Value::as_str)
+        .unwrap_or("python3.12");
     let handler = props
         .get("Handler")
         .and_then(Value::as_str)
@@ -721,10 +763,16 @@ pub fn create_lambda_function(
         "MemorySize": props.get("MemorySize").and_then(Value::as_i64).unwrap_or(128),
     });
     if let Some(env) = props.get("Environment").filter(|v| !v.is_null()) {
-        fn_body.as_object_mut().unwrap().insert("Environment".to_string(), env.clone());
+        fn_body
+            .as_object_mut()
+            .unwrap()
+            .insert("Environment".to_string(), env.clone());
     }
     if let Some(layers) = props.get("Layers") {
-        fn_body.as_object_mut().unwrap().insert("Layers".to_string(), layers.clone());
+        fn_body
+            .as_object_mut()
+            .unwrap()
+            .insert("Layers".to_string(), layers.clone());
     }
     let code = props.get("Code");
     let code_value = match code {
@@ -791,7 +839,11 @@ pub fn delete_lambda_function(name: &str, account: &str, region: &str) {
 fn zip_source(zip: &Value) -> String {
     match zip {
         Value::String(s) => {
-            if is_zip_b64(s) { s.clone() } else { b64_encode(s.as_bytes()) }
+            if is_zip_b64(s) {
+                s.clone()
+            } else {
+                b64_encode(s.as_bytes())
+            }
         }
         other => other.to_string(),
     }
@@ -822,11 +874,20 @@ pub fn add_lambda_permission(props: &Value, name: &str, account: &str, region: &
     ] {
         if let Some(v) = props.get(src) {
             if !v.is_null() {
-                body.as_object_mut().unwrap().insert(dst.to_string(), v.clone());
+                body.as_object_mut()
+                    .unwrap()
+                    .insert(dst.to_string(), v.clone());
             }
         }
     }
-    let _ = json_call("Lambda_20150331.AddPermission", "lambda", "/2015-03-31/functions", body, account, region);
+    let _ = json_call(
+        "Lambda_20150331.AddPermission",
+        "lambda",
+        "/2015-03-31/functions",
+        body,
+        account,
+        region,
+    );
 }
 
 pub fn create_secretsmanager_secret(
@@ -835,7 +896,10 @@ pub fn create_secretsmanager_secret(
     account: &str,
     region: &str,
 ) -> Option<(String, Value)> {
-    let name = props.get("Name").and_then(Value::as_str).unwrap_or(fallback);
+    let name = props
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or(fallback);
     let mut body = json!({"Name": name});
     if let Some(s) = props.get("SecretString").filter(|v| !v.is_null()) {
         let secret_string = match s {
@@ -881,7 +945,10 @@ pub fn create_kinesis_stream(
     account: &str,
     region: &str,
 ) -> Option<(String, Value)> {
-    let name = props.get("Name").and_then(Value::as_str).unwrap_or(fallback);
+    let name = props
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or(fallback);
     let shards = props.get("ShardCount").and_then(Value::as_i64).unwrap_or(1);
     let resp = json_call(
         "Kinesis_20131202.CreateStream",
@@ -1000,7 +1067,7 @@ pub fn delete_ecs_cluster(arn: &str, account: &str, region: &str) {
 /// Base64 encode (for lambda inline code).
 pub fn b64_encode(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
@@ -1021,7 +1088,6 @@ pub fn b64_encode(input: &[u8]) -> String {
     }
     out
 }
-
 
 pub fn put_user_policy(user: &str, policy_name: &str, doc: &Value, account: &str) -> bool {
     form_call(

@@ -54,10 +54,7 @@ impl CfnEvent {
             Value::String(self.resource_status.clone()),
         );
         if let Some(reason) = &self.resource_status_reason {
-            m.insert(
-                "ResourceStatusReason".into(),
-                Value::String(reason.clone()),
-            );
+            m.insert("ResourceStatusReason".into(), Value::String(reason.clone()));
         }
         m.insert("Timestamp".into(), Value::String(self.timestamp.clone()));
         Value::Object(m)
@@ -233,7 +230,10 @@ impl CfnStore {
     pub fn find_stack_mut(&mut self, name_or_id: &str) -> Option<&mut CfnStack> {
         let matches = |s: &CfnStack| s.stack_id == name_or_id || s.stack_name == name_or_id;
         // Prefer a live stack over a DELETE_COMPLETE one when matching names.
-        if let Some(pos) = self.stacks.iter().position(|s| matches(s) && s.status != "DELETE_COMPLETE")
+        if let Some(pos) = self
+            .stacks
+            .iter()
+            .position(|s| matches(s) && s.status != "DELETE_COMPLETE")
         {
             return Some(&mut self.stacks[pos]);
         }
@@ -247,9 +247,14 @@ impl CfnStore {
         self.change_sets
             .iter()
             .find(|c| {
-                c.change_set_name == cs_name && (stack_name.is_empty() || c.stack_name == stack_name)
+                c.change_set_name == cs_name
+                    && (stack_name.is_empty() || c.stack_name == stack_name)
             })
-            .or_else(|| self.change_sets.iter().find(|c| c.change_set_name == cs_name))
+            .or_else(|| {
+                self.change_sets
+                    .iter()
+                    .find(|c| c.change_set_name == cs_name)
+            })
     }
 
     pub fn find_change_set_mut(
@@ -257,12 +262,11 @@ impl CfnStore {
         cs_name: &str,
         stack_name: &str,
     ) -> Option<&mut CfnChangeSet> {
-        let snapshot = self.find_change_set(cs_name, stack_name).map(|c| c.change_set_id.clone());
+        let snapshot = self
+            .find_change_set(cs_name, stack_name)
+            .map(|c| c.change_set_id.clone());
         match snapshot {
-            Some(id) => self
-                .change_sets
-                .iter_mut()
-                .find(|c| c.change_set_id == id),
+            Some(id) => self.change_sets.iter_mut().find(|c| c.change_set_id == id),
             None => self
                 .change_sets
                 .iter_mut()

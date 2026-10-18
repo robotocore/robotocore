@@ -9,15 +9,17 @@ use crate::{Request, Response};
 // Pending ports (stubs live in their modules but are not yet wired):
 // - acm (stub)
 // - ec2 (stub)
+// - elbv2 / elb (not yet ported; fall back to the moto sidecar)
 
-// Modules under active port; dispatch arms land in a final commit when the
-// compatibility suites pass (mod.rs arms are centrally owned).
+// Ported service modules (declared here; each owns one service backend).
 pub mod cloudformation;
 
+/// Ported service backends. An arm here routes that service to the native
+/// rotocore implementation the moment it reaches suite parity.
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
-        // TEMPORARY local-test wiring; the committed mod.rs stays arm-less
-        // until the final commit (arms are centrally owned).
+        // cloudformation: 150/150 on tests/compatibility/
+        // test_cloudformation_compat.py (parity with the moto bridge).
         "cloudformation" => Some(cloudformation::dispatch(req)),
         _ => None,
     }

@@ -6,7 +6,9 @@
 use super::engine::{self, ResolveCtx};
 use super::mirror;
 use super::store;
-use super::store::{with_store, CfnChangeSet, CfnResource, CfnStack, StackInstance, StackSet, StackSetOperation};
+use super::store::{
+    with_store, CfnChangeSet, CfnResource, CfnStack, StackInstance, StackSet, StackSetOperation,
+};
 use super::xml;
 use super::{account_str, form_params, indexed_members, key_values, param};
 use crate::{Request, Response};
@@ -64,7 +66,12 @@ pub fn handle(req: &Request) -> Response {
     }
 }
 
-fn handle_action(action: &str, params: &HashMap<String, String>, region: &str, account: &str) -> OpResult {
+fn handle_action(
+    action: &str,
+    params: &HashMap<String, String>,
+    region: &str,
+    account: &str,
+) -> OpResult {
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     match action {
         "CreateStack" => create_stack(params, region, account),
@@ -114,16 +121,6 @@ fn user_parameters(params: &HashMap<String, String>) -> Vec<(String, String)> {
     out
 }
 
-fn snapshot_exports_map(account: u64, region: &str) -> HashMap<String, String> {
-    with_store(account, region, |s| s.export_map())
-}
-
-fn log_msg(context: &str, error: &str) {
-    // The sidecar logged mirror failures at debug level and never broke the
-    // response; keep the same contract (stderr, cheap).
-    eprintln!("[rotocore-cfn] {context}: {error}");
-}
-
 /// Events carry a fixed timestamp shape.
 fn now_ts() -> String {
     xml::now_timestamp()
@@ -137,20 +134,26 @@ fn add_event(
     status: &str,
     reason: Option<String>,
 ) {
-    stack.events.push(event_entry(&stack.stack_id, &stack.stack_name, logical_id, resource_type, physical_id, status, reason));
+    stack.events.push(event_entry(
+        &stack.stack_id,
+        &stack.stack_name,
+        logical_id,
+        resource_type,
+        physical_id,
+        status,
+        reason,
+    ));
 }
 
-fn add_stack_event(
-    stack: &mut CfnStack,
-    status: &str,
-    reason: Option<String>,
-) {
+fn add_stack_event(stack: &mut CfnStack, status: &str, reason: Option<String>) {
     let physical = stack.stack_id.clone();
     let logical = stack.stack_name.clone();
     let rtype = "AWS::CloudFormation::Stack";
     let name = stack.stack_name.clone();
     let sid = stack.stack_id.clone();
-    stack.events.push(event_entry(&sid, &name, &logical, rtype, &physical, status, reason));
+    stack.events.push(event_entry(
+        &sid, &name, &logical, rtype, &physical, status, reason,
+    ));
 }
 
 fn event_entry(
@@ -222,7 +225,9 @@ fn expand_sam(template: &mut Value) {
     if !is_sam {
         return;
     }
-    let Some(obj) = template.as_object_mut() else { return };
+    let Some(obj) = template.as_object_mut() else {
+        return;
+    };
     let mut resources = match obj.remove("Resources") {
         Some(Value::Object(m)) => m,
         Some(other) => {
@@ -273,7 +278,10 @@ fn expand_sam(template: &mut Value) {
             if let Some(uri) = code_uri.as_str() {
                 json!({"S3Bucket": "sam-artifacts", "S3Key": uri})
             } else if let Some(obj) = code_uri.as_object() {
-                let bucket = obj.get("Bucket").and_then(Value::as_str).unwrap_or("sam-artifacts");
+                let bucket = obj
+                    .get("Bucket")
+                    .and_then(Value::as_str)
+                    .unwrap_or("sam-artifacts");
                 let key = obj
                     .get("Key")
                     .and_then(Value::as_str)
@@ -299,7 +307,14 @@ fn expand_sam(template: &mut Value) {
             "Code": code,
             "Role": role_ref,
         });
-        for key in ["FunctionName", "Timeout", "MemorySize", "Environment", "Layers", "Description"] {
+        for key in [
+            "FunctionName",
+            "Timeout",
+            "MemorySize",
+            "Environment",
+            "Layers",
+            "Description",
+        ] {
             if let Some(v) = props.get(key) {
                 let _ = lambda_props
                     .as_object_mut()
@@ -308,7 +323,10 @@ fn expand_sam(template: &mut Value) {
             }
         }
         let mut fn_def = Map::new();
-        fn_def.insert("Type".to_string(), Value::String("AWS::Lambda::Function".to_string()));
+        fn_def.insert(
+            "Type".to_string(),
+            Value::String("AWS::Lambda::Function".to_string()),
+        );
         fn_def.insert("Properties".to_string(), lambda_props);
         if roles_added(&additions, logical_id.as_str()) {
             fn_def.insert(
@@ -374,13 +392,18 @@ fn roles_added(additions: &[(String, Value)], logical_id: &str) -> bool {
 }
 
 /// Validate template parameters (required + AllowedValues).
-fn validate_parameters(template: &Value, cfn_params: &HashMap<String, String>) -> Result<(), CfnError> {
+fn validate_parameters(
+    template: &Value,
+    cfn_params: &HashMap<String, String>,
+) -> Result<(), CfnError> {
     let Some(pdefs) = template.get("Parameters").and_then(Value::as_object) else {
         return Ok(());
     };
     for (pname, pdef) in pdefs {
         if pdef.get("Default").is_none() && !cfn_params.contains_key(pname) {
-            return Err(validation_error(format!("Parameters: [{pname}] must have values")));
+            return Err(validation_error(format!(
+                "Parameters: [{pname}] must have values"
+            )));
         }
     }
     for (pname, pdef) in pdefs {
@@ -409,10 +432,8 @@ fn validate_parameters(template: &Value, cfn_params: &HashMap<String, String>) -
 fn find_imports(value: &Value, out: &mut Vec<String>) {
     match value {
         Value::Object(map) => {
-            if let Some(name) = map.get("Fn::ImportValue") {
-                if let Value::String(s) = name {
-                    out.push(s.clone());
-                }
+            if let Some(Value::String(s)) = map.get("Fn::ImportValue") {
+                out.push(s.clone());
             }
             for v in map.values() {
                 find_imports(v, out);
@@ -429,10 +450,7 @@ fn find_imports(value: &Value, out: &mut Vec<String>) {
 
 /// Prevent deleting a stack whose exports other live stacks still import.
 /// Takes the store it runs against (no nested lock acquisition).
-fn check_import_references(
-    store: &store::CfnStore,
-    stack: &CfnStack,
-) -> Result<(), CfnError> {
+fn check_import_references(store: &store::CfnStore, stack: &CfnStack) -> Result<(), CfnError> {
     if stack.exports.is_empty() {
         return Ok(());
     }
@@ -539,8 +557,8 @@ fn create_resource(
                 .get("AssumeRolePolicyDocument")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            let (_role_id, attrs) = mirror::create_iam_role(&name, &assume, account)
-                .ok_or("iam role mirror failed")?;
+            let (_role_id, attrs) =
+                mirror::create_iam_role(&name, &assume, account).ok_or("iam role mirror failed")?;
             (Some(name), json_obj(&attrs))
         }
         "AWS::IAM::Policy" => {
@@ -625,8 +643,8 @@ fn create_resource(
                 .and_then(Value::as_str)
                 .map(String::from)
                 .unwrap_or_else(|| fallback_name(logical_id));
-            let (_phys, attrs) =
-                mirror::put_events_rule(props, &name, account, region).ok_or("events mirror failed")?;
+            let (_phys, attrs) = mirror::put_events_rule(props, &name, account, region)
+                .ok_or("events mirror failed")?;
             (Some(name), json_obj(&attrs))
         }
         "AWS::KMS::Key" => {
@@ -653,16 +671,14 @@ fn create_resource(
         }
         "AWS::Kinesis::Stream" => {
             let fallback = fallback_name(logical_id);
-            let (name, attrs) =
-                mirror::create_kinesis_stream(props, &fallback, account, region)
-                    .ok_or("kinesis mirror failed")?;
+            let (name, attrs) = mirror::create_kinesis_stream(props, &fallback, account, region)
+                .ok_or("kinesis mirror failed")?;
             (Some(name), json_obj(&attrs))
         }
         "AWS::StepFunctions::StateMachine" => {
             let fallback = fallback_name(logical_id);
-            let (arn, attrs) =
-                mirror::create_sfn_state_machine(props, &fallback, account, region)
-                    .ok_or("stepfunctions mirror failed")?;
+            let (arn, attrs) = mirror::create_sfn_state_machine(props, &fallback, account, region)
+                .ok_or("stepfunctions mirror failed")?;
             (Some(arn.clone()), json_obj(&attrs))
         }
         "AWS::ECS::Cluster" => {
@@ -789,17 +805,14 @@ fn delete_resource(resource: &CfnResource, account: &str, region: &str) {
                 mirror::delete_sfn_state_machine(&phys, account, region);
             }
         }
-        "AWS::ECS::Cluster" => {
-            if !phys.is_empty() {
-                mirror::delete_ecs_cluster(&phys, account, region);
-            }
+        "AWS::ECS::Cluster" if !phys.is_empty() => {
+            mirror::delete_ecs_cluster(&phys, account, region);
         }
         _ => {
             // Placeholder types have no side effects to unwind.
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Deployment pipeline
@@ -821,7 +834,10 @@ fn deploy_stack(
     // Pre-validate Fn::ImportValue references against live exports.
     let imports = store.export_map();
     let mut import_refs: Vec<String> = Vec::new();
-    find_imports(template.get("Resources").unwrap_or(&Value::Null), &mut import_refs);
+    find_imports(
+        template.get("Resources").unwrap_or(&Value::Null),
+        &mut import_refs,
+    );
     for name in import_refs {
         if !imports.contains_key(&name) {
             return Err(format!(
@@ -831,10 +847,7 @@ fn deploy_stack(
     }
 
     let base_ctx = make_ctx(stack, template, region, account, imports);
-    let conditions = match engine::evaluate_conditions(template, &base_ctx) {
-        Ok(c) => c,
-        Err(e) => return Err(e),
-    };
+    let conditions = engine::evaluate_conditions(template, &base_ctx)?;
     let mut ctx = base_ctx.clone();
     ctx.conditions = conditions.clone();
 
@@ -874,7 +887,14 @@ fn deploy_stack(
         add_event(stack, &logical_id, rtype, "", "CREATE_IN_PROGRESS", None);
         let (physical, attrs) = create_resource(&logical_id, rtype, &resolved, account, region)?;
         let phys_str = physical.clone().unwrap_or_default();
-        add_event(stack, &logical_id, rtype, &phys_str, "CREATE_COMPLETE", None);
+        add_event(
+            stack,
+            &logical_id,
+            rtype,
+            &phys_str,
+            "CREATE_COMPLETE",
+            None,
+        );
         stack.resources.push(CfnResource {
             logical_id: logical_id.clone(),
             resource_type: rtype.to_string(),
@@ -917,7 +937,9 @@ fn resolve_outputs(
                 continue;
             }
         }
-        let Some(value_src) = out_def.get("Value") else { continue };
+        let Some(value_src) = out_def.get("Value") else {
+            continue;
+        };
         let value = engine::resolve_intrinsics(value_src, ctx, 0)
             .map(|v| scalar_text(&v))
             .unwrap_or_default();
@@ -931,14 +953,13 @@ fn resolve_outputs(
             let export_name = engine::resolve_intrinsics(export, ctx, 0)
                 .map(|v| scalar_text(&v))
                 .unwrap_or_default();
-            let _ = member.insert(
-                "ExportName".to_string(),
-                Value::String(export_name.clone()),
-            );
+            let _ = member.insert("ExportName".to_string(), Value::String(export_name.clone()));
             stack.exports.push((export_name.clone(), value.clone()));
             store.put_export(&export_name, &value, &stack.stack_id);
         }
-        stack.outputs.push((out_name.clone(), Value::Object(member)));
+        stack
+            .outputs
+            .push((out_name.clone(), Value::Object(member)));
         let _ = &region;
     }
 }
@@ -972,13 +993,14 @@ fn create_stack(params: &HashMap<String, String>, region: &str, account: &str) -
         .map(|m| m.is_empty())
         != Some(false)
     {
-        return Err(validation_error("Template must contain a Resources section"));
+        return Err(validation_error(
+            "Template must contain a Resources section",
+        ));
     }
     let cfn_params: HashMap<String, String> = user_parameters(params).into_iter().collect();
     validate_parameters(&template, &cfn_params)?;
     let tags = key_values(params, "Tags");
     engine::build_dependency_order(&template).map_err(validation_error)?;
-    let cfn_params_ref = &cfn_params;
     let import_refs: Vec<String> = {
         let mut out = Vec::new();
         find_imports(template.get("Resources").unwrap_or(&Value::Null), &mut out);
@@ -1048,7 +1070,14 @@ fn create_stack(params: &HashMap<String, String>, region: &str, account: &str) -
         );
 
         let mut template_clone = template.clone();
-        match deploy_stack(store, &mut stack, &mut template_clone, region, account, account_num) {
+        match deploy_stack(
+            store,
+            &mut stack,
+            &mut template_clone,
+            region,
+            account,
+            account_num,
+        ) {
             Ok(()) => {
                 stack.status = "CREATE_COMPLETE".to_string();
                 add_event(
@@ -1098,7 +1127,10 @@ fn create_stack(params: &HashMap<String, String>, region: &str, account: &str) -
         }
         let stack_id_out = stack.stack_id.clone();
         store.stacks.push(stack);
-        Ok(xml::ok("CreateStackResponse", &format!("<StackId>{}</StackId>", stack_id_out)))
+        Ok(xml::ok(
+            "CreateStackResponse",
+            &format!("<StackId>{}</StackId>", stack_id_out),
+        ))
     })
 }
 
@@ -1116,10 +1148,9 @@ fn update_stack(params: &HashMap<String, String>, region: &str, account: &str) -
     let tags = key_values(params, "Tags");
 
     with_store(account_num, region, |store| {
-        let pos = store
-            .stacks
-            .iter()
-            .position(|s| s.stack_id == name || (s.stack_name == name && s.status != "DELETE_COMPLETE"));
+        let pos = store.stacks.iter().position(|s| {
+            s.stack_id == name || (s.stack_name == name && s.status != "DELETE_COMPLETE")
+        });
         let Some(pos) = pos else {
             return Err(validation_error(format!("Stack [{name}] does not exist")).status(404));
         };
@@ -1145,16 +1176,17 @@ fn update_stack(params: &HashMap<String, String>, region: &str, account: &str) -
         }
 
         // Parse both templates for add/remove/modify.
-        let mut old_template = store.stacks[pos].template_body.clone();
-        let old_resources: Map<String, Value> = engine::parse_template(&old_template)
+        let old_template_body = store.stacks[pos].template_body.clone();
+        let old_resources: Map<String, Value> = engine::parse_template(&old_template_body)
             .ok()
             .and_then(|t| {
-                let mut t = t;
-                expand_sam(&mut t);
-                t.get("Resources").and_then(Value::as_object).cloned()
+                let mut t2 = t;
+                expand_sam(&mut t2);
+                t2.get("Resources").and_then(Value::as_object).cloned()
             })
             .unwrap_or_default();
-        let mut new_template_val = engine::parse_template(&template_body).map_err(validation_error)?;
+        let mut new_template_val =
+            engine::parse_template(&template_body).map_err(validation_error)?;
         let new_resources: Map<String, Value> = new_template_val
             .get("Resources")
             .and_then(Value::as_object)
@@ -1178,7 +1210,14 @@ fn update_stack(params: &HashMap<String, String>, region: &str, account: &str) -
 
         let result = (|| -> Result<(), String> {
             // Diff by resource definition equality (old parse done above).
-            swap_remove_changed(store, &mut stack, &old_resources, &new_resources, region, account)?;
+            swap_remove_changed(
+                store,
+                &mut stack,
+                &old_resources,
+                &new_resources,
+                region,
+                account,
+            )?;
             stack.template_body = template_body.clone();
             stack.parameters = merged.clone();
             if !tags.is_empty() {
@@ -1186,7 +1225,14 @@ fn update_stack(params: &HashMap<String, String>, region: &str, account: &str) -
             }
             stack.outputs.clear();
             stack.exports.clear();
-            deploy_stack(store, &mut stack, &mut new_template_val, region, account, account_num)
+            deploy_stack(
+                store,
+                &mut stack,
+                &mut new_template_val,
+                region,
+                account,
+                account_num,
+            )
         })();
 
         match result {
@@ -1202,14 +1248,17 @@ fn update_stack(params: &HashMap<String, String>, region: &str, account: &str) -
         }
         let stack_id = stack.stack_id.clone();
         store.stacks[pos] = stack;
-        Ok(xml::ok("UpdateStackResponse", &format!("<StackId>{stack_id}</StackId>")))
+        Ok(xml::ok(
+            "UpdateStackResponse",
+            &format!("<StackId>{stack_id}</StackId>"),
+        ))
     })
 }
 
 /// Delete definitions that changed or vanished, then let the deploy step
 /// (re)create them. `swap_remove_changed` mirrors the Python diff loop.
 fn swap_remove_changed(
-    store: &mut store::CfnStore,
+    _store: &mut store::CfnStore,
     stack: &mut CfnStack,
     old_defs: &Map<String, Value>,
     new_defs: &Map<String, Value>,
@@ -1223,16 +1272,15 @@ fn swap_remove_changed(
         .collect();
     let changed: Vec<String> = old_defs
         .iter()
-        .filter(|(k, v)| {
-            new_defs
-                .get(*k)
-                .map(|nv| nv != *v)
-                .unwrap_or(false)
-        })
+        .filter(|(k, v)| new_defs.get(*k).map(|nv| nv != *v).unwrap_or(false))
         .map(|(k, _)| k.clone())
         .collect();
     for logical_id in removed.into_iter().chain(changed) {
-        if let Some(index) = stack.resources.iter().position(|r| r.logical_id == logical_id) {
+        if let Some(index) = stack
+            .resources
+            .iter()
+            .position(|r| r.logical_id == logical_id)
+        {
             let resource = stack.resources.remove(index);
             delete_resource(&resource, account, region);
         }
@@ -1284,14 +1332,23 @@ fn delete_stack_action(params: &HashMap<String, String>, region: &str, account: 
 fn stack_json(stack: &CfnStack) -> Value {
     let mut member = Map::new();
     let _ = member.insert("StackId".to_string(), Value::String(stack.stack_id.clone()));
-    let _ = member.insert("StackName".to_string(), Value::String(stack.stack_name.clone()));
-    let _ = member.insert("StackStatus".to_string(), Value::String(stack.status.clone()));
+    let _ = member.insert(
+        "StackName".to_string(),
+        Value::String(stack.stack_name.clone()),
+    );
+    let _ = member.insert(
+        "StackStatus".to_string(),
+        Value::String(stack.status.clone()),
+    );
     let _ = member.insert(
         "CreationTime".to_string(),
         Value::String(xml::timestamp_from(stack.created)),
     );
     if !stack.description.is_empty() {
-        let _ = member.insert("Description".to_string(), Value::String(stack.description.clone()));
+        let _ = member.insert(
+            "Description".to_string(),
+            Value::String(stack.description.clone()),
+        );
     }
     if !stack.status_reason.is_empty() {
         let _ = member.insert(
@@ -1327,11 +1384,7 @@ fn stack_json(stack: &CfnStack) -> Value {
     Value::Object(member)
 }
 
-fn describe_stacks(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn describe_stacks(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let name = param(params, "StackName");
     with_store(account_num, region, |store| {
         let members: Vec<Value> = if !name.is_empty() {
@@ -1341,9 +1394,7 @@ fn describe_stacks(
                     // Only the ARN (stack id) resolves deleted stacks.
                     !(s.status == "DELETE_COMPLETE" && s.stack_id != name)
                 })
-                .ok_or_else(|| {
-                    validation_error(format!("Stack with id {name} does not exist"))
-                })?;
+                .ok_or_else(|| validation_error(format!("Stack with id {name} does not exist")))?;
             vec![stack_json(stack)]
         } else {
             store
@@ -1408,7 +1459,11 @@ fn describe_stack_resources(
         let stack = store
             .find_stack(name)
             .ok_or_else(|| validation_error(format!("Stack [{name}] does not exist")))?;
-        let resources: Vec<Value> = stack.resources.iter().map(|r| resource_json(stack, r)).collect();
+        let resources: Vec<Value> = stack
+            .resources
+            .iter()
+            .map(|r| resource_json(stack, r))
+            .collect();
         Ok(xml::ok(
             "DescribeStackResourcesResponse",
             &xml::dict_to_xml(&json!({"StackResources": resources})),
@@ -1427,13 +1482,11 @@ fn describe_stack_resource(
         let stack = store
             .find_stack(name)
             .ok_or_else(|| validation_error(format!("Stack [{name}] does not exist")))?;
-        let resource = stack
-            .resource(&logical_id)
-            .ok_or_else(|| {
-                validation_error(format!(
-                    "Resource [{logical_id}] does not exist in stack [{name}]"
-                ))
-            })?;
+        let resource = stack.resource(&logical_id).ok_or_else(|| {
+            validation_error(format!(
+                "Resource [{logical_id}] does not exist in stack [{name}]"
+            ))
+        })?;
         let detail = resource_json(stack, resource);
         Ok(xml::ok(
             "DescribeStackResourceResponse",
@@ -1478,7 +1531,7 @@ fn list_stack_resources(
                     .as_object()
                     .cloned()
                     .unwrap_or_default();
-                let _ = Map::from(m.clone());
+                let _ = m.clone();
                 m.insert(
                     "LastUpdatedTimestamp".to_string(),
                     Value::String(xml::timestamp_from(stack.created)),
@@ -1538,7 +1591,9 @@ fn validate_template(params: &HashMap<String, String>) -> OpResult {
         .map(|m| m.is_empty())
         != Some(false)
     {
-        return Err(validation_error("Template must contain a Resources section"));
+        return Err(validation_error(
+            "Template must contain a Resources section",
+        ));
     }
     let mut members: Vec<Value> = Vec::new();
     if let Some(pdefs) = template.get("Parameters").and_then(Value::as_object) {
@@ -1575,17 +1630,17 @@ fn validate_template(params: &HashMap<String, String>) -> OpResult {
 // Change sets
 // ---------------------------------------------------------------------------
 
-fn create_change_set(
-    params: &HashMap<String, String>,
-    region: &str,
-    account: &str,
-) -> OpResult {
+fn create_change_set(params: &HashMap<String, String>, region: &str, account: &str) -> OpResult {
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     let stack_name = param(params, "StackName").to_string();
     let cs_name = param(params, "ChangeSetName").to_string();
     let template_body = param(params, "TemplateBody").to_string();
     let cs_type = param(params, "ChangeSetType").to_string();
-    let cs_type = if cs_type.is_empty() { "UPDATE".to_string() } else { cs_type };
+    let cs_type = if cs_type.is_empty() {
+        "UPDATE".to_string()
+    } else {
+        cs_type
+    };
     if stack_name.is_empty() {
         return Err(validation_error("StackName is required"));
     }
@@ -1609,7 +1664,8 @@ fn create_change_set(
             )
         });
         if existing.is_none() && cs_type == "CREATE" {
-            let mut stub = CfnStack::new(stack_id.clone(), stack_name.clone(), template_body.clone());
+            let mut stub =
+                CfnStack::new(stack_id.clone(), stack_name.clone(), template_body.clone());
             stub.status = "REVIEW_IN_PROGRESS".to_string();
             store.stacks.push(stub);
         }
@@ -1650,9 +1706,8 @@ fn describe_change_set(
     region: &str,
 ) -> OpResult {
     with_store(account_num, region, |store| {
-        let cs = store_find_change_set(store, params).map_err(|m| {
-            CfnError::new("ChangeSetNotFoundException", m).status(404)
-        })?;
+        let cs = store_find_change_set(store, params)
+            .map_err(|m| CfnError::new("ChangeSetNotFoundException", m).status(404))?;
         // Compute changes by diffing the templates (Add/Remove/Modify).
         let mut changes: Vec<Value> = Vec::new();
         if !cs.template_body.is_empty() {
@@ -1724,11 +1779,7 @@ fn describe_change_set(
     })
 }
 
-fn delete_change_set(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn delete_change_set(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     with_store(account_num, region, |store| {
         let found = store
             .find_change_set(param(params, "ChangeSetName"), param(params, "StackName"))
@@ -1740,16 +1791,11 @@ fn delete_change_set(
     })
 }
 
-fn execute_change_set(
-    params: &HashMap<String, String>,
-    region: &str,
-    account: &str,
-) -> OpResult {
+fn execute_change_set(params: &HashMap<String, String>, region: &str, account: &str) -> OpResult {
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     with_store(account_num, region, |store| {
-        let cs = store_find_change_set(store, params).map_err(|m| {
-            CfnError::new("ChangeSetNotFoundException", m).status(404)
-        })?;
+        let cs = store_find_change_set(store, params)
+            .map_err(|m| CfnError::new("ChangeSetNotFoundException", m).status(404))?;
         if cs.status == "EXECUTE_COMPLETE" {
             return Err(CfnError::new(
                 "InvalidChangeSetStatusException",
@@ -1786,7 +1832,14 @@ fn execute_change_set(
                     return Err(validation_error(e));
                 }
             };
-            match deploy_stack(store, &mut stack, &mut template, region, account, account_num) {
+            match deploy_stack(
+                store,
+                &mut stack,
+                &mut template,
+                region,
+                account,
+                account_num,
+            ) {
                 Ok(()) => {
                     stack.status = "CREATE_COMPLETE".to_string();
                     add_stack_event(&mut stack, "CREATE_COMPLETE", None);
@@ -1820,7 +1873,14 @@ fn execute_change_set(
                     return Err(validation_error(e));
                 }
             };
-            match deploy_stack(store, &mut stack, &mut template, region, account, account_num) {
+            match deploy_stack(
+                store,
+                &mut stack,
+                &mut template,
+                region,
+                account,
+                account_num,
+            ) {
                 Ok(()) => {
                     stack.status = "UPDATE_COMPLETE".to_string();
                     add_stack_event(&mut stack, "UPDATE_COMPLETE", None);
@@ -1877,17 +1937,12 @@ fn with_stack_set<T>(
             .stack_sets
             .iter()
             .position(|ss| ss.name == name || ss.id == name)
-            .and_then(|pos| {
-                if store.stack_sets[pos].status != "DELETED" {
-                    Some(pos)
-                } else {
-                    None
-                }
-            })
+            .filter(|&pos| store.stack_sets[pos].status != "DELETED")
             .or_else(|| {
-                store.stack_sets.iter().position(|ss| {
-                    (ss.name == name || ss.id == name) && ss.status != "DELETED"
-                })
+                store
+                    .stack_sets
+                    .iter()
+                    .position(|ss| (ss.name == name || ss.id == name) && ss.status != "DELETED")
             });
         let Some(pos) = pos else {
             return Err(CfnError::new(
@@ -1943,11 +1998,7 @@ fn parse_accounts_regions(params: &HashMap<String, String>) -> (Vec<String>, Vec
     (accounts, regions)
 }
 
-fn create_stack_set(
-    params: &HashMap<String, String>,
-    region: &str,
-    account: &str,
-) -> OpResult {
+fn create_stack_set(params: &HashMap<String, String>, region: &str, account: &str) -> OpResult {
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     let name = param(params, "StackSetName").to_string();
     let tag_list = key_values(params, "Tags");
@@ -1973,11 +2024,7 @@ fn create_stack_set(
     })
 }
 
-fn update_stack_set(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn update_stack_set(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let name = param(params, "StackSetName").to_string();
     with_stack_set(account_num, region, &name, |_store, ss| {
         if let Some(desc) = params.get("Description") {
@@ -2000,18 +2047,19 @@ fn update_stack_set(
     })
 }
 
-fn delete_stack_set(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn delete_stack_set(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let name = param(params, "StackSetName").to_string();
     with_store(account_num, region, |store| {
-        if let Some(pos) = store.stack_sets.iter().position(|ss| {
-            ss.name == name || ss.id == name
-        }) {
+        if let Some(pos) = store
+            .stack_sets
+            .iter()
+            .position(|ss| ss.name == name || ss.id == name)
+        {
             if !store.stack_sets[pos].instances.is_empty() {
-                return Err(CfnError::new("StackSetNotEmptyException", "StackSet is not empty"));
+                return Err(CfnError::new(
+                    "StackSetNotEmptyException",
+                    "StackSet is not empty",
+                ));
             }
             store.stack_sets[pos].status = "DELETED".to_string();
         }
@@ -2043,11 +2091,7 @@ fn describe_stack_set(
     })
 }
 
-fn list_stack_sets(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn list_stack_sets(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let status_filter = param(params, "Status");
     with_store(account_num, region, |store| {
         let summaries: Vec<Value> = store
@@ -2109,7 +2153,11 @@ fn create_stack_instances(
     } else {
         accounts
     };
-    let regions = if regions.is_empty() { vec![region.to_string()] } else { regions };
+    let regions = if regions.is_empty() {
+        vec![region.to_string()]
+    } else {
+        regions
+    };
     with_stack_set(account_num, region, &name, |_store, ss| {
         for a in &accounts {
             for r in &regions {
@@ -2188,7 +2236,10 @@ fn describe_stack_instance(
             .iter()
             .find(|ss| ss.name == name || ss.id == name)
             .ok_or_else(|| {
-                CfnError::new("StackSetNotFoundException", format!("StackSet {name} not found"))
+                CfnError::new(
+                    "StackSetNotFoundException",
+                    format!("StackSet {name} not found"),
+                )
             })?;
         let inst = ss
             .instances
@@ -2315,20 +2366,15 @@ fn stop_stack_set_operation(
     let name = param(params, "StackSetName").to_string();
     let op_id = param(params, "OperationId").to_string();
     let _ = account_num;
-    with_stack_set(
-        account_num,
-        region,
-        &name,
-        |_store, ss| {
-            let op = ss
-                .operations
-                .iter_mut()
-                .find(|op| op.operation_id == op_id)
-                .ok_or_else(|| validation_error(format!("StackSet operation {op_id} not found")))?;
-            op.status = "STOPPED".to_string();
-            Ok(xml::empty("StopStackSetOperationResponse"))
-        },
-    )
+    with_stack_set(account_num, region, &name, |_store, ss| {
+        let op = ss
+            .operations
+            .iter_mut()
+            .find(|op| op.operation_id == op_id)
+            .ok_or_else(|| validation_error(format!("StackSet operation {op_id} not found")))?;
+        op.status = "STOPPED".to_string();
+        Ok(xml::empty("StopStackSetOperationResponse"))
+    })
 }
 
 fn import_stacks_to_stack_set(
@@ -2348,11 +2394,7 @@ fn import_stacks_to_stack_set(
 
 // --- Stack-scoped validations + stubs requiring the stack -------------------
 
-fn get_stack_policy(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn get_stack_policy(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let name = param(params, "StackName");
     with_store(account_num, region, |store| {
         let stack = store
@@ -2361,7 +2403,9 @@ fn get_stack_policy(
         let body = stack.policy.clone().unwrap_or_default();
         Ok(xml::ok(
             "GetStackPolicyResponse",
-            &xml::dict_to_xml(&json!({"StackPolicyBody": if body.is_empty() { Value::Null } else { Value::String(body) }})),
+            &xml::dict_to_xml(
+                &json!({"StackPolicyBody": if body.is_empty() { Value::Null } else { Value::String(body) }}),
+            ),
         ))
     })
 }
@@ -2441,16 +2485,15 @@ fn continue_update_rollback(
     })
 }
 
-fn rollback_stack(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn rollback_stack(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let name = param(params, "StackName").to_string();
     with_store(account_num, region, |store| {
         let pos = require_stack!(store, &name);
         store.stacks[pos].status = "ROLLBACK_COMPLETE".to_string();
-        add_stack_event(&mut store.stacks[pos], "ROLLBACK_COMPLETE", Some("Rollback requested".to_string()),
+        add_stack_event(
+            &mut store.stacks[pos],
+            "ROLLBACK_COMPLETE",
+            Some("Rollback requested".to_string()),
         );
         let stack_id = store.stacks[pos].stack_id.clone();
         Ok(xml::ok(
@@ -2460,11 +2503,7 @@ fn rollback_stack(
     })
 }
 
-fn signal_resource(
-    params: &HashMap<String, String>,
-    account_num: u64,
-    region: &str,
-) -> OpResult {
+fn signal_resource(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
     let name = param(params, "StackName");
     with_store(account_num, region, |store| {
         if find_stack_pos(store, name).is_none() {
@@ -2527,11 +2566,17 @@ fn describe_stack_resource_drifts(
     })
 }
 
-fn cancel_update_stack(params: &HashMap<String, String>, account_num: u64, region: &str) -> OpResult {
+fn cancel_update_stack(
+    params: &HashMap<String, String>,
+    account_num: u64,
+    region: &str,
+) -> OpResult {
     let name = param(params, "StackName").to_string();
     with_store(account_num, region, |store| {
         if find_stack_pos(store, &name).is_none() {
-            return Err(validation_error(format!("Stack with id {name} does not exist")));
+            return Err(validation_error(format!(
+                "Stack with id {name} does not exist"
+            )));
         }
         Ok(xml::empty("CancelUpdateStackResponse"))
     })
@@ -2569,9 +2614,9 @@ fn get_template_summary(
     let stack_name = param(params, "StackName");
     let body = if !stack_name.is_empty() {
         with_store(account_num, region, |store| {
-            let stack = store
-                .find_stack(stack_name)
-                .ok_or_else(|| validation_error(format!("Stack with id {stack_name} does not exist")))?;
+            let stack = store.find_stack(stack_name).ok_or_else(|| {
+                validation_error(format!("Stack with id {stack_name} does not exist"))
+            })?;
             if stack.status == "REVIEW_IN_PROGRESS" {
                 return Err(validation_error(
                     "GetTemplateSummary cannot be called on REVIEW_IN_PROGRESS stacks.",
@@ -2598,7 +2643,12 @@ fn get_template_summary(
             let _ = m.insert("ParameterKey".to_string(), Value::String(pname.clone()));
             let _ = m.insert(
                 "Description".to_string(),
-                Value::String(pdef.get("Description").and_then(Value::as_str).unwrap_or("").to_string()),
+                Value::String(
+                    pdef.get("Description")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
             );
             let _ = m.insert(
                 "DefaultValue".to_string(),
@@ -2610,7 +2660,12 @@ fn get_template_summary(
             );
             let _ = m.insert(
                 "ParameterType".to_string(),
-                Value::String(pdef.get("Type").and_then(Value::as_str).unwrap_or("String").to_string()),
+                Value::String(
+                    pdef.get("Type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("String")
+                        .to_string(),
+                ),
             );
             let _ = m.insert("ParameterConstraints".to_string(), json!({}));
             members.push(Value::Object(m));
@@ -2671,12 +2726,14 @@ fn create_generated_template(
             "arn:aws:cloudformation:{region}:{account}:generatedtemplate/{}",
             Uuid::new_v4()
         );
-        store.generated_templates.push(crate::services::cloudformation::store::GeneratedTemplate {
-            name: name.clone(),
-            id: id.clone(),
-            resources: json!([]),
-            created: chrono::Utc::now().timestamp(),
-        });
+        store
+            .generated_templates
+            .push(crate::services::cloudformation::store::GeneratedTemplate {
+                name: name.clone(),
+                id: id.clone(),
+                resources: json!([]),
+                created: chrono::Utc::now().timestamp(),
+            });
         Ok(xml::ok(
             "CreateGeneratedTemplateResponse",
             &xml::dict_to_xml(&json!({"GeneratedTemplateId": id})),
@@ -2733,7 +2790,10 @@ fn update_generated_template(
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     let name = param(params, "GeneratedTemplateName").to_string();
     with_store(account_num, region, |store| {
-        let pos = store.generated_templates.iter().position(|g| g.name == name);
+        let pos = store
+            .generated_templates
+            .iter()
+            .position(|g| g.name == name);
         let Some(pos) = pos else {
             return Err(CfnError::new(
                 "ResourceNotFoundException",

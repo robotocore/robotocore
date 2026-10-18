@@ -61,11 +61,9 @@ pub fn yaml_to_json(v: &serde_yaml::Value) -> Value {
             };
             // !GetAtt takes "a.b" and returns the two-part list form.
             let payload = match &tagged.value {
-                serde_yaml::Value::String(s) if key == "Fn::GetAtt" => Value::Array(
-                    s.split('.')
-                        .map(|p| Value::String(p.to_string()))
-                        .collect(),
-                ),
+                serde_yaml::Value::String(s) if key == "Fn::GetAtt" => {
+                    Value::Array(s.split('.').map(|p| Value::String(p.to_string())).collect())
+                }
                 other => yaml_to_json(other),
             };
             let mut obj = serde_json::Map::new();
@@ -116,7 +114,11 @@ pub fn scalar_string(v: &Value) -> String {
 }
 
 pub fn py_str_bool(b: bool) -> String {
-    if b { "True".to_string() } else { "False".to_string() }
+    if b {
+        "True".to_string()
+    } else {
+        "False".to_string()
+    }
 }
 
 fn pseudo_sub(name: &str, ctx: &ResolveCtx) -> Option<String> {
@@ -223,42 +225,38 @@ fn resolve_single_intrinsic(
             Value::String(format!("{}c", ctx.region)),
         ]))),
         "Fn::FindInMap" => Some(resolve_findinmap(value, ctx, depth)),
-        "Fn::Base64" => Some((
-            || {
-                let input = resolve_intrinsics(value, ctx, depth + 1)?;
-                Ok(Value::String(b64(input_string(&input).as_bytes())))
-            }
-        )()),
+        "Fn::Base64" => Some((|| {
+            let input = resolve_intrinsics(value, ctx, depth + 1)?;
+            Ok(Value::String(b64(input_string(&input).as_bytes())))
+        })()),
         "Fn::ImportValue" => Some(resolve_import(value, ctx, depth)),
         "Fn::Cidr" => Some(resolve_cidr(value, ctx, depth)),
         "Condition" => {
             let name = scalar_string(value);
-            Some(Ok(Value::Bool(*ctx.conditions.get(&name).unwrap_or(&false))))
+            Some(Ok(Value::Bool(
+                *ctx.conditions.get(&name).unwrap_or(&false),
+            )))
         }
-        "Fn::And" => Some((
-            || {
-                let conds = value.as_array().cloned().unwrap_or_default();
-                let mut all = true;
-                for c in &conds {
-                    if !truthy(&resolve_intrinsics(c, ctx, depth + 1)?) {
-                        all = false;
-                    }
+        "Fn::And" => Some((|| {
+            let conds = value.as_array().cloned().unwrap_or_default();
+            let mut all = true;
+            for c in &conds {
+                if !truthy(&resolve_intrinsics(c, ctx, depth + 1)?) {
+                    all = false;
                 }
-                Ok(Value::Bool(all))
             }
-        )()),
-        "Fn::Or" => Some((
-            || {
-                let conds = value.as_array().cloned().unwrap_or_default();
-                let mut any = false;
-                for c in &conds {
-                    if truthy(&resolve_intrinsics(c, ctx, depth + 1)?) {
-                        any = true;
-                    }
+            Ok(Value::Bool(all))
+        })()),
+        "Fn::Or" => Some((|| {
+            let conds = value.as_array().cloned().unwrap_or_default();
+            let mut any = false;
+            for c in &conds {
+                if truthy(&resolve_intrinsics(c, ctx, depth + 1)?) {
+                    any = true;
                 }
-                Ok(Value::Bool(any))
             }
-        )()),
+            Ok(Value::Bool(any))
+        })()),
         _ => None,
     };
     res
@@ -335,11 +333,7 @@ fn resolve_getatt(fn_value: &Value, ctx: &ResolveCtx) -> ResolveResult {
     if res.resource_type == "AWS::CloudFormation::Stack" && attr_name.starts_with("Outputs.") {
         let output_key = attr_name.trim_start_matches("Outputs.").to_string();
         let fallback = Value::String(format!("{logical_id}-{output_key}"));
-        return Ok(res
-            .attributes
-            .get(&output_key)
-            .cloned()
-            .unwrap_or(fallback));
+        return Ok(res.attributes.get(&output_key).cloned().unwrap_or(fallback));
     }
     Ok(Value::String(String::new()))
 }
@@ -371,7 +365,10 @@ fn resolve_sub(sub: &Value, ctx: &ResolveCtx, depth: usize) -> ResolveResult {
     let mut resolved_vars: HashMap<String, String> = HashMap::new();
     if let Value::Object(obj) = vars_map.as_ref().unwrap_or(&Value::Null) {
         for (k, v) in obj {
-            resolved_vars.insert(k.clone(), sub_string(&resolve_intrinsics(v, ctx, depth + 1)?));
+            resolved_vars.insert(
+                k.clone(),
+                sub_string(&resolve_intrinsics(v, ctx, depth + 1)?),
+            );
         }
     }
 
@@ -475,9 +472,8 @@ fn resolve_select(sel: &Value, ctx: &ResolveCtx, depth: usize) -> ResolveResult 
             scalar_string(&pair[0])
         )
     })?;
-    let idx = parse_index(&pair[0]).ok_or_else(|| {
-        format!("Template error: Fn::Select index '{}' not valid", pair[0])
-    })?;
+    let idx = parse_index(&pair[0])
+        .ok_or_else(|| format!("Template error: Fn::Select index '{}' not valid", pair[0]))?;
     if idx < 0 || idx as usize >= list.len() {
         return Err(format!(
             "Template error: Fn::Select index {idx} is out of bounds for list of length {}",
@@ -551,11 +547,17 @@ fn resolve_findinmap(fim: &Value, ctx: &ResolveCtx, depth: usize) -> ResolveResu
     let map_name = scalar_string(&resolve_intrinsics(&args[0], ctx, depth + 1)?);
     let first_key = scalar_string(&resolve_intrinsics(&args[1], ctx, depth + 1)?);
     let second_key = scalar_string(&resolve_intrinsics(&args[2], ctx, depth + 1)?);
-    let not_found = || {
-        format!("Template error: Mapping '{map_name}' key '{first_key}.{second_key}' not found")
-    };
-    let mapping = ctx.mappings.get(&map_name).and_then(Value::as_object).ok_or_else(not_found)?;
-    let first = mapping.get(&first_key).and_then(Value::as_object).ok_or_else(not_found)?;
+    let not_found =
+        || format!("Template error: Mapping '{map_name}' key '{first_key}.{second_key}' not found");
+    let mapping = ctx
+        .mappings
+        .get(&map_name)
+        .and_then(Value::as_object)
+        .ok_or_else(not_found)?;
+    let first = mapping
+        .get(&first_key)
+        .and_then(Value::as_object)
+        .ok_or_else(not_found)?;
     let result = first.get(&second_key).ok_or_else(not_found)?;
     Ok(result.clone())
 }
@@ -593,7 +595,10 @@ fn resolve_cidr(cidr: &Value, ctx: &ResolveCtx, depth: usize) -> ResolveResult {
 fn inner_usize(v: Option<&Value>, ctx: &ResolveCtx, depth: usize) -> Result<usize, String> {
     let inner = resolve_intrinsics(v.unwrap_or(&Value::Null), ctx, depth + 1)?;
     match inner {
-        Value::Number(n) => n.as_u64().map(|u| u as usize).ok_or("count not a number".to_string()),
+        Value::Number(n) => n
+            .as_u64()
+            .map(|u| u as usize)
+            .ok_or("count not a number".to_string()),
         Value::String(s) => s.parse::<usize>().map_err(|e| e.to_string()),
         _ => Err("count not a number".to_string()),
     }
@@ -645,7 +650,6 @@ pub fn evaluate_conditions(
         .and_then(Value::as_object)
         .unwrap_or(&empty);
     let mut results: HashMap<String, bool> = HashMap::new();
-    let names: Vec<String> = conditions.keys().cloned().collect();
     if conditions.is_empty() {
         return Ok(results);
     }
@@ -702,15 +706,17 @@ pub fn build_dependency_order(template: &Value) -> Result<Vec<String>, String> {
                     }
                 }
             }
-            Some(Value::String(s)) => {
-                if names.contains(s) {
-                    deps_for.push(s.clone());
-                }
+            Some(Value::String(s)) if names.contains(s) => {
+                deps_for.push(s.clone());
             }
             _ => {}
         }
         let mut refs = HashSet::new();
-        find_refs(def.get("Properties").unwrap_or(&Value::Null), &names, &mut refs);
+        find_refs(
+            def.get("Properties").unwrap_or(&Value::Null),
+            &names,
+            &mut refs,
+        );
         for r in refs {
             deps_for.push(r);
         }
@@ -784,10 +790,7 @@ fn find_refs(value: &Value, resource_names: &HashSet<String>, refs: &mut HashSet
             if let Some(sub) = map.get("Fn::Sub") {
                 let template_str = match sub {
                     Value::String(s) => s.clone(),
-                    Value::Array(items) => items
-                        .first()
-                        .map(scalar_string)
-                        .unwrap_or_default(),
+                    Value::Array(items) => items.first().map(scalar_string).unwrap_or_default(),
                     _ => String::new(),
                 };
                 // ${Foo} and ${Foo.Attr} — take the part before the first dot.
@@ -821,7 +824,6 @@ fn find_refs(value: &Value, resource_names: &HashSet<String>, refs: &mut HashSet
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     fn ctx() -> ResolveCtx {
         ResolveCtx {
@@ -896,7 +898,7 @@ mod tests {
 
     #[test]
     fn resolve_ignores_no_value() {
-        let mut ctx = ctx_template();
+        let ctx = ctx_template();
         let v = resolve_intrinsics(
             &serde_json::json!({"Foo": {"Ref": "AWS::NoValue"}, "Bar": "x"}),
             &ctx,
@@ -911,7 +913,10 @@ mod tests {
     fn join_select_split_if() {
         let mut ctx = ctx_template();
         ctx.conditions.insert("IsProd".to_string(), true);
-        let joined = resolve(&serde_json::json!({"Fn::Join": ["-", ["a", {"Ref": "AWS::Region"}]]}), &mut ctx);
+        let joined = resolve(
+            &serde_json::json!({"Fn::Join": ["-", ["a", {"Ref": "AWS::Region"}]]}),
+            &mut ctx,
+        );
         assert_eq!(joined, "a-us-east-1");
         let sel = resolve(
             &serde_json::json!({"Fn::Select": ["1", ["alpha", "beta", "gamma"]]}),
@@ -956,8 +961,8 @@ mod tests {
             }
         });
         let conds = evaluate_conditions(&tpl, &ctx).unwrap();
-        assert_eq!(conds["IsProd"], true);
-        assert_eq!(conds["Also"], true);
+        assert!(conds["IsProd"]);
+        assert!(conds["Also"]);
     }
 
     #[test]
