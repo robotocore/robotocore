@@ -2404,15 +2404,14 @@ pub fn shard_group_xml(acct: u64, region: &str, g: &DBShardGroup) -> String {
         .map(|a| format!("<MinACU>{}</MinACU>", esc(a)))
         .unwrap_or_default();
     format!(
-        "<DBShardGroup>\
-         <DBShardGroupResourceId>shard-group-{}</DBShardGroupResourceId>\
+        "<DBShardGroupResourceId>shard-group-{}</DBShardGroupResourceId>\
          <DBShardGroupIdentifier>{}</DBShardGroupIdentifier>\
          <DBClusterIdentifier>{}</DBClusterIdentifier>\
          {max_acu}{min_acu}{compute}\
          <Status>{}</Status>\
          <Endpoint>{}</Endpoint>\
          <DBShardGroupArn>{}</DBShardGroupArn>\
-         {tags}</DBShardGroup>",
+         {tags}",
         esc(&g.id),
         esc(&g.id),
         esc(&g.cluster_identifier),
