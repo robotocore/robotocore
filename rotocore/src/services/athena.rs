@@ -1290,6 +1290,760 @@ fn op_put_capacity_assignment_configuration(body: &Value, st: &mut AthenaState) 
 }
 
 // ---------------------------------------------------------------------------
+// Prepared statements
+// ---------------------------------------------------------------------------
+
+fn op_create_prepared_statement(body: &Value, st: &mut AthenaState) -> OpResult {
+    let statement_name = body
+        .get("StatementName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    st.require_work_group(&workgroup)
+        .map_err(|e| invalid_request(&e))?;
+    let statement = PreparedStatement {
+        workgroup,
+        query_statement: body
+            .get("QueryStatement")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        description: body.get("Description").cloned().unwrap_or(Value::Null),
+        last_modified: crate::proto::now_unix(),
+    };
+    if let Some((_, existing)) = st
+        .prepared_statements
+        .iter_mut()
+        .find(|(key, _)| *key == statement_name)
+    {
+        *existing = statement;
+    } else {
+        st.prepared_statements.push((statement_name, statement));
+    }
+    Ok(json!({}))
+}
+
+fn op_get_prepared_statement(body: &Value, st: &AthenaState) -> OpResult {
+    let statement_name = body
+        .get("StatementName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match st
+        .prepared_statements
+        .iter()
+        .find(|(key, ps)| *key == statement_name && ps.workgroup == workgroup)
+    {
+        Some((key, ps)) => Ok(json!({
+            "PreparedStatement": {
+                "StatementName": key,
+                "QueryStatement": ps.query_statement,
+                "WorkGroupName": ps.workgroup,
+                "Description": ps.description,
+            }
+        })),
+        None => Err(athena_client_error(
+            "ResourceNotFoundException",
+            &format!("PreparedStatement {statement_name} was not found in {workgroup}"),
+        )),
+    }
+}
+
+fn op_delete_prepared_statement(body: &Value, st: &mut AthenaState) -> OpResult {
+    let statement_name = body
+        .get("StatementName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let index = st
+        .prepared_statements
+        .iter()
+        .position(|(key, ps)| *key == statement_name && ps.workgroup == workgroup);
+    match index {
+        Some(index) => {
+            st.prepared_statements.remove(index);
+            Ok(json!({}))
+        }
+        None => Err(invalid_argument(&format!(
+            "PreparedStatement {statement_name} was not found"
+        ))),
+    }
+}
+
+fn op_update_prepared_statement(body: &Value, st: &mut AthenaState) -> OpResult {
+    let statement_name = body
+        .get("StatementName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let Some((_, ps)) = st
+        .prepared_statements
+        .iter_mut()
+        .find(|(key, ps)| *key == statement_name && ps.workgroup == workgroup)
+    else {
+        return Err(invalid_argument(&format!(
+            "PreparedStatement {statement_name} was not found"
+        )));
+    };
+    if let Some(query) = body.get("QueryStatement").and_then(Value::as_str) {
+        ps.query_statement = query.to_string();
+    }
+    if let Some(description) = body.get("Description").and_then(Value::as_str) {
+        ps.description = Value::String(description.to_string());
+    }
+    ps.last_modified = crate::proto::now_unix();
+    Ok(json!({}))
+}
+
+fn op_list_prepared_statements(body: &Value, st: &AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let statements: Vec<Value> = st
+        .prepared_statements
+        .iter()
+        .filter(|(_, ps)| ps.workgroup == workgroup)
+        .map(|(key, ps)| {
+            json!({
+                "StatementName": key,
+                "LastModifiedTime": ps.last_modified,
+            })
+        })
+        .collect();
+    Ok(json!({ "PreparedStatements": statements }))
+}
+
+fn op_batch_get_prepared_statement(body: &Value, st: &AthenaState) -> OpResult {
+    let names = body
+        .get("PreparedStatementNames")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let mut statements = Vec::new();
+    let mut unprocessed = Vec::new();
+    for name in names {
+        let Some(name_str) = name.as_str() else {
+            continue;
+        };
+        match st
+            .prepared_statements
+            .iter()
+            .find(|(key, ps)| *key == name_str && ps.workgroup == workgroup)
+        {
+            Some((key, ps)) => statements.push(json!({
+                "StatementName": key,
+                "QueryStatement": ps.query_statement,
+                "WorkGroupName": ps.workgroup,
+                "Description": ps.description,
+            })),
+            None => unprocessed.push(json!({
+                "StatementName": name_str,
+                "ErrorCode": "INVALID_INPUT",
+                "ErrorMessage": "INVALID_INPUT",
+            })),
+        }
+    }
+    Ok(json!({
+        "PreparedStatements": statements,
+        "UnprocessedPreparedStatementNames": unprocessed,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+fn op_start_session(body: &Value, st: &mut AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    st.require_work_group(&workgroup)
+        .map_err(|e| invalid_request(&e))?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let session = Session {
+        workgroup: workgroup.clone(),
+        engine_configuration: body
+            .get("EngineConfiguration")
+            .filter(|config| !config.is_null())
+            .cloned()
+            .unwrap_or(json!({})),
+        notebook_version: body
+            .get("NotebookVersion")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        description: body
+            .get("Description")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        state: "IDLE".to_string(),
+        start_time: crate::proto::now_unix(),
+        end_time: None,
+    };
+    st.sessions.insert(session_id.clone(), session);
+    Ok(json!({ "SessionId": session_id, "State": "IDLE" }))
+}
+
+fn op_get_session(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("SessionId").and_then(Value::as_str) else {
+        return Err(invalid_request("Session  was not found"));
+    };
+    match st.sessions.get(id) {
+        Some(session) => Ok(session.to_json(id)),
+        None => Err(invalid_request(&format!("Session {id} was not found"))),
+    }
+}
+
+fn op_get_session_status(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("SessionId").and_then(Value::as_str) else {
+        return Err(invalid_request("Session  was not found"));
+    };
+    match st.sessions.get(id) {
+        Some(session) => Ok(json!({
+            "SessionId": id,
+            "Status": session.status_json(),
+        })),
+        None => Err(invalid_request(&format!("Session {id} was not found"))),
+    }
+}
+
+fn op_terminate_session(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("SessionId").and_then(Value::as_str) else {
+        return Err(invalid_request("Session  was not found"));
+    };
+    match st.sessions.get_mut(id) {
+        Some(session) => {
+            session.state = "TERMINATED".to_string();
+            session.end_time = Some(crate::proto::now_unix());
+            Ok(json!({ "State": "TERMINATING" }))
+        }
+        None => Err(invalid_request(&format!("Session {id} was not found"))),
+    }
+}
+
+fn op_list_sessions(body: &Value, st: &AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let sessions: Vec<Value> = st
+        .sessions
+        .iter()
+        .filter(|(_, session)| session.workgroup == workgroup)
+        .map(|(id, session)| {
+            json!({
+                "SessionId": id,
+                "Description": session.description.clone(),
+                "EngineVersion": "PySpark engine version 3",
+                "NotebookVersion": session.notebook_version.clone(),
+                "Status": session.status_json(),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "Sessions": sessions,
+        "Description": "",
+    }))
+}
+
+fn op_create_presigned_notebook_url(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("SessionId").and_then(Value::as_str) else {
+        return Err(invalid_request("Session  was not found"));
+    };
+    if !st.sessions.contains_key(id) {
+        return Err(invalid_request(&format!("Session {id} was not found")));
+    }
+    Ok(json!({
+        "NotebookUrl": format!("https://athena-notebooks.amazonaws.com/{id}"),
+        "AuthToken": format!("mock-auth-token-{id}"),
+        "AuthTokenExpirationTime": crate::proto::unix_in(3600.0),
+    }))
+}
+
+fn op_get_session_endpoint(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("SessionId").and_then(Value::as_str) else {
+        return Err(invalid_request("Session  was not found"));
+    };
+    if !st.sessions.contains_key(id) {
+        return Err(invalid_request(&format!("Session {id} was not found")));
+    }
+    Ok(json!({
+        "SessionId": id,
+        "Endpoint": format!("https://athena-sessions.amazonaws.com/{id}"),
+    }))
+}
+
+fn op_list_executors(body: &Value) -> OpResult {
+    let session_id = body
+        .get("SessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    Ok(json!({
+        "SessionId": session_id,
+        "ExecutorsSummary": [],
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Notebooks
+// ---------------------------------------------------------------------------
+
+fn op_create_notebook(body: &Value, st: &mut AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    st.require_work_group(&workgroup)
+        .map_err(|e| invalid_request(&e))?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = crate::proto::now_unix();
+    let notebook = Notebook {
+        name: body
+            .get("Name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        workgroup,
+        notebook_type: Value::String("IPYNB".to_string()),
+        creation_time: now,
+        last_modified: now,
+        content: String::new(),
+    };
+    st.notebooks.insert(id.clone(), notebook);
+    Ok(json!({ "NotebookId": id }))
+}
+
+fn op_delete_notebook(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("NotebookId").and_then(Value::as_str) else {
+        return Ok(json!({}));
+    };
+    st.notebooks.remove(id);
+    Ok(json!({}))
+}
+
+fn op_update_notebook(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("NotebookId").and_then(Value::as_str) else {
+        return Ok(json!({}));
+    };
+    if let Some(notebook) = st.notebooks.get_mut(id) {
+        if let Some(payload) = body.get("Payload").and_then(Value::as_str) {
+            notebook.content = payload.to_string();
+        }
+        if let Some(kind) = body.get("Type").and_then(Value::as_str) {
+            notebook.notebook_type = Value::String(kind.to_string());
+        }
+        notebook.last_modified = crate::proto::now_unix();
+    }
+    Ok(json!({}))
+}
+
+fn op_update_notebook_metadata(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("NotebookId").and_then(Value::as_str) else {
+        return Ok(json!({}));
+    };
+    if let Some(notebook) = st.notebooks.get_mut(id) {
+        if let Some(name) = body.get("Name").and_then(Value::as_str) {
+            notebook.name = name.to_string();
+        }
+        notebook.last_modified = crate::proto::now_unix();
+    }
+    Ok(json!({}))
+}
+
+fn op_export_notebook(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("NotebookId").and_then(Value::as_str) else {
+        return Err(invalid_request("Notebook  was not found"));
+    };
+    match st.notebooks.get(id) {
+        Some(notebook) => Ok(json!({
+            "NotebookMetadata": notebook.metadata_json(id),
+            "Payload": notebook.content.clone(),
+        })),
+        None => Err(invalid_request(&format!("Notebook {id} was not found"))),
+    }
+}
+
+fn op_import_notebook(body: &Value, st: &mut AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    st.require_work_group(&workgroup)
+        .map_err(|e| invalid_request(&e))?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = crate::proto::now_unix();
+    let notebook = Notebook {
+        name: body
+            .get("Name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        workgroup,
+        notebook_type: Value::String(
+            body.get("Type")
+                .and_then(Value::as_str)
+                .unwrap_or("IPYNB")
+                .to_string(),
+        ),
+        creation_time: now,
+        last_modified: now,
+        content: body
+            .get("Payload")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+    };
+    st.notebooks.insert(id.clone(), notebook);
+    Ok(json!({ "NotebookId": id }))
+}
+
+fn op_get_notebook_metadata(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("NotebookId").and_then(Value::as_str) else {
+        return Err(invalid_request("Notebook  was not found"));
+    };
+    match st.notebooks.get(id) {
+        Some(notebook) => Ok(json!({ "NotebookMetadata": notebook.metadata_json(id) })),
+        None => Err(invalid_request(&format!("Notebook {id} was not found"))),
+    }
+}
+
+fn op_list_notebook_metadata(body: &Value, st: &AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let list: Vec<Value> = st
+        .notebooks
+        .iter()
+        .filter(|(_, notebook)| notebook.workgroup == workgroup)
+        .map(|(id, notebook)| notebook.metadata_json(id))
+        .collect();
+    Ok(json!({ "NotebookMetadataList": list }))
+}
+
+fn op_list_notebook_sessions() -> OpResult {
+    Ok(json!({ "NotebookSessionsList": [] }))
+}
+
+// ---------------------------------------------------------------------------
+// Calculation executions
+// ---------------------------------------------------------------------------
+
+fn op_start_calculation_execution(body: &Value, st: &mut AthenaState) -> OpResult {
+    let session_id = body
+        .get("SessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let calc_id = uuid::Uuid::new_v4().to_string();
+    let calculation = Calculation {
+        session_id,
+        description: body
+            .get("Description")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        code_block: body
+            .get("CodeBlock")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        state: "RUNNING".to_string(),
+        submission: crate::proto::now_unix(),
+        completion: None,
+    };
+    st.calculation_executions
+        .insert(calc_id.clone(), calculation);
+    Ok(json!({
+        "CalculationExecutionId": calc_id,
+        "State": "RUNNING",
+    }))
+}
+
+fn op_stop_calculation_execution(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("CalculationExecutionId").and_then(Value::as_str) else {
+        return Err(invalid_request("CalculationExecution  was not found"));
+    };
+    match st.calculation_executions.get_mut(id) {
+        Some(calc) => {
+            calc.state = "CANCELED".to_string();
+            calc.completion = Some(crate::proto::now_unix());
+            Ok(json!({ "State": "CANCELED" }))
+        }
+        None => Err(invalid_request(&format!(
+            "CalculationExecution {id} was not found"
+        ))),
+    }
+}
+
+fn op_get_calculation_execution(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("CalculationExecutionId").and_then(Value::as_str) else {
+        return Err(invalid_request("CalculationExecution  was not found"));
+    };
+    match st.calculation_executions.get(id) {
+        Some(calc) => Ok(calculation_json(calc, id)),
+        None => Err(invalid_request(&format!(
+            "CalculationExecution {id} was not found"
+        ))),
+    }
+}
+
+fn calculation_json(calc: &Calculation, id: &str) -> Value {
+    let mut json_val = json!({
+        "CalculationExecutionId": id,
+        "SessionId": calc.session_id.clone(),
+        "Description": calc.description.clone(),
+        "CodeBlock": calc.code_block.clone(),
+        "Status": {
+            "State": calc.state,
+            "SubmissionDateTime": calc.submission,
+        },
+    });
+    if let Some(end) = calc.completion {
+        json_val["Status"]["CompletionDateTime"] = json!(end);
+    }
+    json_val
+}
+
+fn op_get_calculation_execution_code(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("CalculationExecutionId").and_then(Value::as_str) else {
+        return Err(invalid_request("CalculationExecution  was not found"));
+    };
+    match st.calculation_executions.get(id) {
+        Some(calc) => Ok(json!({ "CodeBlock": calc.code_block.clone() })),
+        None => Err(invalid_request(&format!(
+            "CalculationExecution {id} was not found"
+        ))),
+    }
+}
+
+fn op_get_calculation_execution_status(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("CalculationExecutionId").and_then(Value::as_str) else {
+        return Err(invalid_request("CalculationExecution  was not found"));
+    };
+    match st.calculation_executions.get(id) {
+        Some(calc) => Ok(json!({
+            "Status": {
+                "State": calc.state,
+                "SubmissionDateTime": calc.submission,
+                "CompletionDateTime": calc.completion,
+            },
+            "Statistics": {
+                "DpuExecutionInMillis": 1000,
+                "Progress": "100%",
+            },
+        })),
+        None => Err(invalid_request(&format!(
+            "CalculationExecution {id} was not found"
+        ))),
+    }
+}
+
+fn op_list_calculation_executions(body: &Value, st: &AthenaState) -> OpResult {
+    let session_id = body
+        .get("SessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let calculations: Vec<Value> = st
+        .calculation_executions
+        .iter()
+        .filter(|(_, calc)| calc.session_id == session_id)
+        .map(|(id, calc)| {
+            json!({
+                "CalculationExecutionId": id,
+                "Description": calc.description.clone(),
+                "Status": {
+                    "State": calc.state,
+                    "SubmissionDateTime": calc.submission,
+                    "CompletionDateTime": calc.completion,
+                },
+            })
+        })
+        .collect();
+    Ok(json!({ "Calculations": calculations }))
+}
+
+// ---------------------------------------------------------------------------
+// Databases + table metadata
+// ---------------------------------------------------------------------------
+
+fn op_get_database(body: &Value, st: &AthenaState) -> OpResult {
+    let catalog = body
+        .get("CatalogName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let database_name = body
+        .get("DatabaseName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match st
+        .databases
+        .get(catalog)
+        .and_then(|dbs| dbs.get(database_name))
+    {
+        Some(db) => Ok(json!({
+            "Database": {
+                "Name": database_name,
+                "Description": db.description,
+                "Parameters": db.parameters,
+            }
+        })),
+        None => Err(invalid_request(&format!(
+            "Database {database_name} not found in catalog {catalog}"
+        ))),
+    }
+}
+
+fn op_list_databases(body: &Value, st: &AthenaState) -> OpResult {
+    let catalog = body
+        .get("CatalogName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let list: Vec<Value> = st
+        .databases
+        .get(catalog)
+        .into_iter()
+        .flatten()
+        .map(|(name, db)| {
+            json!({
+                "Name": name,
+                "Description": db.description,
+                "Parameters": db.parameters,
+            })
+        })
+        .collect();
+    Ok(json!({ "DatabaseList": list }))
+}
+
+fn op_get_table_metadata(body: &Value, st: &AthenaState) -> OpResult {
+    let catalog = body
+        .get("CatalogName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let database = body
+        .get("DatabaseName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let table = body
+        .get("TableName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let table_key = format!("{catalog}.{database}");
+    match st
+        .tables
+        .get(&table_key)
+        .and_then(|tables| tables.get(table))
+    {
+        Some(meta) => Ok(json!({ "TableMetadata": meta.to_json(table) })),
+        None => Err(invalid_request(&format!(
+            "Table {table} not found in database {database}"
+        ))),
+    }
+}
+
+fn op_list_table_metadata(body: &Value, st: &AthenaState) -> OpResult {
+    let catalog = body
+        .get("CatalogName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let database = body
+        .get("DatabaseName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let table_key = format!("{catalog}.{database}");
+    let list: Vec<Value> = st
+        .tables
+        .get(&table_key)
+        .into_iter()
+        .flatten()
+        .map(|(name, meta)| meta.to_json(name))
+        .collect();
+    Ok(json!({ "TableMetadataList": list }))
+}
+
+// ---------------------------------------------------------------------------
+// Static lists + dashboard
+// ---------------------------------------------------------------------------
+
+fn op_list_engine_versions() -> OpResult {
+    Ok(json!({
+        "EngineVersions": [
+            {
+                "SelectedEngineVersion": "AUTO",
+                "EffectiveEngineVersion": "Athena engine version 3",
+            },
+            {
+                "SelectedEngineVersion": "Athena engine version 2",
+                "EffectiveEngineVersion": "Athena engine version 2",
+            },
+            {
+                "SelectedEngineVersion": "Athena engine version 3",
+                "EffectiveEngineVersion": "Athena engine version 3",
+            },
+            {
+                "SelectedEngineVersion": "PySpark engine version 3",
+                "EffectiveEngineVersion": "PySpark engine version 3",
+            },
+        ]
+    }))
+}
+
+fn op_list_application_dpu_sizes() -> OpResult {
+    Ok(json!({
+        "ApplicationDPUSizes": [
+            {
+                "ApplicationDPUSizeType": "NOTEBOOK",
+                "SupportedDPUSizes": [4, 8, 16, 32, 48],
+            },
+            {
+                "ApplicationDPUSizeType": "SPARK",
+                "SupportedDPUSizes": [4, 8, 16, 32, 48, 64],
+            },
+        ]
+    }))
+}
+
+fn op_get_resource_dashboard(body: &Value, st: &AthenaState) -> OpResult {
+    let arn = body
+        .get("ResourceARN")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    Ok(json!({
+        "ResourceDashboard": {
+            "ResourceArn": arn,
+            "QueryCount": st.executions.len(),
+            "NamedQueryCount": st.named_queries.len(),
+        }
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 
@@ -1342,6 +2096,48 @@ pub fn dispatch(req: &Request) -> Response {
             "PutCapacityAssignmentConfiguration" => {
                 op_put_capacity_assignment_configuration(&body, st)
             }
+            // prepared statements
+            "CreatePreparedStatement" => op_create_prepared_statement(&body, st),
+            "GetPreparedStatement" => op_get_prepared_statement(&body, st),
+            "DeletePreparedStatement" => op_delete_prepared_statement(&body, st),
+            "UpdatePreparedStatement" => op_update_prepared_statement(&body, st),
+            "ListPreparedStatements" => op_list_prepared_statements(&body, st),
+            "BatchGetPreparedStatement" => op_batch_get_prepared_statement(&body, st),
+            // sessions
+            "StartSession" => op_start_session(&body, st),
+            "GetSession" => op_get_session(&body, st),
+            "GetSessionStatus" => op_get_session_status(&body, st),
+            "TerminateSession" => op_terminate_session(&body, st),
+            "ListSessions" => op_list_sessions(&body, st),
+            "CreatePresignedNotebookUrl" => op_create_presigned_notebook_url(&body, st),
+            "GetSessionEndpoint" => op_get_session_endpoint(&body, st),
+            "ListExecutors" => op_list_executors(&body),
+            // notebooks
+            "CreateNotebook" => op_create_notebook(&body, st),
+            "DeleteNotebook" => op_delete_notebook(&body, st),
+            "UpdateNotebook" => op_update_notebook(&body, st),
+            "UpdateNotebookMetadata" => op_update_notebook_metadata(&body, st),
+            "ExportNotebook" => op_export_notebook(&body, st),
+            "ImportNotebook" => op_import_notebook(&body, st),
+            "GetNotebookMetadata" => op_get_notebook_metadata(&body, st),
+            "ListNotebookMetadata" => op_list_notebook_metadata(&body, st),
+            "ListNotebookSessions" => op_list_notebook_sessions(),
+            // calculation executions
+            "StartCalculationExecution" => op_start_calculation_execution(&body, st),
+            "StopCalculationExecution" => op_stop_calculation_execution(&body, st),
+            "GetCalculationExecution" => op_get_calculation_execution(&body, st),
+            "GetCalculationExecutionCode" => op_get_calculation_execution_code(&body, st),
+            "GetCalculationExecutionStatus" => op_get_calculation_execution_status(&body, st),
+            "ListCalculationExecutions" => op_list_calculation_executions(&body, st),
+            // databases + tables
+            "GetDatabase" => op_get_database(&body, st),
+            "ListDatabases" => op_list_databases(&body, st),
+            "GetTableMetadata" => op_get_table_metadata(&body, st),
+            "ListTableMetadata" => op_list_table_metadata(&body, st),
+            // static lists + dashboard
+            "ListEngineVersions" => op_list_engine_versions(),
+            "ListApplicationDPUSizes" => op_list_application_dpu_sizes(),
+            "GetResourceDashboard" => op_get_resource_dashboard(&body, st),
             other => Err(json_error(
                 501,
                 "NotImplemented",
@@ -2045,4 +2841,414 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // Family 5: prepared statements, sessions, notebooks, calculations,
+    // databases/tables, static lists, dashboard
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn prepared_statement_crud() {
+        let account = fresh_account();
+        let resp = run(
+            account,
+            "CreatePreparedStatement",
+            json!({
+                "StatementName": "ps-1",
+                "WorkGroup": "primary",
+                "QueryStatement": "SELECT ? FROM t",
+                "Description": "d",
+            }),
+        );
+        assert_eq!(resp.status, 200);
+
+        let ps = body_of(&run(
+            account,
+            "GetPreparedStatement",
+            json!({"StatementName": "ps-1", "WorkGroup": "primary"}),
+        ))["PreparedStatement"]
+            .clone();
+        assert_eq!(ps["StatementName"], "ps-1");
+        assert_eq!(ps["WorkGroupName"], "primary");
+        assert_eq!(ps["QueryStatement"], "SELECT ? FROM t");
+
+        // bad workgroup creation
+        let resp = run(
+            account,
+            "CreatePreparedStatement",
+            json!({"StatementName": "x", "WorkGroup": "missing", "QueryStatement": "1"}),
+        );
+        assert_eq!(resp.status, 400);
+
+        // update then read back
+        run(
+            account,
+            "UpdatePreparedStatement",
+            json!({"StatementName": "ps-1", "WorkGroup": "primary", "QueryStatement": "SELECT 1"}),
+        );
+        let ps = body_of(&run(
+            account,
+            "GetPreparedStatement",
+            json!({"StatementName": "ps-1", "WorkGroup": "primary"}),
+        ))["PreparedStatement"]
+            .clone();
+        assert_eq!(ps["QueryStatement"], "SELECT 1");
+
+        let resp = run(
+            account,
+            "ListPreparedStatements",
+            json!({"WorkGroup": "primary"}),
+        );
+        let list = body_of(&resp)["PreparedStatements"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let names: Vec<&str> = list
+            .iter()
+            .map(|p| p["StatementName"].as_str().unwrap_or_default())
+            .collect();
+        assert!(names.contains(&"ps-1"));
+        let resp = run(
+            account,
+            "BatchGetPreparedStatement",
+            json!({"PreparedStatementNames": ["ps-1", "missing"], "WorkGroup": "primary"}),
+        );
+        let batch = body_of(&resp);
+        assert_eq!(batch["PreparedStatements"][0]["WorkGroupName"], "primary");
+        assert_eq!(
+            batch["UnprocessedPreparedStatementNames"][0]["StatementName"],
+            "missing"
+        );
+
+        run(
+            account,
+            "DeletePreparedStatement",
+            json!({"StatementName": "ps-1", "WorkGroup": "primary"}),
+        );
+        // delete of a missing statement → InvalidArgumentException
+        let resp = run(
+            account,
+            "DeletePreparedStatement",
+            json!({"StatementName": "ps-1", "WorkGroup": "primary"}),
+        );
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "PreparedStatement ps-1 was not found"
+        );
+        // get of missing → moto AthenaClientError envelope
+        let resp = run(
+            account,
+            "GetPreparedStatement",
+            json!({"StatementName": "ps-1", "WorkGroup": "primary"}),
+        );
+        assert_eq!(resp.status, 400);
+        let err = body_of(&resp);
+        assert_eq!(err["Error"]["Code"], "ResourceNotFoundException");
+        assert_eq!(
+            err["Error"]["Message"],
+            "PreparedStatement ps-1 was not found in primary"
+        );
+    }
+
+    #[test]
+    fn session_lifecycle_and_extras() {
+        let account = fresh_account();
+        let resp = run(
+            account,
+            "StartSession",
+            json!({
+                "WorkGroup": "primary",
+                "EngineConfiguration": {"CoordinatorDpuSize": 1},
+            }),
+        );
+        assert_eq!(body_of(&resp)["State"], "IDLE");
+        let session_id = body_of(&resp)["SessionId"].as_str().unwrap().to_string();
+
+        let session = body_of(&run(
+            account,
+            "GetSession",
+            json!({"SessionId": &session_id}),
+        ));
+        assert_eq!(session["Status"]["State"], "IDLE");
+        let status = body_of(&run(
+            account,
+            "GetSessionStatus",
+            json!({"SessionId": &session_id}),
+        ));
+        assert_eq!(status["Status"]["State"], "IDLE");
+
+        let resp = run(
+            account,
+            "TerminateSession",
+            json!({"SessionId": &session_id}),
+        );
+        assert_eq!(body_of(&resp)["State"], "TERMINATING");
+
+        let resp = run(account, "ListSessions", json!({"WorkGroup": "primary"}));
+        assert!(body_of(&resp)["Sessions"].as_array().is_some());
+
+        let signed = body_of(&run(
+            account,
+            "CreatePresignedNotebookUrl",
+            json!({"SessionId": &session_id}),
+        ));
+        assert!(signed["NotebookUrl"]
+            .as_str()
+            .unwrap()
+            .contains(&session_id));
+        assert!(signed["AuthToken"]
+            .as_str()
+            .unwrap()
+            .starts_with("mock-auth-token-"));
+
+        let endpoint = body_of(&run(
+            account,
+            "GetSessionEndpoint",
+            json!({"SessionId": &session_id}),
+        ));
+        assert_eq!(endpoint["SessionId"], session_id.as_str());
+
+        let executors = body_of(&run(
+            account,
+            "ListExecutors",
+            json!({"SessionId": &session_id}),
+        ));
+        assert_eq!(executors["SessionId"], session_id.as_str());
+        assert!(executors["ExecutorsSummary"].as_array().unwrap().is_empty());
+
+        let resp = run(account, "GetSession", json!({"SessionId": "fake"}));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body_of(&resp)["message"], "Session fake was not found");
+        let resp = run(account, "TerminateSession", json!({"SessionId": "fake"}));
+        assert_eq!(resp.status, 400);
+        let resp = run(account, "GetSessionStatus", json!({"SessionId": "fake"}));
+        assert_eq!(resp.status, 400);
+        let resp = run(account, "GetSessionEndpoint", json!({"SessionId": "fake"}));
+        assert_eq!(resp.status, 400);
+    }
+
+    #[test]
+    fn notebook_lifecycle() {
+        let account = fresh_account();
+        let id = body_of(&run(
+            account,
+            "CreateNotebook",
+            json!({"WorkGroup": "primary", "Name": "nb-1"}),
+        ))["NotebookId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let exported = body_of(&run(account, "ExportNotebook", json!({"NotebookId": &id})));
+        assert_eq!(exported["NotebookMetadata"]["NotebookId"], id.as_str());
+        assert!(exported["Payload"].is_string());
+
+        run(
+            account,
+            "UpdateNotebook",
+            json!({"NotebookId": &id, "Payload": "{}"}),
+        );
+        let meta = body_of(&run(
+            account,
+            "GetNotebookMetadata",
+            json!({"NotebookId": &id}),
+        ));
+        assert_eq!(meta["NotebookMetadata"]["Type"], "IPYNB");
+
+        run(
+            account,
+            "UpdateNotebookMetadata",
+            json!({"NotebookId": &id, "Name": "renamed"}),
+        );
+        let meta = body_of(&run(
+            account,
+            "GetNotebookMetadata",
+            json!({"NotebookId": &id}),
+        ));
+        assert_eq!(meta["NotebookMetadata"]["Name"], "renamed");
+
+        let resp = run(
+            account,
+            "ListNotebookMetadata",
+            json!({"WorkGroup": "primary"}),
+        );
+        assert_eq!(
+            body_of(&resp)["NotebookMetadataList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let resp = run(account, "ListNotebookSessions", json!({"NotebookId": &id}));
+        assert!(body_of(&resp)["NotebookSessionsList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        run(account, "DeleteNotebook", json!({"NotebookId": &id}));
+        let resp = run(account, "GetNotebookMetadata", json!({"NotebookId": &id}));
+        assert_eq!(resp.status, 400);
+        // deleting a missing notebook is silently fine
+        let resp = run(
+            account,
+            "DeleteNotebook",
+            json!({"NotebookId": "fake-notebook-id"}),
+        );
+        assert_eq!(resp.status, 200);
+        let resp = run(account, "ExportNotebook", json!({"NotebookId": "fake"}));
+        assert_eq!(resp.status, 400);
+    }
+
+    #[test]
+    fn calculation_execution_lifecycle() {
+        let account = fresh_account();
+        let session_id = body_of(&run(
+            account,
+            "StartSession",
+            json!({"WorkGroup": "primary"}),
+        ))["SessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let calc_id = body_of(&run(
+            account,
+            "StartCalculationExecution",
+            json!({"SessionId": &session_id, "CodeBlock": "SELECT 1"}),
+        ))["CalculationExecutionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let calc = body_of(&run(
+            account,
+            "GetCalculationExecution",
+            json!({"CalculationExecutionId": &calc_id}),
+        ));
+        assert_eq!(calc["CodeBlock"], "SELECT 1");
+        assert_eq!(calc["SessionId"], session_id.as_str());
+        assert_eq!(calc["Status"]["State"], "RUNNING");
+
+        let code = body_of(&run(
+            account,
+            "GetCalculationExecutionCode",
+            json!({"CalculationExecutionId": &calc_id}),
+        ));
+        assert_eq!(code["CodeBlock"], "SELECT 1");
+
+        let status = body_of(&run(
+            account,
+            "GetCalculationExecutionStatus",
+            json!({"CalculationExecutionId": &calc_id}),
+        ));
+        assert_eq!(status["Statistics"]["DpuExecutionInMillis"], 1000);
+
+        let listed = body_of(&run(
+            account,
+            "ListCalculationExecutions",
+            json!({"SessionId": &session_id}),
+        ));
+        assert_eq!(listed["Calculations"].as_array().unwrap().len(), 1);
+
+        let resp = run(
+            account,
+            "StopCalculationExecution",
+            json!({"CalculationExecutionId": &calc_id}),
+        );
+        assert_eq!(body_of(&resp)["State"], "CANCELED");
+        let resp = run(
+            account,
+            "StopCalculationExecution",
+            json!({"CalculationExecutionId": &calc_id}),
+        );
+        assert_eq!(resp.status, 200); // stopped again is fine in moto
+        let resp = run(
+            account,
+            "StopCalculationExecution",
+            json!({"CalculationExecutionId": "fake"}),
+        );
+        assert_eq!(resp.status, 400);
+        let resp = run(
+            account,
+            "GetCalculationExecution",
+            json!({"CalculationExecutionId": "fake"}),
+        );
+        assert_eq!(
+            body_of(&resp)["message"],
+            "CalculationExecution fake was not found"
+        );
+    }
+
+    #[test]
+    fn databases_tables_and_static_lists() {
+        let account = fresh_account();
+        let resp = run(
+            account,
+            "GetDatabase",
+            json!({"CatalogName": "AwsDataCatalog", "DatabaseName": "nope"}),
+        );
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Database nope not found in catalog AwsDataCatalog"
+        );
+        let resp = run(
+            account,
+            "ListDatabases",
+            json!({"CatalogName": "AwsDataCatalog"}),
+        );
+        assert!(body_of(&resp)["DatabaseList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        let resp = run(
+            account,
+            "GetTableMetadata",
+            json!({
+                "CatalogName": "AwsDataCatalog",
+                "DatabaseName": "default",
+                "TableName": "missing",
+            }),
+        );
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Table missing not found in database default"
+        );
+        let resp = run(
+            account,
+            "ListTableMetadata",
+            json!({"CatalogName": "AwsDataCatalog", "DatabaseName": "default"}),
+        );
+        assert!(body_of(&resp)["TableMetadataList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        let themes = body_of(&run(account, "ListEngineVersions", json!({})));
+        assert_eq!(themes["EngineVersions"].as_array().unwrap().len(), 4);
+        let dpus = body_of(&run(account, "ListApplicationDPUSizes", json!({})));
+        assert_eq!(dpus["ApplicationDPUSizes"].as_array().unwrap().len(), 2);
+
+        // dashboard counts executions and named queries
+        run(
+            account,
+            "CreateNamedQuery",
+            json!({
+                "Name": "dash-nq", "Database": "d", "QueryString": "SELECT 1"
+            }),
+        );
+        let id = start(account, json!({"WorkGroup": "primary"}));
+        let _ = id;
+        let dash = body_of(&run(
+            account,
+            "GetResourceDashboard",
+            json!({"ResourceARN": wg_arn(account, "primary")}),
+        ));
+        assert_eq!(dash["ResourceDashboard"]["QueryCount"], 1);
+        assert!(
+            dash["ResourceDashboard"]["NamedQueryCount"]
+                .as_i64()
+                .unwrap()
+                >= 1
+        );
+    }
 }
