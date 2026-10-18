@@ -26,11 +26,11 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-REPO = Path("/Users/jackdanger/www/robotocore")
-RUST_REPO = Path("/Users/jackdanger/www/robotocore-rust")
-PYV = str(REPO / ".venv/bin/python")
-PY_PORT = "4566"
-RUST_PORT = "4567"
+REPO = Path(__file__).resolve().parents[2]
+RUST_REPO = Path(os.environ.get("RUST_REPO", REPO))
+PYV = os.environ.get("ROBOTOCORE_PYTHON", "uv run python")
+PY_PORT = os.environ.get("PY_PORT", "4566")
+RUST_PORT = os.environ.get("RUST_PORT", "4567")
 PY_URL = f"http://127.0.0.1:{PY_PORT}"
 RUST_URL = f"http://127.0.0.1:{RUST_PORT}"
 RUST_BIN = str(RUST_REPO / "target/release/robotocore-rust")
@@ -85,16 +85,20 @@ def ensure_python_server():
     if r.returncode == 0:
         log(f"[ok] Python server up at {PY_URL}")
         return True
-    log("[..] Starting Python server (docker)...")
-    sh("docker rm -f robotocore 2>/dev/null; true", timeout=30)
-    sh(f"docker run -d -p {PY_PORT}:{PY_PORT} --name robotocore ghcr.io/robotocore/robotocore:latest", timeout=60)
+    log("[..] Starting Python server (local uvicorn)...")
+    log_file = open("/tmp/parity_py.log", "w")
+    subprocess.Popen(
+        [PYV, "-m", "robotocore.main"],
+        stdout=log_file, stderr=subprocess.STDOUT, cwd=str(REPO),
+        env=dict(os.environ, ROBOTOCORE_PORT=PY_PORT),
+        start_new_session=True)
     for _ in range(30):
         time.sleep(2)
         r = sh(f"curl -sf --max-time 3 {PY_URL}/_robotocore/health", timeout=10)
         if r.returncode == 0:
             log(f"[ok] Python server up at {PY_URL}")
             return True
-    log("[!!] Python server failed to start")
+    log("[!!] Python server failed to start (see /tmp/parity_py.log)")
     return False
 
 
@@ -177,13 +181,7 @@ def ensure_rust_server():
         if sc.returncode != 0:
             log(f"[!!] sidecar died during bridge wait (attempt {attempt})")
             # Restart sidecar
-            sh("pkill -9 -f moto_sidecar 2>/dev/null; true", timeout=10)
-            time.sleep(1)
-            subprocess.Popen([PYV, SIDECAR_SCRIPT, "--port", "4568"],
-                             stdout=open("/tmp/parity_sidecar.log", "w"),
-                             stderr=subprocess.STDOUT, cwd=str(RUST_REPO),
-                             start_new_session=True)
-            time.sleep(5)
+            _restart_sidecar()
             continue
         if _bridge_ready():
             log(f"[ok] Rust server (with working bridge) up at {RUST_URL}")
@@ -193,9 +191,19 @@ def ensure_rust_server():
     return False
 
 
+def _restart_sidecar():
+    sh("pkill -9 -f moto_sidecar 2>/dev/null; true", timeout=10)
+    time.sleep(1)
+    script = str(REPO / "scripts/moto_sidecar.py")
+    log_cmd = f"cd {REPO} && nohup {PYV} {script} --port 4568 > /tmp/parity_sidecar.log 2>&1 &"
+    subprocess.Popen(log_cmd, shell=True, cwd=str(REPO), start_new_session=True)
+    time.sleep(5)
+
+
 def spec_op_count(svc):
-    import glob, gzip
-    base = f"{REPO}/.venv/lib/python3.12/site-packages/botocore/data"
+    import glob, gzip, importlib.util
+    spec = importlib.util.find_spec("botocore")
+    base = str(Path(spec.origin).parent / "data")
     pat = os.path.join(base, svc, "*", "service-2.json.gz")
     paths = glob.glob(pat)
     if not paths:

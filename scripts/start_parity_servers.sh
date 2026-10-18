@@ -1,50 +1,43 @@
 #!/usr/bin/env bash
-# Start the Rust server + moto sidecar as daemons for parity testing.
+# Start the Rust server + moto sidecar (+ Python ground-truth) for parity testing.
 set -euo pipefail
-
-PYV=/Users/jackdanger/www/robotocore/.venv/bin/python
-RUST_REPO=/Users/jackdanger/www/robotocore-rust
+cd "$(dirname "$0")/.."
 SIDECAR_PORT=4568
 RUST_PORT=4567
+PY_PORT=4566
 
-# Kill existing
 pkill -9 -f moto_sidecar 2>/dev/null || true
 pkill -f robotocore-rust 2>/dev/null || true
-sleep 2
+pkill -f "robotocore.main" 2>/dev/null || true
+sleep 1
 
-# Start sidecar (detached)
-nohup $PYV $RUST_REPO/scripts/moto_sidecar.py --port $SIDECAR_PORT \
+# Sidecar (moto bridge, detached)
+nohup uv run python scripts/moto_sidecar.py --port $SIDECAR_PORT \
     > /tmp/parity_sidecar.log 2>&1 &
-SIDECAR_PID=$!
-echo "Sidecar PID: $SIDECAR_PID"
-
-# Wait for sidecar
-for i in $(seq 1 20); do
-    if curl -sf --max-time 3 http://127.0.0.1:$SIDECAR_PORT/_sidecar/health > /dev/null 2>&1; then
-        echo "Sidecar up"
-        break
-    fi
+echo "Sidecar PID: $!"
+for i in $(seq 1 30); do
+    curl -sf --max-time 3 http://127.0.0.1:$SIDECAR_PORT/_sidecar/health > /dev/null 2>&1 && break
     sleep 1
 done
 
-# Build Rust if needed
-cd $RUST_REPO
-cargo build --release 2>&1 | tail -1
+# Python ground truth server (detached)
+nohup env ROBOTOCORE_PORT=$PY_PORT uv run python -m robotocore.main \
+    > /tmp/parity_py.log 2>&1 &
+echo "Python server PID: $!"
+for i in $(seq 1 30); do
+    curl -sf --max-time 3 http://127.0.0.1:$PY_PORT/_robotocore/health > /dev/null 2>&1 && break
+    sleep 1
+done
 
-# Start Rust server (detached)
-nohup $RUST_REPO/target/release/robotocore-rust \
+# Rust server
+cargo build --release 2>&1 | tail -1
+nohup target/release/robotocore-rust \
     --port $RUST_PORT \
     --moto-url http://127.0.0.1:$SIDECAR_PORT \
     > /tmp/parity_rust.log 2>&1 &
-RUST_PID=$!
-echo "Rust PID: $RUST_PID"
-
-# Wait for Rust
+echo "Rust server PID: $!"
 for i in $(seq 1 20); do
-    if curl -sf --max-time 3 http://127.0.0.1:$RUST_PORT/_robotocore/health > /dev/null 2>&1; then
-        echo "Rust up"
-        break
-    fi
+    curl -sf --max-time 3 http://127.0.0.1:$RUST_PORT/_robotocore/health > /dev/null 2>&1 && break
     sleep 1
 done
 
