@@ -1856,7 +1856,7 @@ fn attribute_result_xml(
     let mut items = String::new();
     for (name, values) in attrs {
         items.push_str(&format!(
-            "<DBSnapshotAttributes><AttributeName>{}</AttributeName>{}</DBSnapshotAttributes>",
+            "<DBSnapshotAttribute><AttributeName>{}</AttributeName>{}</DBSnapshotAttribute>",
             esc(name),
             list_xml("AttributeValues", "AttributeValue", values)
         ));
@@ -3505,30 +3505,21 @@ fn copy_db_snapshot(
 }
 
 fn snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> String {
-    let mut items = String::new();
+    let mut items = String::from("<DBSnapshotAttributes>");
     for (name, values) in attrs {
         items.push_str(&format!(
-            "<DBSnapshotAttributes><AttributeName>{}</AttributeName>{}             </DBSnapshotAttributes>",
+            "<DBSnapshotAttribute><AttributeName>{}</AttributeName>{}</DBSnapshotAttribute>",
             esc(name),
             list_xml("AttributeValues", "AttributeValue", values)
         ));
     }
-    if items.is_empty() {
-        format!(
-            "<DBSnapshotAttributesResult>\
-             <DBSnapshotIdentifier>{}</DBSnapshotIdentifier>\
-             <DBSnapshotAttributes/>\
-             </DBSnapshotAttributesResult>",
-            esc(identifier)
-        )
-    } else {
-        format!(
-            "<DBSnapshotAttributesResult>\
-             <DBSnapshotIdentifier>{}</DBSnapshotIdentifier>{items}\
-             </DBSnapshotAttributesResult>",
-            esc(identifier)
-        )
-    }
+    items.push_str("</DBSnapshotAttributes>");
+    format!(
+        "<DBSnapshotAttributesResult>\
+         <DBSnapshotIdentifier>{}</DBSnapshotIdentifier>{items}\
+         </DBSnapshotAttributesResult>",
+        esc(identifier)
+    )
 }
 
 fn describe_db_snapshot_attributes(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -4445,35 +4436,22 @@ fn copy_db_cluster_snapshot(
 }
 
 fn cluster_snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> String {
-    let mut items = String::new();
+    let mut items = String::from("<DBClusterSnapshotAttributes>");
     for (name, values) in attrs {
         items.push_str(&format!(
-            "<DBClusterSnapshotAttributes><AttributeName>{}</AttributeName>{}\
-             </DBClusterSnapshotAttributes>",
+            "<DBClusterSnapshotAttribute><AttributeName>{}</AttributeName>{}</DBClusterSnapshotAttribute>",
             esc(name),
             list_xml("AttributeValues", "AttributeValue", values)
         ));
     }
-    if items.is_empty() {
-        format!(
-            "<DBClusterSnapshotAttributesResult>\
-             <DBClusterSnapshotIdentifier>{}</DBClusterSnapshotIdentifier>\
-             <DBClusterSnapshotAttributes/>\
-             </DBClusterSnapshotAttributesResult>",
-            esc(identifier)
-        )
-    } else {
-        format!(
-            "<DBClusterSnapshotAttributesResult>\
-             <DBClusterSnapshotIdentifier>{}</DBClusterSnapshotIdentifier>{items}\
-             </DBClusterSnapshotAttributesResult>",
-            esc(identifier)
-        )
-    }
+    items.push_str("</DBClusterSnapshotAttributes>");
+    format!(
+        "<DBClusterSnapshotAttributesResult>\
+         <DBClusterSnapshotIdentifier>{}</DBClusterSnapshotIdentifier>{items}\
+         </DBClusterSnapshotAttributesResult>",
+        esc(identifier)
+    )
 }
-
-// Snapshot attributes (cluster) + restore flows ------------------------------
-
 fn describe_db_cluster_snapshot_attributes(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
     let snap_id = ident.to_lowercase();
@@ -6265,7 +6243,10 @@ fn describe_db_proxy_target_groups_xml(
 ) -> Result<Body, RdsError> {
     let name = p_string(p, "DBProxyName").unwrap_or_default();
     let proxy = require_proxy(st, &name)?;
-    Ok(Some(proxy_target_groups_xml(acct, region, proxy)))
+    Ok(Some(format!(
+        "<TargetGroups>{}</TargetGroups>",
+        proxy_target_groups_xml(acct, region, proxy)
+    )))
 }
 
 fn describe_db_proxy_targets_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -6318,7 +6299,7 @@ fn deregister_db_proxy_targets(st: &mut RdsState, p: &Params) -> Result<Body, Rd
     proxy.targets.retain(|t| {
         !clusters.contains(&t.rds_resource_id) && !instances.contains(&t.rds_resource_id)
     });
-    Ok(None)
+    Ok(Some(String::new()))
 }
 
 fn modify_db_proxy_target_group(
@@ -6455,7 +6436,10 @@ fn create_db_proxy_endpoint(
     };
     let response = ep.clone();
     st.db_proxy_endpoints.insert(ep_name, ep);
-    Ok(Some(db_proxy_endpoint_xml(acct, region, &response)))
+    Ok(Some(format!(
+        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
+        db_proxy_endpoint_xml(acct, region, &response)
+    )))
 }
 
 fn describe_db_proxy_endpoints_xml(
@@ -6512,7 +6496,10 @@ fn delete_db_proxy_endpoint(
     }
     let mut ep = st.db_proxy_endpoints.remove(&ep_name).unwrap();
     ep.status = "deleting".into();
-    Ok(Some(db_proxy_endpoint_xml(acct, region, &ep)))
+    Ok(Some(format!(
+        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
+        db_proxy_endpoint_xml(acct, region, &ep)
+    )))
 }
 
 fn modify_db_proxy_endpoint(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -6833,7 +6820,10 @@ fn create_db_shard_group(
     };
     let response = group.clone();
     st.shard_groups.insert(lower, group);
-    Ok(Some(shard_group_xml(acct, region, &response)))
+    Ok(Some(format!(
+        "<DBShardGroup>{}</DBShardGroup>",
+        shard_group_xml(acct, region, &response)
+    )))
 }
 
 fn describe_db_shard_groups_xml(
@@ -6905,7 +6895,10 @@ fn modify_db_shard_group(
         st.shard_groups.get_mut(&key).unwrap().compute_redundancy = Some(c);
     }
     let group = st.shard_groups.get(&key).unwrap().clone();
-    Ok(Some(shard_group_xml(acct, region, &group)))
+    Ok(Some(format!(
+        "<DBShardGroup>{}</DBShardGroup>",
+        shard_group_xml(acct, region, &group)
+    )))
 }
 
 fn delete_db_shard_group(
@@ -6921,7 +6914,10 @@ fn delete_db_shard_group(
     let key = ident.to_lowercase();
     let mut group = st.shard_groups.remove(&key).unwrap();
     group.status = "deleting".into();
-    Ok(Some(shard_group_xml(acct, region, &group)))
+    Ok(Some(format!(
+        "<DBShardGroup>{}</DBShardGroup>",
+        shard_group_xml(acct, region, &group)
+    )))
 }
 
 fn reboot_db_shard_group(
@@ -6936,7 +6932,10 @@ fn reboot_db_shard_group(
     }
     let key = ident.to_lowercase();
     let group = st.shard_groups.get(&key).unwrap().clone();
-    Ok(Some(shard_group_xml(acct, region, &group)))
+    Ok(Some(format!(
+        "<DBShardGroup>{}</DBShardGroup>",
+        shard_group_xml(acct, region, &group)
+    )))
 }
 
 // Activity streams -----------------------------------------------------------
@@ -7747,8 +7746,10 @@ fn describe_engine_default_parameters_xml(
 ) -> Result<Body, RdsError> {
     let family = p_string(p, family_param).unwrap_or_default();
     Ok(Some(format!(
-        "<DBParameterGroupFamily>{}</DBParameterGroupFamily>\
-         <Parameters/>",
+        "<EngineDefaults>\
+         <DBParameterGroupFamily>{}</DBParameterGroupFamily>\
+         <Parameters/>\
+         </EngineDefaults>",
         esc(&family)
     )))
 }
