@@ -57,7 +57,7 @@ incumbent_pid() { # PID listening on PORT whose cmdline matches needle (regex)
     ss -ltnp "sport = :$port" 2>/dev/null \
         | grep -oP "pid=\K[0-9]+" \
         | while read -r p; do
-            if [ -r "/proc/$p/cmdline" ] && grep -aqe "$needle" "/proc/$p/cmdline" 2>/dev/null; then
+            if [ -r "/proc/$p/cmdline" ] && tr '\0' ' ' < "/proc/$p/cmdline" | grep -aq "$needle"; then
                 echo "$p"
             fi
         done | head -1
