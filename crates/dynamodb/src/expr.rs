@@ -201,11 +201,210 @@ pub fn fmt_num(n: f64) -> Value {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Exact decimal-string arithmetic
+// ---------------------------------------------------------------------------
+
+/// Strip leading zeros from a digit string ("0" when all zeros).
+fn strip_lead_zeros(d: &str) -> &str {
+    let t = d.trim_start_matches('0');
+    if t.is_empty() {
+        "0"
+    } else {
+        t
+    }
+}
+
+/// Compare two raw digit strings numerically.
+fn cmp_mag(a: &str, b: &str) -> std::cmp::Ordering {
+    let (a, b) = (strip_lead_zeros(a), strip_lead_zeros(b));
+    match a.len().cmp(&b.len()) {
+        std::cmp::Ordering::Equal => a.cmp(b),
+        other => other,
+    }
+}
+
+/// a + b over raw digit strings.
+fn add_mag(a: &str, b: &str) -> String {
+    let ax: Vec<u8> = a.bytes().rev().collect();
+    let bx: Vec<u8> = b.bytes().rev().collect();
+    let n = ax.len().max(bx.len());
+    let mut out = Vec::with_capacity(n + 1);
+    let mut carry = 0u8;
+    for i in 0..n {
+        let ad = *ax.get(i).unwrap_or(&b'0') - b'0';
+        let bd = *bx.get(i).unwrap_or(&b'0') - b'0';
+        let s = ad + bd + carry;
+        out.push(s % 10 + b'0');
+        carry = s / 10;
+    }
+    if carry > 0 {
+        out.push(b'0' + carry);
+    }
+    let s: String = out.into_iter().rev().map(|c| c as char).collect();
+    strip_lead_zeros(&s).to_string()
+}
+
+/// a - b over raw digit strings; a must be greater or equal.
+fn sub_mag(a: &str, b: &str) -> String {
+    let ax: Vec<u8> = a.bytes().rev().collect();
+    let bx: Vec<u8> = b.bytes().rev().collect();
+    let mut out = Vec::with_capacity(ax.len());
+    let mut borrow = 0u8;
+    for i in 0..ax.len() {
+        let ad = ax[i] - b'0';
+        let db = bx.get(i).copied().unwrap_or(b'0') - b'0' + borrow;
+        let (d, br) = if ad >= db { (ad - db, 0) } else { (ad + 10 - db, 1) };
+        out.push(d + b'0');
+        borrow = br;
+    }
+    debug_assert_eq!(borrow, 0);
+    let s: String = out.into_iter().rev().map(|c| c as char).collect();
+    strip_lead_zeros(&s).to_string()
+}
+
+/// Parse a DynamoDB number into (negative, unscaled digits, scale), where
+/// scale counts fraction digits after applying an exponent (negative scale
+/// shifts become trailing zeros). Accepts up to 38 digits without loss.
+fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
+    let t = s.trim();
+    let (neg, body) = match t.as_bytes().first()? {
+        b'-' => (true, &t[1..]),
+        b'+' => (false, &t[1..]),
+        _ => (false, t),
+    };
+    let (mant, exp) = match body.split_once(['e', 'E']) {
+        Some((m, e)) => (m, e.parse::<i64>().ok()?),
+        None => (body, 0),
+    };
+    let (int_part, frac_part) = match mant.split_once('.') {
+        Some((i, f)) => (i, f),
+        None => (mant, ""),
+    };
+    let all_digits =
+        |x: &str| x.chars().all(|c| c.is_ascii_digit());
+    if (int_part.is_empty() && frac_part.is_empty())
+        || !all_digits(int_part)
+        || !all_digits(frac_part)
+    {
+        return None;
+    }
+    let digits = format!("{int_part}{frac_part}");
+    let scale = frac_part.len() as i64 - exp;
+    if scale >= 0 {
+        Some((neg, digits, scale))
+    } else {
+        Some((neg, digits + &"0".repeat((-scale) as usize), 0))
+    }
+}
+
+/// Render (negative, unscaled digits, scale) as a DynamoDB number string,
+/// without leading or trailing zeros ("2.0" renders as "2").
+fn render_decimal(neg: bool, digits: String, scale: usize) -> String {
+    let digits = strip_lead_zeros(&digits);
+    if digits == "0" {
+        return "0".to_string();
+    }
+    let mut s = if scale == 0 {
+        digits.to_string()
+    } else if digits.len() <= scale {
+        format!("0.{:0>width$}", digits, width = scale)
+    } else {
+        let split = digits.len() - scale;
+        format!("{}.{}", &digits[..split], &digits[split..])
+    };
+    // Trim trailing fraction zeros ("2.0" -> "2", "0.0000000000000002" kept).
+    if let Some(p) = s.find('.') {
+        let kept = s[p + 1..].trim_end_matches('0');
+        s = if kept.is_empty() {
+            s[..p].to_string()
+        } else {
+            format!("{}.{}", &s[..p], kept)
+        };
+    }
+    if neg && s != "0" {
+        s = format!("-{s}");
+    }
+    s
+}
+
+/// Exact add on DynamoDB number strings; None falls back to the caller's f64
+/// path (inputs that are not plain decimals, e.g. unresolved values).
+fn dec_add(a: &str, b: &str) -> Option<String> {
+    dec_compute(a, false, b)
+}
+
+/// Exact a - b on DynamoDB number strings.
+fn dec_sub(a: &str, b: &str) -> Option<String> {
+    dec_compute(a, true, b)
+}
+
+/// Common core: align both operands to the max fraction scale, then do
+/// signed digit arithmetic.
+fn dec_compute(a: &str, flip_b: bool, b: &str) -> Option<String> {
+    let (neg_a, d_a, s_a) = parse_decimal(a)?;
+    let (mut neg_b, d_b, s_b) = parse_decimal(b)?;
+    if flip_b {
+        neg_b = !neg_b;
+    }
+    let scale = s_a.max(s_b).max(0);
+    let pad = |d: &str, s: i64| format!("{d}{}", "0".repeat((scale - s).max(0) as usize));
+    let m1 = pad(&d_a, s_a);
+    let m2 = pad(&d_b, s_b);
+    let (neg, digits) = if neg_a == neg_b {
+        (neg_a, add_mag(&m1, &m2))
+    } else {
+        match cmp_mag(&m1, &m2) {
+            std::cmp::Ordering::Equal => (false, "0".to_string()),
+            std::cmp::Ordering::Greater => (neg_a, sub_mag(&m1, &m2)),
+            std::cmp::Ordering::Less => (neg_b, sub_mag(&m2, &m1)),
+        }
+    };
+    Some(render_decimal(neg, digits, scale as usize))
+}
+
+/// Exact numeric comparison of two "N" strings; None falls back to f64.
+fn dec_cmp(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    let (neg_a, d_a, s_a) = parse_decimal(a)?;
+    let (neg_b, d_b, s_b) = parse_decimal(b)?;
+    let zero = |d: &str| strip_lead_zeros(d) == "0";
+    let scale = s_a.max(s_b).max(0);
+    let pad = |d: &str, s: i64| format!("{d}{}", "0".repeat((scale - s).max(0) as usize));
+    match (neg_a, neg_b) {
+        (false, false) => Some(cmp_mag(&pad(&d_a, s_a), &pad(&d_b, s_b))),
+        (true, true) => Some(cmp_mag(&pad(&d_b, s_b), &pad(&d_a, s_a))),
+        (false, true) => {
+            if zero(&d_a) && zero(&d_b) {
+                Some(std::cmp::Ordering::Equal)
+            } else {
+                Some(std::cmp::Ordering::Greater)
+            }
+        }
+        (true, false) => {
+            if zero(&d_a) && zero(&d_b) {
+                Some(std::cmp::Ordering::Equal)
+            } else {
+                Some(std::cmp::Ordering::Less)
+            }
+        }
+    }
+}
+
 /// Equality of two attribute values under DynamoDB semantics.
 pub fn attr_eq(a: &Value, b: &Value) -> bool {
     match (type_of(a), type_of(b)) {
         (Some("S"), Some("S")) | (Some("B"), Some("B")) | (Some("BOOL"), Some("BOOL")) => a == b,
-        (Some("N"), Some("N")) => as_number(a) == as_number(b),
+        (Some("N"), Some("N")) => {
+            let (Some(x), Some(y)) = (
+                a.get("N").and_then(|v| v.as_str()),
+                b.get("N").and_then(|v| v.as_str()),
+            ) else {
+                return as_number(a) == as_number(b);
+            };
+            dec_cmp(x, y)
+                .map(|o| o.is_eq())
+                .unwrap_or_else(|| as_number(a) == as_number(b))
+        }
         (Some("NULL"), Some("NULL")) => true,
         _ => a == b,
     }
@@ -225,7 +424,13 @@ fn attr_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
                 .and_then(|v| v.as_str())?;
             Some(av.cmp(bv))
         }
-        ("N", "N") => as_number(a)?.partial_cmp(&as_number(b)?),
+        ("N", "N") => {
+            let ord = dec_cmp(
+                a.get("N")?.as_str()?,
+                b.get("N")?.as_str()?,
+            );
+            ord.or_else(|| as_number(a)?.partial_cmp(&as_number(b)?))
+        }
         _ => None,
     }
 }
@@ -311,14 +516,14 @@ impl Operand {
                 size_of(v).map(|n| json!({ "N": n.to_string() })).ok_or(())
             }
             Operand::Plus(a, b) => {
-                let av = as_number(&a.resolve(item)?).ok_or(())?;
-                let bv = as_number(&b.resolve(item)?).ok_or(())?;
-                Ok(fmt_num(av + bv))
+                let av = a.resolve(item)?;
+                let bv = b.resolve(item)?;
+                num_operation(&av, &bv, false)
             }
             Operand::Minus(a, b) => {
-                let av = as_number(&a.resolve(item)?).ok_or(())?;
-                let bv = as_number(&b.resolve(item)?).ok_or(())?;
-                Ok(fmt_num(av - bv))
+                let av = a.resolve(item)?;
+                let bv = b.resolve(item)?;
+                num_operation(&av, &bv, true)
             }
         }
     }
@@ -332,6 +537,26 @@ impl Operand {
             Operand::Path(segs) => Some(segs),
             Operand::Size(segs) => Some(segs),
             _ => None,
+        }
+    }
+}
+
+/// Exact numeric + / - over N values; falls back to f64 for inputs the
+/// decimal parser does not recognise (DynamoDB numbers reach 38 digits,
+/// beyond f64 precision).
+fn num_operation(a: &Value, b: &Value, sub: bool) -> Result<Value, ()> {
+    let (Some(x), Some(y)) = (
+        a.get("N").and_then(|v| v.as_str()),
+        b.get("N").and_then(|v| v.as_str()),
+    ) else {
+        return Err(());
+    };
+    let result = if sub { dec_sub(x, y) } else { dec_add(x, y) };
+    match result {
+        Some(n) => Ok(json!({ "N": n })),
+        None => {
+            let (av, bv) = (as_number(a).ok_or(())?, as_number(b).ok_or(())?);
+            Ok(fmt_num(if sub { av - bv } else { av + bv }))
         }
     }
 }
@@ -1222,15 +1447,12 @@ fn nested_value_mut<'m>(tv: &'m mut Value, segs: &[String]) -> Option<&'m mut Va
 fn add_to_attr(current: Option<Value>, val: &Value) -> Value {
     match (current, type_of(val)) {
         (Some(cur), Some("N")) if type_of(&cur) == Some("N") => {
-            let a = cur
-                .get("N")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok());
-            let b = val
-                .get("N")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok());
-            fmt_num(a.unwrap_or(0.0) + b.unwrap_or(0.0))
+            let a = cur.get("N").and_then(|v| v.as_str()).unwrap_or("0");
+            let b = val.get("N").and_then(|v| v.as_str()).unwrap_or("0");
+            match dec_add(a, b) {
+                Some(n) => json!({ "N": n }),
+                None => fmt_num(a.parse::<f64>().unwrap_or(0.0) + b.parse::<f64>().unwrap_or(0.0)),
+            }
         }
         (Some(cur), Some("SS")) if type_of(&cur) == Some("SS") => merge_sets(&cur, val),
         (Some(cur), Some("NS")) if type_of(&cur) == Some("NS") => merge_sets(&cur, val),
@@ -1695,5 +1917,66 @@ mod tests {
             &values
         )
         .unwrap());
+    }
+
+    #[test]
+    fn test_decimal_add_sub_exact() {
+        // Beyond 2^53 precision and up to the 38-digit limit.
+        assert_eq!(dec_add("9007199254740993", "0").unwrap(), "9007199254740993");
+        assert_eq!(
+            dec_add("999999999999999999999999999999", "1").unwrap(),
+            "1000000000000000000000000000000"
+        );
+        assert_eq!(
+            dec_sub("0", "123456789012345678901234567890").unwrap(),
+            "-123456789012345678901234567890"
+        );
+        assert_eq!(
+            dec_add("123456789012345678901234567890", "1").unwrap(),
+            "123456789012345678901234567891"
+        );
+        // Fraction alignment, signs and zero normalization.
+        assert_eq!(dec_sub("1.0000000000000002", "1").unwrap(), "0.0000000000000002");
+        assert_eq!(dec_add("0.5", "0.5").unwrap(), "1");
+        assert_eq!(dec_add("-2", "-3").unwrap(), "-5");
+        assert_eq!(dec_add("2", "-5").unwrap(), "-3");
+        assert_eq!(dec_sub("5", "2").unwrap(), "3");
+        assert_eq!(dec_add("0001", "0001").unwrap(), "2");
+        assert_eq!(dec_add("0", "-5").unwrap(), "-5");
+        assert_eq!(dec_sub("5", "5").unwrap(), "0");
+        assert_eq!(dec_add("1e4", "0.5").unwrap(), "10000.5");
+        // Unparseable inputs return None so the caller can fall back.
+        assert!(dec_add("abc", "1").is_none());
+    }
+
+    #[test]
+    fn test_decimal_arithmetic_in_expressions() {
+        // SET with big numbers keeps full precision.
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "pk": {"S": "x"}, "big": {"N": "999999999999999999999999999999"}
+        }))
+        .unwrap();
+        let names = HashMap::new();
+        let mut values: Values = HashMap::new();
+        values.insert(":one".to_string(), json!({"N": "1"}));
+        apply_update(&mut attrs, "SET big = big + :one", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("big").cloned(),
+            Some(json!({"N": "1000000000000000000000000000000"}))
+        );
+        // ADD too.
+        apply_update(&mut attrs, "ADD big :one", &names, &values).unwrap();
+        assert_eq!(
+            attrs.get("big").cloned(),
+            Some(json!({"N": "1000000000000000000000000000001"}))
+        );
+        // And condition comparisons reject the f64 collision.
+        let diff = json!({"N": "123456789012345678901234567891"});
+        let base = json!({"N": "123456789012345678901234567890"});
+        assert!(!attr_eq(&diff, &base));
+        assert!(dec_cmp(
+            "123456789012345678901234567891",
+            "123456789012345678901234567890"
+        ) == Some(std::cmp::Ordering::Greater));
     }
 }
