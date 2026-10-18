@@ -1583,6 +1583,24 @@ pub fn build_router(
         )
         .route("/_robotocore/state/load", post(state_load_handler))
         .route("/_robotocore/state/reset", post(state_reset_handler))
+        .route(
+            "/_robotocore/state/snapshots",
+            get(state_snapshots_list_handler),
+        )
+        .route(
+            "/robotocore/state/snapshots",
+            get(state_snapshots_list_handler),
+        )
+        .route(
+            "/_robotocore/state/snapshots/save",
+            post(state_snapshot_save_handler),
+        )
+        .route(
+            "/_robotocore/state/snapshots/load",
+            post(state_snapshot_load_handler),
+        )
+        .route("/_robotocore/state/export", get(state_export_handler))
+        .route("/_robotocore/state/import", post(state_import_handler))
         .fallback(catch_all_handler)
         .with_state(state)
 }
@@ -1807,6 +1825,131 @@ pub async fn state_reset_handler(
     let services = services_filter(&params, None);
     state.snapshots.reset(services.as_deref());
     (StatusCode::OK, axum::Json(json!({"status": "reset"}))).into_response()
+}
+
+/// Snapshot listing: `GET /_robotocore/state/snapshots` (both spellings).
+pub async fn state_snapshots_list_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut out: Vec<Value> = Vec::new();
+    for snap in state.named_snapshots.list() {
+        out.push(json!({
+            "name": snap.name,
+            "timestamp": snap.created_at,
+            "saved_at": snap.created_at,
+            "services": snap.services,
+            "native_services": snap.services,
+            "compressed": false,
+        }));
+    }
+    for (name, latest, count) in state.versioned_snapshots.list() {
+        out.push(json!({
+            "name": name,
+            "timestamp": latest.created_at,
+            "saved_at": latest.created_at,
+            "services": latest.services,
+            "native_services": latest.services,
+            "compressed": false,
+            "versions": count,
+        }));
+    }
+    (StatusCode::OK, axum::Json(json!({ "snapshots": out })))
+}
+
+/// Versioned save: `POST /_robotocore/state/snapshots/save`.
+pub async fn state_snapshot_save_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(name) = params.get("name").and_then(Value::as_str).map(String::from) else {
+        return error_response(StatusCode::BAD_REQUEST, "Snapshot name must not be empty");
+    };
+    let services = services_filter(&params, None);
+    let (saved_names, state_value) = state.snapshots.snapshot(services.as_deref());
+    let empty_map = serde_json::Map::new();
+    let state_map = state_value.as_object().unwrap_or(&empty_map);
+    let version = state
+        .versioned_snapshots
+        .save(&name, saved_names.clone(), state_map.clone());
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "status": "saved",
+            "name": name,
+            "version": version,
+            "services": saved_names,
+        })),
+    )
+        .into_response()
+}
+
+/// Versioned load: `POST /_robotocore/state/snapshots/load`.
+pub async fn state_snapshot_load_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(name) = params.get("name").and_then(Value::as_str).map(String::from) else {
+        return error_response(StatusCode::BAD_REQUEST, "Snapshot name must not be empty");
+    };
+    let version = params.get("version").and_then(Value::as_u64);
+    let Some(snap) = state.versioned_snapshots.load(&name, version) else {
+        return (
+            StatusCode::OK,
+            axum::Json(json!({"status": "no_state_found", "name": name})),
+        )
+            .into_response();
+    };
+    state.snapshots.restore(&Value::Object(snap.state), None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "status": "loaded",
+            "name": name,
+            "version": snap.version,
+        })),
+    )
+        .into_response()
+}
+
+/// Export handler: `GET /_robotocore/state/export`.
+pub async fn state_export_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let (_, state_value) = state.snapshots.snapshot(None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "version": "1.0",
+            "exported_at": crate::core::introspection::epoch_now(),
+            "native_state": state_value,
+        })),
+    )
+        .into_response()
+}
+
+/// Import handler: `POST /_robotocore/state/import`.
+pub async fn state_import_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if body.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({"error": "No data provided"})),
+        )
+            .into_response();
+    }
+    let data = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let native_state = data.get("native_state").cloned().unwrap_or(data);
+    state.snapshots.restore(&native_state, None);
+    (StatusCode::OK, axum::Json(json!({"status": "imported"}))).into_response()
 }
 
 /// Extract service name from URI, headers, or body.
