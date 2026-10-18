@@ -9,6 +9,7 @@ use crate::{Request, Response};
 mod cloudtrail;
 mod managedblockchain;
 mod resourcegroupstaggingapi;
+mod route53resolver;
 
 // Pending ports (stubs live in their modules but are not yet wired):
 // - acm (stub)
@@ -18,6 +19,7 @@ mod resourcegroupstaggingapi;
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
+        "route53resolver" => Some(route53resolver::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
         _ => None,
