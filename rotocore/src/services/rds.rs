@@ -6071,4 +6071,471 @@ fn describe_db_major_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
     )))
 }
 
+
+// DB proxies + endpoints + targets -------------------------------------------
+
+fn create_db_proxy(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+    subnet_info: &BTreeMap<String, (Option<String>, Option<String>)>,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBProxyName").unwrap_or_default();
+    RdsError::check_db_identifier(&identifier)?;
+    let engine_family = p_string(p, "EngineFamily").unwrap_or_default();
+    if !matches!(engine_family.as_str(), "MYSQL" | "POSTGRESQL" | "SQLSERVER") {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "Provided EngineFamily is not valid.",
+        ));
+    }
+    if st.db_proxies.contains_key(&identifier) {
+        return Err(RdsError::client400(
+            "DBProxyAlreadyExistsFault",
+            format!("Cannot create the DBProxy because a DBProxy with the identifier {identifier} already exists."),
+        ));
+    }
+    let auth: Vec<DBProxyAuth> = p_maps(p, "Auth")
+        .into_iter()
+        .map(|m| {
+            let mut a = DBProxyAuth {
+                auth_scheme: "SECRETS".into(),
+                description: None,
+                user_name: None,
+                secret_arn: None,
+                client_password_auth_type: None,
+                iam_auth: "DISABLED".into(),
+            };
+            for (k, v) in m {
+                match k.as_str() {
+                    "AuthScheme" => a.auth_scheme = v,
+                    "Description" => a.description = Some(v),
+                    "UserName" => a.user_name = Some(v),
+                    "SecretArn" => a.secret_arn = Some(v),
+                    "ClientPasswordAuthType" => a.client_password_auth_type = Some(v),
+                    "IAMAuth" => a.iam_auth = v,
+                    _ => {}
+                }
+            }
+            a
+        })
+        .collect();
+    let vpc_subnet_ids = p_list(p, "VpcSubnetIds");
+    let vpc_id = vpc_subnet_ids
+        .first()
+        .and_then(|sid| subnet_info.get(sid))
+        .and_then(|(vpc, _)| vpc.clone());
+    let idle = p_i64(p, "IdleClientTimeout").unwrap_or(1800);
+    let idle = idle.clamp(1, 28800);
+    let unique_id = format!("prx-{}", rand_lower(17));
+    let url_identifier = rand_lower(12);
+    let proxy = DBProxy {
+        name: identifier,
+        engine_family,
+        auth,
+        role_arn: p_string(p, "RoleArn"),
+        vpc_subnet_ids,
+        vpc_security_group_ids: p_list(p, "VpcSecurityGroupIds"),
+        vpc_id,
+        require_tls: p_bool(p, "RequireTLS").unwrap_or(false),
+        idle_client_timeout: idle,
+        debug_logging: p_bool(p, "DebugLogging").unwrap_or(false),
+        unique_id,
+        url_identifier,
+        tags: tags_param(p),
+        created: Utc::now(),
+        max_connections: 100,
+        max_idle_connections: 50,
+        borrow_timeout: 120,
+        session_pinning_filters: Vec::new(),
+        targets: Vec::new(),
+    };
+    let response = proxy.clone();
+    st.db_proxies.insert(response.name.clone(), proxy);
+    Ok(Some(format!(
+        "<DBProxy>{}</DBProxy>",
+        db_proxy_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_proxies_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBProxyName");
+    let matched: Vec<&DBProxy> = st
+        .db_proxies
+        .values()
+        .filter(|x| match &filter {
+            Some(f) => x.name == *f,
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && filter.is_some() {
+        return Err(RdsError::not_found404(
+            "DBProxyNotFoundFault",
+            format!(
+                "The specified proxy name {} doesn't correspond to a proxy owned by your Amazon Web Services account in the specified Amazon Web Services Region.",
+                filter.unwrap_or_default()
+            ),
+        ));
+    }
+    let mut list = String::new();
+    for x in &matched {
+        list.push_str(&db_proxy_xml(acct, region, x));
+    }
+    Ok(Some(format!("<DBProxies>{list}</DBProxies>")))
+}
+
+fn delete_db_proxy(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBProxyName").unwrap_or_default();
+    if !st.db_proxies.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "DBProxyNotFoundFault",
+            format!(
+                "The specified proxy name {identifier} doesn't correspond to a proxy owned by your Amazon Web Services account in the specified Amazon Web Services Region."
+            ),
+        ));
+    }
+    let proxy = st.db_proxies.remove(&identifier).unwrap();
+    Ok(Some(format!(
+        "<DBProxy>{}</DBProxy>",
+        db_proxy_xml(acct, region, &proxy)
+    )))
+}
+
+fn require_proxy<'s>(st: &'s RdsState, name: &str) -> Result<&'s DBProxy, RdsError> {
+    match st.db_proxies.get(name) {
+        Some(x) => Ok(x),
+        None => Err(RdsError::not_found404(
+            "DBProxyNotFoundFault",
+            format!(
+                "The specified proxy name {name} doesn't correspond to a proxy owned by your Amazon Web Services account in the specified Amazon Web Services Region."
+            ),
+        )),
+    }
+}
+
+fn describe_db_proxy_target_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "DBProxyName").unwrap_or_default();
+    let proxy = require_proxy(st, &name)?;
+    Ok(Some(format!(
+        "<TargetGroups>{}</TargetGroups>",
+        proxy_target_groups_xml(acct, region, proxy)
+    )))
+}
+
+fn describe_db_proxy_targets_xml(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "DBProxyName").unwrap_or_default();
+    let proxy = require_proxy(st, &name)?;
+    let mut list = String::new();
+    for t in &proxy.targets {
+        list.push_str(&proxy_target_xml(t));
+    }
+    Ok(Some(format!("<Targets>{list}</Targets>")))
+}
+
+fn register_db_proxy_targets(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "DBProxyName").unwrap_or_default();
+    require_proxy(st, &name)?;
+    let clusters = p_list(p, "DBClusterIdentifiers");
+    let instances = p_list(p, "DBInstanceIdentifiers");
+    let mut targets = Vec::new();
+    for c in &clusters {
+        targets.push(ProxyTarget {
+            rds_resource_id: identifier_from_arn(c),
+            port: 5432,
+            r#type: "TRACKED_CLUSTER".into(),
+            registering: std::sync::atomic::AtomicBool::new(true),
+        });
+    }
+    for i in &instances {
+        targets.push(ProxyTarget {
+            rds_resource_id: i.clone(),
+            port: 5432,
+            r#type: "RDS_INSTANCE".into(),
+            registering: std::sync::atomic::AtomicBool::new(true),
+        });
+    }
+    let mut list = String::new();
+    for t in &targets {
+        list.push_str(&proxy_target_xml(t));
+    }
+    let proxy = st.db_proxies.get_mut(&name).unwrap();
+    proxy.targets.extend(targets);
+    Ok(Some(format!("<DBProxyTargets>{list}</DBProxyTargets>")))
+}
+
+fn deregister_db_proxy_targets(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "DBProxyName").unwrap_or_default();
+    require_proxy(st, &name)?;
+    let clusters = p_list(p, "DBClusterIdentifiers");
+    let instances = p_list(p, "DBInstanceIdentifiers");
+    let proxy = st.db_proxies.get_mut(&name).unwrap();
+    proxy.targets.retain(|t| {
+        !clusters.contains(&t.rds_resource_id) && !instances.contains(&t.rds_resource_id)
+    });
+    Ok(None)
+}
+
+fn modify_db_proxy_target_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "DBProxyName").unwrap_or_default();
+    require_proxy(st, &name)?;
+    let group_name = p_string(p, "TargetGroupName").unwrap_or_else(|| "default".into());
+    if group_name != "default" {
+        return Err(RdsError::not_found404(
+            "DBProxyTargetGroupNotFoundFault",
+            format!("The specified target group name {group_name} does not exist."),
+        ));
+    }
+    if let Some(max) = p_i64(p, "ConnectionPoolConfig_MaxConnectionsPercent") {
+        let proxy = st.db_proxies.get_mut(&name).unwrap();
+        proxy.max_connections = max;
+        if proxy.max_idle_connections != max / 2 {
+            proxy.max_idle_connections = max / 2;
+        }
+    }
+    if let Some(max_idle) = p_i64(p, "ConnectionPoolConfig_MaxIdleConnectionsPercent") {
+        let proxy = st.db_proxies.get_mut(&name).unwrap();
+        proxy.max_idle_connections = max_idle;
+    }
+    if let Some(borrow) = p_i64(p, "ConnectionPoolConfig_ConnectionBorrowTimeout") {
+        let proxy = st.db_proxies.get_mut(&name).unwrap();
+        proxy.borrow_timeout = borrow;
+    }
+    let proxy = st.db_proxies.get(&name).unwrap();
+    Ok(Some(proxy_target_group_response(acct, region, proxy)))
+}
+
+fn proxy_target_group_response(acct: u64, region: &str, p: &DBProxy) -> String {
+    let target_arn = format!(
+        "arn:aws:rds:{region}:{acct}:target-group:prx-tg-{}",
+        p.unique_id
+    );
+    let mut out = String::from("<DBProxyTargetGroup>");
+    out.push_str(&format!(
+        "<DBProxyName>{}</DBProxyName>",
+        esc(&p.name)
+    ));
+    out.push_str("<TargetGroupName>default</TargetGroupName>");
+    out.push_str(&format!(
+        "<TargetGroupArn>{}</TargetGroupArn>",
+        esc(&target_arn)
+    ));
+    out.push_str(&format!(
+        "<CreatedDate>{}</CreatedDate>",
+        esc(&iso(&p.created))
+    ));
+    out.push_str(&format!(
+        "<UpdatedDate>{}</UpdatedDate>",
+        esc(&iso(&p.created))
+    ));
+    out.push_str("<Status>available</Status>");
+    out.push_str("<IsDefault>true</IsDefault>");
+    out.push_str("<ConnectionPoolConfig>");
+    out.push_str(&format!(
+        "<MaxConnectionsPercent>{}</MaxConnectionsPercent>",
+        p.max_connections
+    ));
+    out.push_str(&format!(
+        "<MaxIdleConnectionsPercent>{}</MaxIdleConnectionsPercent>",
+        p.max_idle_connections
+    ));
+    out.push_str(&format!(
+        "<ConnectionBorrowTimeout>{}</ConnectionBorrowTimeout>",
+        p.borrow_timeout
+    ));
+    out.push_str(&list_xml(
+        "SessionPinningFilters",
+        "member",
+        &p.session_pinning_filters,
+    ));
+    out.push_str("</ConnectionPoolConfig>");
+    out.push_str("</DBProxyTargetGroup>");
+    out
+}
+
+fn proxy_target_group_config_row(_acct: u64, _region: &str, p: &DBProxy) -> String {
+    format!(
+        "<ConnectionPoolConfig>\
+         <MaxConnectionsPercent>{}</MaxConnectionsPercent>\
+         <MaxIdleConnectionsPercent>{}</MaxIdleConnectionsPercent>\
+         <ConnectionBorrowTimeout>{}</ConnectionBorrowTimeout>\
+         {pin_filters}\
+         </ConnectionPoolConfig>",
+        p.max_connections,
+        p.max_idle_connections,
+        p.borrow_timeout,
+        pin_filters = list_xml("SessionPinningFilters", "member", &p.session_pinning_filters),
+    )
+}
+
+fn create_db_proxy_endpoint(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+    subnet_info: &BTreeMap<String, (Option<String>, Option<String>)>,
+) -> Result<Body, RdsError> {
+    let proxy_name = p_string(p, "DBProxyName").unwrap_or_default();
+    require_proxy(st, &proxy_name)?;
+    let ep_name = p_string(p, "DBProxyEndpointName").unwrap_or_default();
+    if st.db_proxy_endpoints.contains_key(&ep_name) {
+        return Err(RdsError::client400(
+            "DBProxyEndpointAlreadyExistsFault",
+            format!("The specified DB proxy endpoint {ep_name} already exists."),
+        ));
+    }
+    let subnets = p_list(p, "VpcSubnetIds");
+    let vpc_id = subnets
+        .first()
+        .and_then(|sid| subnet_info.get(sid))
+        .and_then(|(v, _)| v.clone());
+    let ep = DBProxyEndpoint {
+        proxy_name: proxy_name.clone(),
+        name: ep_name.clone(),
+        vpc_subnet_ids: subnets,
+        vpc_security_group_ids: p_list(p, "VpcSecurityGroupIds"),
+        vpc_id,
+        target_role: p_string(p, "TargetRole").unwrap_or_else(|| "READ_WRITE".into()),
+        tags: tags_param(p),
+        status: "available".into(),
+        is_default: false,
+        created: Utc::now(),
+        url_identifier: rand_lower(12),
+    };
+    let response = ep.clone();
+    st.db_proxy_endpoints.insert(ep_name, ep);
+    Ok(Some(format!(
+        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
+        db_proxy_endpoint_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_proxy_endpoints_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let db_filter = p_string(p, "DBProxyName");
+    let ep_filter = p_string(p, "DBProxyEndpointName");
+    if let Some(db) = &db_filter {
+        require_proxy(st, db)?;
+    }
+    let matched: Vec<&DBProxyEndpoint> = st
+        .db_proxy_endpoints
+        .values()
+        .filter(|e| match &db_filter {
+            Some(f) => e.proxy_name == *f,
+            None => true,
+        })
+        .filter(|e| match &ep_filter {
+            Some(f) => e.name == *f,
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && ep_filter.is_some() {
+        return Err(RdsError::not_found404(
+            "DBProxyEndpointNotFoundFault",
+            format!(
+                "The specified DB proxy endpoint {} was not found.",
+                ep_filter.unwrap_or_default()
+            ),
+        ));
+    }
+    let mut list = String::new();
+    for e in &matched {
+        list.push_str(&db_proxy_endpoint_xml(acct, region, e));
+    }
+    Ok(Some(format!("<DBProxyEndpoints>{list}</DBProxyEndpoints>")))
+}
+
+fn delete_db_proxy_endpoint(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ep_name = p_string(p, "DBProxyEndpointName").unwrap_or_default();
+    if !st.db_proxy_endpoints.contains_key(&ep_name) {
+        return Err(RdsError::not_found404(
+            "DBProxyEndpointNotFoundFault",
+            format!("The specified DB proxy endpoint {ep_name} was not found."),
+        ));
+    }
+    let mut ep = st.db_proxy_endpoints.remove(&ep_name).unwrap();
+    ep.status = "deleting".into();
+    Ok(Some(format!(
+        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
+        db_proxy_endpoint_xml(acct, region, &ep)
+    )))
+}
+
+fn modify_db_proxy_endpoint(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
+    let ep_name = p_string(p, "DBProxyEndpointName").unwrap_or_default();
+    let mut status = Ok(ModifyProxyEndpointResult::Found);
+    if !st.db_proxy_endpoints.contains_key(&ep_name) {
+        status = Err("missing".to_string());
+        let result = match status {
+            Err(_) => Err(RdsError::new(
+                404,
+                "DBProxyEndpointNotFoundFault",
+                format!("The specified DB proxy endpoint {ep_name} was not found."),
+            )),
+            Ok(_) => Ok(()),
+        };
+        let _ = result;
+        return Err(RdsError::not_found404(
+            "DBProxyEndpointNotFoundFault",
+            format!("The specified DB proxy endpoint {ep_name} was not found."),
+        ));
+    }
+    let _ = status;
+    if let Some(v) = p_string(p, "TargetRole") {
+        st.db_proxy_endpoints.get_mut(&ep_name).unwrap().target_role = v;
+    }
+    if let Some(v) = p_string(p, "DBProxyEndpointStatus") {
+        st.db_proxy_endpoints.get_mut(&ep_name).unwrap().status = v;
+    }
+    Ok(ModifyProxyEndpointResult::Found.into_result())
+}
+
+enum ModifyProxyEndpointResult {
+    Found,
+}
+
+impl ModifyProxyEndpointResult {
+    fn into_result(self) -> Body {
+        None
+    }
+}
+
 // __APPEND_MARKER__
