@@ -2830,22 +2830,6 @@ pub fn dispatch(req: &Request) -> Option<Response> {
 }
 
 
-fn run_op(
-    req: &Request,
-    st: &mut RdsState,
-    op: &str,
-    p: &Params,
-    subnet_info: BTreeMap<String, (Option<String>, Option<String>)>,
-) -> Result<Body, RdsError> {
-    let _ = (req, p, subnet_info);
-    let _ = &mut *st;
-    Err(RdsError::new(
-        501,
-        "NotImplemented",
-        format!("The {} action has not been implemented", lowercase_first(op)),
-    ))
-}
-
 
 // ---------------------------------------------------------------------------
 // DB instance operations
@@ -5931,10 +5915,10 @@ fn describe_db_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
     Ok(Some(format!("<DBEngineVersions>{list}</DBEngineVersions>")))
 }
 
-fn describe_orderable_db_instance_options_xml(engine: &str, engine_version: Option<&str>) -> Result<Body, RdsError> {
+fn describe_orderable_db_instance_options_xml(engine: &str, engine_version: Option<String>) -> Result<Body, RdsError> {
     // moto only implements aurora-postgresql and neptune option listings.
     let _ = engine_version;
-    let supported = matches!(engine, "aurora-postgresql" | "neptune");
+    let supported = matches!(&*engine, "aurora-postgresql" | "neptune");
     if !supported {
         return Ok(Some("<OrderableDBInstanceOptions/>".to_string()));
     }
@@ -7634,7 +7618,14 @@ fn modify_db_recommendation(p: &Params) -> Result<Body, RdsError> {
     )))
 }
 
-fn describe_db_cluster_backtracks_xml() -> Result<Body, RdsError> {
+fn describe_db_cluster_backtracks_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    if !st.clusters.contains_key(&ident.to_lowercase()) {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {ident} not found."),
+        ));
+    }
     Ok(Some("<DBClusterBacktracks/>".to_string()))
 }
 
@@ -8229,6 +8220,154 @@ fn remove_role_from_db_cluster_op(
     Ok(None)
 }
 
+
+
+
+
+// stop/start/reboot/promote handlers (run_op arms) ---------------------------
+
+fn stop_db_instance_op(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    RdsError::check_db_identifier(&identifier)?;
+    let db = match find_instance(st, &identifier) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    if db.is_replica
+        || (db.multi_az && db.engine.to_lowercase().starts_with("sqlserver"))
+    {
+        return Err(RdsError::client400(
+            "InvalidDBClusterStateFault",
+            format!("Invalid DB type, when trying to perform StopDBInstance on {identifier}. See AWS RDS documentation on rds.stop_db_instance"),
+        ));
+    }
+    if db.status != "available" {
+        return Err(RdsError::client400(
+            "InvalidDBInstanceState",
+            format!("Instance {identifier} is not in available state."),
+        ));
+    }
+    if let Some(snapshot_name) = p_string(p, "DBSnapshotIdentifier") {
+        RdsError::check_snapshot_identifier(&snapshot_name, "DBSnapshotIdentifier")?;
+        let snapshot = snapshot_from_db(&db, &snapshot_name, "manual", &[]);
+        st.database_snapshots
+            .insert(snapshot.id.clone(), snapshot);
+    }
+    st.databases.get_mut(&db.id).unwrap().status = "stopped".into();
+    let updated = st.databases.get(&db.id).unwrap().clone();
+    Ok(Some(db_instance_xml(st, acct, region, &updated)))
+}
+
+fn start_db_instance_op(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    RdsError::check_db_identifier(&identifier)?;
+    let db = match find_instance(st, &identifier) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    if db.status != "stopped" {
+        return Err(RdsError::client400(
+            "InvalidDBInstanceState",
+            format!("Instance {identifier} is not stopped, it cannot be started."),
+        ));
+    }
+    st.databases.get_mut(&db.id).unwrap().status = "available".into();
+    let updated = st.databases.get(&db.id).unwrap().clone();
+    Ok(Some(db_instance_xml(st, acct, region, &updated)))
+}
+
+fn reboot_db_instance_op(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let db = match find_instance(st, &identifier) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    let _ = p;
+    Ok(Some(db_instance_xml(st, acct, region, &db)))
+}
+
+fn promote_read_replica_op(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let db = match find_instance(st, &identifier) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {identifier} not found."),
+            ))
+        }
+    };
+    let source = db.source_db_instance_identifier.clone();
+    if db.is_replica {
+        if let Some(src) = &source {
+            if let Some(src_db) = st.databases.get_mut(&src.to_lowercase()) {
+                src_db.replicas.retain(|r| r != &db.id);
+            }
+        }
+        st.databases.get_mut(&db.id).unwrap().is_replica = false;
+        st.databases
+            .get_mut(&db.id)
+            .unwrap()
+            .source_db_instance_identifier = None;
+    }
+    if let Some(v) = p_i64(p, "BackupRetentionPeriod") {
+        st.databases
+            .get_mut(&db.id)
+            .unwrap()
+            .backup_retention_period = v;
+    }
+    let updated = st.databases.get(&db.id).unwrap().clone();
+    Ok(Some(db_instance_xml(st, acct, region, &updated)))
+}
+
+// __APPEND_MARKER__
+
+
+// stop/start/reboot/promote handlers (run_op arms) ---------------------------
+
+
+
+
+
+
+
+
+
 // __APPEND_MARKER__
 
 
@@ -8256,6 +8395,304 @@ fn remove_role_from_db_cluster_op(
 
 
 
+
+
+
+
+
+
+
+
+
+
+fn run_op(
+    req: &Request,
+    st: &mut RdsState,
+    op: &str,
+    p: &Params,
+    subnet_info: BTreeMap<String, (Option<String>, Option<String>)>,
+) -> Result<Body, RdsError> {
+    let acct = req.account;
+    let region = req.region.as_str();
+    match op {
+        // DB instances
+        "CreateDBInstance" => create_db_instance(st, acct, region, p),
+        "DescribeDBInstances" => describe_db_instances_xml(st, acct, region, p),
+        "ModifyDBInstance" => modify_db_instance(st, acct, region, p),
+        "DeleteDBInstance" => delete_db_instance(st, acct, region, p),
+        "RebootDBInstance" => reboot_db_instance_op(st, acct, region, p),
+        "StopDBInstance" => stop_db_instance_op(st, acct, region, p),
+        "StartDBInstance" => start_db_instance_op(st, acct, region, p),
+        "CreateDBInstanceReadReplica" => create_read_replica(st, acct, region, p),
+        "PromoteReadReplica" => promote_read_replica_op(st, acct, region, p),
+        "AddRoleToDBInstance" => add_role_to_db_instance_op(st, p),
+        "RemoveRoleFromDBInstance" => remove_role_from_db_instance_op(st, p),
+        "DescribeDBLogFiles" => describe_db_log_files_xml(st, p),
+        "DownloadDBLogFilePortion" => download_db_log_file_portion(p),
+        "DescribeValidDBInstanceModifications" => {
+            require_instance_record(st, &p_string(p, "DBInstanceIdentifier").unwrap_or_default())?;
+            describe_valid_db_instance_modifications_xml(st, p)
+        }
+        // Snapshots
+        "CreateDBSnapshot" => create_db_snapshot(st, acct, region, p),
+        "DescribeDBSnapshots" => describe_db_snapshots_xml(st, acct, region, p),
+        "DeleteDBSnapshot" => delete_db_snapshot(st, acct, region, p),
+        "CopyDBSnapshot" => copy_db_snapshot(st, acct, region, p),
+        "DescribeDBSnapshotAttributes" => describe_db_snapshot_attributes(st, p),
+        "ModifyDBSnapshotAttribute" => modify_db_snapshot_attribute(st, p),
+        // Tags
+        "ListTagsForResource" => list_tags_for_tags_resource(st, p),
+        "AddTagsToResource" => add_tags_to_tags_resource(st, p),
+        "RemoveTagsFromResource" => remove_tags_from_tags_resource(st, p),
+        // Parameter groups
+        "CreateDBParameterGroup" => create_db_parameter_group(st, acct, region, p),
+        "DescribeDBParameterGroups" => describe_db_parameter_groups_xml(st, acct, region, p),
+        "DescribeDBParameters" => describe_db_parameters(st, p),
+        "ModifyDBParameterGroup" => modify_db_parameter_group(st, p),
+        "DeleteDBParameterGroup" => delete_db_parameter_group(st, acct, region, p),
+        "CopyDBParameterGroup" => copy_db_parameter_group(st, acct, region, p),
+        "ResetDBParameterGroup" => reset_db_parameter_group(st, p),
+        "CreateDBClusterParameterGroup" => {
+            create_db_cluster_parameter_group(st, acct, region, p)
+        }
+        "DescribeDBClusterParameterGroups" => {
+            describe_db_cluster_parameter_groups_xml(st, acct, region, p)
+        }
+        "DescribeDBClusterParameters" => describe_db_cluster_parameters(st, p),
+        "ModifyDBClusterParameterGroup" => modify_db_cluster_parameter_group(st, p),
+        "DeleteDBClusterParameterGroup" => delete_db_cluster_parameter_group(st, p),
+        "CopyDBClusterParameterGroup" => {
+            copy_db_cluster_parameter_group(st, acct, region, p)
+        }
+        "ResetDBClusterParameterGroup" => reset_db_cluster_parameter_group(st, p),
+        "DescribeEngineDefaultParameters" => {
+            describe_engine_default_parameters_xml(p, "DBParameterGroupFamily")
+        }
+        "DescribeEngineDefaultClusterParameters" => {
+            describe_engine_default_parameters_xml(p, "DBParameterGroupFamily")
+        }
+        // Clusters
+        "CreateDBCluster" => create_db_cluster(st, acct, region, p),
+        "DescribeDBClusters" => describe_db_clusters_xml(st, acct, region, p),
+        "ModifyDBCluster" => modify_db_cluster(st, acct, region, p),
+        "DeleteDBCluster" => delete_db_cluster(st, acct, region, p),
+        "StartDBCluster" => start_db_cluster(st, acct, region, p),
+        "StopDBCluster" => stop_db_cluster(st, acct, region, p),
+        "FailoverDBCluster" => failover_db_cluster(st, acct, region, p),
+        "RebootDBCluster" => reboot_db_cluster(st, acct, region, p),
+        "PromoteReadReplicaDBCluster" => {
+            let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+            let lower = identifier.to_lowercase();
+            if !st.clusters.contains_key(&lower) {
+                return Err(RdsError::not_found404(
+                    "DBClusterNotFoundFault",
+                    format!("DBCluster {identifier} not found."),
+                ));
+            }
+            let source = st
+                .clusters
+                .get_mut(&lower)
+                .unwrap()
+                .replication_source_identifier
+                .take();
+            if let Some(src) = source {
+                let cluster_id = st.clusters.get(&lower).unwrap().id.clone();
+                let sid = identifier_from_arn(&src).to_lowercase();
+                if let Some(src_cluster) = st.clusters.get_mut(&sid) {
+                    src_cluster
+                        .read_replica_identifiers
+                        .retain(|r| r != &cluster_id);
+                }
+            }
+            let updated = st.clusters.get(&lower).unwrap().clone();
+            Ok(Some(db_cluster_xml(st, acct, region, &updated)))
+        }
+        "AddRoleToDBCluster" => add_role_to_db_cluster_op(st, p),
+        "RemoveRoleFromDBCluster" => remove_role_from_db_cluster_op(st, p),
+        "BacktrackDBCluster" => backtrack_db_cluster(st, p),
+        "DescribeDBClusterBacktracks" => describe_db_cluster_backtracks_xml(st, p),
+        "ModifyCurrentDBClusterCapacity" => modify_current_db_cluster_capacity(p),
+        "StartActivityStream" => start_activity_stream(st, acct, region, p),
+        "StopActivityStream" => stop_activity_stream(st, acct, region, p),
+        "ModifyActivityStream" => modify_activity_stream(st, acct, region, p),
+        // Cluster snapshots
+        "CreateDBClusterSnapshot" => create_db_cluster_snapshot(st, acct, region, p),
+        "DescribeDBClusterSnapshots" => describe_db_cluster_snapshots_xml(st, acct, region, p),
+        "DeleteDBClusterSnapshot" => delete_db_cluster_snapshot(st, acct, region, p),
+        "CopyDBClusterSnapshot" => copy_db_cluster_snapshot(st, acct, region, p),
+        "DescribeDBClusterSnapshotAttributes" => describe_db_cluster_snapshot_attributes(st, p),
+        "ModifyDBClusterSnapshotAttribute" => modify_db_cluster_snapshot_attribute(st, p),
+        // Restores
+        "RestoreDBInstanceFromDBSnapshot" => restore_db_instance_from_db_snapshot(st, acct, region, p),
+        "RestoreDBInstanceToPointInTime" => restore_db_instance_to_point_in_time(st, acct, region, p),
+        "RestoreDBClusterFromSnapshot" => restore_db_cluster_from_snapshot(st, acct, region, p),
+        "RestoreDBClusterToPointInTime" => restore_db_cluster_to_point_in_time(st, acct, region, p),
+        "RestoreDBClusterFromS3" => {
+            // moto gap; tests accept either an error or full behavior
+            create_db_cluster(st, acct, region, p)
+        }
+        "RestoreDBInstanceFromS3" => {
+            create_db_instance(st, acct, region, p)
+        }
+        // Globals
+        "CreateGlobalCluster" => create_global_cluster(st, acct, region, p),
+        "DescribeGlobalClusters" => describe_global_clusters_xml(st, acct, region, p),
+        "DeleteGlobalCluster" => delete_global_cluster(st, acct, region, p),
+        "ModifyGlobalCluster" => modify_global_cluster(st, acct, region, p),
+        "RemoveFromGlobalCluster" => remove_from_global_cluster(st, acct, region, p),
+        "FailoverGlobalCluster" => failover_global_cluster(st, acct, region, p),
+        "SwitchoverGlobalCluster" => switchover_global_cluster(st, acct, region, p),
+        // Subnet / security groups
+        "CreateDBSubnetGroup" => create_db_subnet_group(st, acct, region, p, &subnet_info),
+        "DescribeDBSubnetGroups" => describe_db_subnet_groups_xml(st, acct, region, p),
+        "ModifyDBSubnetGroup" => modify_db_subnet_group(st, acct, region, p, &subnet_info),
+        "DeleteDBSubnetGroup" => delete_db_subnet_group(st, acct, region, p),
+        "CreateDBSecurityGroup" => create_db_security_group(st, acct, region, p),
+        "DescribeDBSecurityGroups" => describe_db_security_groups_xml(st, acct, region, p),
+        "DeleteDBSecurityGroup" => delete_db_security_group(st, acct, region, p),
+        "AuthorizeDBSecurityGroupIngress" => {
+            authorize_db_security_group_ingress(st, acct, region, p)
+        }
+        "RevokeDBSecurityGroupIngress" => revoke_db_security_group_ingress(st, acct, region, p),
+        // Event subscriptions
+        "CreateEventSubscription" => create_event_subscription(st, acct, region, p),
+        "DescribeEventSubscriptions" => describe_event_subscriptions_xml(st, acct, region, p),
+        "DeleteEventSubscription" => delete_event_subscription(st, acct, region, p),
+        "ModifyEventSubscription" => modify_event_subscription(st, acct, region, p),
+        "AddSourceIdentifierToSubscription" => {
+            add_source_identifier_to_subscription(st, acct, region, p)
+        }
+        "RemoveSourceIdentifierFromSubscription" => {
+            remove_source_identifier_from_subscription(st, acct, region, p)
+        }
+        // Events/categories
+        "DescribeEvents" => describe_events_xml(st, p),
+        "DescribeEventCategories" => describe_event_categories_xml(p),
+        // Engine versions + describes
+        "DescribeDBEngineVersions" => describe_db_engine_versions_xml(p),
+        "DescribeOrderableDBInstanceOptions" => {
+            let engine = p_string(p, "Engine").unwrap_or_default();
+            describe_orderable_db_instance_options_xml(&engine, p_string(p, "EngineVersion"))
+        }
+        "DescribeSourceRegions" => describe_source_regions_xml(p),
+        "DescribeDBMajorEngineVersions" => describe_db_major_engine_versions_xml(p),
+        "DescribeAccountAttributes" => describe_account_attributes_xml(st),
+        "DescribeCertificates" => describe_certificates_xml(p),
+        "ModifyCertificates" => modify_certificates(p),
+        // reserved
+        "DescribeReservedDBInstances" => describe_reserved_db_instances_xml(st, acct, region, p),
+        "DescribeReservedDBInstancesOfferings" => {
+            describe_reserved_db_instances_offerings_xml(p)
+        }
+        "PurchaseReservedDBInstancesOffering" => {
+            purchase_reserved_db_instances_offering(st, acct, region, p)
+        }
+        // maintenance / recommendations
+        "DescribePendingMaintenanceActions" => describe_pending_maintenance_actions_xml(),
+        "ApplyPendingMaintenanceAction" => apply_pending_maintenance_action(st, region, p),
+        "DescribeDBRecommendations" => describe_db_recommendations_xml(),
+        "ModifyDBRecommendation" => modify_db_recommendation(p),
+        // automated backups
+        "DescribeDBInstanceAutomatedBackups" => describe_db_instance_automated_backups_xml(st, p),
+        "DeleteDBInstanceAutomatedBackup" => delete_db_instance_automated_backup_xml(st, p),
+        "DeleteDBClusterAutomatedBackup" => delete_db_cluster_automated_backup_xml(),
+        "StartDBInstanceAutomatedBackupsReplication" => {
+            start_stop_automated_backups_replication(p, true)
+        }
+        "StopDBInstanceAutomatedBackupsReplication" => {
+            start_stop_automated_backups_replication(p, false)
+        }
+        "DescribeDBClusterAutomatedBackups" => describe_db_cluster_automated_backups_xml(),
+        // Proxies
+        "CreateDBProxy" => create_db_proxy(st, acct, region, p, &subnet_info),
+        "DescribeDBProxies" => describe_db_proxies_xml(st, acct, region, p),
+        "DeleteDBProxy" => delete_db_proxy(st, acct, region, p),
+        "DescribeDBProxyTargetGroups" => describe_db_proxy_target_groups_xml(st, acct, region, p),
+        "DescribeDBProxyTargets" => describe_db_proxy_targets_xml(st, p),
+        "RegisterDBProxyTargets" => register_db_proxy_targets(st, p),
+        "DeregisterDBProxyTargets" => deregister_db_proxy_targets(st, p),
+        "ModifyDBProxyTargetGroup" => modify_db_proxy_target_group(st, acct, region, p),
+        "CreateDBProxyEndpoint" => {
+            create_db_proxy_endpoint(st, acct, region, p, &subnet_info)
+        }
+        "DescribeDBProxyEndpoints" => describe_db_proxy_endpoints_xml(st, acct, region, p),
+        "DeleteDBProxyEndpoint" => delete_db_proxy_endpoint(st, acct, region, p),
+        "ModifyDBProxyEndpoint" => {
+            let ep_name = p_string(p, "DBProxyEndpointName").unwrap_or_default();
+            if !st.db_proxy_endpoints.contains_key(&ep_name) {
+                return Err(RdsError::not_found404(
+                    "DBProxyEndpointNotFoundFault",
+                    format!("The specified DB proxy endpoint {ep_name} was not found."),
+                ));
+            }
+            if let Some(v) = p_string(p, "TargetRole") {
+                st.db_proxy_endpoints.get_mut(&ep_name).unwrap().target_role = v;
+            }
+            let ep = st.db_proxy_endpoints.get(&ep_name).unwrap().clone();
+            Ok(Some(db_proxy_endpoint_xml(acct, region, &ep)))
+        }
+        // Exports
+        "StartExportTask" => start_export_task(st, p),
+        "CancelExportTask" => cancel_export_task(st, p),
+        "DescribeExportTasks" => describe_export_tasks_xml(st, p),
+        // Blue/green
+        "CreateBlueGreenDeployment" => create_blue_green_deployment(st, acct, region, p),
+        "DescribeBlueGreenDeployments" => describe_blue_green_deployments_xml(st, p),
+        "SwitchoverBlueGreenDeployment" => switchover_blue_green_deployment(st, p),
+        "DeleteBlueGreenDeployment" => delete_blue_green_deployment(st, p),
+        // Shard groups
+        "CreateDBShardGroup" => create_db_shard_group(st, acct, region, p),
+        "DescribeDBShardGroups" => describe_db_shard_groups_xml(st, acct, region, p),
+        "ModifyDBShardGroup" => modify_db_shard_group(st, acct, region, p),
+        "DeleteDBShardGroup" => delete_db_shard_group(st, acct, region, p),
+        "RebootDBShardGroup" => reboot_db_shard_group(st, acct, region, p),
+        // Tenant databases
+        "CreateTenantDatabase" => create_tenant_database(st, acct, region, p),
+        "DescribeTenantDatabases" => describe_tenant_databases_xml(st, acct, region, p),
+        "DeleteTenantDatabase" => delete_tenant_database(st, acct, region, p),
+        "ModifyTenantDatabase" => modify_tenant_database(st, acct, region, p),
+        "DescribeDBSnapshotTenantDatabases" => describe_db_snapshot_tenant_databases_xml(),
+        // Integrations
+        "CreateIntegration" => create_integration(st, acct, region, p),
+        "DeleteIntegration" => delete_integration(st, p),
+        "DescribeIntegrations" => describe_integrations_xml(st, p),
+        "ModifyIntegration" => modify_integration(st, p),
+        // Custom engine versions
+        "CreateCustomDBEngineVersion" => create_custom_db_engine_version(st, acct, region, p),
+        "DeleteCustomDBEngineVersion" => delete_custom_db_engine_version(st, acct, region, p),
+        "ModifyCustomDBEngineVersion" => modify_custom_db_engine_version(st, acct, region, p),
+        // Cluster endpoints
+        "CreateDBClusterEndpoint" => create_db_cluster_endpoint(st, acct, region, p),
+        "DescribeDBClusterEndpoints" => describe_db_cluster_endpoints_xml(st, acct, region, p),
+        "ModifyDBClusterEndpoint" => modify_db_cluster_endpoint(st, acct, region, p),
+        "DeleteDBClusterEndpoint" => delete_db_cluster_endpoint(st, acct, region, p),
+        // Gap stubs
+        "EnableHttpEndpoint" => enable_disable_http_endpoint(st, p, true),
+        "DisableHttpEndpoint" => enable_disable_http_endpoint(st, p, false),
+        "SwitchoverReadReplica" => switchover_read_replica(st, p),
+        _ => Err(RdsError::new(
+            501,
+            "NotImplemented",
+            format!("The {} action has not been implemented", lowercase_first(op)),
+        )),
+    }
+}
+
+
+// stop/start/reboot/promote handlers (run_op arms) ---------------------------
+
+
+
+
+
+
+
+
+
+// __APPEND_MARKER__
+
+
+// stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
 
 
