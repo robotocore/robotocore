@@ -56,7 +56,7 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DisassociateRouteTable" => disassociate_route_table(req, params),
         "ReplaceRouteTableAssociation" => replace_route_table_association(req, params),
 
-        _ => super::handlers_misc::route(req, params),
+        _ => super::handlers_net2::route(req, params),
     }
 }
 

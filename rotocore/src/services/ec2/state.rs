@@ -518,6 +518,8 @@ pub struct Simple {
     pub kind: String,
     pub fields: BTreeMap<String, String>,
     pub tags: Tags,
+    /// Rendered wire item (with ids substituted at creation time).
+    pub item_xml: String,
 }
 
 impl Simple {
@@ -565,6 +567,7 @@ pub struct Ec2State {
     // Everything else, keyed per scope.
     pub deleted_amis: HashSet<String>,
     pub default_vpc_regions: HashSet<String>,
+    pub serial_console_access: bool,
     pub snapshot_attributes: BTreeMap<String, BTreeMap<String, String>>, // id -> "create-volume-permissions" -> rendered list
     pub run_ami_ok: HashSet<String>, // image ids we can run with (created/amazon)
     pub spot_prices: Vec<(String, String, String)>, // (instance_type, price, az)

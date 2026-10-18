@@ -6,15 +6,20 @@
 
 pub mod azones;
 pub mod handlers;
+pub mod ec2b;
+pub mod handlers_compute;
 pub mod handlers_misc;
+pub mod handlers_net2;
+pub mod templates;
 pub mod handlers_net;
 pub mod state;
 pub mod tests;
 
-use crate::proto::xml_escape;
 use crate::store::ScopeKey;
 use crate::{Request, Response};
 use state::Ec2State;
+
+pub use crate::proto::xml_escape;
 
 pub const EC2_NS: &str = "http://ec2.amazonaws.com/doc/2016-11-15/";
 pub const OLD_NS: &str = "http://ec2.amazonaws.com/doc/2013-10-15/";

@@ -464,6 +464,22 @@ pub fn wire_tags(params: &P) -> Tags {
     out
 }
 
+/// Tags from `TagSpecification.N.Tag.M.Key/Value` (RunInstances-style).
+pub fn tag_spec_tags(params: &P) -> Tags {
+    let mut out: Tags = Vec::new();
+    for i in params.container_indices("TagSpecification") {
+        let base = format!("TagSpecification.{}.Tag", i + 1);
+        for t in params.container_indices(&base) {
+            let k = params.sub(&base, t, "Key").unwrap_or("").to_string();
+            let v = params.sub(&base, t, "Value").unwrap_or("").to_string();
+            if !k.is_empty() {
+                out.push((k, v));
+            }
+        }
+    }
+    out
+}
+
 fn create_tags(req: &Request, params: &P) -> Response {
     let ids: Vec<String> = params.list("ResourceId").iter().map(|s| s.to_string()).collect();
     let tags = wire_tags(params);
@@ -583,30 +599,6 @@ fn create_vpc(req: &Request, params: &P) -> Response {
             &format!("<vpc>{}</vpc>", vpc_fields(req.account, &vpc)),
         )
     })
-}
-
-fn tag_spec_tags(params: &P) -> Tags {
-    let mut out: Tags = Vec::new();
-    for i in params.container_indices("TagSpecification") {
-        let resource_type = params
-            .sub("TagSpecification", i, "ResourceType")
-            .unwrap_or("tag-specified")
-            .to_string();
-        for t in params.container_indices(&format!("TagSpecification.{}.Tag", i + 1)) {
-            let k = params
-                .sub(&format!("TagSpecification.{}.Tag", i + 1), t, "Key")
-                .unwrap_or("")
-                .to_string();
-            let v = params
-                .sub(&format!("TagSpecification.{}.Tag", i + 1), t, "Value")
-                .unwrap_or("")
-                .to_string();
-            if !k.is_empty() {
-                out.push((k, v));
-            }
-        }
-    }
-    out
 }
 
 fn delete_vpc(req: &Request, params: &P) -> Response {
