@@ -1051,7 +1051,10 @@ pub async fn catch_all_handler(
         None => {
             // First try rotocore (the in-process moto replacement); the
             // moto sidecar is only consulted for services rotocore has
-            // not ported yet.
+            // not ported yet. rotocore backends may block on sibling
+            // services (loopback mirror calls), so run the sync dispatch
+            // on the blocking thread pool — never on the async workers,
+            // which must stay free to accept/serve those loopback calls.
             let rot_req = rotocore::Request {
                 service: service.clone(),
                 operation: parsed_req.operation.clone(),
@@ -1063,7 +1066,9 @@ pub async fn catch_all_handler(
                 account: parsed_req.account,
                 region: parsed_req.region.clone(),
             };
-            if let Some(resp) = rotocore::dispatch(&rot_req) {
+            let dispatch_result =
+                tokio::task::spawn_blocking(move || rotocore::dispatch(&rot_req)).await;
+            if let Ok(Some(resp)) = dispatch_result {
                 audit_out(
                     Some(&service),
                     opt_op(&parsed_req.operation),
