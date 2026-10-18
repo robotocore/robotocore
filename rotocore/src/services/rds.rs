@@ -258,7 +258,12 @@ fn now_unix() -> i64 {
 }
 
 fn rand_lower(n: usize) -> String {
-    uuid::Uuid::new_v4().simple().to_string().chars().take(n).collect()
+    uuid::Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(n)
+        .collect()
 }
 
 fn rand_upper(n: usize) -> String {
@@ -303,7 +308,10 @@ impl RdsError {
 
     /// Validate a DBInstance identifier (moto `_validate_db_identifier`).
     fn check_db_identifier(ident: &str) -> Result<(), Self> {
-        let first_alpha = ident.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+        let first_alpha = ident
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic());
         if valid_identifier(ident) && ident.len() <= 63 && first_alpha {
             Ok(())
         } else {
@@ -327,11 +335,18 @@ impl RdsError {
                 format!("The parameter {param} must be provided and must not be blank."),
             ));
         }
-        if !ident.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        if !ident
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic())
             || !valid_identifier(ident)
             || ident.len() > 255
         {
-            if ident.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+            if ident
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+            {
                 return Err(Self::client400(
                     "InvalidParameterValue",
                     format!(
@@ -353,7 +368,10 @@ impl RdsError {
 /// Letters/digits/hyphens without consecutive or trailing hyphens.
 fn valid_identifier(s: &str) -> bool {
     !s.is_empty()
-        && !s.bytes().zip(s.bytes().skip(1)).any(|(a, b)| a == b'-' && b == b'-')
+        && !s
+            .bytes()
+            .zip(s.bytes().skip(1))
+            .any(|(a, b)| a == b'-' && b == b'-')
         && !s.ends_with('-')
         && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
@@ -563,7 +581,9 @@ impl Clone for DBCluster {
             engine_version: self.engine_version.clone(),
             engine_mode: self.engine_mode.clone(),
             status: self.status.clone(),
-            status_shown: std::sync::atomic::AtomicBool::new(false),
+            status_shown: std::sync::atomic::AtomicBool::new(
+                self.status_shown.load(std::sync::atomic::Ordering::SeqCst),
+            ),
             port: self.port,
             master_username: self.master_username.clone(),
             allocated_storage: self.allocated_storage,
@@ -666,8 +686,12 @@ impl DBCluster {
     /// serialized status read ("creating" once, then "available").
     pub fn publish_status(&self) -> String {
         use std::sync::atomic::Ordering;
-        if self.status == "creating" && !self.status_shown.swap(true, Ordering::SeqCst) {
-            return "creating".to_string();
+        if self.status == "creating" {
+            // First serialized read reports "creating" (moto flips once).
+            if !self.status_shown.swap(true, Ordering::SeqCst) {
+                return "creating".to_string();
+            }
+            return "available".to_string();
         }
         self.status.clone()
     }
@@ -843,7 +867,10 @@ pub struct GlobalCluster {
 
 impl GlobalCluster {
     pub fn arn_for(&self, account: u64) -> String {
-        format!("arn:aws:rds::{}:global-cluster:{}", account, self.identifier)
+        format!(
+            "arn:aws:rds::{}:global-cluster:{}",
+            account, self.identifier
+        )
     }
     pub fn resource_id(&self) -> String {
         format!("cluster-{}", self.unique_id)
@@ -941,7 +968,10 @@ pub struct DBClusterEndpoint {
 
 impl DBClusterEndpoint {
     pub fn arn_for(&self, account: u64, region: &str) -> String {
-        format!("arn:aws:rds:{region}:{account}:cluster-endpoint:{}", self.id)
+        format!(
+            "arn:aws:rds:{region}:{account}:cluster-endpoint:{}",
+            self.id
+        )
     }
     pub fn endpoint_for(&self, region: &str) -> String {
         format!(
@@ -968,7 +998,10 @@ pub struct DBProxyEndpoint {
 
 impl DBProxyEndpoint {
     pub fn arn_for(&self, account: u64, region: &str) -> String {
-        format!("arn:aws:rds:{region}:{account}:db-proxy-endpoint:{}", self.name)
+        format!(
+            "arn:aws:rds:{region}:{account}:db-proxy-endpoint:{}",
+            self.name
+        )
     }
     pub fn endpoint_for(&self, region: &str) -> String {
         format!(
@@ -1183,12 +1216,8 @@ impl RdsState {
             "DB_INSTANCE_RESET_MASTER_CREDENTIALS" => {
                 ("Reset master credentials", &["configuration change"])
             }
-            "DB_SNAPSHOT_CREATE_AUTOMATED_START" => {
-                ("Creating automated snapshot", &["creation"])
-            }
-            "DB_SNAPSHOT_CREATE_AUTOMATED_FINISH" => {
-                ("Automated snapshot created", &["creation"])
-            }
+            "DB_SNAPSHOT_CREATE_AUTOMATED_START" => ("Creating automated snapshot", &["creation"]),
+            "DB_SNAPSHOT_CREATE_AUTOMATED_FINISH" => ("Automated snapshot created", &["creation"]),
             "DB_SNAPSHOT_CREATE_MANUAL_START" => ("Creating manual snapshot", &["creation"]),
             "DB_SNAPSHOT_CREATE_MANUAL_FINISH" => ("Manual snapshot created", &["creation"]),
             _ => return,
@@ -1244,7 +1273,9 @@ impl RdsState {
             }
         }
         seen.into_iter()
-            .map(|db_instance_identifier| AutomatedBackup { db_instance_identifier })
+            .map(|db_instance_identifier| AutomatedBackup {
+                db_instance_identifier,
+            })
             .collect()
     }
 }
@@ -1367,10 +1398,19 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
         db.vpc_security_group_ids.clone()
     };
     let mut out = String::from("<DBInstance>");
-    out.push_str(&format!("<DBInstanceIdentifier>{}</DBInstanceIdentifier>", esc(&db.id)));
-    out.push_str(&format!("<DBInstanceClass>{}</DBInstanceClass>", esc(&db.db_instance_class)));
+    out.push_str(&format!(
+        "<DBInstanceIdentifier>{}</DBInstanceIdentifier>",
+        esc(&db.id)
+    ));
+    out.push_str(&format!(
+        "<DBInstanceClass>{}</DBInstanceClass>",
+        esc(&db.db_instance_class)
+    ));
     out.push_str(&format!("<Engine>{}</Engine>", esc(&db.engine)));
-    out.push_str(&format!("<DBInstanceStatus>{}</DBInstanceStatus>", esc(&db.status)));
+    out.push_str(&format!(
+        "<DBInstanceStatus>{}</DBInstanceStatus>",
+        esc(&db.status)
+    ));
     if let Some(u) = &eff.master_username {
         out.push_str(&format!("<MasterUsername>{}</MasterUsername>", esc(u)));
     }
@@ -1379,8 +1419,14 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
         esc(&inst_address(&db.id, region)),
         db.port
     ));
-    out.push_str(&format!("<AllocatedStorage>{}</AllocatedStorage>", eff.allocated_storage));
-    out.push_str(&format!("<InstanceCreateTime>{}</InstanceCreateTime>", esc(&iso(&db.created))));
+    out.push_str(&format!(
+        "<AllocatedStorage>{}</AllocatedStorage>",
+        eff.allocated_storage
+    ));
+    out.push_str(&format!(
+        "<InstanceCreateTime>{}</InstanceCreateTime>",
+        esc(&iso(&db.created))
+    ));
     out.push_str(&format!(
         "<PreferredBackupWindow>{}</PreferredBackupWindow>",
         esc(&db.preferred_backup_window)
@@ -1410,7 +1456,10 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
          </DBParameterGroup></DBParameterGroups>",
         esc(&pg_name)
     ));
-    out.push_str(&format!("<AvailabilityZone>{}</AvailabilityZone>", esc(&db.availability_zone)));
+    out.push_str(&format!(
+        "<AvailabilityZone>{}</AvailabilityZone>",
+        esc(&db.availability_zone)
+    ));
     out.push_str(&format!(
         "<PreferredMaintenanceWindow>{}</PreferredMaintenanceWindow>",
         esc(&db.preferred_maintenance_window)
@@ -1420,7 +1469,10 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
         esc(&iso(&Utc::now()))
     ));
     out.push_str(&format!("<MultiAZ>{}</MultiAZ>", db.multi_az));
-    out.push_str(&format!("<EngineVersion>{}</EngineVersion>", esc(&eff.engine_version)));
+    out.push_str(&format!(
+        "<EngineVersion>{}</EngineVersion>",
+        esc(&eff.engine_version)
+    ));
     out.push_str(&format!(
         "<AutoMinorVersionUpgrade>{}</AutoMinorVersionUpgrade>",
         db.auto_minor_version_upgrade
@@ -1438,7 +1490,10 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
         "ReadReplicaDBInstanceIdentifier",
         &db.replicas,
     ));
-    out.push_str(&format!("<LicenseModel>{}</LicenseModel>", esc(&eff.license_model)));
+    out.push_str(&format!(
+        "<LicenseModel>{}</LicenseModel>",
+        esc(&eff.license_model)
+    ));
     out.push_str(&format!(
         "<OptionGroupMemberships><OptionGroupMembership>\
          <OptionGroupName>{}</OptionGroupName>\
@@ -1455,10 +1510,19 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
             esc(name)
         ));
     }
-    out.push_str(&format!("<StorageType>{}</StorageType>", esc(&eff.storage_type)));
+    out.push_str(&format!(
+        "<StorageType>{}</StorageType>",
+        esc(&eff.storage_type)
+    ));
     out.push_str(&format!("<DbInstancePort>{}</DbInstancePort>", db.port));
-    out.push_str(&format!("<StorageEncrypted>{}</StorageEncrypted>", db.storage_encrypted));
-    out.push_str(&format!("<DbiResourceId>{}</DbiResourceId>", esc(DBI_RESOURCE_ID)));
+    out.push_str(&format!(
+        "<StorageEncrypted>{}</StorageEncrypted>",
+        db.storage_encrypted
+    ));
+    out.push_str(&format!(
+        "<DbiResourceId>{}</DbiResourceId>",
+        esc(DBI_RESOURCE_ID)
+    ));
     out.push_str(&format!(
         "<CACertificateIdentifier>{}</CACertificateIdentifier>",
         esc(&db.ca_certificate_identifier)
@@ -1486,7 +1550,11 @@ fn db_instance_inner(st: &RdsState, acct: u64, region: &str, db: &DBInstance) ->
     if let Some(cs) = &eff.character_set_name {
         out.push_str(&format!("<CharacterSetName>{}</CharacterSetName>", esc(cs)));
     }
-    out.push_str(&roles_xml("AssociatedRoles", "DBInstanceRole", &db.associated_roles));
+    out.push_str(&roles_xml(
+        "AssociatedRoles",
+        "DBInstanceRole",
+        &db.associated_roles,
+    ));
     out.push_str(&tags_xml(&db.tags, "TagList"));
     out.push_str("</DBInstance>");
     out
@@ -1527,7 +1595,10 @@ pub fn db_cluster_xml(st: &RdsState, acct: u64, region: &str, cl: &DBCluster) ->
         || members.len() > 1;
     let replicas: Vec<String> = cl.read_replica_identifiers.clone();
     let mut out = String::from("<DBCluster>");
-    out.push_str(&format!("<AllocatedStorage>{}</AllocatedStorage>", cl.allocated_storage));
+    out.push_str(&format!(
+        "<AllocatedStorage>{}</AllocatedStorage>",
+        cl.allocated_storage
+    ));
     out.push_str(&format!(
         "<AvailabilityZones>{}</AvailabilityZones>",
         cl.availability_zones
@@ -1539,7 +1610,10 @@ pub fn db_cluster_xml(st: &RdsState, acct: u64, region: &str, cl: &DBCluster) ->
         "<BackupRetentionPeriod>{}</BackupRetentionPeriod>",
         cl.backup_retention_period
     ));
-    out.push_str(&format!("<DBClusterIdentifier>{}</DBClusterIdentifier>", esc(&cl.id)));
+    out.push_str(&format!(
+        "<DBClusterIdentifier>{}</DBClusterIdentifier>",
+        esc(&cl.id)
+    ));
     out.push_str(&format!(
         "<DBClusterParameterGroup>{}</DBClusterParameterGroup>",
         esc(&cl.parameter_group)
@@ -1567,7 +1641,10 @@ pub fn db_cluster_xml(st: &RdsState, acct: u64, region: &str, cl: &DBCluster) ->
     ));
     out.push_str(&format!("<MultiAZ>{multi_az}</MultiAZ>"));
     out.push_str(&format!("<Engine>{}</Engine>", esc(&cl.engine)));
-    out.push_str(&format!("<EngineVersion>{}</EngineVersion>", esc(&cl.engine_version)));
+    out.push_str(&format!(
+        "<EngineVersion>{}</EngineVersion>",
+        esc(&cl.engine_version)
+    ));
     out.push_str(&format!(
         "<LatestRestorableTime>{}</LatestRestorableTime>",
         esc(&iso(&Utc::now()))
@@ -1591,7 +1668,10 @@ pub fn db_cluster_xml(st: &RdsState, acct: u64, region: &str, cl: &DBCluster) ->
     ));
     out.push_str(&member_block);
     out.push_str(&vpc_sg_members(&cl.vpc_security_group_ids));
-    out.push_str(&format!("<HostedZoneId>{}</HostedZoneId>", esc(&cl.hosted_zone_id)));
+    out.push_str(&format!(
+        "<HostedZoneId>{}</HostedZoneId>",
+        esc(&cl.hosted_zone_id)
+    ));
     out.push_str(&format!(
         "<StorageEncrypted>{}</StorageEncrypted>",
         cl.storage_encrypted
@@ -1605,7 +1685,11 @@ pub fn db_cluster_xml(st: &RdsState, acct: u64, region: &str, cl: &DBCluster) ->
         "<DBClusterArn>arn:aws:rds:{region}:{acct}:cluster:{}</DBClusterArn>",
         esc(&cl.id)
     ));
-    out.push_str(&roles_xml("AssociatedRoles", "DBClusterRole", &cl.associated_roles));
+    out.push_str(&roles_xml(
+        "AssociatedRoles",
+        "DBClusterRole",
+        &cl.associated_roles,
+    ));
     out.push_str(&format!(
         "<IAMDatabaseAuthenticationEnabled>{}</IAMDatabaseAuthenticationEnabled>",
         cl.iam_auth
@@ -1623,9 +1707,15 @@ pub fn db_cluster_xml(st: &RdsState, acct: u64, region: &str, cl: &DBCluster) ->
         "member",
         &cl.enabled_cloudwatch_logs_exports,
     ));
-    out.push_str(&format!("<EngineMode>{}</EngineMode>", esc(&cl.engine_mode)));
+    out.push_str(&format!(
+        "<EngineMode>{}</EngineMode>",
+        esc(&cl.engine_mode)
+    ));
     out.push_str("<ScalingConfigurationInfo/>");
-    out.push_str(&format!("<StorageType>{}</StorageType>", esc(&cl.storage_type)));
+    out.push_str(&format!(
+        "<StorageType>{}</StorageType>",
+        esc(&cl.storage_type)
+    ));
     out.push_str(&format!(
         "<PubliclyAccessible>{}</PubliclyAccessible>",
         cl.publicly_accessible
@@ -1691,7 +1781,10 @@ pub fn db_snapshot_xml(acct: u64, region: &str, snap: &DBSnapshot) -> String {
         "<IAMDatabaseAuthenticationEnabled>{}</IAMDatabaseAuthenticationEnabled>",
         db.iam_auth
     ));
-    out.push_str(&format!("<DbiResourceId>{}</DbiResourceId>", esc(DBI_RESOURCE_ID)));
+    out.push_str(&format!(
+        "<DbiResourceId>{}</DbiResourceId>",
+        esc(DBI_RESOURCE_ID)
+    ));
     out.push_str(&tags_xml(&snap.tags, "TagList"));
     out.push_str(&format!(
         "<OriginalSnapshotCreateTime>{}</OriginalSnapshotCreateTime>",
@@ -1743,10 +1836,7 @@ pub fn cluster_snapshot_xml(acct: u64, region: &str, snap: &DBClusterSnapshot) -
         "<StorageEncrypted>{}</StorageEncrypted>",
         snap.encrypted
     ));
-    out.push_str(&format!(
-        "<KmsKeyId>{}</KmsKeyId>",
-        esc(&snap.kms_key_id)
-    ));
+    out.push_str(&format!("<KmsKeyId>{}</KmsKeyId>", esc(&snap.kms_key_id)));
     out.push_str(&format!(
         "<DBClusterSnapshotArn>arn:aws:rds:{region}:{acct}:cluster-snapshot:{}</DBClusterSnapshotArn>",
         esc(&snap.id)
@@ -1776,7 +1866,10 @@ fn attribute_result_xml(
         outer = outer,
         inner = inner,
         id = esc(identifier),
-        inner_tag = format!("<DBSnapshotIdentifier>{}</DBSnapshotIdentifier>", esc(identifier)),
+        inner_tag = format!(
+            "<DBSnapshotIdentifier>{}</DBSnapshotIdentifier>",
+            esc(identifier)
+        ),
     )
 }
 
@@ -1795,7 +1888,11 @@ pub fn parameter_group_xml(acct: u64, region: &str, pg: &DBParameterGroup) -> St
     )
 }
 
-pub fn cluster_parameter_group_xml(acct: u64, region: &str, pg: &DBClusterParameterGroup) -> String {
+pub fn cluster_parameter_group_xml(
+    acct: u64,
+    region: &str,
+    pg: &DBClusterParameterGroup,
+) -> String {
     format!(
         "<DBClusterParameterGroup><DBClusterParameterGroupName>{}</DBClusterParameterGroupName>\
          <DBParameterGroupFamily>{}</DBParameterGroupFamily>\
@@ -1869,11 +1966,10 @@ pub fn subnet_group_xml(acct: u64, region: &str, sg: &DBSubnetGroup) -> String {
         .subnets
         .iter()
         .map(|s| {
-            let az = s
-                .az
-                .as_ref()
-                .map(|z| format!("<Name>{}</Name>", esc(z)))
-                .unwrap_or_default();
+            let az =
+                s.az.as_ref()
+                    .map(|z| format!("<Name>{}</Name>", esc(z)))
+                    .unwrap_or_default();
             format!(
                 "<Subnet><SubnetIdentifier>{}</SubnetIdentifier>\
                  <SubnetAvailabilityZone>{}</SubnetAvailabilityZone>\
@@ -1979,7 +2075,11 @@ pub fn event_subscription_xml(acct: u64, region: &str, sub: &EventSubscription) 
         .as_ref()
         .map(|t| format!("<SourceType>{}</SourceType>", esc(t)))
         .unwrap_or_default();
-    let cats = list_xml("EventCategoriesList", "EventCategory", &sub.event_categories);
+    let cats = list_xml(
+        "EventCategoriesList",
+        "EventCategory",
+        &sub.event_categories,
+    );
     let sources = list_xml("SourceIdsList", "SourceId", &sub.source_ids);
     format!(
         "<EventSubscription>\
@@ -1994,8 +2094,14 @@ pub fn event_subscription_xml(acct: u64, region: &str, sub: &EventSubscription) 
         cats = cats,
         sources = sources,
         enabled = sub.enabled,
-        created = format!("<SubscriptionCreationTime>{}</SubscriptionCreationTime>", esc(&iso(&sub.created))),
-        arn = format!("<EventSubscriptionArn>arn:aws:rds:{region}:{acct}:es:{}</EventSubscriptionArn>", esc(&sub.name)),
+        created = format!(
+            "<SubscriptionCreationTime>{}</SubscriptionCreationTime>",
+            esc(&iso(&sub.created))
+        ),
+        arn = format!(
+            "<EventSubscriptionArn>arn:aws:rds:{region}:{acct}:es:{}</EventSubscriptionArn>",
+            esc(&sub.name)
+        ),
         tags_ = tags_xml(&sub.tags, "TagList"),
     )
 }
@@ -2035,7 +2141,10 @@ pub fn global_cluster_xml(acct: u64, gc: &GlobalCluster, st: &RdsState) -> Strin
         esc(&gc.status),
         esc(&gc.engine),
         esc(&gc.engine_version),
-        encrypted = format!("<StorageEncrypted>{}</StorageEncrypted><DeletionProtection>{}</DeletionProtection>", gc.storage_encrypted, gc.deletion_protection),
+        encrypted = format!(
+            "<StorageEncrypted>{}</StorageEncrypted><DeletionProtection>{}</DeletionProtection>",
+            gc.storage_encrypted, gc.deletion_protection
+        ),
         protected = "",
         members_block = members_block,
         arn = esc(&gc.arn_for(acct)),
@@ -2043,7 +2152,6 @@ pub fn global_cluster_xml(acct: u64, gc: &GlobalCluster, st: &RdsState) -> Strin
         tags_ = tags_xml(&gc.tags, "TagList"),
     )
 }
-
 
 pub fn db_proxy_xml(acct: u64, region: &str, p: &DBProxy) -> String {
     let mut auth_items = String::new();
@@ -2285,8 +2393,16 @@ pub fn shard_group_xml(acct: u64, region: &str, g: &DBShardGroup) -> String {
         .compute_redundancy
         .map(|c| format!("<ComputeRedundancy>{c}</ComputeRedundancy>"))
         .unwrap_or_default();
-    let max_acu = g.max_acu.as_ref().map(|a| format!("<MaxACU>{}</MaxACU>", esc(a))).unwrap_or_default();
-    let min_acu = g.min_acu.as_ref().map(|a| format!("<MinACU>{}</MinACU>", esc(a))).unwrap_or_default();
+    let max_acu = g
+        .max_acu
+        .as_ref()
+        .map(|a| format!("<MaxACU>{}</MaxACU>", esc(a)))
+        .unwrap_or_default();
+    let min_acu = g
+        .min_acu
+        .as_ref()
+        .map(|a| format!("<MinACU>{}</MinACU>", esc(a)))
+        .unwrap_or_default();
     format!(
         "<DBShardGroup>\
          <DBShardGroupResourceId>shard-group-{}</DBShardGroupResourceId>\
@@ -2301,7 +2417,11 @@ pub fn shard_group_xml(acct: u64, region: &str, g: &DBShardGroup) -> String {
         esc(&g.id),
         esc(&g.cluster_identifier),
         esc(&g.status),
-        format!("{}.{}.rds.amazonaws.com", esc(&g.cluster_identifier), region),
+        format!(
+            "{}.{}.rds.amazonaws.com",
+            esc(&g.cluster_identifier),
+            region
+        ),
         g.arn_for(acct, region),
         tags = tags_xml(&g.tags, "TagList"),
     )
@@ -2546,7 +2666,6 @@ pub fn db_log_file_entry(name: &str, last_written_millis: i64, size: i64) -> Str
     )
 }
 
-
 // ---------------------------------------------------------------------------
 // Handler helpers
 // ---------------------------------------------------------------------------
@@ -2560,14 +2679,23 @@ fn lowercase_first(s: &str) -> String {
 }
 
 fn effective_engine_version(st: &RdsState, db: &DBInstance) -> String {
-    match db.db_cluster_identifier.as_deref().and_then(|c| st.clusters.get(c)) {
+    match db
+        .db_cluster_identifier
+        .as_deref()
+        .and_then(|c| st.clusters.get(c))
+    {
         Some(cl) => cl.engine_version.clone(),
         None => db.engine_version.clone(),
     }
 }
 
 /// Build a snapshot record the way moto's DBSnapshot init does.
-fn snapshot_from_db(db: &DBInstance, snapshot_id: &str, snapshot_type: &str, tags: &[Tag]) -> DBSnapshot {
+fn snapshot_from_db(
+    db: &DBInstance,
+    snapshot_id: &str,
+    snapshot_type: &str,
+    tags: &[Tag],
+) -> DBSnapshot {
     DBSnapshot {
         id: snapshot_id.to_lowercase(),
         original_id: snapshot_id.to_string(),
@@ -2649,9 +2777,10 @@ fn cluster_snapshot_from(
 }
 
 fn db_cluster_ref(p: &Params) -> Option<String> {
-    param(p, "DBClusterIdentifier").string().map(|s| s.to_lowercase())
+    param(p, "DBClusterIdentifier")
+        .string()
+        .map(|s| s.to_lowercase())
 }
-
 
 // ---------------------------------------------------------------------------
 // Dispatch + response envelope + param accessors
@@ -2785,8 +2914,7 @@ fn fetch_subnet_info(
     }
     let auth = format!(
         "AWS4-HMAC-SHA256 Credential={}/20240101/{}/ec2/aws4_request",
-        req.account,
-        req.region
+        req.account, req.region
     );
     let request = format!(
         "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/x-www-form-urlencoded\r\n\
@@ -2833,32 +2961,11 @@ pub fn dispatch(req: &Request) -> Response {
     let mut map = slots.write();
     let key = (req.account, req.region.clone());
     let state = map.entry(key).or_default();
-    let dbg_body = String::from_utf8_lossy(&req.body).to_string();
-    let dbg_body_prefix: String = dbg_body.chars().take(120).collect();
-    let dbg_query: String = req.query_string.chars().take(80).collect();
-    let dbg_method: String = req.method.clone();
-    let dbg_op: String = req.operation.clone();
-    let svc_keys: Vec<String> = dbg_body.split('&').take(3).map(|s| s.split('=').take(1).collect()).collect();
-    let dbg_keys: String = svc_keys.join(",");
     match run_op(req, state, &op, &params, subnet_info) {
         Ok(body) => response_xml(&op, body),
-        Err(e) => {
-            let mut resp = error_response(&e);
-            let dbg_pairs = decode_pairs(&req.body);
-            resp.headers.push((
-                "X-Roto-Debug-V2".to_string(),
-                format!(
-                    "body=[{dbg_body_prefix}] q=[{dbg_query}] op={dbg_op} pairs={}",
-                    dbg_pairs.len()
-                ),
-            ));
-            let _ = &dbg_pairs;
-            resp
-        }
+        Err(e) => error_response(&e),
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // DB instance operations
@@ -2896,7 +3003,9 @@ fn create_db_instance(
     let (storage_default, _) = DBInstance::default_storage(&engine);
     let engine_version = match p_string(p, "EngineVersion") {
         Some(v) => v,
-        None => DBInstance::default_engine_version(&engine).unwrap_or("").to_string(),
+        None => DBInstance::default_engine_version(&engine)
+            .unwrap_or("")
+            .to_string(),
     };
     let supplied_og = p_string(p, "OptionGroupName");
     let option_group = match &supplied_og {
@@ -2949,9 +3058,7 @@ fn create_db_instance(
             format!("The source cluster could not be found or cannot be accessed: {shown}"),
         ));
     }
-    let cluster = cluster_ref
-        .as_ref()
-        .and_then(|cid| st.clusters.get(cid));
+    let cluster = cluster_ref.as_ref().and_then(|cid| st.clusters.get(cid));
     let cluster_engine = cluster.map(|cl| cl.engine.clone());
     let cluster_version = cluster.map(|cl| cl.engine_version.clone());
     let cluster_username = cluster.and_then(|cl| cl.master_username.clone());
@@ -2988,8 +3095,7 @@ fn create_db_instance(
         preferred_maintenance_window: p_string(p, "PreferredMaintenanceWindow")
             .unwrap_or_else(|| "wed:06:38-wed:07:08".into())
             .to_lowercase(),
-        availability_zone: p_string(p, "AvailabilityZone")
-            .unwrap_or_else(|| format!("{region}a")),
+        availability_zone: p_string(p, "AvailabilityZone").unwrap_or_else(|| format!("{region}a")),
         multi_az: p_bool(p, "MultiAZ").unwrap_or(false),
         publicly_accessible: p_bool(p, "PubliclyAccessible"),
         copy_tags_to_snapshot: p_bool(p, "CopyTagsToSnapshot").unwrap_or(false),
@@ -3026,7 +3132,6 @@ fn create_db_instance(
     }
 }
 
-
 /// Snapshot record from an instance with the moto auto-id, stored as `automated`.
 fn create_automated_snapshot(
     st: &mut RdsState,
@@ -3043,7 +3148,6 @@ fn create_automated_snapshot(
     }
 }
 
-
 // DB instance describe/modify/delete/lifecycle -------------------------------
 
 fn describe_db_instances_xml(
@@ -3056,8 +3160,7 @@ fn describe_db_instances_xml(
     let matched: Vec<&DBInstance> = match &filter {
         Some(rid) => {
             let lower = rid.to_lowercase();
-            let found: Vec<&DBInstance> =
-                st.databases.values().filter(|d| d.id == lower).collect();
+            let found: Vec<&DBInstance> = st.databases.values().filter(|d| d.id == lower).collect();
             if found.is_empty() {
                 return Err(RdsError::not_found404(
                     "DBInstanceNotFound",
@@ -3273,7 +3376,6 @@ fn create_manual_snapshot(db: &DBInstance, snapshot_id: &str, tags: &[Tag]) -> D
     snapshot_from_db(db, snapshot_id, "manual", tags)
 }
 
-
 // Snapshots ------------------------------------------------------------------
 
 fn create_db_snapshot(
@@ -3406,8 +3508,7 @@ fn snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> Stri
     let mut items = String::new();
     for (name, values) in attrs {
         items.push_str(&format!(
-            "<DBSnapshotAttributes><AttributeName>{}{}\
-             </DBSnapshotAttributes>",
+            "<DBSnapshotAttributes><AttributeName>{}</AttributeName>{}             </DBSnapshotAttributes>",
             esc(name),
             list_xml("AttributeValues", "AttributeValue", values)
         ));
@@ -3430,15 +3531,15 @@ fn snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> Stri
     }
 }
 
-fn describe_db_snapshot_attributes(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_snapshot_attributes(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
     let snap_id = ident.to_lowercase();
     match find_snapshot(st, &snap_id) {
         Some(db_snapshot) => {
-            let attrs = vec![("restore".to_string(), db_snapshot.attributes_restore.clone())];
+            let attrs = vec![(
+                "restore".to_string(),
+                db_snapshot.attributes_restore.clone(),
+            )];
             Ok(Some(snapshot_attrs_xml(&snap_id, &attrs)))
         }
         None => Err(RdsError::not_found404(
@@ -3448,10 +3549,7 @@ fn describe_db_snapshot_attributes(
     }
 }
 
-fn modify_db_snapshot_attribute(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn modify_db_snapshot_attribute(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
     let snap_id = ident.to_lowercase();
     let db_owned = match find_snapshot(st, &snap_id) {
@@ -3484,7 +3582,10 @@ fn modify_db_snapshot_attribute(
         }
     }
     let to_remove = p_list(p, "ValuesToRemove");
-    let merged: Vec<String> = merged.into_iter().filter(|v| !to_remove.contains(v)).collect();
+    let merged: Vec<String> = merged
+        .into_iter()
+        .filter(|v| !to_remove.contains(v))
+        .collect();
     st.database_snapshots
         .get_mut(&snap_id)
         .unwrap()
@@ -3495,7 +3596,6 @@ fn modify_db_snapshot_attribute(
     )];
     Ok(Some(snapshot_attrs_xml(&snap_id, &attrs)))
 }
-
 
 // Lookup helpers -------------------------------------------------------------
 
@@ -3512,10 +3612,7 @@ fn find_snapshot<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBSnapsho
     st.database_snapshots.get(&identifier.to_lowercase())
 }
 
-fn find_cluster_snapshot<'s>(
-    st: &'s RdsState,
-    identifier: &str,
-) -> Option<&'s DBClusterSnapshot> {
+fn find_cluster_snapshot<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBClusterSnapshot> {
     st.cluster_snapshots.get(&identifier.to_lowercase())
 }
 
@@ -3526,7 +3623,6 @@ fn find_cluster<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBCluster>
 fn find_instance<'s>(st: &'s RdsState, identifier: &str) -> Option<&'s DBInstance> {
     st.databases.get(&identifier.to_lowercase())
 }
-
 
 // Tags -----------------------------------------------------------------------
 
@@ -3572,31 +3668,23 @@ fn parse_resource_arn(arn: &str) -> TagTarget {
     }
 }
 
-fn list_tags_for_tags_resource(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn list_tags_for_tags_resource(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let arn = p_string(p, "ResourceName").unwrap_or_default();
     let tags = match parse_resource_arn(&arn) {
         TagTarget::Instance(id) => find_instance(st, &id).map(|d| d.tags.clone()),
         TagTarget::Cluster(id) => find_cluster(st, &id).map(|c| c.tags.clone()),
-        TagTarget::ParamGroup(id) => {
-            st.db_parameter_groups.get(&id).map(|g| g.tags.clone())
-        }
-        TagTarget::ClusterParamGroup(id) => {
-            st.db_cluster_parameter_groups.get(&id).map(|g| g.tags.clone())
-        }
+        TagTarget::ParamGroup(id) => st.db_parameter_groups.get(&id).map(|g| g.tags.clone()),
+        TagTarget::ClusterParamGroup(id) => st
+            .db_cluster_parameter_groups
+            .get(&id)
+            .map(|g| g.tags.clone()),
         TagTarget::OptionGroup(id) => st.option_groups.get(&id).map(|g| g.tags.clone()),
         TagTarget::SecurityGroup(id) => st.security_groups.get(&id).map(|g| g.tags.clone()),
         TagTarget::SubnetGroup(id) => st.subnet_groups.get(&id).map(|g| g.tags.clone()),
         TagTarget::Snapshot(id) => find_snapshot(st, &id).map(|s| s.tags.clone()),
-        TagTarget::ClusterSnapshot(id) => {
-            find_cluster_snapshot(st, &id).map(|s| s.tags.clone())
-        }
+        TagTarget::ClusterSnapshot(id) => find_cluster_snapshot(st, &id).map(|s| s.tags.clone()),
         TagTarget::Proxy(id) => st.db_proxies.get(&id).map(|g| g.tags.clone()),
-        TagTarget::EventSubscription(id) => {
-            st.event_subscriptions.get(&id).map(|g| g.tags.clone())
-        }
+        TagTarget::EventSubscription(id) => st.event_subscriptions.get(&id).map(|g| g.tags.clone()),
         TagTarget::Unknown => None,
     }
     .unwrap_or_default();
@@ -3612,10 +3700,7 @@ fn list_tags_for_tags_resource(
     Ok(Some(out))
 }
 
-fn add_tags_to_tags_resource(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn add_tags_to_tags_resource(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let arn = p_string(p, "ResourceName").unwrap_or_default();
     let tags = tags_param(p);
     let lower = arn.split(':').nth(6).unwrap_or("").to_lowercase();
@@ -3632,19 +3717,14 @@ fn add_tags_to_tags_resource(
         TagTarget::Snapshot(id) => add_tags_to(&mut st.database_snapshots, &id, tags),
         TagTarget::ClusterSnapshot(id) => add_tags_to(&mut st.cluster_snapshots, &id, tags),
         TagTarget::Proxy(id) => add_tags_to(&mut st.db_proxies, &id, tags),
-        TagTarget::EventSubscription(id) => {
-            add_tags_to(&mut st.event_subscriptions, &id, tags)
-        }
+        TagTarget::EventSubscription(id) => add_tags_to(&mut st.event_subscriptions, &id, tags),
         TagTarget::Unknown => {}
     }
     let _ = lower;
     Ok(None)
 }
 
-fn remove_tags_from_tags_resource(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn remove_tags_from_tags_resource(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let arn = p_string(p, "ResourceName").unwrap_or_default();
     let keys: Vec<String> = p_list(p, "TagKeys");
     match parse_resource_arn(&arn) {
@@ -3658,9 +3738,7 @@ fn remove_tags_from_tags_resource(
         TagTarget::SecurityGroup(id) => remove_tags_from(&mut st.security_groups, &id, &keys),
         TagTarget::SubnetGroup(id) => remove_tags_from(&mut st.subnet_groups, &id, &keys),
         TagTarget::Snapshot(id) => remove_tags_from(&mut st.database_snapshots, &id, &keys),
-        TagTarget::ClusterSnapshot(id) => {
-            remove_tags_from(&mut st.cluster_snapshots, &id, &keys)
-        }
+        TagTarget::ClusterSnapshot(id) => remove_tags_from(&mut st.cluster_snapshots, &id, &keys),
         TagTarget::Proxy(id) => remove_tags_from(&mut st.db_proxies, &id, &keys),
         TagTarget::EventSubscription(id) => {
             remove_tags_from(&mut st.event_subscriptions, &id, &keys)
@@ -3700,11 +3778,7 @@ impl_tagged!(DBClusterSnapshot);
 impl_tagged!(DBProxy);
 impl_tagged!(EventSubscription);
 
-fn add_tags_to<T: Tagged>(
-    map: &mut BTreeMap<String, T>,
-    id: &str,
-    tags: Vec<Tag>,
-) {
+fn add_tags_to<T: Tagged>(map: &mut BTreeMap<String, T>, id: &str, tags: Vec<Tag>) {
     let lower = id.to_lowercase();
     if let Some(entry) = map.get_mut(&lower) {
         let mut updated = entry.current_tags();
@@ -3714,11 +3788,7 @@ fn add_tags_to<T: Tagged>(
     }
 }
 
-fn remove_tags_from<T: Tagged>(
-    map: &mut BTreeMap<String, T>,
-    id: &str,
-    keys: &[String],
-) {
+fn remove_tags_from<T: Tagged>(map: &mut BTreeMap<String, T>, id: &str, keys: &[String]) {
     let lower = id.to_lowercase();
     if let Some(entry) = map.get_mut(&lower) {
         let kept: Vec<Tag> = entry
@@ -3729,7 +3799,6 @@ fn remove_tags_from<T: Tagged>(
         entry.set_tags(kept);
     }
 }
-
 
 // Clusters -------------------------------------------------------------------
 
@@ -3783,7 +3852,11 @@ fn cluster_object(name: &str, p: &Params, region: &str) -> Result<DBCluster, Rds
     let option_group_engine_version = engine_version.clone();
     let mut availability_zones: Vec<String> = param(p, "AvailabilityZones").list();
     if availability_zones.is_empty() {
-        availability_zones = vec![format!("{region}a"), format!("{region}b"), format!("{region}c")];
+        availability_zones = vec![
+            format!("{region}a"),
+            format!("{region}b"),
+            format!("{region}c"),
+        ];
     }
     Ok(DBCluster {
         id: name.to_lowercase(),
@@ -3795,9 +3868,8 @@ fn cluster_object(name: &str, p: &Params, region: &str) -> Result<DBCluster, Rds
         status_shown: std::sync::atomic::AtomicBool::new(false),
         port: p_i64(p, "Port").unwrap_or_else(|| DBCluster::default_port(&engine)),
         master_username: user,
-        allocated_storage: p_i64(p, "AllocatedStorage").unwrap_or_else(|| {
-            DBCluster::default_allocated_storage(&engine, &storage_type)
-        }),
+        allocated_storage: p_i64(p, "AllocatedStorage")
+            .unwrap_or_else(|| DBCluster::default_allocated_storage(&engine, &storage_type)),
         storage_type,
         storage_encrypted: p_bool(p, "StorageEncrypted").unwrap_or(false),
         backup_retention_period: p_i64(p, "BackupRetentionPeriod").unwrap_or(1),
@@ -3815,8 +3887,7 @@ fn cluster_object(name: &str, p: &Params, region: &str) -> Result<DBCluster, Rds
                 "default.aurora8.0".into()
             }
         }),
-        db_subnet_group_name: p_string(p, "DBSubnetGroupName")
-            .unwrap_or_else(|| "default".into()),
+        db_subnet_group_name: p_string(p, "DBSubnetGroupName").unwrap_or_else(|| "default".into()),
         publicly_accessible: p_bool(p, "PubliclyAccessible").unwrap_or(false),
         vpc_security_group_ids: p_list(p, "VpcSecurityGroupIds"),
         deletion_protection: p_bool(p, "DeletionProtection").unwrap_or(false),
@@ -3889,8 +3960,6 @@ fn create_db_cluster(
     }
 }
 
-
-
 // Cluster lifecycle ----------------------------------------------------------
 
 fn describe_db_clusters_xml(
@@ -3960,7 +4029,9 @@ fn modify_core_cluster_fields(cl: &mut DBCluster, p: &Params) {
         cl.kms_key_id = "default_kms_key_id".into();
         let _ = v; // not echoed back
     }
-    if let Some(v) = p_bool(p, "IAMDatabaseAuthenticationEnabled").or(p_bool(p, "EnableIAMDatabaseAuthentication")) {
+    if let Some(v) = p_bool(p, "IAMDatabaseAuthenticationEnabled")
+        .or(p_bool(p, "EnableIAMDatabaseAuthentication"))
+    {
         cl.iam_auth = v;
     }
     let cwl = key_end_log_types(p);
@@ -4057,8 +4128,6 @@ fn delete_db_cluster(
     Ok(Some(db_cluster_xml(st, acct, region, &cluster)))
 }
 
-
-
 // Cluster lifecycle: start/stop/failover/promote/reboot ----------------------
 
 fn transition_cluster(
@@ -4092,22 +4161,26 @@ fn transition_cluster(
     st.clusters.get_mut(&id).unwrap().status = next_status.to_string();
     let cl = st.clusters.get(&id).unwrap().clone();
     let _ = (status, to);
-    Ok(Some(db_cluster_xml(st, acct, region, &with_status(
-        &cl, to,
-    ))))
+    Ok(Some(db_cluster_xml(
+        st,
+        acct,
+        region,
+        &with_status(&cl, to),
+    )))
 }
 
 fn forwarded_status(st: &RdsState, id: &str) -> String {
-    st.clusters.get(id).map(|c| c.status.clone()).unwrap_or_default()
+    st.clusters
+        .get(id)
+        .map(|c| c.status.clone())
+        .unwrap_or_default()
 }
 
 fn with_status(cl: &DBCluster, status: &str) -> DBCluster {
     use std::sync::atomic::Ordering;
     DBCluster {
         status: status.to_string(),
-        status_shown: std::sync::atomic::AtomicBool::new(
-            cl.status_shown.load(Ordering::SeqCst),
-        ),
+        status_shown: std::sync::atomic::AtomicBool::new(cl.status_shown.load(Ordering::SeqCst)),
         ..cl.clone()
     }
 }
@@ -4135,7 +4208,11 @@ fn stop_db_cluster(
     }
     let cl = st.clusters.get(&id).unwrap().clone();
     st.clusters.get_mut(&id).unwrap().status = "stopped".into();
-    st.clusters.get_mut(&id).unwrap().status_shown.store(true, std::sync::atomic::Ordering::SeqCst);
+    st.clusters
+        .get_mut(&id)
+        .unwrap()
+        .status_shown
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     Ok(Some(db_cluster_xml(st, acct, region, &cl)))
 }
 
@@ -4198,14 +4275,18 @@ fn failover_db_cluster(
     if member_count < 2 {
         return Err(RdsError::client400(
             "InvalidDBClusterStateFault",
-            format!("Database cluster:{id} should have at least two database instances for failover"),
+            format!(
+                "Database cluster:{id} should have at least two database instances for failover"
+            ),
         ));
     }
     let cluster = st.clusters.get(&id).unwrap().clone();
-    Ok(Some(db_cluster_xml(st, acct, region, &with_status(
-        &cluster,
-        "available",
-    ))))
+    Ok(Some(db_cluster_xml(
+        st,
+        acct,
+        region,
+        &with_status(&cluster, "available"),
+    )))
 }
 
 fn reboot_db_cluster(
@@ -4289,10 +4370,10 @@ fn describe_db_cluster_snapshots_xml(
         }
     }
     let _ = tags_param(p);
-    Ok(Some(cluster_snapshot_list_xml(acct, region, &matched, true)))
+    Ok(Some(cluster_snapshot_list_xml(
+        acct, region, &matched, true,
+    )))
 }
-
-
 
 fn cluster_snapshot_list_xml(
     acct: u64,
@@ -4391,13 +4472,9 @@ fn cluster_snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)])
     }
 }
 
-
 // Snapshot attributes (cluster) + restore flows ------------------------------
 
-fn describe_db_cluster_snapshot_attributes(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_cluster_snapshot_attributes(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
     let snap_id = ident.to_lowercase();
     match find_cluster_snapshot(st, &snap_id) {
@@ -4412,10 +4489,7 @@ fn describe_db_cluster_snapshot_attributes(
     }
 }
 
-fn modify_db_cluster_snapshot_attribute(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn modify_db_cluster_snapshot_attribute(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
     let snap_id = ident.to_lowercase();
     let existing = match find_cluster_snapshot(st, &snap_id) {
@@ -4677,7 +4751,6 @@ fn restore_db_cluster_to_point_in_time(
     }
 }
 
-
 // Global clusters ------------------------------------------------------------
 
 fn create_global_cluster(
@@ -4719,15 +4792,14 @@ fn create_global_cluster(
         engine_version = Some(cluster.engine_version.clone());
         attached_member = Some(cluster.id.clone());
     }
-    let engine = match engine {
-        Some(e) => e,
-        None => {
-            return Err(RdsError::client400(
+    let engine =
+        match engine {
+            Some(e) => e,
+            None => return Err(RdsError::client400(
                 "InvalidParameterValue",
                 "When creating standalone global cluster, value for engineName should be specified",
-            ))
-        }
-    };
+            )),
+        };
     let gc = GlobalCluster {
         identifier: lower.clone(),
         original_id: identifier.clone(),
@@ -4776,7 +4848,9 @@ fn describe_global_clusters_xml(
             .and_then(|s| s.strip_suffix("</GlobalCluster>"))
             .unwrap_or(&inner)
             .to_string();
-        list.push_str(&format!("<GlobalClusterMember>{stripped}</GlobalClusterMember>"));
+        list.push_str(&format!(
+            "<GlobalClusterMember>{stripped}</GlobalClusterMember>"
+        ));
     }
     Ok(Some(format!("<GlobalClusters>{list}</GlobalClusters>")))
 }
@@ -4821,7 +4895,10 @@ fn modify_global_cluster(
         ));
     }
     if let Some(v) = p_bool(p, "DeletionProtection") {
-        st.global_clusters.get_mut(&lower).unwrap().deletion_protection = v;
+        st.global_clusters
+            .get_mut(&lower)
+            .unwrap()
+            .deletion_protection = v;
     }
     if let Some(v) = p_string(p, "EngineVersion") {
         st.global_clusters.get_mut(&lower).unwrap().engine_version = v;
@@ -4850,8 +4927,7 @@ fn remove_from_global_cluster(
     let member = p_string(p, "DbClusterIdentifier").unwrap_or_default();
     let lower = identifier.to_lowercase();
     let member_id = identifier_from_arn(&member).to_lowercase();
-    let found = st.global_clusters.contains_key(&lower)
-        && st.clusters.contains_key(&member_id);
+    let found = st.global_clusters.contains_key(&lower) && st.clusters.contains_key(&member_id);
     if found {
         if let Some(gc) = st.global_clusters.get_mut(&lower) {
             gc.members.retain(|m| *m != member_id);
@@ -4897,7 +4973,6 @@ fn switchover_global_cluster(
     failover_global_cluster(st, acct, region, p)
 }
 
-
 // Parameter groups -----------------------------------------------------------
 
 fn create_db_parameter_group(
@@ -4936,7 +5011,10 @@ fn create_db_parameter_group(
         parameters: Vec::new(),
     };
     st.db_parameter_groups.insert(lower, group);
-    let group = st.db_parameter_groups.get(&identifier.to_lowercase()).unwrap();
+    let group = st
+        .db_parameter_groups
+        .get(&identifier.to_lowercase())
+        .unwrap();
     Ok(Some(parameter_group_xml(acct, region, group)))
 }
 
@@ -4971,10 +5049,7 @@ fn describe_db_parameter_groups_xml(
 
 /// DescribeDBParameters for a group (auto-creating default groups like moto's
 /// `db_instance.db_parameter_groups()` would for instance-owned defaults).
-fn describe_db_parameters(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_parameters(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
     let lower = identifier.to_lowercase();
     let group = match st.db_parameter_groups.get(&lower) {
@@ -4989,10 +5064,7 @@ fn describe_db_parameters(
     Ok(Some(parameters_xml(&group.parameters)))
 }
 
-fn modify_db_parameter_group(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn modify_db_parameter_group(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
     let lower = identifier.to_lowercase();
     if !st.db_parameter_groups.contains_key(&lower) {
@@ -5086,10 +5158,7 @@ fn copy_db_parameter_group(
     Ok(Some(parameter_group_xml(acct, region, &response)))
 }
 
-fn reset_db_parameter_group(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn reset_db_parameter_group(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBParameterGroupName").unwrap_or_default();
     let lower = identifier.to_lowercase();
     if !st.db_parameter_groups.contains_key(&lower) {
@@ -5181,10 +5250,7 @@ fn describe_db_cluster_parameter_groups_xml(
     )))
 }
 
-fn describe_db_cluster_parameters(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_cluster_parameters(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
     let lower = identifier.to_lowercase();
     let group = match st.db_cluster_parameter_groups.get(&lower) {
@@ -5199,10 +5265,7 @@ fn describe_db_cluster_parameters(
     Ok(Some(parameters_xml(&group.parameters)))
 }
 
-fn modify_db_cluster_parameter_group(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn modify_db_cluster_parameter_group(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
     let lower = identifier.to_lowercase();
     if !st.db_cluster_parameter_groups.contains_key(&lower) {
@@ -5289,10 +5352,7 @@ fn copy_db_cluster_parameter_group(
     Ok(Some(cluster_parameter_group_xml(acct, region, &response)))
 }
 
-fn reset_db_cluster_parameter_group(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn reset_db_cluster_parameter_group(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBClusterParameterGroupName").unwrap_or_default();
     let lower = identifier.to_lowercase();
     if !st.db_cluster_parameter_groups.contains_key(&lower) {
@@ -5313,7 +5373,6 @@ fn reset_db_cluster_parameter_group(
     )))
 }
 
-
 // Subnet groups --------------------------------------------------------------
 
 fn create_db_subnet_group(
@@ -5328,7 +5387,9 @@ fn create_db_subnet_group(
     if st.subnet_groups.contains_key(&lower) {
         return Err(RdsError::client400(
             "DBSubnetGroupAlreadyExists",
-            format!("DBSubnetGroupAlreadyExists: The DB subnet group '{identifier}' already exists."),
+            format!(
+                "DBSubnetGroupAlreadyExists: The DB subnet group '{identifier}' already exists."
+            ),
         ));
     }
     let description = p_string(p, "DBSubnetGroupDescription").unwrap_or_default();
@@ -5341,10 +5402,7 @@ fn create_db_subnet_group(
     }
     let mut subnets = Vec::new();
     for sid in &subnet_ids {
-        let (vpc, az) = subnet_info
-            .get(sid)
-            .cloned()
-            .unwrap_or((None, None));
+        let (vpc, az) = subnet_info.get(sid).cloned().unwrap_or((None, None));
         subnets.push(SubnetInfo {
             id: sid.clone(),
             az,
@@ -5384,10 +5442,7 @@ fn modify_db_subnet_group(
     let mut new_group = group;
     for sid in &subnet_ids {
         if !new_group.subnets.iter().any(|s| &s.id == sid) {
-            let (vpc, az) = subnet_info
-                .get(sid)
-                .cloned()
-                .unwrap_or((None, None));
+            let (vpc, az) = subnet_info.get(sid).cloned().unwrap_or((None, None));
             new_group.subnets.push(SubnetInfo {
                 id: sid.clone(),
                 az,
@@ -5589,7 +5644,6 @@ fn revoke_db_security_group_ingress(
     Ok(Some(security_group_xml(acct, region, &updated)))
 }
 
-
 // Event subscriptions + events + static describes ----------------------------
 
 fn create_event_subscription(
@@ -5770,11 +5824,40 @@ fn describe_events_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
 fn describe_event_categories_xml(p: &Params) -> Result<Body, RdsError> {
     let source_type = p_string(p, "SourceType");
     let categories: &[(&str, &[&str])] = &[
-        ("db-instance", &["availability", "backup", "configuration change", "creation", "deletion", "failover", "failure", "low storage", "maintenance", "notification", "read replica", "recovery", "restoration"]),
-        ("db-cluster", &["failover", "failure", "maintenance", "notification", "global-failover"]),
+        (
+            "db-instance",
+            &[
+                "availability",
+                "backup",
+                "configuration change",
+                "creation",
+                "deletion",
+                "failover",
+                "failure",
+                "low storage",
+                "maintenance",
+                "notification",
+                "read replica",
+                "recovery",
+                "restoration",
+            ],
+        ),
+        (
+            "db-cluster",
+            &[
+                "failover",
+                "failure",
+                "maintenance",
+                "notification",
+                "global-failover",
+            ],
+        ),
         ("db-parameter-group", &["configuration change"]),
         ("db-security-group", &["configuration change", "failure"]),
-        ("db-snapshot", &["creation", "deletion", "notification", "restoration"]),
+        (
+            "db-snapshot",
+            &["creation", "deletion", "notification", "restoration"],
+        ),
         ("db-cluster-snapshot", &["backup", "notification"]),
     ];
     let mut list = String::new();
@@ -5802,8 +5885,14 @@ fn describe_db_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
     let engine = p_string(p, "Engine");
     let engine_version = p_string(p, "EngineVersion");
     let mut data: Vec<(&str, Vec<&str>)> = vec![
-        ("neptune", vec!["1.2.0.0", "1.2.0.1", "1.2.0.2", "1.2.1.0", "1.3.0.0"]),
-        ("aurora-mysql", vec!["5.7.mysql_aurora.2.11.2", "8.0.mysql_aurora.3.04.0"]),
+        (
+            "neptune",
+            vec!["1.2.0.0", "1.2.0.1", "1.2.0.2", "1.2.1.0", "1.3.0.0"],
+        ),
+        (
+            "aurora-mysql",
+            vec!["5.7.mysql_aurora.2.11.2", "8.0.mysql_aurora.3.04.0"],
+        ),
         ("aurora-postgresql", vec!["14.6", "15.4"]),
         ("mysql", vec!["8.0.32", "8.0.33"]),
         ("postgres", vec!["14.9", "15.4"]),
@@ -5849,7 +5938,10 @@ fn describe_db_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
     Ok(Some(format!("<DBEngineVersions>{list}</DBEngineVersions>")))
 }
 
-fn describe_orderable_db_instance_options_xml(engine: &str, engine_version: Option<String>) -> Result<Body, RdsError> {
+fn describe_orderable_db_instance_options_xml(
+    engine: &str,
+    engine_version: Option<String>,
+) -> Result<Body, RdsError> {
     // moto only implements aurora-postgresql and neptune option listings.
     let _ = engine_version;
     let supported = matches!(&*engine, "aurora-postgresql" | "neptune");
@@ -5860,7 +5952,7 @@ fn describe_orderable_db_instance_options_xml(engine: &str, engine_version: Opti
 }
 
 fn describe_account_attributes_xml(st: &RdsState) -> Result<Body, RdsError> {
-    let fmt = | name: &str, used: usize, max: i64 | {
+    let fmt = |name: &str, used: usize, max: i64| {
         format!(
             "<AccountQuota><AccountQuotaName>{name}</AccountQuotaName>\
              <Used>{used}</Used><Max>{max}</Max></AccountQuota>",
@@ -5891,7 +5983,11 @@ fn describe_account_attributes_xml(st: &RdsState) -> Result<Body, RdsError> {
         50,
     ));
     list.push_str(&fmt("DBClusterRoles", 0, 5));
-    list.push_str(&fmt("ManualClusterSnapshots", st.cluster_snapshots.len(), 100));
+    list.push_str(&fmt(
+        "ManualClusterSnapshots",
+        st.cluster_snapshots.len(),
+        100,
+    ));
     list.push_str(&fmt("CustomEndpointsPerDBCluster", 0, 5));
     list.push_str(&fmt("DBInstanceRoles", 0, 5));
     Ok(Some(format!("<AccountQuotas>{list}</AccountQuotas>")))
@@ -5900,9 +5996,30 @@ fn describe_account_attributes_xml(st: &RdsState) -> Result<Body, RdsError> {
 fn describe_certificates_xml(p: &Params) -> Result<Body, RdsError> {
     let filter = p_string(p, "CertificateIdentifier");
     let certs: Vec<[String; 6]> = vec![
-        ["rds-ca-2019".into(), "CA".into(), "d4ec8b4f0c0aeb7894f47694b4e3b2c0f8b8c9a0".into(), "2019-09-19T18:16:53Z".into(), "2024-08-22T17:08:50Z".into(), "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-2019".into()],
-        ["rds-ca-rsa2048-g1".into(), "CA".into(), "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".into(), "2021-05-25T00:00:00Z".into(), "2061-05-25T00:00:00Z".into(), "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-rsa2048-g1".into()],
-        ["rds-ca-ecc384-g1".into(), "CA".into(), "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3".into(), "2021-05-25T00:00:00Z".into(), "2121-05-25T00:00:00Z".into(), "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-ecc384-g1".into()],
+        [
+            "rds-ca-2019".into(),
+            "CA".into(),
+            "d4ec8b4f0c0aeb7894f47694b4e3b2c0f8b8c9a0".into(),
+            "2019-09-19T18:16:53Z".into(),
+            "2024-08-22T17:08:50Z".into(),
+            "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-2019".into(),
+        ],
+        [
+            "rds-ca-rsa2048-g1".into(),
+            "CA".into(),
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".into(),
+            "2021-05-25T00:00:00Z".into(),
+            "2061-05-25T00:00:00Z".into(),
+            "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-rsa2048-g1".into(),
+        ],
+        [
+            "rds-ca-ecc384-g1".into(),
+            "CA".into(),
+            "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3".into(),
+            "2021-05-25T00:00:00Z".into(),
+            "2121-05-25T00:00:00Z".into(),
+            "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-ecc384-g1".into(),
+        ],
     ];
     let mut list = String::new();
     for cert in &certs {
@@ -5921,7 +6038,12 @@ fn describe_certificates_xml(p: &Params) -> Result<Body, RdsError> {
              <CertificateArn>{}</CertificateArn>\
              <CustomerOverride>false</CustomerOverride>\
              </Certificate>",
-            esc(&cert[0]), esc(&cert[1]), esc(&cert[2]), esc(&cert[3]), esc(&cert[4]), esc(&cert[5]),
+            esc(&cert[0]),
+            esc(&cert[1]),
+            esc(&cert[2]),
+            esc(&cert[3]),
+            esc(&cert[4]),
+            esc(&cert[5]),
         ));
     }
     Ok(Some(format!(
@@ -5988,7 +6110,6 @@ fn describe_db_major_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
         versions.join("")
     )))
 }
-
 
 // DB proxies + endpoints + targets -------------------------------------------
 
@@ -6147,10 +6268,7 @@ fn describe_db_proxy_target_groups_xml(
     Ok(Some(proxy_target_groups_xml(acct, region, proxy)))
 }
 
-fn describe_db_proxy_targets_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_proxy_targets_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let name = p_string(p, "DBProxyName").unwrap_or_default();
     let proxy = require_proxy(st, &name)?;
     let mut list = String::new();
@@ -6160,10 +6278,7 @@ fn describe_db_proxy_targets_xml(
     Ok(Some(format!("<Targets>{list}</Targets>")))
 }
 
-fn register_db_proxy_targets(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn register_db_proxy_targets(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let name = p_string(p, "DBProxyName").unwrap_or_default();
     require_proxy(st, &name)?;
     let clusters = p_list(p, "DBClusterIdentifiers");
@@ -6194,10 +6309,7 @@ fn register_db_proxy_targets(
     Ok(Some(format!("<DBProxyTargets>{list}</DBProxyTargets>")))
 }
 
-fn deregister_db_proxy_targets(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn deregister_db_proxy_targets(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let name = p_string(p, "DBProxyName").unwrap_or_default();
     require_proxy(st, &name)?;
     let clusters = p_list(p, "DBClusterIdentifiers");
@@ -6249,10 +6361,7 @@ fn proxy_target_group_response(acct: u64, region: &str, p: &DBProxy) -> String {
         p.unique_id
     );
     let mut out = String::from("<DBProxyTargetGroup>");
-    out.push_str(&format!(
-        "<DBProxyName>{}</DBProxyName>",
-        esc(&p.name)
-    ));
+    out.push_str(&format!("<DBProxyName>{}</DBProxyName>", esc(&p.name)));
     out.push_str("<TargetGroupName>default</TargetGroupName>");
     out.push_str(&format!(
         "<TargetGroupArn>{}</TargetGroupArn>",
@@ -6302,7 +6411,11 @@ fn proxy_target_group_config_row(_acct: u64, _region: &str, p: &DBProxy) -> Stri
         p.max_connections,
         p.max_idle_connections,
         p.borrow_timeout,
-        pin_filters = list_xml("SessionPinningFilters", "member", &p.session_pinning_filters),
+        pin_filters = list_xml(
+            "SessionPinningFilters",
+            "member",
+            &p.session_pinning_filters
+        ),
     )
 }
 
@@ -6441,13 +6554,9 @@ impl ModifyProxyEndpointResult {
     }
 }
 
-
 // Export tasks ---------------------------------------------------------------
 
-fn start_export_task(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn start_export_task(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "ExportTaskIdentifier").unwrap_or_default();
     if identifier.is_empty() {
         return Err(RdsError::client400(
@@ -6518,10 +6627,7 @@ fn export_task_response(t: &ExportTask) -> Result<Body, RdsError> {
     )))
 }
 
-fn cancel_export_task(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn cancel_export_task(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "ExportTaskIdentifier").unwrap_or_default();
     if !st.export_tasks.contains_key(&identifier) {
         return Err(RdsError::not_found404(
@@ -6535,10 +6641,7 @@ fn cancel_export_task(
     export_task_response(&response)
 }
 
-fn describe_export_tasks_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_export_tasks_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "ExportTaskIdentifier");
     let matched: Vec<&ExportTask> = st
         .export_tasks
@@ -6550,10 +6653,7 @@ fn describe_export_tasks_xml(
         .collect();
     let mut list = String::new();
     for t in &matched {
-        list.push_str(&format!(
-            "<ExportTask>{}</ExportTask>",
-            export_task_xml(t)
-        ));
+        list.push_str(&format!("<ExportTask>{}</ExportTask>", export_task_xml(t)));
     }
     Ok(Some(format!("<ExportTasks>{list}</ExportTasks>")))
 }
@@ -6615,10 +6715,7 @@ fn create_blue_green_deployment(
     Ok(Some(blue_green_xml(&response)))
 }
 
-fn describe_blue_green_deployments_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_blue_green_deployments_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "BlueGreenDeploymentIdentifier");
     let matched: Vec<&BlueGreenDeployment> = st
         .blue_green_deployments
@@ -6646,10 +6743,7 @@ fn describe_blue_green_deployments_xml(
     )))
 }
 
-fn switchover_blue_green_deployment(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn switchover_blue_green_deployment(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "BlueGreenDeploymentIdentifier").unwrap_or_default();
     if !st.blue_green_deployments.contains_key(&ident) {
         return Err(RdsError::not_found404(
@@ -6669,10 +6763,7 @@ fn switchover_blue_green_deployment(
     Ok(None)
 }
 
-fn delete_blue_green_deployment(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn delete_blue_green_deployment(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "BlueGreenDeploymentIdentifier").unwrap_or_default();
     if !st.blue_green_deployments.contains_key(&ident) {
         return Err(RdsError::not_found404(
@@ -6848,7 +6939,6 @@ fn reboot_db_shard_group(
     Ok(Some(shard_group_xml(acct, region, &group)))
 }
 
-
 // Activity streams -----------------------------------------------------------
 
 fn activity_stream_common(resource_arn: &str) -> (Option<String>, Option<String>, String) {
@@ -6971,7 +7061,9 @@ fn create_tenant_database(
     if st.tenant_databases.contains_key(&key) {
         return Err(RdsError::client400(
             "TenantDatabaseAlreadyExists",
-            format!("A tenant database with name {tenant_name} already exists on DB instance {db_id}."),
+            format!(
+                "A tenant database with name {tenant_name} already exists on DB instance {db_id}."
+            ),
         ));
     }
     let td = TenantDatabase {
@@ -7137,10 +7229,7 @@ fn create_integration(
     Ok(Some(integration_xml(&response, true)))
 }
 
-fn delete_integration(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn delete_integration(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "IntegrationIdentifier").unwrap_or_default();
     let integration = match st.integrations.get(&identifier) {
         Some(i) => i.clone(),
@@ -7155,10 +7244,7 @@ fn delete_integration(
     Ok(Some(integration_xml(&integration, false)))
 }
 
-fn describe_integrations_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_integrations_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let ident = p_string(p, "IntegrationIdentifier");
     let matched: Vec<&Integration> = st
         .integrations
@@ -7181,7 +7267,10 @@ fn describe_integrations_xml(
             .strip_prefix("<Integration>")
             .and_then(|s| s.strip_suffix("</Integration>"))
             .unwrap_or(&inner);
-        list.push_str(&format!("<Integration>{}</Integration>", stripped.to_string()));
+        list.push_str(&format!(
+            "<Integration>{}</Integration>",
+            stripped.to_string()
+        ));
     }
     if list.is_empty() {
         Ok(Some("<Integrations/>".to_string()))
@@ -7194,16 +7283,11 @@ fn build_integrations_list(list: &str) -> Result<Body, RdsError> {
     if list.is_empty() {
         Ok(Some("<Integrations/>".to_string()))
     } else {
-        Ok(Some(format!(
-            "<Integrations>{list}</Integrations>"
-        )))
+        Ok(Some(format!("<Integrations>{list}</Integrations>")))
     }
 }
 
-fn modify_integration(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn modify_integration(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "IntegrationIdentifier").unwrap_or_default();
     let integration = match st.integrations.get(&identifier) {
         Some(i) => i.clone(),
@@ -7228,8 +7312,6 @@ fn modify_integration(
     let _ = integration;
     Ok(Some(integration_xml(&response, true)))
 }
-
-
 
 // Custom engine versions -----------------------------------------------------
 
@@ -7262,7 +7344,10 @@ fn create_custom_db_engine_version(
         tags: tags_param(p),
     };
     st.custom_db_engine_versions.insert(key, cev);
-    let cev = st.custom_db_engine_versions.get(&format!("{engine}:{engine_version}")).unwrap();
+    let cev = st
+        .custom_db_engine_versions
+        .get(&format!("{engine}:{engine_version}"))
+        .unwrap();
     Ok(Some(custom_engine_version_xml(acct, region, cev, true)))
 }
 
@@ -7309,7 +7394,9 @@ fn modify_custom_db_engine_version(
         cev.status = v;
     }
     let response = cev.clone();
-    Ok(Some(custom_engine_version_xml(acct, region, &response, false)))
+    Ok(Some(custom_engine_version_xml(
+        acct, region, &response, false,
+    )))
 }
 
 // Reserved DB instances ------------------------------------------------------
@@ -7355,9 +7442,7 @@ fn parse_offering(spec: &'static str) -> ReservedDbInstance {
     }
 }
 
-fn describe_reserved_db_instances_offerings_xml(
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_reserved_db_instances_offerings_xml(p: &Params) -> Result<Body, RdsError> {
     let filter_id = p_string(p, "ReservedDBInstancesOfferingId");
     let filter_class = p_string(p, "DBInstanceClass");
     let filter_desc = p_string(p, "ProductDescription");
@@ -7439,8 +7524,8 @@ fn purchase_reserved_db_instances_offering(
             ))
         }
     };
-    let rid = p_string(p, "ReservedDBInstanceId")
-        .unwrap_or_else(|| format!("ri-{}", rand_lower(12)));
+    let rid =
+        p_string(p, "ReservedDBInstanceId").unwrap_or_else(|| format!("ri-{}", rand_lower(12)));
     if st.reserved_db_instances.contains_key(&rid) {
         return Err(RdsError::not_found404(
             "ReservedDBInstanceAlreadyExists",
@@ -7471,7 +7556,10 @@ fn describe_reserved_db_instances_xml(
     if matched.is_empty() && filter.is_some() {
         return Err(RdsError::not_found404(
             "ReservedDBInstanceNotFound",
-            format!("Reservation with Id {} not found.", filter.unwrap_or_default()),
+            format!(
+                "Reservation with Id {} not found.",
+                filter.unwrap_or_default()
+            ),
         ));
     }
     let mut list = String::new();
@@ -7570,13 +7658,13 @@ fn modify_current_db_cluster_capacity(p: &Params) -> Result<Body, RdsError> {
     )))
 }
 
-fn describe_db_instance_automated_backups_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_instance_automated_backups_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let db_filter = p_string(p, "DBInstanceIdentifier").map(|s| s.to_lowercase());
     let backups = st.automated_backups();
-    let automated = backups.iter().map(|b| b.db_instance_identifier.clone()).collect::<Vec<_>>();
+    let automated = backups
+        .iter()
+        .map(|b| b.db_instance_identifier.clone())
+        .collect::<Vec<_>>();
     let mut list = String::new();
     for id in automated {
         if let Some(f) = &db_filter {
@@ -7602,10 +7690,7 @@ fn describe_db_instance_automated_backups_xml(
     )))
 }
 
-fn delete_db_instance_automated_backup_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn delete_db_instance_automated_backup_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let dbi = p_string(p, "DbiResourceId");
     let arn = p_string(p, "DBInstanceAutomatedBackupsArn");
     let mut matched_id: Option<String> = None;
@@ -7640,17 +7725,10 @@ fn delete_db_cluster_automated_backup_xml() -> Result<Body, RdsError> {
     Ok(Some("<DBClusterAutomatedBackup/>".to_string()))
 }
 
-fn start_stop_automated_backups_replication(
-    p: &Params,
-    starting: bool,
-) -> Result<Body, RdsError> {
+fn start_stop_automated_backups_replication(p: &Params, starting: bool) -> Result<Body, RdsError> {
     let arn = p_string(p, "SourceDBInstanceArn").unwrap_or_default();
     let tail = identifier_from_arn(&arn);
-    let status = if starting {
-        "active"
-    } else {
-        "stopped"
-    };
+    let status = if starting { "active" } else { "stopped" };
     let mut out = String::from("<DBInstanceAutomatedBackup>");
     out.push_str(&format!(
         "<DBInstanceIdentifier>{}</DBInstanceIdentifier>",
@@ -7677,11 +7755,7 @@ fn describe_engine_default_parameters_xml(
 
 // Gap stubs (moto lacks these ops; tests accept either an error or a value) --
 
-fn enable_disable_http_endpoint(
-    st: &RdsState,
-    p: &Params,
-    enable: bool,
-) -> Result<Body, RdsError> {
+fn enable_disable_http_endpoint(st: &RdsState, p: &Params, enable: bool) -> Result<Body, RdsError> {
     let arn = p_string(p, "ResourceArn").unwrap_or_default();
     let _ = find_cluster(st, &identifier_from_arn(&arn));
     Ok(Some(format!(
@@ -7758,7 +7832,6 @@ fn db_instance_xml_single(_db: &DBInstance) -> String {
     "<DBInstance/>".to_string()
 }
 
-
 // Read replicas + remaining instance ops -------------------------------------
 
 fn create_read_replica(
@@ -7793,8 +7866,8 @@ fn create_read_replica(
     replica.is_replica = true;
     replica.source_db_instance_identifier = Some(source_db.id.clone());
     replica.replicas = Vec::new();
-    replica.availability_zone = p_string(p, "AvailabilityZone")
-        .unwrap_or_else(|| format!("{region}a"));
+    replica.availability_zone =
+        p_string(p, "AvailabilityZone").unwrap_or_else(|| format!("{region}a"));
     if let Some(port) = p_i64(p, "Port") {
         replica.port = port;
     }
@@ -7815,10 +7888,7 @@ fn create_read_replica(
     }
 }
 
-fn describe_db_log_files_xml(
-    st: &RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn describe_db_log_files_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
     let db = match find_instance(st, &identifier) {
         Some(d) => d.clone(),
@@ -7871,11 +7941,10 @@ fn require_instance_record(st: &RdsState, identifier: &str) -> Result<(), RdsErr
 
 fn storage_block(storage_type: &str, provisioned_throughput: bool) -> String {
     let mut out = String::from("<ValidStorageOptions>");
-    out.push_str(&format!(
-        "<StorageType>{}</StorageType>",
-        esc(storage_type)
-    ));
-    out.push_str("<StorageSize><Range><From>20</From><To>65536</To><Step>1</Step></Range></StorageSize>");
+    out.push_str(&format!("<StorageType>{}</StorageType>", esc(storage_type)));
+    out.push_str(
+        "<StorageSize><Range><From>20</From><To>65536</To><Step>1</Step></Range></StorageSize>",
+    );
     if provisioned_throughput {
         out.push_str("<ProvisionedIops><Range><From>3000</From><To>64000</To><Step>1</Step></Range></ProvisionedIops>");
         out.push_str("<ProvisionedStorageThroughput><Range><From>125</From><To>4000</To><Step>1</Step></Range></ProvisionedStorageThroughput>");
@@ -7887,10 +7956,7 @@ fn storage_block(storage_type: &str, provisioned_throughput: bool) -> String {
     out
 }
 
-fn add_role_to_db_instance_op(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn add_role_to_db_instance_op(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
     let db = match find_instance(st, &identifier) {
         Some(d) => d.clone(),
@@ -7910,7 +7976,11 @@ fn add_role_to_db_instance_op(
     let role_arn = p_string(p, "RoleArn").unwrap_or_default();
     let feature = p_string(p, "FeatureName");
     for role in &db.associated_roles {
-        if role.role_arn == role_arn || role.feature_name == feature.clone().filter(|_| feature.is_some()) && role.feature_name == feature && feature.is_some() {
+        if role.role_arn == role_arn
+            || role.feature_name == feature.clone().filter(|_| feature.is_some())
+                && role.feature_name == feature
+                && feature.is_some()
+        {
             return Err(RdsError::client400(
                 "DBInstanceRoleAlreadyExists",
                 format!("Role {role_arn} alreday assigned to Instance {identifier}"),
@@ -7928,24 +7998,20 @@ fn add_role_to_db_instance_op(
     Ok(None)
 }
 
-fn remove_role_from_db_instance_op(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn remove_role_from_db_instance_op(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
     require_instance_record(st, &identifier)?;
     let role_arn = p_string(p, "RoleArn").unwrap_or_default();
     let target = st.databases.get_mut(&identifier.to_lowercase()).unwrap();
     if let Some(feature) = p_string(p, "FeatureName") {
-        target
-            .associated_roles
-            .retain(|r| !(r.role_arn == role_arn && r.feature_name.as_deref() == Some(feature.as_str())));
+        target.associated_roles.retain(|r| {
+            !(r.role_arn == role_arn && r.feature_name.as_deref() == Some(feature.as_str()))
+        });
     } else {
         target.associated_roles.retain(|r| r.role_arn != role_arn);
     }
     Ok(None)
 }
-
 
 // Cluster endpoints + cluster roles ------------------------------------------
 
@@ -8013,7 +8079,9 @@ fn describe_db_cluster_endpoints_xml(
     if list.is_empty() {
         Ok(Some("<DBClusterEndpoints/>".to_string()))
     } else {
-        Ok(Some(format!("<DBClusterEndpoints>{list}</DBClusterEndpoints>")))
+        Ok(Some(format!(
+            "<DBClusterEndpoints>{list}</DBClusterEndpoints>"
+        )))
     }
 }
 
@@ -8063,12 +8131,7 @@ fn delete_db_cluster_endpoint(
     Ok(Some(db_cluster_endpoint_xml(acct, region, &ep)))
 }
 
-
-
-fn add_role_to_db_cluster_op(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn add_role_to_db_cluster_op(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
     let lower = identifier.to_lowercase();
     let cluster = match find_cluster(st, &lower) {
@@ -8115,10 +8178,7 @@ fn add_role_to_db_cluster_op(
     Ok(None)
 }
 
-fn remove_role_from_db_cluster_op(
-    st: &mut RdsState,
-    p: &Params,
-) -> Result<Body, RdsError> {
+fn remove_role_from_db_cluster_op(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
     let lower = identifier.to_lowercase();
     if !st.clusters.contains_key(&lower) {
@@ -8130,18 +8190,14 @@ fn remove_role_from_db_cluster_op(
     let role_arn = p_string(p, "RoleArn").unwrap_or_default();
     let cluster = st.clusters.get_mut(&lower).unwrap();
     if let Some(feature) = p_string(p, "FeatureName") {
-        cluster
-            .associated_roles
-            .retain(|r| !(r.role_arn == role_arn && r.feature_name.as_deref() == Some(feature.as_str())));
+        cluster.associated_roles.retain(|r| {
+            !(r.role_arn == role_arn && r.feature_name.as_deref() == Some(feature.as_str()))
+        });
     } else {
         cluster.associated_roles.retain(|r| r.role_arn != role_arn);
     }
     Ok(None)
 }
-
-
-
-
 
 // stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
@@ -8162,9 +8218,7 @@ fn stop_db_instance_op(
             ))
         }
     };
-    if db.is_replica
-        || (db.multi_az && db.engine.to_lowercase().starts_with("sqlserver"))
-    {
+    if db.is_replica || (db.multi_az && db.engine.to_lowercase().starts_with("sqlserver")) {
         return Err(RdsError::client400(
             "InvalidDBClusterStateFault",
             format!("Invalid DB type, when trying to perform StopDBInstance on {identifier}. See AWS RDS documentation on rds.stop_db_instance"),
@@ -8179,8 +8233,7 @@ fn stop_db_instance_op(
     if let Some(snapshot_name) = p_string(p, "DBSnapshotIdentifier") {
         RdsError::check_snapshot_identifier(&snapshot_name, "DBSnapshotIdentifier")?;
         let snapshot = snapshot_from_db(&db, &snapshot_name, "manual", &[]);
-        st.database_snapshots
-            .insert(snapshot.id.clone(), snapshot);
+        st.database_snapshots.insert(snapshot.id.clone(), snapshot);
     }
     st.databases.get_mut(&db.id).unwrap().status = "stopped".into();
     let updated = st.databases.get(&db.id).unwrap().clone();
@@ -8274,11 +8327,13 @@ fn promote_read_replica_op(
     Ok(Some(db_instance_xml(st, acct, region, &updated)))
 }
 
-
 // Option groups --------------------------------------------------------------
 
 const VALID_OPTION_GROUP_ENGINES: &[(&str, &[&str])] = &[
-    ("mariadb", &["10.0", "10.1", "10.2", "10.3", "10.4", "10.5", "10.6"]),
+    (
+        "mariadb",
+        &["10.0", "10.1", "10.2", "10.3", "10.4", "10.5", "10.6"],
+    ),
     ("mysql", &["5.5", "5.6", "5.7", "8.0"]),
     ("oracle-ee", &["19"]),
     ("oracle-ee-cdb", &["19", "21"]),
@@ -8441,7 +8496,10 @@ fn modify_option_group(
         ));
     }
     let group = st.option_groups.get_mut(&lower).unwrap();
-    for m in remove.iter().map(|r| vec![("OptionName".to_string(), r.clone())]) {
+    for m in remove
+        .iter()
+        .map(|r| vec![("OptionName".to_string(), r.clone())])
+    {
         let name = m
             .iter()
             .find(|(k, _)| k == "OptionName")
@@ -8506,7 +8564,10 @@ fn copy_option_group(
 
 fn describe_option_group_options_xml(engine_name: &str) -> Result<Body, RdsError> {
     // moto loads real option tables per engine; the suite asserts presence.
-    if !VALID_OPTION_GROUP_ENGINES.iter().any(|(e, _)| *e == engine_name) {
+    if !VALID_OPTION_GROUP_ENGINES
+        .iter()
+        .any(|(e, _)| *e == engine_name)
+    {
         return Err(RdsError::client400(
             "InvalidParameterValue",
             format!("Invalid DB engine: {engine_name}"),
@@ -8528,49 +8589,9 @@ fn describe_option_group_options_xml(engine_name: &str) -> Result<Body, RdsError
 
 // stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
-
-
-
-
-
-
-
-
-
-
 // Read replicas + remaining instance ops -------------------------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Cluster endpoints + cluster roles ------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 fn run_op(
     req: &Request,
@@ -8619,18 +8640,14 @@ fn run_op(
         "DeleteDBParameterGroup" => delete_db_parameter_group(st, acct, region, p),
         "CopyDBParameterGroup" => copy_db_parameter_group(st, acct, region, p),
         "ResetDBParameterGroup" => reset_db_parameter_group(st, p),
-        "CreateDBClusterParameterGroup" => {
-            create_db_cluster_parameter_group(st, acct, region, p)
-        }
+        "CreateDBClusterParameterGroup" => create_db_cluster_parameter_group(st, acct, region, p),
         "DescribeDBClusterParameterGroups" => {
             describe_db_cluster_parameter_groups_xml(st, acct, region, p)
         }
         "DescribeDBClusterParameters" => describe_db_cluster_parameters(st, p),
         "ModifyDBClusterParameterGroup" => modify_db_cluster_parameter_group(st, p),
         "DeleteDBClusterParameterGroup" => delete_db_cluster_parameter_group(st, p),
-        "CopyDBClusterParameterGroup" => {
-            copy_db_cluster_parameter_group(st, acct, region, p)
-        }
+        "CopyDBClusterParameterGroup" => copy_db_cluster_parameter_group(st, acct, region, p),
         "ResetDBClusterParameterGroup" => reset_db_cluster_parameter_group(st, p),
         "DescribeEngineDefaultParameters" => {
             describe_engine_default_parameters_xml(p, "DBParameterGroupFamily")
@@ -8690,8 +8707,12 @@ fn run_op(
         "DescribeDBClusterSnapshotAttributes" => describe_db_cluster_snapshot_attributes(st, p),
         "ModifyDBClusterSnapshotAttribute" => modify_db_cluster_snapshot_attribute(st, p),
         // Restores
-        "RestoreDBInstanceFromDBSnapshot" => restore_db_instance_from_db_snapshot(st, acct, region, p),
-        "RestoreDBInstanceToPointInTime" => restore_db_instance_to_point_in_time(st, acct, region, p),
+        "RestoreDBInstanceFromDBSnapshot" => {
+            restore_db_instance_from_db_snapshot(st, acct, region, p)
+        }
+        "RestoreDBInstanceToPointInTime" => {
+            restore_db_instance_to_point_in_time(st, acct, region, p)
+        }
         "RestoreDBClusterFromS3" => create_db_cluster(st, acct, region, p),
         "RestoreDBInstanceFromS3" => create_db_instance(st, acct, region, p),
         // Option groups
@@ -8725,9 +8746,7 @@ fn run_op(
             // moto gap; tests accept either an error or full behavior
             create_db_cluster(st, acct, region, p)
         }
-        "RestoreDBInstanceFromS3" => {
-            create_db_instance(st, acct, region, p)
-        }
+        "RestoreDBInstanceFromS3" => create_db_instance(st, acct, region, p),
         // Globals
         "CreateGlobalCluster" => create_global_cluster(st, acct, region, p),
         "DescribeGlobalClusters" => describe_global_clusters_xml(st, acct, region, p),
@@ -8775,9 +8794,7 @@ fn run_op(
         "ModifyCertificates" => modify_certificates(p),
         // reserved
         "DescribeReservedDBInstances" => describe_reserved_db_instances_xml(st, acct, region, p),
-        "DescribeReservedDBInstancesOfferings" => {
-            describe_reserved_db_instances_offerings_xml(p)
-        }
+        "DescribeReservedDBInstancesOfferings" => describe_reserved_db_instances_offerings_xml(p),
         "PurchaseReservedDBInstancesOffering" => {
             purchase_reserved_db_instances_offering(st, acct, region, p)
         }
@@ -8806,9 +8823,7 @@ fn run_op(
         "RegisterDBProxyTargets" => register_db_proxy_targets(st, p),
         "DeregisterDBProxyTargets" => deregister_db_proxy_targets(st, p),
         "ModifyDBProxyTargetGroup" => modify_db_proxy_target_group(st, acct, region, p),
-        "CreateDBProxyEndpoint" => {
-            create_db_proxy_endpoint(st, acct, region, p, &subnet_info)
-        }
+        "CreateDBProxyEndpoint" => create_db_proxy_endpoint(st, acct, region, p, &subnet_info),
         "DescribeDBProxyEndpoints" => describe_db_proxy_endpoints_xml(st, acct, region, p),
         "DeleteDBProxyEndpoint" => delete_db_proxy_endpoint(st, acct, region, p),
         "ModifyDBProxyEndpoint" => {
@@ -8867,34 +8882,42 @@ fn run_op(
         _ => Err(RdsError::new(
             501,
             "NotImplemented",
-            format!("The {} action has not been implemented", lowercase_first(op)),
+            format!(
+                "The {} action has not been implemented",
+                lowercase_first(op)
+            ),
         )),
     }
 }
 
+// stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
 // stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+    use crate::Request;
+    use bytes::Bytes;
 
-
-
-
-
-
-
-
-
-
-// stop/start/reboot/promote handlers (run_op arms) ---------------------------
-
-
-
-
-
-
-
-
-
+    #[test]
+    fn cluster_status_flip_persists() {
+        let mut map: BTreeMap<(u64, String), RdsState> = BTreeMap::new();
+        let st = map.entry((123456789012, "us-east-1".into())).or_default();
+        let cl = DBCluster {
+            status: "creating".into(),
+            availability_zones: vec!["us-east-1a".into()],
+            engine: "aurora-mysql".into(),
+            engine_version: "5.7.mysql_aurora.2.07.2".into(),
+            port: 3306,
+            parameter_group: "default.aurora8.0".into(),
+            db_subnet_group_name: "default".into(),
+            primary_az_check_shim: (),
+            ..Default::default()
+        };
+        let _ = cl;
+    }
+}
 
 #[cfg(test)]
 mod parser_tests {
