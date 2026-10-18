@@ -52,6 +52,11 @@ impl MotoProxy {
             url.push('?');
             url.push_str(&req.query_string);
         }
+        // Forward the original path + query: REST-JSON services (appmesh,
+        // amp, appsync, greengrass, ...) route on the request URI inside moto,
+        // so posting to "/" would 501 every resource-path call. The original
+        // path is what the moto sidecar's werkzeug routing table matches on.
+        let url = format!("{}{}?{}", self.base_url, req.path, req.query_string);
 
         // Build the proxy request
         let mut proxy_req = self
