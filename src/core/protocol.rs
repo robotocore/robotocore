@@ -471,9 +471,7 @@ fn resolve_rest_operation(service: &str, method: &str, path: &str) -> Option<&'s
                 if after.contains("/versions") {
                     if m == "POST" { Some("PublishLayerVersion") }
                     else if m == "GET" && after.contains("/versions/") {
-                        // /layers/{arn}/versions/{ver} or /layers/{arn}/versions/{ver}/content
-                        if after.ends_with("/content") { Some("GetLayerVersion") }
-                        else { Some("GetLayerVersion") }
+                        Some("GetLayerVersion")
                     } else if m == "GET" { Some("ListLayerVersions") }
                     else if m == "DELETE" { Some("DeleteLayerVersion") }
                     else { None }

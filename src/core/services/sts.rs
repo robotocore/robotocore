@@ -277,7 +277,7 @@ fn handle_get_delegated_access_token(
 
 /// GetWebIdentityToken operation.
 fn handle_get_web_identity_token(
-    req: &ParsedRequest,
+    _req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
     let body = r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetWebIdentityTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
