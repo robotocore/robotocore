@@ -307,14 +307,12 @@ pub fn execute_python(
 
     // The child died or finished — drain threads run until EOF, but EOF
     // never arrives while a grandchild inherited the pipes, so collecting
-    // is bounded by a shared absolute deadline; after it passes the drained
-    // text is abandoned alongside the drain threads.
-    let drain_deadline = if timed_out {
-        // The function timeout already elapsed; allow a short grace only.
-        std::time::Instant::now() + std::time::Duration::from_secs(1)
-    } else {
-        deadline
-    };
+    // is bounded. The killed path allows a short grace; the normal-exit
+    // path also keeps only a short grace (the child is reaped, so nothing
+    // new can arrive on a pipe whose producer is gone) instead of waiting
+    // out the whole remaining timeout budget.
+    let drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let _ = timed_out; // still consulted below for the kill path
     let stdout = collect_by(&stdout_rx, drain_deadline);
     let stderr = collect_by(&stderr_rx, drain_deadline);
 

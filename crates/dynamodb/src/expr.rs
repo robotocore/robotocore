@@ -294,10 +294,19 @@ fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
     }
     let digits = format!("{int_part}{frac_part}");
     let scale = frac_part.len() as i64 - exp;
+    // An exponent can scale the digit string enormously ("1e2000000000");
+    // cap it so a hostile-but-legal input cannot trigger multi-GB
+    // allocations. Digits stay exact; padding beyond the bound falls back
+    // to an inexact (f64) value in the callers.
+    const MAX_SCALE_SHIFT: i64 = 256;
     if scale >= 0 {
-        Some((neg, digits, scale))
+        Some((neg, digits, scale.min(MAX_SCALE_SHIFT)))
     } else {
-        Some((neg, digits + &"0".repeat((-scale) as usize), 0))
+        Some((
+            neg,
+            digits + &"0".repeat((-scale).min(MAX_SCALE_SHIFT) as usize),
+            0,
+        ))
     }
 }
 
@@ -1372,7 +1381,13 @@ fn set_in_typed(cur: &mut Value, segs: &[String], val: Value) -> Result<(), Stri
             return Ok(());
         }
         if at == arr.len() {
-            arr.push(json!({ "M": {} }));
+            // Auto-create the container that matches the NEXT path segment
+            // (map or list), mirroring the choice at the end of this fn.
+            if index_of(&rest[0]).is_some() {
+                arr.push(json!({ "L": [] }));
+            } else {
+                arr.push(json!({ "M": {} }));
+            }
         }
         return set_in_typed(&mut arr[at], rest, val);
     }
