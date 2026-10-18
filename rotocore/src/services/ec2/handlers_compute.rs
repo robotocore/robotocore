@@ -1,10 +1,16 @@
 //! EC2 handler group 4: compute — instances, images, volumes, snapshots,
 //! key pairs, launch templates, placement groups.
-
+#![allow(
+    clippy::format_in_format_args,
+    clippy::type_complexity,
+    clippy::if_same_then_else,
+    clippy::single_match,
+    clippy::map_identity
+)]
 #![allow(unused_variables)]
 
 use super::handlers::{filter_passes, ok_xml, tag_candidates, wire_tags};
-use super::state::{idhex, Bdm, EniAttachment, Instance, IpPermission, Volume, VolumeAttachment};
+use super::state::{idhex, Bdm, EniAttachment, Instance, Volume, VolumeAttachment};
 use super::{ec2_error, ec2_xml, now_iso, tags_xml, with_state, Params};
 use crate::proto::xml_escape;
 use crate::{Request, Response};
@@ -102,10 +108,7 @@ pub fn route(req: &Request, params: &P) -> Response {
 // Instances
 // ---------------------------------------------------------------------------
 
-fn require_instance<'a>(
-    state: &'a mut super::state::Ec2State,
-    id: &str,
-) -> Result<usize, Response> {
+fn require_instance(state: &mut super::state::Ec2State, id: &str) -> Result<usize, Response> {
     match state.instances.iter().position(|i| i.id == id) {
         Some(i) => Ok(i),
         None => Err(ec2_error(
@@ -116,7 +119,12 @@ fn require_instance<'a>(
     }
 }
 
-pub fn instance_item(region: &str, account: u64, i: &Instance, sg_names: &[(String, String)]) -> String {
+pub fn instance_item(
+    region: &str,
+    account: u64,
+    i: &Instance,
+    sg_names: &[(String, String)],
+) -> String {
     let mut sg_items = String::new();
     for (gid, gname) in sg_names {
         let _ = write!(
@@ -182,7 +190,11 @@ fn run_instances(req: &Request, params: &P) -> Response {
     let user_data = params.get("UserData").map(|s| s.to_string());
     with_state(req, move |state| {
         // moto lets any ami id run; our image fleet covers the roster anyway.
-        let mut sg_ids: Vec<String> = params.list("SecurityGroupId").iter().map(|s| s.to_string()).collect();
+        let sg_ids: Vec<String> = params
+            .list("SecurityGroupId")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let mut sg_items: Vec<(String, String)> = Vec::new();
         let mut my_subnet = subnet_id.clone();
         if my_subnet.is_empty() {
@@ -194,8 +206,15 @@ fn run_instances(req: &Request, params: &P) -> Response {
                 .unwrap_or_default();
         }
         let (vpc_target, az_used) = match state.subnets.iter().find(|s| s.id == my_subnet) {
-            Some(s) => (s.vpc_id.clone(), if az_req.is_empty() { s.az.clone() } else { az_req.clone() }),
-            None => (String::new(), format!("{az_req}")),
+            Some(s) => (
+                s.vpc_id.clone(),
+                if az_req.is_empty() {
+                    s.az.clone()
+                } else {
+                    az_req.clone()
+                },
+            ),
+            None => (String::new(), az_req.to_string()),
         };
         for gid in &sg_ids {
             if let Some(sg) = state.security_groups.iter().find(|s| s.id == *gid) {
@@ -228,7 +247,12 @@ fn run_instances(req: &Request, params: &P) -> Response {
                     .map(|s| s.cidr.clone())
                     .unwrap_or_else(|| "172.31.0.0".into());
                 let base = cidr.split('.').collect::<Vec<_>>();
-                let a = base.first().copied().unwrap_or("172").parse().unwrap_or(172);
+                let a = base
+                    .first()
+                    .copied()
+                    .unwrap_or("172")
+                    .parse()
+                    .unwrap_or(172);
                 let b = base.get(1).copied().unwrap_or("31").parse().unwrap_or(31);
                 let c = base.get(2).copied().unwrap_or("0").parse().unwrap_or(0);
                 format!("{}.{}.{}.{}", a, b, c, (n >> 16) % 254 + 2)
@@ -320,12 +344,7 @@ fn run_instances(req: &Request, params: &P) -> Response {
                 .find(|i| i.id == instance_id)
                 .cloned()
                 .unwrap_or_default();
-            items.push_str(&instance_item(
-                &req.region,
-                req.account,
-                &inst,
-                &sg_items,
-            ));
+            items.push_str(&instance_item(&req.region, req.account, &inst, &sg_items));
         }
         ec2_xml(
             "RunInstancesResponse",
@@ -363,7 +382,11 @@ fn stable_hash(data: &[u8]) -> u32 {
 }
 
 fn describe_instances(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("InstanceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("InstanceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     let max_results = params.i64("MaxResults");
     let skip = params
@@ -424,7 +447,7 @@ fn describe_instances(req: &Request, params: &P) -> Response {
             format!("<reservationSet>{}</reservationSet>", body)
         };
         if let Some(mr) = max_results {
-            let consumed = skip + (mr as usize).max(0);
+            let consumed = skip + (mr as usize);
             if consumed < total {
                 body_out = format!("<nextToken>{}</nextToken>{}", consumed, body_out);
             }
@@ -445,7 +468,11 @@ fn instance_state_change(id: &str, code: i64, previous: &str, current: &str) -> 
 }
 
 fn terminate_instances(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("InstanceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("InstanceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     if ids.is_empty() {
         return ec2_error(
             400,
@@ -466,12 +493,19 @@ fn terminate_instances(req: &Request, params: &P) -> Response {
             let _ = &state.instances[pos];
             changes.push_str(&instance_state_change(id, 48, &was, "terminated"));
         }
-        ec2_xml("TerminateInstancesResponse", &format!("<instancesSet>{}</instancesSet>", changes))
+        ec2_xml(
+            "TerminateInstancesResponse",
+            &format!("<instancesSet>{}</instancesSet>", changes),
+        )
     })
 }
 
 fn stop_instances(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("InstanceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("InstanceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let mut changes = String::new();
         for id in &ids {
@@ -484,12 +518,19 @@ fn stop_instances(req: &Request, params: &P) -> Response {
             state.instances[pos].state_code = 80;
             changes.push_str(&instance_state_change(id, 80, &was, "stopped"));
         }
-        ec2_xml("StopInstancesResponse", &format!("<instancesSet>{}</instancesSet>", changes))
+        ec2_xml(
+            "StopInstancesResponse",
+            &format!("<instancesSet>{}</instancesSet>", changes),
+        )
     })
 }
 
 fn start_instances(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("InstanceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("InstanceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let mut changes = String::new();
         for id in &ids {
@@ -502,12 +543,19 @@ fn start_instances(req: &Request, params: &P) -> Response {
             state.instances[pos].state_code = 16;
             changes.push_str(&instance_state_change(id, 16, &was, "running"));
         }
-        ec2_xml("StartInstancesResponse", &format!("<instancesSet>{}</instancesSet>", changes))
+        ec2_xml(
+            "StartInstancesResponse",
+            &format!("<instancesSet>{}</instancesSet>", changes),
+        )
     })
 }
 
 fn describe_instance_status(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("InstanceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("InstanceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let ids = ids.clone();
         let mut items = String::new();
@@ -657,11 +705,12 @@ fn modify_instance_attribute(req: &Request, params: &P) -> Response {
         if let Some(b) = params.bool("SourceDestCheck.Value") {
             state.instances[pos].source_dest_check = b;
             // mirror into the primary eni
-            if let Some(e) = state
-                .enis
-                .iter_mut()
-                .find(|e| e.attached.as_ref().map(|a| a.instance_id == id).unwrap_or(false))
-            {
+            if let Some(e) = state.enis.iter_mut().find(|e| {
+                e.attached
+                    .as_ref()
+                    .map(|a| a.instance_id == id)
+                    .unwrap_or(false)
+            }) {
                 e.source_dest_check = b;
             }
         }
@@ -679,7 +728,11 @@ fn modify_instance_attribute(req: &Request, params: &P) -> Response {
 }
 
 fn set_monitoring(req: &Request, params: &P, enabled: bool) -> Response {
-    let ids: Vec<String> = params.list("InstanceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("InstanceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         for id in &ids {
             if let Some(pos) = state.instances.iter().position(|i| i.id == *id) {
@@ -695,7 +748,11 @@ fn set_monitoring(req: &Request, params: &P, enabled: bool) -> Response {
                 if enabled { "enabled" } else { "disabled" }
             );
         }
-        let root = if enabled { "MonitorInstancesResponse" } else { "UnmonitorInstancesResponse" };
+        let root = if enabled {
+            "MonitorInstancesResponse"
+        } else {
+            "UnmonitorInstancesResponse"
+        };
         ec2_xml(root, &out)
     })
 }
@@ -707,7 +764,7 @@ fn get_console_output(req: &Request, params: &P) -> Response {
             return require_instance(state, &id).err().unwrap();
         }
         let text = "Linux version 2.6.16-xenU (builder@patchbat.amazonsa) (gcc version 4.0.1 20050727 (Red Hat 4.0.1-5)) #1 SMP Thu Oct 26 08:41:26 SAST 2006".as_bytes();
-        let encoded = b64_encode(&text);
+        let encoded = b64_encode(text);
         ec2_xml(
             "GetConsoleOutputResponse",
             &format!(
@@ -728,10 +785,7 @@ fn get_password_data(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "GetPasswordDataResponse",
-            &format!(
-                "<instanceId>{}</instanceId>",
-                xml_escape(&id)
-            ),
+            &format!("<instanceId>{}</instanceId>", xml_escape(&id)),
         )
     })
 }
@@ -744,10 +798,7 @@ fn get_instance_uefi_data(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "GetInstanceUefiDataResponse",
-            &format!(
-                "<instanceId>{}</instanceId><data/>",
-                xml_escape(&id)
-            ),
+            &format!("<instanceId>{}</instanceId><data/>", xml_escape(&id)),
         )
     })
 }
@@ -801,7 +852,10 @@ fn modify_instance_metadata_options(req: &Request, params: &P) -> Response {
         if require_instance(state, &id).is_err() {
             return require_instance(state, &id).err().unwrap();
         }
-        ec2_xml("ModifyInstanceMetadataOptionsResponse", &format!("<instanceId>{}</instanceId>", xml_escape(&id)))
+        ec2_xml(
+            "ModifyInstanceMetadataOptionsResponse",
+            &format!("<instanceId>{}</instanceId>", xml_escape(&id)),
+        )
     })
 }
 
@@ -826,7 +880,10 @@ fn get_serial_console(req: &Request, params: &P) -> Response {
         let v = state.serial_console_access;
         ec2_xml(
             "GetSerialConsoleAccessStatusResponse",
-            &format!("<serialConsoleAccessEnabled>{}</serialConsoleAccessEnabled>", v),
+            &format!(
+                "<serialConsoleAccessEnabled>{}</serialConsoleAccessEnabled>",
+                v
+            ),
         )
     })
 }
@@ -836,7 +893,10 @@ fn set_serial_console(req: &Request, params: &P, on: bool) -> Response {
         state.serial_console_access = on;
         ec2_xml(
             "SerialConsoleAccessStatusResponse",
-            &format!("<serialConsoleAccessEnabled>{}</serialConsoleAccessEnabled>", on),
+            &format!(
+                "<serialConsoleAccessEnabled>{}</serialConsoleAccessEnabled>",
+                on
+            ),
         )
     })
 }
@@ -867,7 +927,7 @@ fn modify_instance_metadata_defaults(req: &Request, params: &P) -> Response {
 /// Minimal standard base64 (padding included).
 pub fn b64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b = [
             chunk[0],
@@ -927,10 +987,24 @@ mod amis {
             ..Default::default()
         }];
         super::super::state::Image {
-            id: a.get("ami_id").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-            name: a.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            description: a.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            state: a.get("state").and_then(|v| v.as_str()).unwrap_or("available").to_string(),
+            id: a
+                .get("ami_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            name: a
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            description: a
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            state: a
+                .get("state")
+                .and_then(|v| v.as_str())
+                .unwrap_or("available")
+                .to_string(),
             owner_id: a
                 .get("owner_id")
                 .and_then(|v| v.as_str())
@@ -958,10 +1032,26 @@ mod amis {
                 .and_then(|v| v.as_str())
                 .unwrap_or("hvm")
                 .to_string(),
-            hypervisor: a.get("hypervisor").and_then(|v| v.as_str()).unwrap_or("xen").to_string(),
-            image_type: a.get("image_type").and_then(|v| v.as_str()).unwrap_or("machine").to_string(),
-            platform: a.get("platform").and_then(|v| v.as_str()).unwrap_or("linux").to_string(),
-            sriov: a.get("sriov").and_then(|v| v.as_str()).unwrap_or("simple").to_string(),
+            hypervisor: a
+                .get("hypervisor")
+                .and_then(|v| v.as_str())
+                .unwrap_or("xen")
+                .to_string(),
+            image_type: a
+                .get("image_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("machine")
+                .to_string(),
+            platform: a
+                .get("platform")
+                .and_then(|v| v.as_str())
+                .unwrap_or("linux")
+                .to_string(),
+            sriov: a
+                .get("sriov")
+                .and_then(|v| v.as_str())
+                .unwrap_or("simple")
+                .to_string(),
             image_location: a
                 .get("image_location")
                 .and_then(|v| v.as_str())
@@ -972,7 +1062,9 @@ mod amis {
                 .and_then(|v| v.as_str())
                 .unwrap_or("RunInstances")
                 .to_string(),
-            block_device_mappings: if a.get("root_device_type").and_then(|v| v.as_str()) == Some("ebs") {
+            block_device_mappings: if a.get("root_device_type").and_then(|v| v.as_str())
+                == Some("ebs")
+            {
                 bdmv
             } else {
                 Vec::new()
@@ -984,33 +1076,93 @@ mod amis {
 
 pub fn image_item(i: &super::state::Image) -> String {
     let mut out = String::from("<item>");
-    let _ = write!(out, "<description>{}</description>", i.description.clone().unwrap_or_default());
-    let _ = write!(out, "<hypervisor>{}</hypervisor>", xml_escape(&i.hypervisor));
+    let _ = write!(
+        out,
+        "<description>{}</description>",
+        i.description.clone().unwrap_or_default()
+    );
+    let _ = write!(
+        out,
+        "<hypervisor>{}</hypervisor>",
+        xml_escape(&i.hypervisor)
+    );
     let _ = write!(out, "<imageId>{}</imageId>", xml_escape(&i.id));
-    let _ = write!(out, "<imageOwnerAlias>{}</imageOwnerAlias>", i.owner_alias.clone().unwrap_or_default());
-    let _ = write!(out, "<imageLocation>{}</imageLocation>", xml_escape(&i.image_location));
+    let _ = write!(
+        out,
+        "<imageOwnerAlias>{}</imageOwnerAlias>",
+        i.owner_alias.clone().unwrap_or_default()
+    );
+    let _ = write!(
+        out,
+        "<imageLocation>{}</imageLocation>",
+        xml_escape(&i.image_location)
+    );
     let _ = write!(out, "<imageType>{}</imageType>", xml_escape(&i.image_type));
     let _ = write!(out, "<isPublic>{}</isPublic>", i.is_public);
-    let _ = write!(out, "<kernelId>{}</kernelId>", i.kernel_id.clone().unwrap_or_default());
-    let _ = write!(out, "<name>{}</name>", xml_escape(i.name.clone().unwrap_or_default().as_str()));
+    let _ = write!(
+        out,
+        "<kernelId>{}</kernelId>",
+        i.kernel_id.clone().unwrap_or_default()
+    );
+    let _ = write!(
+        out,
+        "<name>{}</name>",
+        xml_escape(i.name.clone().unwrap_or_default().as_str())
+    );
     let _ = write!(out, "<ownerId>{}</ownerId>", i.owner_id);
-    let _ = write!(out, "<ownerAlias>{}</ownerAlias>", i.owner_alias.clone().unwrap_or_default());
+    let _ = write!(
+        out,
+        "<ownerAlias>{}</ownerAlias>",
+        i.owner_alias.clone().unwrap_or_default()
+    );
     let _ = write!(out, "<platform>{}</platform>", xml_escape(&i.platform));
-    let _ = write!(out, "<usageOperation>{}</usageOperation>", xml_escape(&i.usage_operation));
-    let _ = write!(out, "<architecture>{}</architecture>", xml_escape(&i.architecture));
-    let _ = write!(out, "<rootDeviceName>{}</rootDeviceName>", xml_escape(&i.root_device_name));
-    let _ = write!(out, "<rootDeviceType>{}</rootDeviceType>", xml_escape(&i.root_device_type));
+    let _ = write!(
+        out,
+        "<usageOperation>{}</usageOperation>",
+        xml_escape(&i.usage_operation)
+    );
+    let _ = write!(
+        out,
+        "<architecture>{}</architecture>",
+        xml_escape(&i.architecture)
+    );
+    let _ = write!(
+        out,
+        "<rootDeviceName>{}</rootDeviceName>",
+        xml_escape(&i.root_device_name)
+    );
+    let _ = write!(
+        out,
+        "<rootDeviceType>{}</rootDeviceType>",
+        xml_escape(&i.root_device_type)
+    );
     let _ = write!(out, "<state>{}</state>", xml_escape(&i.state));
     if !i.sriov.is_empty() {
-        let _ = write!(out, "<sriovNetSupport>{}</sriovNetSupport>", xml_escape(&i.sriov));
+        let _ = write!(
+            out,
+            "<sriovNetSupport>{}</sriovNetSupport>",
+            xml_escape(&i.sriov)
+        );
     }
-    let _ = write!(out, "<virtualizationType>{}</virtualizationType>", xml_escape(&i.virtualization_type));
+    let _ = write!(
+        out,
+        "<virtualizationType>{}</virtualizationType>",
+        xml_escape(&i.virtualization_type)
+    );
     out.push_str("<blockDeviceMapping>");
     for b in &i.block_device_mappings {
         out.push_str("<item>");
-        let _ = write!(out, "<deviceName>{}</deviceName>", xml_escape(&b.device_name));
+        let _ = write!(
+            out,
+            "<deviceName>{}</deviceName>",
+            xml_escape(&b.device_name)
+        );
         if b.virtual_name.is_some() && !b.virtual_name.as_deref().unwrap_or_default().is_empty() {
-            let _ = write!(out, "<virtualName>{}</virtualName>", xml_escape(b.virtual_name.clone().unwrap_or_default().as_str()));
+            let _ = write!(
+                out,
+                "<virtualName>{}</virtualName>",
+                xml_escape(b.virtual_name.clone().unwrap_or_default().as_str())
+            );
         }
         if b.ebs_volume_size.is_some() || b.ebs_snapshot_id.is_some() {
             out.push_str("<ebs>");
@@ -1021,9 +1173,17 @@ pub fn image_item(i: &super::state::Image) -> String {
                 let _ = write!(out, "<volumeSize>{}</volumeSize>", s);
             }
             if !b.ebs_volume_type.is_empty() {
-                let _ = write!(out, "<volumeType>{}</volumeType>", xml_escape(&b.ebs_volume_type));
+                let _ = write!(
+                    out,
+                    "<volumeType>{}</volumeType>",
+                    xml_escape(&b.ebs_volume_type)
+                );
             }
-            let _ = write!(out, "<deleteOnTermination>{}</deleteOnTermination>", b.ebs_delete_on_term);
+            let _ = write!(
+                out,
+                "<deleteOnTermination>{}</deleteOnTermination>",
+                b.ebs_delete_on_term
+            );
             if b.ebs_encrypted {
                 out.push_str("<encrypted>true</encrypted>");
             }
@@ -1038,9 +1198,17 @@ pub fn image_item(i: &super::state::Image) -> String {
 }
 
 fn describe_images(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("ImageId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("ImageId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let owners: Vec<String> = params.list("Owner").iter().map(|s| s.to_string()).collect();
-    let owner_ids: Vec<String> = params.list("OwnerId").iter().map(|s| s.to_string()).collect();
+    let owner_ids: Vec<String> = params
+        .list("OwnerId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let all_owners: Vec<String> = if owners.is_empty() { owner_ids } else { owners };
     let fs = super::handlers::filters(params);
     with_state(req, move |state| {
@@ -1051,7 +1219,11 @@ fn describe_images(req: &Request, params: &P) -> Response {
         let own_all = all_owners.is_empty();
         for a in amis::roster(&req.region).iter() {
             let img = amis::parse(a);
-            if !own_all && !(all_owners.iter().any(|o| o == "amazon" || *o == img.owner_id)) {
+            if !own_all
+                && !(all_owners
+                    .iter()
+                    .any(|o| o == "amazon" || *o == img.owner_id))
+            {
                 continue;
             }
             if !ids.is_empty() && !ids.contains(&img.id) {
@@ -1165,12 +1337,28 @@ fn register_image(req: &Request, params: &P) -> Response {
         for i in params.container_indices("BlockDeviceMapping") {
             let base = format!("BlockDeviceMapping.{}", i + 1);
             bdms.push(Bdm {
-                device_name: params.get(&format!("{base}.DeviceName")).unwrap_or_default().to_string(),
-                ebs_snapshot_id: params.get(&format!("{base}.Ebs.SnapshotId")).map(|s| s.to_string()),
-                ebs_volume_size: params.get(&format!("{base}.Ebs.VolumeSize")).and_then(|v| v.parse().ok()),
-                ebs_volume_type: params.get(&format!("{base}.Ebs.VolumeType")).unwrap_or("standard").to_string(),
-                ebs_delete_on_term: params.get(&format!("{base}.Ebs.DeleteOnTermination")).map(|v| matches!(v, "true" | "True")).unwrap_or(false),
-                ebs_encrypted: params.get(&format!("{base}.Ebs.Encrypted")).map(|v| matches!(v, "true" | "True")).unwrap_or(false),
+                device_name: params
+                    .get(&format!("{base}.DeviceName"))
+                    .unwrap_or_default()
+                    .to_string(),
+                ebs_snapshot_id: params
+                    .get(&format!("{base}.Ebs.SnapshotId"))
+                    .map(|s| s.to_string()),
+                ebs_volume_size: params
+                    .get(&format!("{base}.Ebs.VolumeSize"))
+                    .and_then(|v| v.parse().ok()),
+                ebs_volume_type: params
+                    .get(&format!("{base}.Ebs.VolumeType"))
+                    .unwrap_or("standard")
+                    .to_string(),
+                ebs_delete_on_term: params
+                    .get(&format!("{base}.Ebs.DeleteOnTermination"))
+                    .map(|v| matches!(v, "true" | "True"))
+                    .unwrap_or(false),
+                ebs_encrypted: params
+                    .get(&format!("{base}.Ebs.Encrypted"))
+                    .map(|v| matches!(v, "true" | "True"))
+                    .unwrap_or(false),
                 ..Default::default()
             });
         }
@@ -1253,7 +1441,9 @@ fn copy_image(req: &Request, params: &P) -> Response {
                     .or_else(|| {
                         amis::roster(&source_region)
                             .iter()
-                            .find(|a| a.get("ami_id").and_then(|v| v.as_str()) == Some(source.as_str()))
+                            .find(|a| {
+                                a.get("ami_id").and_then(|v| v.as_str()) == Some(source.as_str())
+                            })
                             .map(amis::parse)
                     }),
                 None => None,
@@ -1350,8 +1540,16 @@ fn modify_image_attribute(req: &Request, params: &P) -> Response {
                 )
             }
         };
-        let users: Vec<String> = params.list("UserId").iter().map(|s| s.to_string()).collect();
-        let groups: Vec<String> = params.list("UserGroup").iter().map(|s| s.to_string()).collect();
+        let users: Vec<String> = params
+            .list("UserId")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let groups: Vec<String> = params
+            .list("UserGroup")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let op = params
             .get("LaunchPermission.OperationType")
             .map(|s| s.to_string())
@@ -1368,7 +1566,9 @@ fn modify_image_attribute(req: &Request, params: &P) -> Response {
                     .push(("Group".into(), g.clone()));
             }
         } else {
-            state.images[pos].launch_permissions.retain(|(_k, v)| !users.contains(v));
+            state.images[pos]
+                .launch_permissions
+                .retain(|(_k, v)| !users.contains(v));
         }
         if let Some(d) = params.get("Description.Value") {
             state.images[pos].description = Some(d.to_string());
@@ -1407,7 +1607,7 @@ pub fn volume_item(v: &Volume) -> String {
         xml_escape(&v.az),
         xml_escape(&v.state),
         xml_escape(&v.create_time),
-        if v.iops.is_some() { format!("<iops>{}</iops>", v.iops.unwrap()) } else { String::new() },
+        if let Some(iops) = v.iops { format!("<iops>{}</iops>", iops) } else { String::new() },
         if !v.vtype.is_empty() { format!("<volumeType>{}</volumeType>", xml_escape(&v.vtype)) } else { String::new() },
         format!("{}<tagSet>{}</tagSet>{}",
             if !attachment.is_empty() { format!("<attachmentSet>{}</attachmentSet>", attachment) } else { String::from("<attachmentSet/>") },
@@ -1452,7 +1652,10 @@ fn create_volume(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidSnapshot.NotFound",
-                    &format!("The snapshot '{}' does not exist.", xml_escape(&snapshot_id)),
+                    &format!(
+                        "The snapshot '{}' does not exist.",
+                        xml_escape(&snapshot_id)
+                    ),
                 );
             }
         }
@@ -1480,7 +1683,12 @@ fn create_volume(req: &Request, params: &P) -> Response {
             v.tags = tags;
         }
         state.volumes.push(v);
-        let v = state.volumes.iter().find(|x| x.id == id).cloned().unwrap_or_default();
+        let v = state
+            .volumes
+            .iter()
+            .find(|x| x.id == id)
+            .cloned()
+            .unwrap_or_default();
         ec2_xml(
             "CreateVolumeResponse",
             &format!("<volume>{}</volume>", super::ec2b::volume_fields(&v)),
@@ -1489,7 +1697,11 @@ fn create_volume(req: &Request, params: &P) -> Response {
 }
 
 fn describe_volumes(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("VolumeId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("VolumeId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     with_state(req, move |state| {
         let mut items = String::new();
@@ -1522,7 +1734,10 @@ fn describe_volumes(req: &Request, params: &P) -> Response {
             }
             items.push_str(&format!("<item>{}</item>", super::ec2b::volume_fields(v)));
         }
-        ec2_xml("DescribeVolumesResponse", &format!("<volumeSet>{}</volumeSet>", items))
+        ec2_xml(
+            "DescribeVolumesResponse",
+            &format!("<volumeSet>{}</volumeSet>", items),
+        )
     })
 }
 
@@ -1620,8 +1835,16 @@ fn modify_volume(req: &Request, params: &P) -> Response {
                 xml_escape(&id),
                 format!(
                     "<modificationState>optimizing</modificationState>{}{}",
-                    if let Some(s) = params.i64("Size") { format!("<targetSize>{}</targetSize>", s) } else { String::new() },
-                    if let Some(tt) = params.get("VolumeType") { format!("<targetVolumeType>{}</targetVolumeType>", xml_escape(tt)) } else { String::new() }
+                    if let Some(s) = params.i64("Size") {
+                        format!("<targetSize>{}</targetSize>", s)
+                    } else {
+                        String::new()
+                    },
+                    if let Some(tt) = params.get("VolumeType") {
+                        format!("<targetVolumeType>{}</targetVolumeType>", xml_escape(tt))
+                    } else {
+                        String::new()
+                    }
                 )
             ),
         )
@@ -1643,7 +1866,11 @@ fn describe_volume_attribute(req: &Request, params: &P) -> Response {
 }
 
 fn describe_volume_status(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("VolumeId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("VolumeId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let ids = ids.clone();
         let mut items = String::new();
@@ -1732,13 +1959,20 @@ fn create_snapshot(req: &Request, params: &P) -> Response {
         state.snapshots.push(snap.clone());
         ec2_xml(
             "CreateSnapshotResponse",
-            &format!("<snapshot>{}</snapshot>", super::ec2b::snapshot_fields(&snap)),
+            &format!(
+                "<snapshot>{}</snapshot>",
+                super::ec2b::snapshot_fields(&snap)
+            ),
         )
     })
 }
 
 fn describe_snapshots(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("SnapshotId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("SnapshotId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     with_state(req, move |state| {
         let account = req.account.to_string();
@@ -1767,10 +2001,7 @@ fn describe_snapshots(req: &Request, params: &P) -> Response {
             }) {
                 continue;
             }
-            items.push_str(&format!(
-                "<item>{}</item>",
-                super::ec2b::snapshot_fields(s)
-            ));
+            items.push_str(&format!("<item>{}</item>", super::ec2b::snapshot_fields(s)));
         }
         ec2_xml(
             "DescribeSnapshotsResponse",
@@ -1800,11 +2031,7 @@ fn copy_snapshot(req: &Request, params: &P) -> Response {
     let description = params.get("Description").map(|s| s.to_string());
     with_state(req, move |state| {
         let src = if sour_region == req.region {
-            state
-                .snapshots
-                .iter()
-                .find(|s| s.id == source_id)
-                .cloned()
+            state.snapshots.iter().find(|s| s.id == source_id).cloned()
         } else {
             let slot = super::state::shared();
             let other = slot.read();
@@ -1879,8 +2106,16 @@ fn modify_snapshot_attribute(req: &Request, params: &P) -> Response {
             .get("OperationType")
             .map(|s| s.to_string())
             .unwrap_or_else(|| "add".into());
-        let users: Vec<String> = params.list("UserId").iter().map(|s| s.to_string()).collect();
-        let groups: Vec<String> = params.list("UserGroup").iter().map(|s| s.to_string()).collect();
+        let users: Vec<String> = params
+            .list("UserId")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let groups: Vec<String> = params
+            .list("UserGroup")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let pos = state.snapshots.iter().position(|s| s.id == id).unwrap_or(0);
         if op == "add" {
             for u in &users {
@@ -1915,7 +2150,10 @@ fn create_snapshots(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidInstanceID.NotFound",
-                    &format!("The instance ID '{}' does not exist", xml_escape(&instance_id)),
+                    &format!(
+                        "The instance ID '{}' does not exist",
+                        xml_escape(&instance_id)
+                    ),
                 );
             }
             let id = state.next_id("snap");
@@ -1937,7 +2175,9 @@ fn create_snapshots(req: &Request, params: &P) -> Response {
                         continue;
                     }
                     for r in params.container_indices(&format!("TagSpecification.{}.Tag", t2 + 1)) {
-                        if let Some(k) = params.sub(&format!("TagSpecification.{}.Tag", t2 + 1), r, "Key") {
+                        if let Some(k) =
+                            params.sub(&format!("TagSpecification.{}.Tag", t2 + 1), r, "Key")
+                        {
                             t.push((
                                 k.to_string(),
                                 params
@@ -1961,8 +2201,16 @@ fn create_snapshots(req: &Request, params: &P) -> Response {
                 tags,
                 ..Default::default()
             });
-            let s = state.snapshots.iter().find(|x| x.id == id).cloned().unwrap_or_default();
-            items.push_str(&format!("<item>{}</item>", super::ec2b::snapshot_fields(&s)));
+            let s = state
+                .snapshots
+                .iter()
+                .find(|x| x.id == id)
+                .cloned()
+                .unwrap_or_default();
+            items.push_str(&format!(
+                "<item>{}</item>",
+                super::ec2b::snapshot_fields(&s)
+            ));
         }
         ec2_xml(
             "CreateSnapshotsResponse",
@@ -2098,7 +2346,11 @@ fn create_key_pair(req: &Request, params: &P) -> Response {
 }
 
 fn describe_key_pairs(req: &Request, params: &P) -> Response {
-    let names: Vec<String> = params.list("KeyName").iter().map(|s| s.to_string()).collect();
+    let names: Vec<String> = params
+        .list("KeyName")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     with_state(req, move |state| {
         let mut items = String::new();
@@ -2228,7 +2480,10 @@ fn create_launch_template(req: &Request, params: &P) -> Response {
             return ec2_error(
                 400,
                 "InvalidLaunchTemplateName.AlreadyExistsException",
-                &format!("A launch template named '{}' already exists.", xml_escape(&name)),
+                &format!(
+                    "A launch template named '{}' already exists.",
+                    xml_escape(&name)
+                ),
             );
         }
         let id = state.next_id("lt");
@@ -2303,8 +2558,16 @@ fn create_launch_template_version(req: &Request, params: &P) -> Response {
 }
 
 fn describe_launch_templates(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("LaunchTemplateId").iter().map(|s| s.to_string()).collect();
-    let names: Vec<String> = params.list("LaunchTemplateName").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("LaunchTemplateId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let names: Vec<String> = params
+        .list("LaunchTemplateName")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     with_state(req, move |state| {
         let region = req.region.clone();
@@ -2358,7 +2621,9 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
         for v in &lt.versions {
             if !versions_param.is_empty()
                 && !versions_param.contains(&v.number.to_string())
-                && !versions_param.iter().any(|x| x == "$Latest" && v.number == lt.latest_version)
+                && !versions_param
+                    .iter()
+                    .any(|x| x == "$Latest" && v.number == lt.latest_version)
             {
                 continue;
             }
@@ -2430,7 +2695,8 @@ fn modify_launch_template(req: &Request, params: &P) -> Response {
             } else if v == "$Latest" {
                 state.launch_templates[pos].latest_version
             } else {
-                v.parse().unwrap_or(state.launch_templates[pos].latest_version)
+                v.parse()
+                    .unwrap_or(state.launch_templates[pos].latest_version)
             };
             state.launch_templates[pos].default_version = num;
         }
@@ -2456,11 +2722,7 @@ fn create_placement_group(req: &Request, params: &P) -> Response {
         .map(|s| s.to_string())
         .unwrap_or_else(|| "cluster".to_string());
     with_state(req, move |state| {
-        if state
-            .placement_groups
-            .iter()
-            .any(|g| g.name == name)
-        {
+        if state.placement_groups.iter().any(|g| g.name == name) {
             return ec2_error(
                 409,
                 "InvalidPlacementGroup.Duplicate",
@@ -2495,7 +2757,11 @@ fn create_placement_group(req: &Request, params: &P) -> Response {
 fn describe_placement_groups(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         // GroupName.1.. list (the sidecar contract accepted both spellings)
-        let mut wanted: Vec<String> = params.list("GroupName").iter().map(|s| s.to_string()).collect();
+        let mut wanted: Vec<String> = params
+            .list("GroupName")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         for i in 1..=64 {
             if let Some(n) = params.get(&format!("GroupNames.{}", i)) {
                 wanted.push(n.to_string());
@@ -2579,17 +2845,19 @@ mod itt {
     }
 }
 
-
-fn it_json_str(v: &serde_json::Value, key: &str) -> String {
-    v.get(key).and_then(|x| x.as_str()).unwrap_or_default().to_string()
-}
-
 fn describe_instance_types(req: &Request, params: &P) -> Response {
     let fs = super::handlers::filters(params);
-    let wanted: Vec<String> = params.list("InstanceType").iter().map(|s| s.to_string()).collect();
+    let wanted: Vec<String> = params
+        .list("InstanceType")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let mut items = String::new();
     for row in itt::all() {
-        let it = row.get("InstanceType").and_then(|v| v.as_str()).unwrap_or_default();
+        let it = row
+            .get("InstanceType")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if !wanted.is_empty() && !wanted.contains(&it.to_string()) {
             continue;
         }
@@ -2602,9 +2870,7 @@ fn describe_instance_types(req: &Request, params: &P) -> Response {
             "processor-info.supported-architecture" => vec!["x86_64".to_string()],
             "bare-metal" => vec!["false".to_string()],
             "vcpu-info.valid-cores" => vec![],
-            other => {
-                Vec::new()
-            }
+            other => Vec::new(),
         }) {
             continue;
         }
@@ -2638,11 +2904,21 @@ fn describe_instance_types(req: &Request, params: &P) -> Response {
 
 fn describe_instance_type_offerings(req: &Request, params: &P) -> Response {
     let fs = super::handlers::filters(params);
-    let wanted: Vec<String> = params.list("InstanceType").iter().map(|s| s.to_string()).collect();
+    let wanted: Vec<String> = params
+        .list("InstanceType")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let mut items = String::new();
     for row in itt::offerings() {
-        let it = row.get("InstanceType").and_then(|v| v.as_str()).unwrap_or_default();
-        let loc = row.get("Location").and_then(|v| v.as_str()).unwrap_or_default();
+        let it = row
+            .get("InstanceType")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let loc = row
+            .get("Location")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         if !wanted.is_empty() && !wanted.iter().any(|w| w == it) {
             continue;
         }
@@ -2665,14 +2941,29 @@ fn describe_instance_type_offerings(req: &Request, params: &P) -> Response {
     }
     ec2_xml(
         "DescribeInstanceTypeOfferingsResponse",
-        &format!("<instanceTypeOfferingsSet>{}</instanceTypeOfferingsSet>", items),
+        &format!(
+            "<instanceTypeOfferingsSet>{}</instanceTypeOfferingsSet>",
+            items
+        ),
     )
 }
 
 fn describe_spot_price_history(req: &Request, params: &P) -> Response {
-    let types: Vec<String> = params.list("InstanceType").iter().map(|s| s.to_string()).collect();
-    let zones: Vec<String> = params.list("AvailabilityZone").iter().map(|s| s.to_string()).collect();
-    let products: Vec<String> = params.list("ProductDescription").iter().map(|s| s.to_string()).collect();
+    let types: Vec<String> = params
+        .list("InstanceType")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let zones: Vec<String> = params
+        .list("AvailabilityZone")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let products: Vec<String> = params
+        .list("ProductDescription")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     let base = [
         ("t2.micro", "0.011600", "Linux/UNIX"),
@@ -2731,7 +3022,11 @@ fn describe_reserved_instances_offerings(req: &Request, params: &P) -> Response 
     let ty = params.str("InstanceType");
     let prod = params.str("ProductDescription");
     let mut items = String::new();
-    const OFFERS: &[(i64, &str)] = &[(31536000, "0.012"), (94608000, "0.011"), (31536000, "0.010")];
+    const OFFERS: &[(i64, &str)] = &[
+        (31536000, "0.012"),
+        (94608000, "0.011"),
+        (31536000, "0.010"),
+    ];
     for (i, (dur, price)) in OFFERS.iter().enumerate() {
         let _ = write!(
             items,
@@ -2749,6 +3044,9 @@ fn describe_reserved_instances_offerings(req: &Request, params: &P) -> Response 
     let _ = &mut items;
     ec2_xml(
         "DescribeReservedInstancesOfferingsResponse",
-        &format!("<reservedInstancesOfferingsSet>{}</reservedInstancesOfferingsSet>", items),
+        &format!(
+            "<reservedInstancesOfferingsSet>{}</reservedInstancesOfferingsSet>",
+            items
+        ),
     )
 }

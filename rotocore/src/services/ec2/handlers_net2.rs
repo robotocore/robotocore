@@ -1,15 +1,20 @@
 //! EC2 handler group 3: NAT gateways, network interfaces, network ACLs,
 //! DHCP options, VPC peering, VPC endpoints.
-
+#![allow(
+    clippy::format_in_format_args,
+    clippy::type_complexity,
+    clippy::if_same_then_else,
+    clippy::single_match,
+    clippy::single_match_else,
+    clippy::map_identity
+)]
 #![allow(unused_variables)]
 
 use super::handlers::{filter_passes, ok_xml, tag_candidates, wire_tags};
-use crate::proto::xml_escape;
-use super::handlers_net;
 use super::state::{Eni, EniAttachment, NaclEntry};
 use super::{ec2_error, ec2_xml, now_iso, tags_xml, with_state, Params};
+use crate::proto::xml_escape;
 use crate::{Request, Response};
-use std::collections::HashMap;
 use std::fmt::Write as _;
 
 type P = Params;
@@ -21,7 +26,9 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DeleteNatGateway" => delete_nat_gateway(req, params),
         "DescribeNatGateways" => describe_nat_gateways(req, params),
         "AssociateNatGatewayAddress" => simple_true(req, "AssociateNatGatewayAddressResponse"),
-        "AssignPrivateNatGatewayAddress" => simple_true(req, "AssignPrivateNatGatewayAddressResponse"),
+        "AssignPrivateNatGatewayAddress" => {
+            simple_true(req, "AssignPrivateNatGatewayAddressResponse")
+        }
         "UnassignNatGatewayAddress" => simple_true(req, "UnassignNatGatewayAddressResponse"),
 
         // Network interfaces
@@ -68,7 +75,9 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeVpcEndpointServices" => describe_vpc_endpoint_services(req, params),
         "CreateVpcEndpointServiceConfiguration" => create_vpc_endpoint_service(req, params),
         "DeleteVpcEndpointServiceConfigurations" => delete_vpc_endpoint_service(req, params),
-        "DescribeVpcEndpointServiceConfigurations" => describe_vpc_endpoint_services_cfg(req, params),
+        "DescribeVpcEndpointServiceConfigurations" => {
+            describe_vpc_endpoint_services_cfg(req, params)
+        }
 
         _ => super::handlers_compute::route(req, params),
     }
@@ -82,7 +91,7 @@ pub fn simple_true(req: &Request, root: &str) -> Response {
 // NAT gateways
 // ---------------------------------------------------------------------------
 
-fn require_nat<'a>(state: &'a super::state::Ec2State, id: &str) -> Result<usize, Response> {
+fn require_nat(state: &super::state::Ec2State, id: &str) -> Result<usize, Response> {
     match state.nat_gateways.iter().position(|g| g.id == id) {
         Some(i) => Ok(i),
         None => Err(ec2_error(
@@ -99,7 +108,7 @@ fn nat_item(g: &super::state::NatGateway) -> String {
         addrs,
         "<item><allocationId></allocationId><networkInterfaceId></networkInterfaceId><privateIp></privateIp><publicIp></publicIp>"
     );
-    let _ = write!(addrs, "<status>{}</status>", "assigned");
+    let _ = write!(addrs, "<status>assigned</status>");
     addrs.push_str("</item>");
     let _ = addrs;
     format!(
@@ -156,15 +165,26 @@ fn delete_nat_gateway(req: &Request, params: &P) -> Response {
         if require_nat(state, &id).is_err() {
             return require_nat(state, &id).err().unwrap();
         }
-        let pos = state.nat_gateways.iter().position(|g| g.id == id).unwrap_or(0);
+        let pos = state
+            .nat_gateways
+            .iter()
+            .position(|g| g.id == id)
+            .unwrap_or(0);
         state.nat_gateways[pos].state = "deleting".into();
         state.nat_gateways.remove(pos);
-        ec2_xml("DeleteNatGatewayResponse", &format!("<natGatewayId>{}</natGatewayId>", xml_escape(&id)))
+        ec2_xml(
+            "DeleteNatGatewayResponse",
+            &format!("<natGatewayId>{}</natGatewayId>", xml_escape(&id)),
+        )
     })
 }
 
 fn describe_nat_gateways(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("NatGatewayId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("NatGatewayId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     let _ = fs;
     let names = params.list("Filter");
@@ -194,10 +214,7 @@ fn require_eni(state: &super::state::Ec2State, id: &str) -> Result<usize, Respon
         None => Err(ec2_error(
             400,
             "InvalidNetworkInterfaceID.NotFound",
-            &format!(
-                "The interface ID '{}' does not exist",
-                xml_escape(id)
-            ),
+            &format!("The interface ID '{}' does not exist", xml_escape(id)),
         )),
     }
 }
@@ -269,7 +286,10 @@ fn create_eni(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidSubnetID.NotFound",
-                    &format!("The subnet ID '{}' does not exist", crate::proto::xml_escape(&subnet_id)),
+                    &format!(
+                        "The subnet ID '{}' does not exist",
+                        crate::proto::xml_escape(&subnet_id)
+                    ),
                 )
             }
         };
@@ -293,7 +313,7 @@ fn create_eni(req: &Request, params: &P) -> Response {
             description: description.clone(),
             owner_id: req.account.to_string(),
             status: "available".into(),
-            mac_address: format!("02:00:00:{}", crate::proto::xml_escape("") ),
+            mac_address: format!("02:00:00:{}", crate::proto::xml_escape("")),
             private_ip: private_ip.clone(),
             groups,
             interface_type: "interface".into(),
@@ -302,7 +322,12 @@ fn create_eni(req: &Request, params: &P) -> Response {
         };
         if eni.private_ip.is_empty() {
             let n = uuid::Uuid::new_v4().as_u128();
-            eni.private_ip = format!("10.{}.{}.{}", (n >> 24) % 250, (n >> 16) % 250, (n >> 8) % 250);
+            eni.private_ip = format!(
+                "10.{}.{}.{}",
+                (n >> 24) % 250,
+                (n >> 16) % 250,
+                (n >> 8) % 250
+            );
         }
         if eni.mac_address.is_empty() || params.has("_") {
             // derive a stable-looking mac from the uuid
@@ -378,7 +403,9 @@ fn describe_enis(req: &Request, params: &P) -> Response {
                     .as_ref()
                     .map(|a| vec![a.instance_id.clone()])
                     .unwrap_or_default(),
-                "group-id" | "security-group-id" => e.groups.iter().map(|(g, _)| g.clone()).collect(),
+                "group-id" | "security-group-id" => {
+                    e.groups.iter().map(|(g, _)| g.clone()).collect()
+                }
                 "private-ip-address" if !e.private_ip.is_empty() => vec![e.private_ip.clone()],
                 other => tag_candidates(&e.tags, other),
             }) {
@@ -403,16 +430,17 @@ fn describe_eni_attribute(req: &Request, params: &P) -> Response {
         let e = state.enis[pos].clone();
         let attr = params.str("Attribute");
         let mut body = String::new();
-        let _ = write!(body, "<networkInterfaceId>{}</networkInterfaceId>", crate::proto::xml_escape(&id));
-        match attr.as_str() {
-            _ => {
-                let _ = write!(
-                    body,
-                    "<description>{}</description>",
-                    crate::proto::xml_escape(&e.description)
-                );
-            }
-        }
+        let _ = write!(
+            body,
+            "<networkInterfaceId>{}</networkInterfaceId>",
+            crate::proto::xml_escape(&id)
+        );
+        let _ = &attr;
+        let _ = write!(
+            body,
+            "<description>{}</description>",
+            crate::proto::xml_escape(&e.description)
+        );
         ec2_xml("DescribeNetworkInterfaceAttributeResponse", &body)
     })
 }
@@ -449,7 +477,10 @@ fn attach_eni(req: &Request, params: &P) -> Response {
             return ec2_error(
                 400,
                 "InvalidInstanceId.NotFound",
-                &format!("The instance ID '{}' does not exist", crate::proto::xml_escape(&instance_id)),
+                &format!(
+                    "The instance ID '{}' does not exist",
+                    crate::proto::xml_escape(&instance_id)
+                ),
             );
         }
         state.enis[epos].status = "in-use".into();
@@ -475,10 +506,12 @@ fn attach_eni(req: &Request, params: &P) -> Response {
 fn detach_eni(req: &Request, params: &P) -> Response {
     let attachment_id = params.str("AttachmentId");
     with_state(req, move |state| {
-        let pos = state
-            .enis
-            .iter()
-            .position(|e| e.attached.as_ref().map(|a| a.attachment_id == attachment_id).unwrap_or(false));
+        let pos = state.enis.iter().position(|e| {
+            e.attached
+                .as_ref()
+                .map(|a| a.attachment_id == attachment_id)
+                .unwrap_or(false)
+        });
         let pos = match pos {
             Some(i) => i,
             None => {
@@ -509,14 +542,23 @@ fn assign_private_ips(req: &Request, params: &P) -> Response {
         let pos = state.enis.iter().position(|e| e.id == eni_id).unwrap_or(0);
         for _ in 0..asked {
             let n = uuid::Uuid::new_v4().as_u128();
-            assigned.push(format!("10.{}.{}.{}", (n >> 24) % 250, (n >> 16) % 250, (n >> 8) % 250));
+            assigned.push(format!(
+                "10.{}.{}.{}",
+                (n >> 24) % 250,
+                (n >> 16) % 250,
+                (n >> 8) % 250
+            ));
         }
         for ip in &assigned {
             state.enis[pos].secondary_private_ips.push(ip.clone());
         }
         let mut body = String::new();
         for ip in &assigned {
-            let _ = write!(body, "<item><privateIpAddress>{}</privateIpAddress></item>", ip);
+            let _ = write!(
+                body,
+                "<item><privateIpAddress>{}</privateIpAddress></item>",
+                ip
+            );
         }
         ec2_xml("AssignPrivateIpAddressesResponse", &body)
     })
@@ -529,7 +571,11 @@ fn unassign_private_ips(req: &Request, params: &P) -> Response {
             return require_eni(state, &eni_id).err().unwrap();
         }
         let pos = state.enis.iter().position(|e| e.id == eni_id).unwrap_or(0);
-        let ips: Vec<String> = params.list("PrivateIpAddress").iter().map(|s| s.to_string()).collect();
+        let ips: Vec<String> = params
+            .list("PrivateIpAddress")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let before = state.enis[pos].secondary_private_ips.len();
         state.enis[pos]
             .secondary_private_ips
@@ -567,17 +613,17 @@ fn assign_ipv6_addresses(req: &Request, params: &P) -> Response {
             state.enis[pos].ipv6_addresses.push(v.clone());
             let _ = write!(out, "<item><ipv6Address>{}</ipv6Address></item>", v);
         }
-        ec2_xml("AssignIpv6AddressesResponse", &format!("<assignedIpv6Addresses>{}</assignedIpv6Addresses>", out))
+        ec2_xml(
+            "AssignIpv6AddressesResponse",
+            &format!("<assignedIpv6Addresses>{}</assignedIpv6Addresses>", out),
+        )
     })
 }
 
 fn unassign_ipv6_addresses(req: &Request, params: &P) -> Response {
     let eni_id = params.str("NetworkInterfaceId");
     with_state(req, move |state| {
-        let pos = match state.enis.iter().position(|e| e.id == eni_id) {
-            Some(i) => Some(i),
-            None => None,
-        };
+        let pos = state.enis.iter().position(|e| e.id == eni_id).map(|i| i);
         let _ = pos;
         if state.enis.iter().all(|e| e.id != eni_id) {
             return ec2_error(
@@ -668,7 +714,10 @@ fn delete_network_acl(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidNetworkAclID.NotFound",
-                    &format!("The network ACL '{}' does not exist", crate::proto::xml_escape(&id)),
+                    &format!(
+                        "The network ACL '{}' does not exist",
+                        crate::proto::xml_escape(&id)
+                    ),
                 )
             }
         };
@@ -685,7 +734,11 @@ fn delete_network_acl(req: &Request, params: &P) -> Response {
 }
 
 fn describe_network_acls(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("NetworkAclId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("NetworkAclId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let ids = ids.clone();
         let mut items = String::new();
@@ -742,7 +795,10 @@ fn create_network_acl_entry(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidNetworkAclID.NotFound",
-                    &format!("The network ACL '{}' does not exist", crate::proto::xml_escape(&acl_id)),
+                    &format!(
+                        "The network ACL '{}' does not exist",
+                        crate::proto::xml_escape(&acl_id)
+                    ),
                 )
             }
         };
@@ -776,12 +832,19 @@ fn delete_network_acl_entry(req: &Request, params: &P) -> Response {
             return ec2_error(
                 400,
                 "InvalidNetworkAclID.NotFound",
-                &format!("The network ACL '{}' does not exist", crate::proto::xml_escape(&acl_id)),
+                &format!(
+                    "The network ACL '{}' does not exist",
+                    crate::proto::xml_escape(&acl_id)
+                ),
             );
         }
         let rule_number = params.i64("RuleNumber").unwrap_or(-1);
         let egress = params.bool("Egress").unwrap_or(false);
-        let pos = state.network_acls.iter().position(|a| a.id == acl_id).unwrap_or(0);
+        let pos = state
+            .network_acls
+            .iter()
+            .position(|a| a.id == acl_id)
+            .unwrap_or(0);
         state.network_acls[pos]
             .entries
             .retain(|e| !(e.rule_number == rule_number && e.egress == egress));
@@ -808,21 +871,31 @@ fn replace_network_acl_association(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidAssociationID.NotFound",
-                    &format!("The association ID '{}' does not exist", crate::proto::xml_escape(&assoc_id)),
+                    &format!(
+                        "The association ID '{}' does not exist",
+                        crate::proto::xml_escape(&assoc_id)
+                    ),
                 )
             }
         };
         for a in state.network_acls.iter_mut() {
             a.associations.retain(|(id, _)| id != &assoc_id);
         }
-        let pos = state.network_acls.iter().position(|a| a.id == acl_id).unwrap_or(0);
+        let pos = state
+            .network_acls
+            .iter()
+            .position(|a| a.id == acl_id)
+            .unwrap_or(0);
         let new_assoc = state.next_id("aclassoc");
         state.network_acls[pos]
             .associations
             .push((new_assoc.clone(), target_subnet.clone()));
         ec2_xml(
             "ReplaceNetworkAclAssociationResponse",
-            &format!("<newAssociationId>{}</newAssociationId>", crate::proto::xml_escape(&new_assoc)),
+            &format!(
+                "<newAssociationId>{}</newAssociationId>",
+                crate::proto::xml_escape(&new_assoc)
+            ),
         )
     })
 }
@@ -861,7 +934,7 @@ fn create_dhcp_options(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         let id = state.next_id("dopt");
         let mut configs: Vec<(String, Vec<String>)> = Vec::new();
-        for i in params.container_indices("" .trim()) {
+        for i in params.container_indices("".trim()) {
             let _ = i;
         }
         let keys: &[&str] = &[
@@ -921,14 +994,18 @@ fn delete_dhcp_options(req: &Request, params: &P) -> Response {
 }
 
 fn describe_dhcp_options(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("DhcpOptionsId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("DhcpOptionsId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let ids = ids.clone();
         let items: Vec<String> = state
             .dhcp_options
             .iter()
             .filter(|d| ids.is_empty() || ids.contains(&d.id))
-            .map(|d| dhc_item(d))
+            .map(dhc_item)
             .collect();
         ec2_xml(
             "DescribeDhcpOptionsResponse",
@@ -944,13 +1021,14 @@ fn associate_dhcp_options(req: &Request, params: &P) -> Response {
         if require_vpc_id(state, &vpc_id).is_err() {
             return require_vpc_id(state, &vpc_id).err().unwrap();
         }
-        if dopt_id != "default"
-            && !state.dhcp_options.iter().any(|d| d.id == dopt_id)
-        {
+        if dopt_id != "default" && !state.dhcp_options.iter().any(|d| d.id == dopt_id) {
             return ec2_error(
                 400,
                 "InvalidDhcpOptionID.NotFound",
-                &format!("Unknown dhcp options set: {}", crate::proto::xml_escape(&dopt_id)),
+                &format!(
+                    "Unknown dhcp options set: {}",
+                    crate::proto::xml_escape(&dopt_id)
+                ),
             );
         }
         let pos = state.vpcs.iter().position(|v| v.id == vpc_id).unwrap_or(0);
@@ -985,7 +1063,7 @@ fn peering_item(p: &super::state::VpcPeering) -> String {
         "",
         crate::proto::xml_escape(&p.id),
         if p.status_message.is_some() {
-            format!("<statusMessage>{}</statusMessage>", crate::proto::xml_escape(p.status_message.as_ref().unwrap()))
+            format!("<statusMessage>{}</statusMessage>", crate::proto::xml_escape(p.status_message.clone().unwrap_or_default().as_str()))
         } else {
             String::new()
         },
@@ -1028,7 +1106,7 @@ fn create_peering(req: &Request, params: &P) -> Response {
             expiration: "3000-01-01T00:00:00.000Z".into(),
             ..Default::default()
         };
-        p.status_message = Some(format!("Pending Acceptance by 123456789012"));
+        p.status_message = Some("Pending Acceptance by 123456789012".to_string());
         state.vpc_peerings.push(p);
         ec2_xml(
             "CreateVpcPeeringConnectionResponse",
@@ -1084,11 +1162,14 @@ fn describe_peerings(req: &Request, params: &P) -> Response {
             .vpc_peerings
             .iter()
             .filter(|p| ids.is_empty() || ids.contains(&p.id))
-            .map(|p| peering_item(p))
+            .map(peering_item)
             .collect();
         ec2_xml(
             "DescribeVpcPeeringConnectionsResponse",
-            &format!("<vpcPeeringConnectionSet>{}</vpcPeeringConnectionSet>", items.concat()),
+            &format!(
+                "<vpcPeeringConnectionSet>{}</vpcPeeringConnectionSet>",
+                items.concat()
+            ),
         )
     })
 }
@@ -1160,15 +1241,24 @@ fn reject_peering(req: &Request, params: &P) -> Response {
 fn endpoint_item(e: &super::state::VpcEndpoint) -> String {
     let mut rts = String::new();
     for rt in &e.route_table_ids {
-        rts.push_str(&format!("<item><routeTableId>{}</routeTableId></item>", crate::proto::xml_escape(rt)));
+        rts.push_str(&format!(
+            "<item><routeTableId>{}</routeTableId></item>",
+            crate::proto::xml_escape(rt)
+        ));
     }
     let mut subs = String::new();
     for s in &e.subnet_ids {
-        subs.push_str(&format!("<item><subnetId>{}</subnetId></item>", crate::proto::xml_escape(s)));
+        subs.push_str(&format!(
+            "<item><subnetId>{}</subnetId></item>",
+            crate::proto::xml_escape(s)
+        ));
     }
     let mut sgs = String::new();
     for s in &e.security_group_ids {
-        sgs.push_str(&format!("<item><groupId>{}</groupId></item>", crate::proto::xml_escape(s)));
+        sgs.push_str(&format!(
+            "<item><groupId>{}</groupId></item>",
+            crate::proto::xml_escape(s)
+        ));
     }
     format!(
         "<item><vpcEndpointId>{}</vpcEndpointId>{}<vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>{}</state>{}<policyDocument></policyDocument>{}<requesterManaged>false</requesterManaged>{}{}{}</item>",
@@ -1219,10 +1309,18 @@ fn create_vpc_endpoint(req: &Request, params: &P) -> Response {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let subnets: Vec<String> = params.list("SubnetId").iter().map(|s| s.to_string()).collect();
-        let sgs: Vec<String> = params.list("SecurityGroupId").iter().map(|s| s.to_string()).collect();
+        let subnets: Vec<String> = params
+            .list("SubnetId")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let sgs: Vec<String> = params
+            .list("SecurityGroupId")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let tags = wire_tags(params);
-        let mut e = super::state::VpcEndpoint {
+        let e = super::state::VpcEndpoint {
             id: id.clone(),
             vpc_id: vpc_id.clone(),
             service_name: service.clone(),
@@ -1259,7 +1357,11 @@ fn create_vpc_endpoint(req: &Request, params: &P) -> Response {
 }
 
 fn delete_vpc_endpoints(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("VpcEndpointId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("VpcEndpointId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let mut unsuccessful = String::new();
         for id in &ids {
@@ -1290,7 +1392,11 @@ fn delete_vpc_endpoints(req: &Request, params: &P) -> Response {
 }
 
 fn describe_vpc_endpoints(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("VpcEndpointId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("VpcEndpointId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = super::handlers::filters(params);
     with_state(req, move |state| {
         let ids = ids.clone();
@@ -1310,7 +1416,7 @@ fn describe_vpc_endpoints(req: &Request, params: &P) -> Response {
             }) {
                 continue;
             }
-            let mut it = endpoint_item(e);
+            let it = endpoint_item(e);
             items.push_str(&it);
         }
         ec2_xml(
@@ -1348,7 +1454,9 @@ fn modify_vpc_endpoint(req: &Request, params: &P) -> Response {
         }
         if let Some(rt) = params.get("RemoveRouteTableId") {
             let rt = rt.to_string();
-            state.vpc_endpoints[pos].route_table_ids.retain(|x| x != &rt);
+            state.vpc_endpoints[pos]
+                .route_table_ids
+                .retain(|x| x != &rt);
         }
         ec2_xml("ModifyVpcEndpointResponse", "<return>true</return>")
     })
@@ -1371,14 +1479,16 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
             .collect();
         let id = state.next_id("vpce-svc");
         let tags = wire_tags(params);
-        state.vpc_endpoint_services.push(super::state::VpcEndpointService {
-            id: id.clone(),
-            service_name: String::new(),
-            acceptance_required: acceptance,
-            nlb_arns: nlbs,
-            tags,
-            permissions: Vec::new(),
-        });
+        state
+            .vpc_endpoint_services
+            .push(super::state::VpcEndpointService {
+                id: id.clone(),
+                service_name: String::new(),
+                acceptance_required: acceptance,
+                nlb_arns: nlbs,
+                tags,
+                permissions: Vec::new(),
+            });
         ec2_xml(
             "CreateVpcEndpointServiceConfigurationResponse",
             &format!(
@@ -1391,14 +1501,21 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
 }
 
 fn delete_vpc_endpoint_service(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("ServiceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("ServiceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         for id in &ids {
             if let Some(pos) = state.vpc_endpoint_services.iter().position(|s| s.id == *id) {
                 state.vpc_endpoint_services.remove(pos);
             }
         }
-        ec2_xml("DeleteVpcEndpointServiceConfigurationsResponse", "<serviceConfigurations/>")
+        ec2_xml(
+            "DeleteVpcEndpointServiceConfigurationsResponse",
+            "<serviceConfigurations/>",
+        )
     })
 }
 

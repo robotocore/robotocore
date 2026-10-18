@@ -1,14 +1,20 @@
 //! EC2 handler group 1: metadata ops, tags, the VPC family, subnets.
 //!
+#![allow(
+    clippy::format_in_format_args,
+    clippy::type_complexity,
+    clippy::if_same_then_else,
+    clippy::single_match,
+    clippy::map_identity
+)]
 //! XML shapes mirror moto's templates so botocore parses them identically.
 //! Every handler acquires the (account, region) state write lock exactly
 //! once via `with_state` and never re-acquires (deadlock rule).
 
 #![allow(unused_variables)]
 
-use super::handlers_net;
 use super::state::{idhex, Ec2State, Route, RouteTable, SecurityGroup, Subnet, Tags, Vpc};
-use super::{ec2_error, ec2_xml, now_iso, tags_xml, with_state, Params, EC2_NS};
+use super::{ec2_error, ec2_xml, tags_xml, with_state, Params};
 use crate::proto::xml_escape;
 use crate::{Request, Response};
 use std::fmt::Write as _;
@@ -47,7 +53,10 @@ pub fn filter_passes(
 /// Candidate values a resource's tags contribute for standard tag filters.
 pub fn tag_candidates(tags: &[(String, String)], name: &str) -> Vec<String> {
     if name == "tag" {
-        return tags.iter().flat_map(|(k, v)| [k.clone(), v.clone()]).collect();
+        return tags
+            .iter()
+            .flat_map(|(k, v)| [k.clone(), v.clone()])
+            .collect();
     }
     if name == "tag-key" {
         return tags.iter().map(|(k, _)| k.clone()).collect();
@@ -129,17 +138,49 @@ pub fn route(req: &Request, params: &P) -> Response {
 // ---------------------------------------------------------------------------
 
 const REGIONS: &[&str] = &[
-    "af-south-1", "ap-east-1", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
-    "ap-south-1", "ap-south-2", "ap-southeast-1", "ap-southeast-2", "ap-southeast-3",
-    "ap-southeast-4", "ap-southeast-5", "ap-southeast-6", "ap-southeast-7",
-    "ca-central-1", "ca-west-1", "cn-north-1", "cn-northwest-1", "eu-central-1",
-    "eu-central-2", "eu-north-1", "eu-south-1", "eu-south-2", "eu-west-1", "eu-west-2",
-    "eu-west-3", "il-central-1", "me-central-1", "me-south-1", "mx-central-1",
-    "sa-east-1", "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+    "af-south-1",
+    "ap-east-1",
+    "ap-northeast-1",
+    "ap-northeast-2",
+    "ap-northeast-3",
+    "ap-south-1",
+    "ap-south-2",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "ap-southeast-3",
+    "ap-southeast-4",
+    "ap-southeast-5",
+    "ap-southeast-6",
+    "ap-southeast-7",
+    "ca-central-1",
+    "ca-west-1",
+    "cn-north-1",
+    "cn-northwest-1",
+    "eu-central-1",
+    "eu-central-2",
+    "eu-north-1",
+    "eu-south-1",
+    "eu-south-2",
+    "eu-west-1",
+    "eu-west-2",
+    "eu-west-3",
+    "il-central-1",
+    "me-central-1",
+    "me-south-1",
+    "mx-central-1",
+    "sa-east-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2",
 ];
 
 fn describe_regions(req: &Request, params: &P) -> Response {
-    let wanted: Vec<String> = params.list("RegionName").iter().map(|s| s.to_string()).collect();
+    let wanted: Vec<String> = params
+        .list("RegionName")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = filters(params);
     let mut body = String::new();
     for region in REGIONS {
@@ -164,7 +205,11 @@ fn describe_regions(req: &Request, params: &P) -> Response {
 
 fn describe_availability_zones(req: &Request, params: &P) -> Response {
     let region = req.region.clone();
-    let names: Vec<String> = params.list("ZoneName").iter().map(|s| s.to_string()).collect();
+    let names: Vec<String> = params
+        .list("ZoneName")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let filterss = filters(params);
     let known: Vec<(&str, &str)> = super::azones::AZONES
         .iter()
@@ -182,7 +227,10 @@ fn describe_availability_zones(req: &Request, params: &P) -> Response {
             })
             .collect()
     } else {
-        known.iter().map(|(n, z)| (n.to_string(), z.to_string())).collect()
+        known
+            .iter()
+            .map(|(n, z)| (n.to_string(), z.to_string()))
+            .collect()
     };
     let mut body = String::new();
     for (idx, (az, az_id)) in zones.iter().enumerate() {
@@ -196,7 +244,7 @@ fn describe_availability_zones(req: &Request, params: &P) -> Response {
             "region-name" => vec![region2.clone()],
             "zoneType" | "zone-type" => vec!["availability-zone".to_string()],
             "zoneState" | "zone-state" | "state" => vec!["available".to_string()],
-            "zoneId" | "zone-id" => vec![format!("{az_id}")],
+            "zoneId" | "zone-id" => vec![az_id.to_string()],
             _ => Vec::new(),
         }) {
             continue;
@@ -272,7 +320,10 @@ fn describe_tags(req: &Request, params: &P) -> Response {
             );
         }
     }
-    ec2_xml("DescribeTagsResponse", &format!("<tagSet>{}</tagSet>", body))
+    ec2_xml(
+        "DescribeTagsResponse",
+        &format!("<tagSet>{}</tagSet>", body),
+    )
 }
 
 pub fn replace_tags(state: &mut Ec2State, ids: &[String], tags: &[(String, String)]) {
@@ -372,7 +423,8 @@ fn remove_tags(state: &mut Ec2State, ids: &[String], tags: &[(String, String)]) 
     for id in ids {
         let id: &str = id;
         if let Some(vpc) = state.vpcs.iter_mut().find(|v| v.id == id) {
-            vpc.tags.retain(|(k, _)| !tags.iter().any(|(tk, _)| tk == k));
+            vpc.tags
+                .retain(|(k, _)| !tags.iter().any(|(tk, _)| tk == k));
         }
         if let Some(s) = state.subnets.iter_mut().find(|v| v.id == id) {
             s.tags.retain(|(k, _)| !tags.iter().any(|(tk, _)| tk == k));
@@ -453,10 +505,7 @@ pub fn wire_tags(params: &P) -> Tags {
     let mut out: Tags = Vec::new();
     for i in params.container_indices("Tag") {
         let k = params.sub("Tag", i, "Key").unwrap_or("").to_string();
-        let v = params
-            .sub("Tag", i, "Value")
-            .unwrap_or("")
-            .to_string();
+        let v = params.sub("Tag", i, "Value").unwrap_or("").to_string();
         if !k.is_empty() {
             out.push((k, v));
         }
@@ -481,7 +530,11 @@ pub fn tag_spec_tags(params: &P) -> Tags {
 }
 
 fn create_tags(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("ResourceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("ResourceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let tags = wire_tags(params);
     with_state(req, move |state| {
         replace_tags(state, &ids, &tags);
@@ -490,7 +543,11 @@ fn create_tags(req: &Request, params: &P) -> Response {
 }
 
 fn delete_tags(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("ResourceId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("ResourceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let tags = wire_tags(params);
     with_state(req, move |state| {
         remove_tags(state, &ids, &tags);
@@ -548,10 +605,18 @@ fn require_vpc<'a>(state: &'a mut Ec2State, vpc_id: &str) -> Result<&'a mut Vpc,
 fn create_vpc(req: &Request, params: &P) -> Response {
     let cidr = params.str("CidrBlock");
     if cidr.is_empty() {
-        return ec2_error(400, "MissingParameter", "The request must contain the parameter CidrBlock");
+        return ec2_error(
+            400,
+            "MissingParameter",
+            "The request must contain the parameter CidrBlock",
+        );
     }
     let tenancy = params.str("InstanceTenancy");
-    let tenancy = if tenancy.is_empty() { "default".to_string() } else { tenancy };
+    let tenancy = if tenancy.is_empty() {
+        "default".to_string()
+    } else {
+        tenancy
+    };
     with_state(req, move |state| {
         let vpc_id = state.next_id("vpc");
         let assoc = state.next_id("vpc-cidr-assoc");
@@ -568,7 +633,7 @@ fn create_vpc(req: &Request, params: &P) -> Response {
             enable_dns_hostnames: false,
             ..Default::default()
         });
-        replace_tags(state, &[vpc_id.clone()], &mine);
+        replace_tags(state, std::slice::from_ref(&vpc_id), &mine);
         // moto pairs a default security group with each new VPC.
         let sg = SecurityGroup {
             id: state.next_id("sg"),
@@ -613,18 +678,11 @@ fn delete_vpc(req: &Request, params: &P) -> Response {
         state.security_groups.retain(|s| s.vpc_id != vpc_id);
         state.route_tables.retain(|s| s.vpc_id != vpc_id);
         state.network_acls.retain(|s| s.vpc_id != vpc_id);
-        state.internet_gateways
+        state
+            .internet_gateways
             .retain(|g| !g.attachments.iter().any(|(v, _)| v == &vpc_id));
         ok_xml("DeleteVpcResponse")
     })
-}
-
-fn describe_vpcs_inner(vpcs: &[Vpc], account: u64) -> String {
-    let mut body = String::new();
-    for v in vpcs {
-        body.push_str(&vpc_item(account, v));
-    }
-    format!("<vpcSet>{}</vpcSet>", body)
 }
 
 fn describe_vpcs(req: &Request, params: &P) -> Response {
@@ -657,7 +715,10 @@ fn describe_vpcs(req: &Request, params: &P) -> Response {
             .map(|(i, v)| (i, v.clone()))
             .collect();
         let items: Vec<String> = matches.iter().map(|(_, v)| vpc_item(account, v)).collect();
-        ec2_xml("DescribeVpcsResponse", &format!("<vpcSet>{}</vpcSet>", items.concat()))
+        ec2_xml(
+            "DescribeVpcsResponse",
+            &format!("<vpcSet>{}</vpcSet>", items.concat()),
+        )
     })
 }
 
@@ -700,10 +761,7 @@ fn modify_vpc_attribute(req: &Request, params: &P) -> Response {
     let dns_hostnames = params.bool("EnableDnsHostnames.Value");
     let naive_metrics = params.bool("EnableNetworkAddressUsageMetrics.Value");
     with_state(req, move |state| {
-        let pos = match state.vpcs.iter().position(|v| v.id == vpc_id) {
-            Some(i) => Some(i),
-            None => None,
-        };
+        let pos = state.vpcs.iter().position(|v| v.id == vpc_id);
         let pos = match pos {
             Some(i) => i,
             None => return require_vpc(state, &vpc_id).err().unwrap(),
@@ -724,11 +782,18 @@ fn modify_vpc_attribute(req: &Request, params: &P) -> Response {
 fn create_default_vpc(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         if state.default_vpc_regions.contains(&req.region) {
-            return ec2_error(400, "DefaultVpcAlreadyExists", "A Default VPC already exists for this account in this region.");
+            return ec2_error(
+                400,
+                "DefaultVpcAlreadyExists",
+                "A Default VPC already exists for this account in this region.",
+            );
         }
         state.ensure_default_vpc(&req.region, req.account);
         let vpc = state.vpcs.last().unwrap().clone();
-        ec2_xml("CreateDefaultVpcResponse", &format!("<vpc>{}</vpc>", vpc_fields(req.account, &vpc)))
+        ec2_xml(
+            "CreateDefaultVpcResponse",
+            &format!("<vpc>{}</vpc>", vpc_fields(req.account, &vpc)),
+        )
     })
 }
 
@@ -752,7 +817,9 @@ fn associate_vpc_cidr_block(req: &Request, params: &P) -> Response {
             state.next_id("vpc-cidr-assoc")
         };
         let pos = state.vpcs.iter().position(|v| v.id == vpc_id).unwrap_or(0);
-        state.vpcs[pos].extra_cidrs.push((assoc_id.clone(), cidr.clone(), "associated".into()));
+        state.vpcs[pos]
+            .extra_cidrs
+            .push((assoc_id.clone(), cidr.clone(), "associated".into()));
         let vpc = state.vpcs[pos].clone();
         ec2_xml(
             "AssociateVpcCidrBlockResponse",
@@ -774,7 +841,10 @@ fn disassociate_vpc_cidr_block(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidVpcCidrBlockAssociationID.NotFound",
-                    &format!("The association ID '{}' does not exist", xml_escape(&assoc_id)),
+                    &format!(
+                        "The association ID '{}' does not exist",
+                        xml_escape(&assoc_id)
+                    ),
                 );
             }
             if let Some(idx) = v.extra_cidrs.iter().position(|(a, _, _)| a == &assoc_id) {
@@ -788,7 +858,10 @@ fn disassociate_vpc_cidr_block(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidVpcCidrBlockAssociationID.NotFound",
-                    &format!("The association ID '{}' does not exist", xml_escape(&assoc_id)),
+                    &format!(
+                        "The association ID '{}' does not exist",
+                        xml_escape(&assoc_id)
+                    ),
                 )
             }
         };
@@ -820,7 +893,11 @@ fn set_classic_link(req: &Request, params: &P, enable: bool) -> Response {
         state.vpcs[pos].classic_link = enable;
         ec2_xml(
             "VpcClassicLinkResponse",
-            &format!("<vpcId>{}</vpcId><return>{}</return>", xml_escape(&vpc_id), enable),
+            &format!(
+                "<vpcId>{}</vpcId><return>{}</return>",
+                xml_escape(&vpc_id),
+                enable
+            ),
         )
     })
 }
@@ -838,7 +915,10 @@ fn describe_classic_link(req: &Request, params: &P) -> Response {
             .filter(|v| filter_passes(&fs, |f| tag_candidates(&v.tags, f)))
             .map(|v| vpc_item(account, v))
             .collect();
-        ec2_xml("DescribeVpcClassicLinkResponse", &format!("<vpcSet>{}</vpcSet>", items.concat()))
+        ec2_xml(
+            "DescribeVpcClassicLinkResponse",
+            &format!("<vpcSet>{}</vpcSet>", items.concat()),
+        )
     })
 }
 
@@ -851,7 +931,10 @@ fn describe_classic_link_dns(req: &Request, params: &P) -> Response {
             xml_escape(id)
         );
     }
-    ec2_xml("DescribeVpcClassicLinkDnsSupportResponse", &format!("<vpcs>{}</vpcs>", body))
+    ec2_xml(
+        "DescribeVpcClassicLinkDnsSupportResponse",
+        &format!("<vpcs>{}</vpcs>", body),
+    )
 }
 
 fn vpc_bpa_options(req: &Request, params: &P) -> Response {
@@ -887,12 +970,11 @@ fn vpc_encryption_controls(req: &Request, params: &P) -> Response {
 // Subnets
 // ---------------------------------------------------------------------------
 
-
 pub fn subnet_fields(region: &str, account: u64, s: &Subnet) -> String {
     let mut available_ips: i64 = 251;
     if let Some(bits_str) = s.cidr.split('/').nth(1) {
         if let Ok(bits) = bits_str.parse::<i64>() {
-            if bits >= 16 && bits <= 32 {
+            if (16..=32).contains(&bits) {
                 available_ips = (1i64 << (32 - bits).min(20)) - 5;
             }
         }
@@ -930,6 +1012,10 @@ pub fn subnet_fields(region: &str, account: u64, s: &Subnet) -> String {
     )
 }
 
+fn subnet_passes(fs: &[(String, Vec<String>)], s: &Subnet) -> bool {
+    filter_passes(fs, move |f| subnet_cand(s, f))
+}
+
 pub fn subnet_item(region: &str, account: u64, s: &Subnet) -> String {
     format!("<item>{}</item>", subnet_fields(region, account, s))
 }
@@ -957,7 +1043,11 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             return require_vpc(state, &vpc_id).err().unwrap();
         }
         if cidr.is_empty() {
-            return ec2_error(400, "MissingParameter", "The request must contain the parameter CidrBlock");
+            return ec2_error(
+                400,
+                "MissingParameter",
+                "The request must contain the parameter CidrBlock",
+            );
         }
         let subnet_id = state.next_id("subnet");
         let mine = tag_spec_tags(params);
@@ -976,7 +1066,7 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             .map(|c| vec![(format!("subnet-cidr-assoc-{}", idhex::hex17()), c)])
             .unwrap_or_default();
         state.subnets.push(subnet);
-        replace_tags(state, &[subnet_id.clone()], &mine);
+        replace_tags(state, std::slice::from_ref(&subnet_id), &mine);
         let s = state
             .subnets
             .iter()
@@ -985,7 +1075,10 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             .unwrap_or_default();
         ec2_xml(
             "CreateSubnetResponse",
-            &format!("<subnet>{}</subnet>", subnet_fields(&req.region, req.account, &s)),
+            &format!(
+                "<subnet>{}</subnet>",
+                subnet_fields(&req.region, req.account, &s)
+            ),
         )
     })
 }
@@ -997,20 +1090,31 @@ fn subnet_cand(s: &Subnet, f: &str) -> Vec<String> {
         "cidr" | "cidr-block" => vec![s.cidr.clone()],
         "state" => vec![s.state.clone()],
         "availability-zone" | "az" => vec![s.az.clone()],
-        "default-for-az" => vec![if s.is_default { "true".to_string() } else { "false".to_string() }],
+        "default-for-az" => vec![if s.is_default {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }],
         "map-public-ip-on-launch" => vec![if s.map_public_ip {
             "true".to_string()
         } else {
             "false".to_string()
         }],
         "availability-zone-id" => vec![s.availability_zone_id.clone()],
-        "subnet-arn" => vec![format!("arn:aws:ec2:{}:{}:subnet/{}", "us-east-1", "acc", s.id)],
+        "subnet-arn" => vec![format!(
+            "arn:aws:ec2:{}:{}:subnet/{}",
+            "us-east-1", "acc", s.id
+        )],
         t => tag_candidates(&s.tags, t),
     }
 }
 
 fn describe_subnets(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("SubnetId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("SubnetId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = filters(params);
     with_state(req, move |state| {
         let account = req.account;
@@ -1019,10 +1123,7 @@ fn describe_subnets(req: &Request, params: &P) -> Response {
             .subnets
             .iter()
             .filter(|s| ids.is_empty() || ids.contains(&s.id))
-            .filter(|s| {
-                let s2 = s.clone();
-                filter_passes(&fs, move |f| subnet_cand(&s2, f))
-            })
+            .filter(|s| subnet_passes(&fs, s))
             .map(|s| subnet_item(&region, account, s))
             .collect();
         ec2_xml(
@@ -1047,18 +1148,14 @@ fn delete_subnet(req: &Request, params: &P) -> Response {
 fn create_default_subnet(req: &Request, params: &P) -> Response {
     let az = params.str("AvailabilityZone");
     with_state(req, move |state| {
-        if state
-            .vpcs
-            .iter()
-            .all(|v| !v.is_default)
-        {
+        if state.vpcs.iter().all(|v| !v.is_default) {
             state.ensure_default_vpc(&req.region, req.account);
         }
         let default_vpc = state
             .vpcs
             .iter()
+            .find(|&v| v.is_default)
             .cloned()
-            .find(|v| v.is_default)
             .unwrap_or_default();
         let subnet_id = state.next_id("subnet");
         let subnet = Subnet {
@@ -1074,7 +1171,10 @@ fn create_default_subnet(req: &Request, params: &P) -> Response {
         state.subnets.push(subnet.clone());
         ec2_xml(
             "CreateDefaultSubnetResponse",
-            &format!("<subnet>{}</subnet>", subnet_fields(&req.region, req.account, &subnet)),
+            &format!(
+                "<subnet>{}</subnet>",
+                subnet_fields(&req.region, req.account, &subnet)
+            ),
         )
     })
 }
@@ -1135,16 +1235,17 @@ fn disassociate_subnet_cidr_block(req: &Request, params: &P) -> Response {
                 .iter()
                 .any(|(a, _)| a == &assoc_id)
             {
-                state.subnets[i]
-                    .ipv6_assocs
-                    .retain(|(a, _)| a != &assoc_id);
+                state.subnets[i].ipv6_assocs.retain(|(a, _)| a != &assoc_id);
                 return ok_xml("DisassociateSubnetCidrBlockResponse");
             }
         }
         ec2_error(
             400,
             "InvalidSubnetCidrBlockAssociationID.NotFound",
-            &format!("The association ID '{}' does not exist", xml_escape(&assoc_id)),
+            &format!(
+                "The association ID '{}' does not exist",
+                xml_escape(&assoc_id)
+            ),
         )
     })
 }
@@ -1159,9 +1260,11 @@ fn create_subnet_cidr_reservation(req: &Request, params: &P) -> Response {
             Err(e) => return e,
         };
         let reservation_id = state.next_id("scr");
-        state.subnets[pos]
-            .cidr_reservations
-            .push((reservation_id.clone(), cidr.clone(), rtype.clone()));
+        state.subnets[pos].cidr_reservations.push((
+            reservation_id.clone(),
+            cidr.clone(),
+            rtype.clone(),
+        ));
         ec2_xml(
             "CreateSubnetCidrReservationResponse",
             &format!(
@@ -1188,7 +1291,10 @@ fn delete_subnet_cidr_reservation(req: &Request, params: &P) -> Response {
         ec2_error(
             400,
             "InvalidSubnetCidrReservationId.NotFound",
-            &format!("The subnet CIDR reservation '{}' does not exist", xml_escape(&reserve_id)),
+            &format!(
+                "The subnet CIDR reservation '{}' does not exist",
+                xml_escape(&reserve_id)
+            ),
         )
     })
 }

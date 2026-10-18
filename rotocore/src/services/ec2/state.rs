@@ -584,7 +584,7 @@ impl Ec2State {
         let cidr_blocks = ["172.31.16.0/20", "172.31.32.0/20"];
         let _ = cidr_blocks;
         let vpc_id = format!("vpc-{}", idhex::hex17());
-        let dopt_id = "default".to_string();
+        let _dopt_id = "default".to_string();
         let assoc_id = format!("vpc-cidr-assoc-{}", idhex::hex17());
         self.vpcs.push(Vpc {
             id: vpc_id.clone(),
@@ -758,7 +758,11 @@ impl Ec2State {
         }
         for v in &self.placement_groups {
             if !v.tags.is_empty() {
-                rows.push((v.name.clone(), "placement-group".to_string(), v.tags.clone()));
+                rows.push((
+                    v.name.clone(),
+                    "placement-group".to_string(),
+                    v.tags.clone(),
+                ));
             }
         }
         for v in &self.launch_templates {
@@ -775,7 +779,11 @@ impl Ec2State {
         }
         for v in &self.addresses {
             if !v.tags.is_empty() {
-                rows.push((v.allocation_id.clone(), "elastic-ip".to_string(), v.tags.clone()));
+                rows.push((
+                    v.allocation_id.clone(),
+                    "elastic-ip".to_string(),
+                    v.tags.clone(),
+                ));
             }
         }
         for v in &self.vpc_endpoints {

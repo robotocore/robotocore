@@ -18,8 +18,6 @@ fn req(op: &str, body: &str) -> crate::Request {
     }
 }
 
-const NS: &str = "http://ec2.amazonaws.com/doc/2016-11-15/";
-
 #[test]
 fn parse_flat_lists() {
     let r = req(
@@ -47,10 +45,7 @@ fn parse_url_encoded() {
 
 #[test]
 fn create_and_describe_vpc() {
-    let r = req(
-        "CreateVpc",
-        "Action=CreateVpc&CidrBlock=10.77.0.0%2F16",
-    );
+    let r = req("CreateVpc", "Action=CreateVpc&CidrBlock=10.77.0.0%2F16");
     let resp = super::dispatch(&r);
     let text = String::from_utf8(resp.body.clone()).unwrap();
     assert!(text.contains("<CreateVpcResponse"), "{text}");
@@ -62,12 +57,12 @@ fn create_and_describe_vpc() {
         .next()
         .unwrap()
         .to_string();
-    assert!(!text.contains("<vpc><item>"), "fields must be direct children");
-
-    let r2 = req(
-        "DescribeVpcs",
-        &format!("Action=DescribeVpcs&VpcId.1={id}"),
+    assert!(
+        !text.contains("<vpc><item>"),
+        "fields must be direct children"
     );
+
+    let r2 = req("DescribeVpcs", &format!("Action=DescribeVpcs&VpcId.1={id}"));
     let resp = super::dispatch(&r2);
     let text2 = String::from_utf8(resp.body).unwrap();
     assert!(text2.contains(format!("<vpcId>{}</vpcId>", id).as_str()));
@@ -110,9 +105,7 @@ fn tags_round_trip_on_vpc() {
     // tag:Name candidate filter applies
     let fr = req(
         "DescribeVpcs",
-        &format!(
-            "Action=DescribeVpcs&Filter.1.Name=tag%3AName&Filter.1.Value.1=x"
-        ),
+        "Action=DescribeVpcs&Filter.1.Name=tag%3AName&Filter.1.Value.1=x",
     );
     let ftext = String::from_utf8(super::dispatch(&fr).body).unwrap();
     assert!(ftext.contains(id.as_str()), "{ftext}");
@@ -186,7 +179,8 @@ fn security_group_lifecycle() {
         "Action=CreateSecurityGroup&GroupName=unit-sg&GroupDescription=test&VpcId={}",
         vpc_id
     );
-    let text = String::from_utf8(super::dispatch(&req("CreateSecurityGroup", &sg_body)).body).unwrap();
+    let text =
+        String::from_utf8(super::dispatch(&req("CreateSecurityGroup", &sg_body)).body).unwrap();
     let sg_id = text
         .split("<groupId>")
         .nth(1)
@@ -205,7 +199,8 @@ fn security_group_lifecycle() {
     assert_eq!(resp.status, 200);
 
     let describe = format!("Action=DescribeSecurityGroups&GroupId.1={}", sg_id);
-    let text = String::from_utf8(super::dispatch(&req("DescribeSecurityGroups", &describe)).body).unwrap();
+    let text =
+        String::from_utf8(super::dispatch(&req("DescribeSecurityGroups", &describe)).body).unwrap();
     assert!(text.contains("<fromPort>443</fromPort>"), "{text}");
 }
 
@@ -216,16 +211,21 @@ fn default_vpc_exists() {
     assert!(text.contains("<isDefault>true</isDefault>"));
 }
 
-use super::{ec2_xml, EC2_NS};
-
 #[test]
 fn replace_tags_direct() {
     use super::state::Vpc;
     let mut state = Ec2State::default();
-    state.vpcs.push(Vpc { id: "vpc-1".into(), ..Default::default() });
+    state.vpcs.push(Vpc {
+        id: "vpc-1".into(),
+        ..Default::default()
+    });
     let tags = vec![("Name".to_string(), "x".to_string())];
     let ids = vec!["vpc-1".to_string()];
     handlers::replace_tags(&mut state, &ids, &tags);
     let rows = state.all_tag_rows();
-    assert!(rows.iter().any(|(id, _, ts)| id == "vpc-1" && ts.len() == 1), "{rows:?}");
+    assert!(
+        rows.iter()
+            .any(|(id, _, ts)| id == "vpc-1" && ts.len() == 1),
+        "{rows:?}"
+    );
 }

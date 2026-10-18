@@ -1,7 +1,10 @@
 //! XML field builders shared across the ec2 handler groups.
 
+use super::{
+    state::{LaunchTemplate, Snapshot, Volume},
+    tags_xml,
+};
 use crate::proto::xml_escape;
-use super::{tags_xml, state::{Volume, Snapshot, LaunchTemplate}};
 use std::fmt::Write as _;
 
 /// Fields inside a `<volume>` element (no wrapping `<item>`, no closing tag).
@@ -9,10 +12,22 @@ pub fn volume_fields(v: &Volume) -> String {
     let mut out = String::new();
     let _ = write!(out, "<volumeId>{}</volumeId>", xml_escape(&v.id));
     let _ = write!(out, "<size>{}</size>", v.size);
-    let _ = write!(out, "<snapshotId>{}</snapshotId>", xml_escape(&v.snapshot_id));
-    let _ = write!(out, "<availabilityZone>{}</availabilityZone>", xml_escape(&v.az));
+    let _ = write!(
+        out,
+        "<snapshotId>{}</snapshotId>",
+        xml_escape(&v.snapshot_id)
+    );
+    let _ = write!(
+        out,
+        "<availabilityZone>{}</availabilityZone>",
+        xml_escape(&v.az)
+    );
     let _ = write!(out, "<state>{}</state>", xml_escape(&v.state));
-    let _ = write!(out, "<createTime>{}</createTime>", xml_escape(&v.create_time));
+    let _ = write!(
+        out,
+        "<createTime>{}</createTime>",
+        xml_escape(&v.create_time)
+    );
     if let Some(i) = v.iops {
         let _ = write!(out, "<iops>{}</iops>", i);
     }
@@ -31,11 +46,23 @@ pub fn volume_fields(v: &Volume) -> String {
     if let Some(a) = &v.attachment {
         out.push_str("<attachmentSet><item>");
         let _ = write!(out, "<volumeId>{}</volumeId>", xml_escape(&v.id));
-        let _ = write!(out, "<instanceId>{}</instanceId>", xml_escape(&a.instance_id));
+        let _ = write!(
+            out,
+            "<instanceId>{}</instanceId>",
+            xml_escape(&a.instance_id)
+        );
         let _ = write!(out, "<device>{}</device>", xml_escape(&a.device));
         let _ = write!(out, "<status>{}</status>", xml_escape(&a.status));
-        let _ = write!(out, "<attachTime>{}</attachTime>", xml_escape(&a.attach_time));
-        let _ = write!(out, "<deleteOnTermination>{}</deleteOnTermination>", a.delete_on_termination);
+        let _ = write!(
+            out,
+            "<attachTime>{}</attachTime>",
+            xml_escape(&a.attach_time)
+        );
+        let _ = write!(
+            out,
+            "<deleteOnTermination>{}</deleteOnTermination>",
+            a.delete_on_termination
+        );
         out.push_str("</item></attachmentSet>");
     } else {
         out.push_str("<attachmentSet/>");
@@ -58,7 +85,11 @@ pub fn snapshot_fields(s: &Snapshot) -> String {
     let _ = write!(out, "<startTime>{}</startTime>", xml_escape(&s.start_time));
     let _ = write!(out, "<progress>{}%</progress>", xml_escape(&s.progress));
     let _ = write!(out, "<ownerId>{}</ownerId>", s.owner_id);
-    let _ = write!(out, "<description>{}</description>", xml_escape(&s.description));
+    let _ = write!(
+        out,
+        "<description>{}</description>",
+        xml_escape(&s.description)
+    );
     let _ = write!(out, "<volumeSize>{}</volumeSize>", s.volume_size);
     if let Some(a) = &s.owner_alias {
         let _ = write!(out, "<ownerAlias>{}</ownerAlias>", xml_escape(a));

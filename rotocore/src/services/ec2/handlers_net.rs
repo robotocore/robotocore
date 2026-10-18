@@ -1,13 +1,19 @@
 //! EC2 handler group 2: security groups, internet gateways, elastic IPs,
 //! route tables.
-
+#![allow(
+    clippy::format_in_format_args,
+    clippy::type_complexity,
+    clippy::if_same_then_else,
+    clippy::single_match,
+    clippy::map_identity
+)]
 #![allow(unused_variables)]
 
 use super::handlers::filters as req_filters;
 use super::handlers::{filter_passes, ok_xml, tag_candidates, wire_tags};
 
-use super::state::{Ec2State, IpPermission, Route, RouteTable, SecurityGroup, Tags};
-use super::{ec2_error, ec2_xml, now_iso, tags_xml, with_state, Params};
+use super::state::{Ec2State, IpPermission, Route, RouteTable, SecurityGroup};
+use super::{ec2_error, ec2_xml, tags_xml, with_state, Params};
 use crate::proto::xml_escape;
 use crate::{Request, Response};
 use std::fmt::Write as _;
@@ -24,8 +30,12 @@ pub fn route(req: &Request, params: &P) -> Response {
         "AuthorizeSecurityGroupEgress" => authorize_security_group(req, params, true),
         "RevokeSecurityGroupIngress" => revoke_security_group(req, params, false),
         "RevokeSecurityGroupEgress" => revoke_security_group(req, params, true),
-        "UpdateSecurityGroupRuleDescriptionsIngress" => update_sg_rule_descriptions(req, params, false),
-        "UpdateSecurityGroupRuleDescriptionsEgress" => update_sg_rule_descriptions(req, params, true),
+        "UpdateSecurityGroupRuleDescriptionsIngress" => {
+            update_sg_rule_descriptions(req, params, false)
+        }
+        "UpdateSecurityGroupRuleDescriptionsEgress" => {
+            update_sg_rule_descriptions(req, params, true)
+        }
         "ModifySecurityGroupRules" => modify_security_group_rules(req, params),
         "AssociateSecurityGroupVpc" => associate_sg_vpc(req, params),
         "DisassociateSecurityGroupVpc" => disassociate_sg_vpc(req, params),
@@ -64,13 +74,19 @@ pub fn route(req: &Request, params: &P) -> Response {
 // Security groups
 // ---------------------------------------------------------------------------
 
-fn require_sg<'a>(state: &'a mut Ec2State, group_id: &str) -> Result<&'a mut SecurityGroup, Response> {
+fn require_sg<'a>(
+    state: &'a mut Ec2State,
+    group_id: &str,
+) -> Result<&'a mut SecurityGroup, Response> {
     match state.security_groups.iter_mut().find(|s| s.id == group_id) {
         Some(s) => Ok(s),
         None => Err(ec2_error(
             400,
             "InvalidGroup.NotFound",
-            &format!("The security group '{}' does not exist", xml_escape(group_id)),
+            &format!(
+                "The security group '{}' does not exist",
+                xml_escape(group_id)
+            ),
         )),
     }
 }
@@ -118,7 +134,11 @@ fn ip_permission_item(account: &str, perm: &IpPermission) -> String {
     out.push_str("<ipv6Ranges>");
     for (cidr, desc) in &perm.ipv6_ranges {
         if desc.is_empty() {
-            let _ = write!(out, "<item><cidrIpv6>{}</cidrIpv6></item>", xml_escape(cidr));
+            let _ = write!(
+                out,
+                "<item><cidrIpv6>{}</cidrIpv6></item>",
+                xml_escape(cidr)
+            );
         } else {
             let _ = write!(
                 out,
@@ -209,7 +229,10 @@ fn create_security_group(req: &Request, params: &P) -> Response {
             return ec2_error(
                 400,
                 "InvalidGroup.Duplicate",
-                &format!("The security group '{}' already exists", xml_escape(name.as_str())),
+                &format!(
+                    "The security group '{}' already exists",
+                    xml_escape(name.as_str())
+                ),
             );
         }
         let sg_id = state.next_id("sg");
@@ -232,7 +255,10 @@ fn create_security_group(req: &Request, params: &P) -> Response {
         state.security_groups.push(sg);
         ec2_xml(
             "CreateSecurityGroupResponse",
-            &format!("<return>true</return><groupId>{}</groupId>", xml_escape(&sg_id)),
+            &format!(
+                "<return>true</return><groupId>{}</groupId>",
+                xml_escape(&sg_id)
+            ),
         )
     })
 }
@@ -247,7 +273,13 @@ fn delete_security_group(req: &Request, params: &P) -> Response {
             // name lookup within a VPC or the default vpc
             let vpc_id = params.str("VpcId");
             let vpc = if vpc_id.is_empty() {
-                state.vpcs.iter().filter(|v| v.is_default).map(|v| v.id.clone()).next().unwrap_or_default()
+                state
+                    .vpcs
+                    .iter()
+                    .filter(|v| v.is_default)
+                    .map(|v| v.id.clone())
+                    .next()
+                    .unwrap_or_default()
             } else {
                 vpc_id.clone()
             };
@@ -284,8 +316,16 @@ fn delete_security_group(req: &Request, params: &P) -> Response {
 }
 
 fn describe_security_groups(req: &Request, params: &P) -> Response {
-    let group_ids: Vec<String> = params.list("GroupId").iter().map(|s| s.to_string()).collect();
-    let group_names: Vec<String> = params.list("GroupName").iter().map(|s| s.to_string()).collect();
+    let group_ids: Vec<String> = params
+        .list("GroupId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let group_names: Vec<String> = params
+        .list("GroupName")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = req_filters(params);
     with_state(req, move |state| {
         let account = req.account;
@@ -322,8 +362,12 @@ fn parse_permissions(params: &P) -> Vec<IpPermission> {
                 .sub("IpPermissions", i, "IpProtocol")
                 .unwrap_or("-1")
                 .to_string(),
-            from_port: params.sub(&format!("IpPermissions"), i, "FromPort").and_then(|v| v.parse::<i64>().ok()),
-            to_port: params.sub("IpPermissions", i, "ToPort").and_then(|v| v.parse::<i64>().ok()),
+            from_port: params
+                .sub("IpPermissions", i, "FromPort")
+                .and_then(|v| v.parse::<i64>().ok()),
+            to_port: params
+                .sub("IpPermissions", i, "ToPort")
+                .and_then(|v| v.parse::<i64>().ok()),
             ..Default::default()
         };
         let ranges = params.container_indices(&format!("{base}.IpRanges"));
@@ -332,7 +376,10 @@ fn parse_permissions(params: &P) -> Vec<IpPermission> {
             if let Some(cidr) = params.sub(&rb, r, "CidrIp") {
                 perm.ip_ranges.push((
                     cidr.to_string(),
-                    params.sub(&rb, r, "Description").unwrap_or_default().to_string(),
+                    params
+                        .sub(&rb, r, "Description")
+                        .unwrap_or_default()
+                        .to_string(),
                 ));
             }
         }
@@ -342,7 +389,10 @@ fn parse_permissions(params: &P) -> Vec<IpPermission> {
             if let Some(cidr) = params.sub(&rb, r, "CidrIpv6") {
                 perm.ipv6_ranges.push((
                     cidr.to_string(),
-                    params.sub(&rb, r, "Description").unwrap_or_default().to_string(),
+                    params
+                        .sub(&rb, r, "Description")
+                        .unwrap_or_default()
+                        .to_string(),
                 ));
             }
         }
@@ -352,7 +402,10 @@ fn parse_permissions(params: &P) -> Vec<IpPermission> {
             if let Some(pl) = params.sub(&rb, r, "PrefixListId") {
                 perm.prefix_list_ids.push((
                     pl.to_string(),
-                    params.sub(&rb, r, "Description").unwrap_or_default().to_string(),
+                    params
+                        .sub(&rb, r, "Description")
+                        .unwrap_or_default()
+                        .to_string(),
                 ));
             }
         }
@@ -360,10 +413,19 @@ fn parse_permissions(params: &P) -> Vec<IpPermission> {
         for r in pairs {
             let rb = format!("{base}.UserIdGroupPairs");
             perm.user_id_group_pairs.push((
-                params.sub(&rb, r, "GroupId").unwrap_or_default().to_string(),
-                params.sub(&rb, r, "GroupName").unwrap_or_default().to_string(),
+                params
+                    .sub(&rb, r, "GroupId")
+                    .unwrap_or_default()
+                    .to_string(),
+                params
+                    .sub(&rb, r, "GroupName")
+                    .unwrap_or_default()
+                    .to_string(),
                 params.sub(&rb, r, "UserId").unwrap_or_default().to_string(),
-                params.sub(&rb, r, "Description").unwrap_or_default().to_string(),
+                params
+                    .sub(&rb, r, "Description")
+                    .unwrap_or_default()
+                    .to_string(),
             ));
         }
         out.push(perm);
@@ -587,7 +649,9 @@ fn associate_sg_vpc(req: &Request, params: &P) -> Response {
             .iter()
             .position(|s| s.id == sg_id)
             .unwrap_or(0);
-        state.security_groups[pos].tags.push((format!("sgvpa:{}", assoc_id), vpc_id.clone()));
+        state.security_groups[pos]
+            .tags
+            .push((format!("sgvpa:{}", assoc_id), vpc_id.clone()));
         ec2_xml(
             "AssociateSecurityGroupVpcResponse",
             &format!(
@@ -602,7 +666,7 @@ fn disassociate_sg_vpc(req: &Request, params: &P) -> Response {
     let sg_id = params.str("GroupId");
     let vpc_id = params.str("VpcId");
     with_state(req, move |state| {
-        let target = format!("sgvpa:");
+        let target = "sgvpa:".to_string();
         let mut removed = false;
         if let Some(pos) = state.security_groups.iter().position(|s| s.id == sg_id) {
             let tags = state.security_groups[pos].tags.clone();
@@ -652,19 +716,35 @@ fn describe_sg_vpc_associations(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "DescribeSecurityGroupVpcAssociationsResponse",
-            &format!("<securityGroupVpcAssociations>{}</securityGroupVpcAssociations>", body),
+            &format!(
+                "<securityGroupVpcAssociations>{}</securityGroupVpcAssociations>",
+                body
+            ),
         )
     })
 }
 
 /// Serialized rule id for a (sg, direction, index) triple.
 fn sg_rule_id(sg_id: &str, egress: bool, idx: usize) -> String {
-    format!("sgr-{}-{}{:04}", &sg_id[3..], if egress { "e" } else { "i" }, idx + 1)
+    format!(
+        "sgr-{}-{}{:04}",
+        &sg_id[3..],
+        if egress { "e" } else { "i" },
+        idx + 1
+    )
 }
 
 fn describe_security_group_rules(req: &Request, params: &P) -> Response {
-    let rule_ids: Vec<String> = params.list("SecurityGroupRuleId").iter().map(|s| s.to_string()).collect();
-    let group_ids: Vec<String> = params.list("GroupId").iter().map(|s| s.to_string()).collect();
+    let rule_ids: Vec<String> = params
+        .list("SecurityGroupRuleId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let group_ids: Vec<String> = params
+        .list("GroupId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = req_filters(params);
     with_state(req, move |state| {
         let account = req.account;
@@ -674,7 +754,10 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
             if sg_rule_filters_fail(sg, &group_ids, &fs) {
                 continue;
             }
-            for (egress, perms) in [(false, sg.permissions.as_slice()), (true, sg.egress.as_slice())] {
+            for (egress, perms) in [
+                (false, sg.permissions.as_slice()),
+                (true, sg.egress.as_slice()),
+            ] {
                 for (idx, perm) in perms.iter().enumerate() {
                     let id = sg_rule_id(&sg.id, egress, idx);
                     if !rule_ids.is_empty() && !rule_ids.contains(&id) {
@@ -691,10 +774,12 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(cidr)
                         );
                         if let (Some(f), Some(t)) = (perm.from_port, perm.to_port) {
-                            let _ = write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
+                            let _ =
+                                write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         }
                         if !descr.is_empty() {
-                            let _ = write!(body, "<description>{}</description>", xml_escape(descr));
+                            let _ =
+                                write!(body, "<description>{}</description>", xml_escape(descr));
                         }
                         body.push_str("</item>");
                     }
@@ -710,7 +795,8 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
                             xml_escape(owner)
                         );
                         if let (Some(f), Some(t)) = (perm.from_port, perm.to_port) {
-                            let _ = write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
+                            let _ =
+                                write!(body, "<fromPort>{}</fromPort><toPort>{}</toPort>", f, t);
                         }
                         body.push_str("</item>");
                     }
@@ -747,7 +833,7 @@ fn sg_rule_filters_fail(
 // Internet gateways
 // ---------------------------------------------------------------------------
 
-fn require_igw<'a>(state: &'a mut Ec2State, igw_id: &str) -> Result<usize, Response> {
+fn require_igw(state: &mut Ec2State, igw_id: &str) -> Result<usize, Response> {
     match state.internet_gateways.iter().position(|g| g.id == igw_id) {
         Some(i) => Ok(i),
         None => Err(ec2_error(
@@ -856,9 +942,7 @@ fn describe_internet_gateways(req: &Request, params: &P) -> Response {
             .filter(|g| {
                 filter_passes(&fs, |f| match f {
                     "internet-gateway-id" | "igw-id" => vec![g.id.clone()],
-                    "attachment.state" => {
-                        g.attachments.iter().map(|(_, s)| s.clone()).collect()
-                    }
+                    "attachment.state" => g.attachments.iter().map(|(_, s)| s.clone()).collect(),
                     "attachment.vpc-id" => g.attachments.iter().map(|(v, _)| v.clone()).collect(),
                     other => tag_candidates(&g.tags, other),
                 })
@@ -867,7 +951,10 @@ fn describe_internet_gateways(req: &Request, params: &P) -> Response {
             .collect();
         ec2_xml(
             "DescribeInternetGatewaysResponse",
-            &format!("<internetGatewaySet>{}</internetGatewaySet>", items.concat()),
+            &format!(
+                "<internetGatewaySet>{}</internetGatewaySet>",
+                items.concat()
+            ),
         )
     })
 }
@@ -879,16 +966,11 @@ fn attach_internet_gateway(req: &Request, params: &P) -> Response {
         if require_igw(state, &igw_id).is_err() {
             return require_igw(state, &igw_id).err().unwrap();
         }
-        let pos = match state
-            .internet_gateways
-            .iter()
-            .position(|g| g.id == igw_id)
-        {
+        let pos = match state.internet_gateways.iter().position(|g| g.id == igw_id) {
             Some(i) => i,
             None => return ok_xml("AttachInternetGatewayResponse"),
         };
-        if state
-            .internet_gateways[pos]
+        if state.internet_gateways[pos]
             .attachments
             .iter()
             .any(|(v, _)| v == &vpc_id)
@@ -920,7 +1002,11 @@ fn detach_internet_gateway(req: &Request, params: &P) -> Response {
                     return ec2_error(
                         400,
                         "Gateway_NotAttached",
-                        &format!("Gateway '{}' is not attached to '{}'", xml_escape(igw_id.as_str()), xml_escape(vpc_id.as_str())),
+                        &format!(
+                            "Gateway '{}' is not attached to '{}'",
+                            xml_escape(igw_id.as_str()),
+                            xml_escape(vpc_id.as_str())
+                        ),
                     );
                 }
             }
@@ -941,7 +1027,11 @@ fn create_carrier_gateway(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         let cg_id = state.next_id("carrier-gateway");
         let tags = wire_tags(params);
-        let mut s = super::state::Simple { id: cg_id.clone(), kind: "carrier-gateway".into(), ..Default::default() };
+        let mut s = super::state::Simple {
+            id: cg_id.clone(),
+            kind: "carrier-gateway".into(),
+            ..Default::default()
+        };
         s.set("VpcId", vpc_id.clone());
         s.set("State", "available");
         s.set("OwnerId", req.account.to_string());
@@ -979,7 +1069,10 @@ fn delete_carrier_gateway(req: &Request, params: &P) -> Response {
             return ec2_error(
                 400,
                 "InvalidCarrierGatewayID.NotFound",
-                &format!("The carrier gateway '{}' does not exist", xml_escape(&cg_id)),
+                &format!(
+                    "The carrier gateway '{}' does not exist",
+                    xml_escape(&cg_id)
+                ),
             );
         }
         ok_xml("DeleteCarrierGatewayResponse")
@@ -987,7 +1080,11 @@ fn delete_carrier_gateway(req: &Request, params: &P) -> Response {
 }
 
 fn describe_carrier_gateways(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("CarrierGatewayId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("CarrierGatewayId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     with_state(req, move |state| {
         let fam = state
             .simple
@@ -1035,14 +1132,25 @@ fn find_alloc(state: &Ec2State, id: &str, public_ip: &str) -> Option<usize> {
         return state.addresses.iter().position(|a| a.allocation_id == id);
     }
     if !public_ip.is_empty() {
-        return state.addresses.iter().position(|a| a.public_ip == public_ip);
+        return state
+            .addresses
+            .iter()
+            .position(|a| a.public_ip == public_ip);
     }
     None
 }
 
 fn describe_addresses(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("AllocationId").iter().map(|s| s.to_string()).collect();
-    let ips: Vec<String> = params.list("PublicIp").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("AllocationId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let ips: Vec<String> = params
+        .list("PublicIp")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = req_filters(params);
     with_state(req, move |state| {
         let mut body = String::new();
@@ -1082,17 +1190,28 @@ fn describe_addresses(req: &Request, params: &P) -> Response {
                 let _ = write!(item, "<instanceId>{}</instanceId>", xml_escape(i));
             }
             if !eip.allocation_id.is_empty() {
-                let _ = write!(item, "<allocationId>{}</allocationId>", xml_escape(&eip.allocation_id));
+                let _ = write!(
+                    item,
+                    "<allocationId>{}</allocationId>",
+                    xml_escape(&eip.allocation_id)
+                );
             }
             if !eip.private_ip_address.is_empty() {
-                let _ = write!(item, "<privateIpAddress>{}</privateIpAddress>", xml_escape(&eip.private_ip_address));
+                let _ = write!(
+                    item,
+                    "<privateIpAddress>{}</privateIpAddress>",
+                    xml_escape(&eip.private_ip_address)
+                );
             }
             if !eip.tags.is_empty() {
                 item.push_str(&tags_xml(&eip.tags));
             }
             let _ = write!(body, "<item>{}</item>", item);
         }
-        ec2_xml("DescribeAddressesResponse", &format!("<addressesSet>{}</addressesSet>", body))
+        ec2_xml(
+            "DescribeAddressesResponse",
+            &format!("<addressesSet>{}</addressesSet>", body),
+        )
     })
 }
 
@@ -1104,7 +1223,10 @@ fn release_address(req: &Request, params: &P) -> Response {
             return ec2_error(
                 400,
                 "InvalidAllocationID.NotFound",
-                &format!("ElasticTouch allocation id '{}' was not found", xml_escape(&alloc_id)),
+                &format!(
+                    "ElasticTouch allocation id '{}' was not found",
+                    xml_escape(&alloc_id)
+                ),
             );
         }
         let pos = find_alloc(state, &alloc_id, &public_ip).unwrap_or(0);
@@ -1126,7 +1248,10 @@ fn associate_address(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidAllocationID.NotFound",
-                    &format!("ElasticTouch allocation id '{}' was not found", xml_escape(&alloc_id)),
+                    &format!(
+                        "ElasticTouch allocation id '{}' was not found",
+                        xml_escape(&alloc_id)
+                    ),
                 )
             }
         };
@@ -1139,12 +1264,19 @@ fn associate_address(req: &Request, params: &P) -> Response {
                     .as_ref()
                     .map(|a| a.instance_id == instance_id)
                     .unwrap_or(false)
-                    && e.attached.as_ref().map(|a| a.device_index == 0).unwrap_or(false)
+                    && e.attached
+                        .as_ref()
+                        .map(|a| a.device_index == 0)
+                        .unwrap_or(false)
             }) {
                 Some(e) => e.id.clone(),
                 None => {
                     if instance_id.is_empty() {
-                        return ec2_error(400, "MissingParameter", "The request must contain the parameter InstanceId");
+                        return ec2_error(
+                            400,
+                            "MissingParameter",
+                            "The request must contain the parameter InstanceId",
+                        );
                     }
                     state.next_id("eni")
                 }
@@ -1230,7 +1362,10 @@ fn disassociate_address(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidAssociationID.NotFound",
-                    &format!("ElasticTouch association id '{}' was not found", xml_escape(&assoc_id)),
+                    &format!(
+                        "ElasticTouch association id '{}' was not found",
+                        xml_escape(&assoc_id)
+                    ),
                 )
             }
         }
@@ -1242,7 +1377,7 @@ fn disassociate_address(req: &Request, params: &P) -> Response {
 // Route tables
 // ---------------------------------------------------------------------------
 
-fn require_rt<'a>(state: &'a mut Ec2State, rt_id: &str) -> Result<usize, Response> {
+fn require_rt(state: &mut Ec2State, rt_id: &str) -> Result<usize, Response> {
     match state.route_tables.iter().position(|t| t.id == rt_id) {
         Some(i) => Ok(i),
         None => Err(ec2_error(
@@ -1370,7 +1505,11 @@ fn delete_route_table(req: &Request, params: &P) -> Response {
         if require_rt(state, &rt_id).is_err() {
             return require_rt(state, &rt_id).err().unwrap();
         }
-        let pos = state.route_tables.iter().position(|t| t.id == rt_id).unwrap_or(0);
+        let pos = state
+            .route_tables
+            .iter()
+            .position(|t| t.id == rt_id)
+            .unwrap_or(0);
         if !state.route_tables[pos].associations.is_empty() {
             return ec2_error(
                 400,
@@ -1384,7 +1523,11 @@ fn delete_route_table(req: &Request, params: &P) -> Response {
 }
 
 fn describe_route_tables(req: &Request, params: &P) -> Response {
-    let ids: Vec<String> = params.list("RouteTableId").iter().map(|s| s.to_string()).collect();
+    let ids: Vec<String> = params
+        .list("RouteTableId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let fs = req_filters(params);
     with_state(req, move |state| {
         let account = req.account;
@@ -1398,12 +1541,10 @@ fn describe_route_tables(req: &Request, params: &P) -> Response {
             if !filter_passes(&fs, move |f| match f {
                 "route-table-id" => vec![rt2.id.clone()],
                 "vpc-id" => vec![rt2.vpc_id.clone()],
-                "route.destination-cidr-block" => rt2.routes.iter().map(|r| r.destination.clone()).collect(),
-                "route.gateway-id" => rt2
-                    .routes
-                    .iter()
-                    .filter_map(|r| r.target.clone())
-                    .collect(),
+                "route.destination-cidr-block" => {
+                    rt2.routes.iter().map(|r| r.destination.clone()).collect()
+                }
+                "route.gateway-id" => rt2.routes.iter().filter_map(|r| r.target.clone()).collect(),
                 "association.main" => vec![if rt2.associations.iter().any(|(_, _, m)| *m) {
                     "true".to_string()
                 } else {
@@ -1413,21 +1554,26 @@ fn describe_route_tables(req: &Request, params: &P) -> Response {
             }) {
                 continue;
             }
-            let item = route_table_item(state, account, &rt);
+            let item = route_table_item(state, account, rt);
             items.push_str(&item);
         }
-        ec2_xml("DescribeRouteTablesResponse", &format!("<routeTableSet>{}</routeTableSet>", items))
+        ec2_xml(
+            "DescribeRouteTablesResponse",
+            &format!("<routeTableSet>{}</routeTableSet>", items),
+        )
     })
 }
 
-
 fn allocate_address(req: &Request, params: &P) -> Response {
-    let domain = params.get("Domain").map(|s| s.to_string()).unwrap_or_default();
+    let domain = params
+        .get("Domain")
+        .map(|s| s.to_string())
+        .unwrap_or_default();
     let aws_vpc = !domain.is_empty();
     with_state(req, move |state| {
         let public_ip = random_public_ip();
-        let mut body;
-        if aws_vpc {
+
+        let body = if aws_vpc {
             let alloc_id = state.next_id("eipalloc");
             state.addresses.push(super::state::ElasticIp {
                 allocation_id: alloc_id.clone(),
@@ -1435,25 +1581,25 @@ fn allocate_address(req: &Request, params: &P) -> Response {
                 domain: "vpc".into(),
                 ..Default::default()
             });
-            body = format!(
+            format!(
                 "<publicIp>{}</publicIp><domain>vpc</domain><allocationId>{}</allocationId>",
                 xml_escape(&public_ip),
                 xml_escape(&alloc_id)
-            );
+            )
         } else {
             state.addresses.push(super::state::ElasticIp {
                 public_ip: public_ip.clone(),
                 ..Default::default()
             });
-            body = format!("<publicIp>{}</publicIp>", xml_escape(&public_ip));
-        }
+            format!("<publicIp>{}</publicIp>", xml_escape(&public_ip))
+        };
         ec2_xml("AllocateAddressResponse", &body)
     })
 }
 
 /// Resolve a route target param from the request (gateway/instance/nat/peering/tgw/eigw/vpce/eni).
 fn route_target(params: &P) -> Option<(String, String)> {
-    let mut candidates: &[&str] = &[
+    let candidates: &[&str] = &[
         "GatewayId",
         "InstanceId",
         "NetworkInterfaceId",
@@ -1488,7 +1634,11 @@ fn create_route(req: &Request, params: &P) -> Response {
         if require_rt(state, &rt_id).is_err() {
             return require_rt(state, &rt_id).err().unwrap();
         }
-        let pos = state.route_tables.iter().position(|t| t.id == rt_id).unwrap_or(0);
+        let pos = state
+            .route_tables
+            .iter()
+            .position(|t| t.id == rt_id)
+            .unwrap_or(0);
         if cidr.is_empty() && ipv6.is_empty() && pl.is_empty() {
             return ec2_error(
                 400,
@@ -1523,7 +1673,13 @@ fn create_route(req: &Request, params: &P) -> Response {
         }
         state.route_tables[pos].routes.push(Route {
             destination: destination.clone(),
-            kind: if !ipv6.is_empty() { "ipv6".into() } else if !pl.is_empty() { "pl".into() } else { "cidr".into() },
+            kind: if !ipv6.is_empty() {
+                "ipv6".into()
+            } else if !pl.is_empty() {
+                "pl".into()
+            } else {
+                "cidr".into()
+            },
             target,
             state: "active".into(),
             origin: "CreateRoute".into(),
@@ -1541,15 +1697,31 @@ fn delete_route(req: &Request, params: &P) -> Response {
         if require_rt(state, &rt_id).is_err() {
             return require_rt(state, &rt_id).err().unwrap();
         }
-        let pos = state.route_tables.iter().position(|t| t.id == rt_id).unwrap_or(0);
-        let destination = if !cidr.is_empty() { cidr.clone() } else if !ipv6.is_empty() { ipv6.clone() } else { pl.clone() };
+        let pos = state
+            .route_tables
+            .iter()
+            .position(|t| t.id == rt_id)
+            .unwrap_or(0);
+        let destination = if !cidr.is_empty() {
+            cidr.clone()
+        } else if !ipv6.is_empty() {
+            ipv6.clone()
+        } else {
+            pl.clone()
+        };
         let before = state.route_tables[pos].routes.len();
-        state.route_tables[pos].routes.retain(|r| r.destination != destination);
+        state.route_tables[pos]
+            .routes
+            .retain(|r| r.destination != destination);
         if state.route_tables[pos].routes.len() == before {
             return ec2_error(
                 400,
                 "InvalidRoute.NotFound",
-                &format!("no route with destination-cidr-block '{}' in route table {}", xml_escape(destination.as_str()), xml_escape(rt_id.as_str())),
+                &format!(
+                    "no route with destination-cidr-block '{}' in route table {}",
+                    xml_escape(destination.as_str()),
+                    xml_escape(rt_id.as_str())
+                ),
             );
         }
         ok_xml("DeleteRouteResponse")
@@ -1563,7 +1735,11 @@ fn replace_route(req: &Request, params: &P) -> Response {
         if require_rt(state, &rt_id).is_err() {
             return require_rt(state, &rt_id).err().unwrap();
         }
-        let pos = state.route_tables.iter().position(|t| t.id == rt_id).unwrap_or(0);
+        let pos = state
+            .route_tables
+            .iter()
+            .position(|t| t.id == rt_id)
+            .unwrap_or(0);
         if let Some(_i) = route_in(state, &state.route_tables[pos], &cidr) {
             let mut routes = state.route_tables[pos].routes.clone();
             if let Some(idx) = routes.iter().position(|r| r.destination == cidr.clone()) {
@@ -1584,7 +1760,11 @@ fn associate_route_table(req: &Request, params: &P) -> Response {
         if require_rt(state, &rt_id).is_err() {
             return require_rt(state, &rt_id).err().unwrap();
         }
-        let pos = state.route_tables.iter().position(|t| t.id == rt_id).unwrap_or(0);
+        let pos = state
+            .route_tables
+            .iter()
+            .position(|t| t.id == rt_id)
+            .unwrap_or(0);
         if !subnet_id.is_empty() {
             if !state.subnets.iter().any(|s| s.id == subnet_id) {
                 return ec2_error(
@@ -1596,9 +1776,15 @@ fn associate_route_table(req: &Request, params: &P) -> Response {
             _remove_existing_assoc(state, &subnet_id);
         }
         let assoc_id = state.next_id("rtbassoc");
-        state.route_tables[pos]
-            .associations
-            .push((assoc_id.clone(), if subnet_id.is_empty() { None } else { Some(subnet_id.clone()) }, false));
+        state.route_tables[pos].associations.push((
+            assoc_id.clone(),
+            if subnet_id.is_empty() {
+                None
+            } else {
+                Some(subnet_id.clone())
+            },
+            false,
+        ));
         ec2_xml(
             "AssociateRouteTableResponse",
             &format!("<associationId>{}</associationId>", xml_escape(&assoc_id)),
@@ -1608,7 +1794,8 @@ fn associate_route_table(req: &Request, params: &P) -> Response {
 
 fn _remove_existing_assoc(state: &mut Ec2State, subnet_id: &str) {
     for rt in state.route_tables.iter_mut() {
-        rt.associations.retain(|(_, s, _)| s.as_deref() != Some(subnet_id));
+        rt.associations
+            .retain(|(_, s, _)| s.as_deref() != Some(subnet_id));
     }
 }
 
@@ -1627,7 +1814,10 @@ fn disassociate_route_table(req: &Request, params: &P) -> Response {
         ec2_error(
             400,
             "InvalidAssociationID.NotFound",
-            &format!("The association ID '{}' does not exist", xml_escape(&assoc_id)),
+            &format!(
+                "The association ID '{}' does not exist",
+                xml_escape(&assoc_id)
+            ),
         )
     })
 }
@@ -1653,7 +1843,10 @@ fn replace_route_table_association(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidAssociationID.NotFound",
-                    &format!("The association ID '{}' does not exist", xml_escape(&assoc_id)),
+                    &format!(
+                        "The association ID '{}' does not exist",
+                        xml_escape(&assoc_id)
+                    ),
                 )
             }
         };
@@ -1661,14 +1854,21 @@ fn replace_route_table_association(req: &Request, params: &P) -> Response {
         for rt in state.route_tables.iter_mut() {
             rt.associations.retain(|(a, _, _)| a != &assoc_id);
         }
-        let pos = state.route_tables.iter().position(|t| t.id == rt_id).unwrap_or(0);
+        let pos = state
+            .route_tables
+            .iter()
+            .position(|t| t.id == rt_id)
+            .unwrap_or(0);
         let new_assoc = state.next_id("rtbassoc");
         state.route_tables[pos]
             .associations
             .push((new_assoc.clone(), subnet_id.clone(), false));
         ec2_xml(
             "ReplaceRouteTableAssociationResponse",
-            &format!("<newAssociationId>{}</newAssociationId>", xml_escape(&new_assoc)),
+            &format!(
+                "<newAssociationId>{}</newAssociationId>",
+                xml_escape(&new_assoc)
+            ),
         )
     })
 }

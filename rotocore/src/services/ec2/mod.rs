@@ -5,14 +5,15 @@
 //! per-family behavior lives in [`handlers`].
 
 pub mod azones;
-pub mod handlers;
 pub mod ec2b;
+pub mod handlers;
 pub mod handlers_compute;
 pub mod handlers_misc;
-pub mod handlers_net2;
-pub mod templates;
 pub mod handlers_net;
+pub mod handlers_net2;
 pub mod state;
+pub mod templates;
+#[cfg(test)]
 pub mod tests;
 
 use crate::store::ScopeKey;
@@ -78,8 +79,7 @@ impl Params {
     }
 
     pub fn bool(&self, key: &str) -> Option<bool> {
-        self.get(key)
-            .map(|v| matches!(v, "true" | "True" | "1"))
+        self.get(key).map(|v| matches!(v, "true" | "True" | "1"))
     }
 
     pub fn i64(&self, key: &str) -> Option<i64> {
@@ -89,7 +89,11 @@ impl Params {
     /// Count of a flat list family, e.g. `instances of `AccountId.1..`.
     pub fn count(&self, base: &str) -> usize {
         let mut n = 0;
-        while self.map.iter().any(|(k, _)| *k == format!("{base}.{}", n + 1)) {
+        while self
+            .map
+            .iter()
+            .any(|(k, _)| *k == format!("{base}.{}", n + 1))
+        {
             n += 1;
         }
         n
@@ -127,7 +131,11 @@ impl Params {
             }
         }
         (1..=max)
-            .filter(|i| self.map.iter().any(|(k, _)| k.starts_with(&format!("{start}{i}."))))
+            .filter(|i| {
+                self.map
+                    .iter()
+                    .any(|(k, _)| k.starts_with(&format!("{start}{i}.")))
+            })
             .map(|i| i - 1)
             .collect()
     }
@@ -299,9 +307,13 @@ pub fn now_iso() -> String {
 /// unknown ops get moto's NotImplemented (501) — never a panic.
 pub fn dispatch(req: &Request) -> Response {
     if req.operation.is_empty() {
-        return ec2_error(400, "MissingParameter", "The request must contain the parameter Action");
+        return ec2_error(
+            400,
+            "MissingParameter",
+            "The request must contain the parameter Action",
+        );
     }
     let params = Params::parse(req);
-    let resp = handlers::route(req, &params);
-    resp
+
+    handlers::route(req, &params)
 }

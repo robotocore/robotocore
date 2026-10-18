@@ -1,5 +1,12 @@
 //! EC2 handler group `misc`: minor create/describe/delete families served
 //! from recorded moto templates, plus the trailing template-only smoke ops.
+#![allow(
+    clippy::format_in_format_args,
+    clippy::type_complexity,
+    clippy::if_same_then_else,
+    clippy::single_match,
+    clippy::map_identity
+)]
 //!
 //! Two engines live here:
 //! 1. [`SIMPLE_FAMILIES`] — small resource families (IPAM, traffic mirror,
@@ -10,8 +17,7 @@
 
 #![allow(unused_variables)]
 
-use super::handlers::filters as req_filters;
-use super::handlers::{filter_passes, tag_candidates, wire_tags};
+use super::handlers::{tag_candidates, wire_tags};
 use super::state::Simple;
 use super::{ec2_error, ec2_xml, tags_xml, templates, with_state, Params};
 use crate::proto::xml_escape;
@@ -48,78 +54,258 @@ macro_rules! fam {
 }
 
 pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
-    fam!("ipam", "CreateIpam", "DescribeIpams", "DeleteIpam",
-         "ipamSet", "ipam", "IpamId"),
-    fam!("ipam-scope", "CreateIpamScope", "DescribeIpamScopes", "DeleteIpamScope",
-         "ipamScopeSet", "ipam-scope", "IpamScopeId"),
-    fam!("ipam-pool", "CreateIpamPool", "DescribeIpamPools", "DeleteIpamPool",
-         "ipamPoolSet", "ipam-pool", "IpamPoolId"),
-    fam!("ipam-resource-discovery", "CreateIpamResourceDiscovery",
-         "DescribeIpamResourceDiscoveries", "DeleteIpamResourceDiscovery",
-         "ipamResourceDiscoverySet", "ipam-res-disc", "IpamResourceDiscoveryId"),
-    fam!("traffic-mirror-filter", "CreateTrafficMirrorFilter",
-         "DescribeTrafficMirrorFilters", "DeleteTrafficMirrorFilter",
-         "trafficMirrorFilterSet", "tmf", "TrafficMirrorFilterId"),
-    fam!("traffic-mirror-target", "CreateTrafficMirrorTarget",
-         "DescribeTrafficMirrorTargets", "DeleteTrafficMirrorTarget",
-         "trafficMirrorTargetSet", "tmt", "TrafficMirrorTargetId"),
-    fam!("traffic-mirror-session", "CreateTrafficMirrorSession",
-         "DescribeTrafficMirrorSessions", "DeleteTrafficMirrorSession",
-         "trafficMirrorSessionSet", "tms", "TrafficMirrorSessionId"),
-    fam!("traffic-mirror-filter-rule", "CreateTrafficMirrorFilterRule",
-         "DescribeTrafficMirrorFilterRules", "DeleteTrafficMirrorFilterRule",
-         "trafficMirrorFilterRuleSet", "tmfr", "TrafficMirrorFilterRuleId"),
-    fam!("verified-access-instance", "CreateVerifiedAccessInstance",
-         "DescribeVerifiedAccessInstances", "DeleteVerifiedAccessInstance",
-         "verifiedAccessInstances", "vai", "VerifiedAccessInstanceId"),
-    fam!("verified-access-endpoint", "CreateVerifiedAccessEndpoint",
-         "DescribeVerifiedAccessEndpoints", "DeleteVerifiedAccessEndpoint",
-         "verifiedAccessEndpoints", "vae", "VerifiedAccessEndpointId"),
-    fam!("verified-access-group", "CreateVerifiedAccessGroup",
-         "DescribeVerifiedAccessGroups", "DeleteVerifiedAccessGroup",
-         "verifiedAccessGroups", "vag", "VerifiedAccessGroupId"),
-    fam!("verified-access-trust-provider", "CreateVerifiedAccessTrustProvider",
-         "DescribeVerifiedAccessTrustProviders", "DeleteVerifiedAccessTrustProvider",
-         "verifiedAccessTrustProviders", "vatp", "VerifiedAccessTrustProviderId"),
-    fam!("capacity-reservation", "CreateCapacityReservation",
-         "DescribeCapacityReservations", "CancelCapacityReservation",
-         "capacityReservationSet", "cr", "CapacityReservationId"),
-    fam!("capacity-reservation-fleet", "CreateCapacityReservationFleet",
-         "DescribeCapacityReservationFleets", "CancelCapacityReservationFleets",
-         "capacityReservationFleetSet", "crf", "CapacityReservationFleetId"),
-    fam!("host", "AllocateHosts", "DescribeHosts", "ReleaseHosts",
-         "hostSet", "h", "HostId"),
-    fam!("fleet", "CreateFleet", "DescribeFleets", "DeleteFleet",
-         "fleetSet", "fleet", "FleetId"),
-    fam!("spot-fleet-request", "RequestSpotFleet", "DescribeSpotFleetRequests",
-         "CancelSpotFleetRequests", "spotFleetRequestSet", "sfr", "SpotFleetRequestId"),
-    fam!("spot-instance-request", "RequestSpotInstances", "DescribeSpotInstanceRequests",
-         "CancelSpotInstanceRequests", "spotInstanceRequestSet", "sir", "SpotInstanceRequestId"),
-    fam!("customer-gateway", "CreateCustomerGateway", "DescribeCustomerGateways",
-         "DeleteCustomerGateway", "customerGatewaySet", "cgw", "CustomerGatewayId"),
-    fam!("vpn-gateway", "CreateVpnGateway", "DescribeVpnGateways",
-         "DeleteVpnGateway", "vpnGatewaySet", "vgw", "VpnGatewayId"),
-    fam!("vpn-connection", "CreateVpnConnection", "DescribeVpnConnections",
-         "DeleteVpnConnection", "vpnConnectionSet", "vpn", "VpnConnectionId"),
-    fam!("egress-only-igw", "CreateEgressOnlyInternetGateway",
-         "DescribeEgressOnlyInternetGateways", "DeleteEgressOnlyInternetGateway",
-         "egressOnlyInternetGatewaySet", "eigw", "EgressOnlyInternetGatewayId"),
-    fam!("flow-log", "CreateFlowLogs", "DescribeFlowLogs",
-         "DeleteFlowLogs", "flowLogSet", "fl-", "FlowLogId"),
-    fam!("managed-prefix-list", "CreateManagedPrefixList", "DescribeManagedPrefixLists",
-         "DeleteManagedPrefixList", "prefixListSet", "pl", "PrefixListId"),
-    fam!("network-insights-path", "CreateNetworkInsightsPath",
-         "DescribeNetworkInsightsPaths", "DeleteNetworkInsightsPath",
-         "networkInsightsPathSet", "nip", "NetworkInsightsPathId"),
-    fam!("network-insights-access-scope", "CreateNetworkInsightsAccessScope",
-         "DescribeNetworkInsightsAccessScopes", "DeleteNetworkInsightsAccessScope",
-         "networkInsightsAccessScopeSet", "nis", "NetworkInsightsAccessScopeId"),
-    fam!("client-vpn-endpoint", "CreateClientVpnEndpoint",
-         "DescribeClientVpnEndpoints", "DeleteClientVpnEndpoint",
-         "clientVpnEndpointSet", "cvpn-endpoint", "ClientVpnEndpointId"),
-    fam!("carrier-gateway", "CreateCarrierGateway",
-         "DescribeCarrierGateways", "DeleteCarrierGateway",
-         "carrierGatewaySet", "cagw", "CarrierGatewayId"),
+    fam!(
+        "ipam",
+        "CreateIpam",
+        "DescribeIpams",
+        "DeleteIpam",
+        "ipamSet",
+        "ipam",
+        "IpamId"
+    ),
+    fam!(
+        "ipam-scope",
+        "CreateIpamScope",
+        "DescribeIpamScopes",
+        "DeleteIpamScope",
+        "ipamScopeSet",
+        "ipam-scope",
+        "IpamScopeId"
+    ),
+    fam!(
+        "ipam-pool",
+        "CreateIpamPool",
+        "DescribeIpamPools",
+        "DeleteIpamPool",
+        "ipamPoolSet",
+        "ipam-pool",
+        "IpamPoolId"
+    ),
+    fam!(
+        "ipam-resource-discovery",
+        "CreateIpamResourceDiscovery",
+        "DescribeIpamResourceDiscoveries",
+        "DeleteIpamResourceDiscovery",
+        "ipamResourceDiscoverySet",
+        "ipam-res-disc",
+        "IpamResourceDiscoveryId"
+    ),
+    fam!(
+        "traffic-mirror-filter",
+        "CreateTrafficMirrorFilter",
+        "DescribeTrafficMirrorFilters",
+        "DeleteTrafficMirrorFilter",
+        "trafficMirrorFilterSet",
+        "tmf",
+        "TrafficMirrorFilterId"
+    ),
+    fam!(
+        "traffic-mirror-target",
+        "CreateTrafficMirrorTarget",
+        "DescribeTrafficMirrorTargets",
+        "DeleteTrafficMirrorTarget",
+        "trafficMirrorTargetSet",
+        "tmt",
+        "TrafficMirrorTargetId"
+    ),
+    fam!(
+        "traffic-mirror-session",
+        "CreateTrafficMirrorSession",
+        "DescribeTrafficMirrorSessions",
+        "DeleteTrafficMirrorSession",
+        "trafficMirrorSessionSet",
+        "tms",
+        "TrafficMirrorSessionId"
+    ),
+    fam!(
+        "traffic-mirror-filter-rule",
+        "CreateTrafficMirrorFilterRule",
+        "DescribeTrafficMirrorFilterRules",
+        "DeleteTrafficMirrorFilterRule",
+        "trafficMirrorFilterRuleSet",
+        "tmfr",
+        "TrafficMirrorFilterRuleId"
+    ),
+    fam!(
+        "verified-access-instance",
+        "CreateVerifiedAccessInstance",
+        "DescribeVerifiedAccessInstances",
+        "DeleteVerifiedAccessInstance",
+        "verifiedAccessInstances",
+        "vai",
+        "VerifiedAccessInstanceId"
+    ),
+    fam!(
+        "verified-access-endpoint",
+        "CreateVerifiedAccessEndpoint",
+        "DescribeVerifiedAccessEndpoints",
+        "DeleteVerifiedAccessEndpoint",
+        "verifiedAccessEndpoints",
+        "vae",
+        "VerifiedAccessEndpointId"
+    ),
+    fam!(
+        "verified-access-group",
+        "CreateVerifiedAccessGroup",
+        "DescribeVerifiedAccessGroups",
+        "DeleteVerifiedAccessGroup",
+        "verifiedAccessGroups",
+        "vag",
+        "VerifiedAccessGroupId"
+    ),
+    fam!(
+        "verified-access-trust-provider",
+        "CreateVerifiedAccessTrustProvider",
+        "DescribeVerifiedAccessTrustProviders",
+        "DeleteVerifiedAccessTrustProvider",
+        "verifiedAccessTrustProviders",
+        "vatp",
+        "VerifiedAccessTrustProviderId"
+    ),
+    fam!(
+        "capacity-reservation",
+        "CreateCapacityReservation",
+        "DescribeCapacityReservations",
+        "CancelCapacityReservation",
+        "capacityReservationSet",
+        "cr",
+        "CapacityReservationId"
+    ),
+    fam!(
+        "capacity-reservation-fleet",
+        "CreateCapacityReservationFleet",
+        "DescribeCapacityReservationFleets",
+        "CancelCapacityReservationFleets",
+        "capacityReservationFleetSet",
+        "crf",
+        "CapacityReservationFleetId"
+    ),
+    fam!(
+        "host",
+        "AllocateHosts",
+        "DescribeHosts",
+        "ReleaseHosts",
+        "hostSet",
+        "h",
+        "HostId"
+    ),
+    fam!(
+        "fleet",
+        "CreateFleet",
+        "DescribeFleets",
+        "DeleteFleet",
+        "fleetSet",
+        "fleet",
+        "FleetId"
+    ),
+    fam!(
+        "spot-fleet-request",
+        "RequestSpotFleet",
+        "DescribeSpotFleetRequests",
+        "CancelSpotFleetRequests",
+        "spotFleetRequestSet",
+        "sfr",
+        "SpotFleetRequestId"
+    ),
+    fam!(
+        "spot-instance-request",
+        "RequestSpotInstances",
+        "DescribeSpotInstanceRequests",
+        "CancelSpotInstanceRequests",
+        "spotInstanceRequestSet",
+        "sir",
+        "SpotInstanceRequestId"
+    ),
+    fam!(
+        "customer-gateway",
+        "CreateCustomerGateway",
+        "DescribeCustomerGateways",
+        "DeleteCustomerGateway",
+        "customerGatewaySet",
+        "cgw",
+        "CustomerGatewayId"
+    ),
+    fam!(
+        "vpn-gateway",
+        "CreateVpnGateway",
+        "DescribeVpnGateways",
+        "DeleteVpnGateway",
+        "vpnGatewaySet",
+        "vgw",
+        "VpnGatewayId"
+    ),
+    fam!(
+        "vpn-connection",
+        "CreateVpnConnection",
+        "DescribeVpnConnections",
+        "DeleteVpnConnection",
+        "vpnConnectionSet",
+        "vpn",
+        "VpnConnectionId"
+    ),
+    fam!(
+        "egress-only-igw",
+        "CreateEgressOnlyInternetGateway",
+        "DescribeEgressOnlyInternetGateways",
+        "DeleteEgressOnlyInternetGateway",
+        "egressOnlyInternetGatewaySet",
+        "eigw",
+        "EgressOnlyInternetGatewayId"
+    ),
+    fam!(
+        "flow-log",
+        "CreateFlowLogs",
+        "DescribeFlowLogs",
+        "DeleteFlowLogs",
+        "flowLogSet",
+        "fl-",
+        "FlowLogId"
+    ),
+    fam!(
+        "managed-prefix-list",
+        "CreateManagedPrefixList",
+        "DescribeManagedPrefixLists",
+        "DeleteManagedPrefixList",
+        "prefixListSet",
+        "pl",
+        "PrefixListId"
+    ),
+    fam!(
+        "network-insights-path",
+        "CreateNetworkInsightsPath",
+        "DescribeNetworkInsightsPaths",
+        "DeleteNetworkInsightsPath",
+        "networkInsightsPathSet",
+        "nip",
+        "NetworkInsightsPathId"
+    ),
+    fam!(
+        "network-insights-access-scope",
+        "CreateNetworkInsightsAccessScope",
+        "DescribeNetworkInsightsAccessScopes",
+        "DeleteNetworkInsightsAccessScope",
+        "networkInsightsAccessScopeSet",
+        "nis",
+        "NetworkInsightsAccessScopeId"
+    ),
+    fam!(
+        "client-vpn-endpoint",
+        "CreateClientVpnEndpoint",
+        "DescribeClientVpnEndpoints",
+        "DeleteClientVpnEndpoint",
+        "clientVpnEndpointSet",
+        "cvpn-endpoint",
+        "ClientVpnEndpointId"
+    ),
+    fam!(
+        "carrier-gateway",
+        "CreateCarrierGateway",
+        "DescribeCarrierGateways",
+        "DeleteCarrierGateway",
+        "carrierGatewaySet",
+        "cagw",
+        "CarrierGatewayId"
+    ),
 ];
 
 fn render_template(xml: &str) -> (String, HashMap<String, String>) {
@@ -140,7 +326,11 @@ fn render_template(xml: &str) -> (String, HashMap<String, String>) {
         } else {
             out.push_str(token);
         }
-        rest = if end < rest.len() { &rest[start + end + 1..] } else { "" };
+        rest = if end < rest.len() {
+            &rest[start + end + 1..]
+        } else {
+            ""
+        };
     }
     out.push_str(&rest.replace("{TS}", &super::now_iso()));
     (out, ids)
@@ -157,9 +347,9 @@ fn next_placeholder_id(prefix: &str) -> String {
 }
 
 fn find_family(op: &str) -> Option<&'static FamilySpec> {
-    SIMPLE_FAMILIES.iter().find(|f| {
-        op == f.create_op || op == f.describe_op || op == f.delete_op
-    })
+    SIMPLE_FAMILIES
+        .iter()
+        .find(|f| op == f.create_op || op == f.describe_op || op == f.delete_op)
 }
 
 pub fn route(req: &Request, params: &P) -> Response {
@@ -258,7 +448,11 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
             .binary_search_by_key(&fam.describe_op, |x| x.0)
             .ok()
             .map(|i| (templates::TEMPLATES[i].1, templates::TEMPLATES[i].2));
-        let ids: Vec<String> = params.list(fam.id_key).iter().map(|s| s.to_string()).collect();
+        let ids: Vec<String> = params
+            .list(fam.id_key)
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let rendered = match t {
             Some((status, xml)) => {
                 let (body, _) = render_template(xml);
@@ -303,7 +497,10 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
                             .collect()
                     })
                     .unwrap_or_default();
-                (200, format!("<{}>{}</{}>", fam.list_tag, items.concat(), fam.list_tag))
+                (
+                    200,
+                    format!("<{}>{}</{}>", fam.list_tag, items.concat(), fam.list_tag),
+                )
             }
         };
         let (status, body) = rendered;
@@ -313,7 +510,11 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
 
 fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
     with_state(req, move |state| {
-        let ids: Vec<String> = params.list(fam.id_key).iter().map(|s| s.to_string()).collect();
+        let ids: Vec<String> = params
+            .list(fam.id_key)
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let mut removed = false;
         for id in &ids {
             if let Some(items) = state.simple.get_mut(fam.kind) {
@@ -342,7 +543,7 @@ fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                     None
                 }
             })
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_else(String::new);
         if body.is_empty() {
             let root = format!("{}Response", req.operation);
             return super::xmlns_xml(&root, Some(super::EC2_NS), "<return>true</return>");
@@ -356,7 +557,6 @@ fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
 // moto-shaped empty results; the suite asserts status and occasionally a
 // holder field).
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Ops moto 501s but the suite expects success: serve moto-shaped empty data.
@@ -489,26 +689,17 @@ fn tgw_item(t: &super::state::Tgw) -> String {
     format!("<item>{}</item>", tgw_fields(t))
 }
 
-fn tgw_route(
-    req: &Request,
-    op: &str,
-    params: &P,
-) -> Response {
+fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
     match op {
         "CreateTransitGateway" => {
             let description = params.str("Description");
             with_state(req, move |state| {
                 let id = state.next_id("tgw");
-                let asn = params
-                    .get("AmazonSideAsn")
-                    .unwrap_or("64512")
-                    .to_string();
+                let asn = params.get("AmazonSideAsn").unwrap_or("64512").to_string();
                 let tags = wire_tags(params);
                 let arn = format!(
                     "arn:aws:ec2:{}:{}:transit-gateway/{}",
-                    req.region,
-                    req.account,
-                    id
+                    req.region, req.account, id
                 );
                 let mut t = super::state::Tgw {
                     id: id.clone(),
@@ -537,12 +728,20 @@ fn tgw_route(
                 });
                 ec2_xml(
                     "CreateTransitGatewayResponse",
-                    &format!("<transitGateway>{}{}</transitGateway>", tgw_fields(&t), String::new()),
+                    &format!(
+                        "<transitGateway>{}{}</transitGateway>",
+                        tgw_fields(&t),
+                        String::new()
+                    ),
                 )
             })
         }
         "DescribeTransitGateways" => {
-            let ids: Vec<String> = params.list("TransitGatewayId").iter().map(|s| s.to_string()).collect();
+            let ids: Vec<String> = params
+                .list("TransitGatewayId")
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             let fs = super::handlers::filters(params);
             with_state(req, move |state| {
                 let mut items = String::new();
@@ -599,7 +798,10 @@ fn tgw_route(
                 state.transit_gateways.remove(pos);
                 ec2_xml(
                     "DeleteTransitGatewayResponse",
-                    &format!("<transitGatewayId>{}</transitGatewayId><state>deleting</state>", xml_escape(&id)),
+                    &format!(
+                        "<transitGatewayId>{}</transitGatewayId><state>deleting</state>",
+                        xml_escape(&id)
+                    ),
                 )
             })
         }
@@ -607,7 +809,11 @@ fn tgw_route(
             let tgw_id = params.str("TransitGatewayId");
             let vpc_id = params.str("VpcId");
             with_state(req, move |state| {
-                let subnet_ids: Vec<String> = params.list("SubnetId").iter().map(|s| s.to_string()).collect();
+                let subnet_ids: Vec<String> = params
+                    .list("SubnetId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 let id = state.next_id("tgw-attach");
                 let tags = wire_tags(params);
                 let tgw = state
@@ -623,7 +829,11 @@ fn tgw_route(
                     resource_type: "vpc".into(),
                     resource_id: vpc_id.clone(),
                     resource_owner_id: req.account.to_string(),
-                    state: if tgw.auto_accept { "available".into() } else { "pendingAcceptance".into() },
+                    state: if tgw.auto_accept {
+                        "available".into()
+                    } else {
+                        "pendingAcceptance".into()
+                    },
                     tags,
                     subnet_ids: subnet_ids.clone(),
                     vpc_id: vpc_id.clone(),
@@ -632,7 +842,11 @@ fn tgw_route(
                 state.tgw_attachments.push(a.clone());
                 ec2_xml(
                     "CreateTransitGatewayVpcAttachmentResponse",
-                    &format!("<transitGatewayVpcAttachment>{}{}</transitGatewayVpcAttachment>", tgw_attachment_fields(&a), String::new()),
+                    &format!(
+                        "<transitGatewayVpcAttachment>{}{}</transitGatewayVpcAttachment>",
+                        tgw_attachment_fields(&a),
+                        String::new()
+                    ),
                 )
             })
         }
@@ -665,8 +879,13 @@ fn tgw_route(
                 )
             })
         }
-        "DeleteTransitGatewayVpcAttachment" | "DeleteTransitGatewayPeeringAttachment" | "DeleteTransitGatewayConnect" | "DeleteTransitGatewayConnectPeer" => {
-            let id = params.str("TransitGatewayAttachmentId").or_empty(&params, "TransitGatewayPeeringAttachmentId");
+        "DeleteTransitGatewayVpcAttachment"
+        | "DeleteTransitGatewayPeeringAttachment"
+        | "DeleteTransitGatewayConnect"
+        | "DeleteTransitGatewayConnectPeer" => {
+            let id = params
+                .str("TransitGatewayAttachmentId")
+                .or_empty(params, "TransitGatewayPeeringAttachmentId");
             let _ = id;
             let attach_id = params
                 .get("TransitGatewayAttachmentId")
@@ -675,10 +894,7 @@ fn tgw_route(
                 .map(|s| s.to_string())
                 .unwrap_or_default();
             with_state(req, move |state| {
-                let pos = state
-                    .tgw_attachments
-                    .iter()
-                    .position(|a| a.id == attach_id);
+                let pos = state.tgw_attachments.iter().position(|a| a.id == attach_id);
                 if let Some(pos) = pos {
                     state.tgw_attachments.remove(pos);
                     return ec2_xml(
@@ -689,12 +905,19 @@ fn tgw_route(
                 ec2_error(
                     400,
                     "InvalidTransitGatewayAttachmentID.NotFound",
-                    &format!("TransitGatewayAttachment {} not found", xml_escape(&attach_id)),
+                    &format!(
+                        "TransitGatewayAttachment {} not found",
+                        xml_escape(&attach_id)
+                    ),
                 )
             })
         }
         "DescribeTransitGatewayVpcAttachments" => {
-            let ids: Vec<String> = params.list("TransitGatewayAttachmentId").iter().map(|s| s.to_string()).collect();
+            let ids: Vec<String> = params
+                .list("TransitGatewayAttachmentId")
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             with_state(req, move |state| {
                 let mut items = String::new();
                 for a in &state.tgw_attachments {
@@ -705,7 +928,10 @@ fn tgw_route(
                 }
                 ec2_xml(
                     "DescribeTransitGatewayVpcAttachmentsResponse",
-                    &format!("<transitGatewayVpcAttachments>{}</transitGatewayVpcAttachments>", items),
+                    &format!(
+                        "<transitGatewayVpcAttachments>{}</transitGatewayVpcAttachments>",
+                        items
+                    ),
                 )
             })
         }
@@ -730,7 +956,11 @@ fn tgw_attachment_item(a: &super::state::TgwAttachment) -> String {
 fn tgw_attachment_fields(a: &super::state::TgwAttachment) -> String {
     let mut subnets = String::new();
     for s in &a.subnet_ids {
-        subnets.push_str(&format!("<item>{}<subnetId>{}</subnetId></item>", "", xml_escape(s)));
+        subnets.push_str(&format!(
+            "<item>{}<subnetId>{}</subnetId></item>",
+            "",
+            xml_escape(s)
+        ));
     }
     format!(
         "<transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}</item>",
@@ -781,7 +1011,11 @@ fn simple_tgw_others(req: &Request, op: &str, params: &P) -> Response {
             })
         }
         "DescribeTransitGatewayRouteTables" => {
-            let ids: Vec<String> = params.list("TransitGatewayRouteTableId").iter().map(|s| s.to_string()).collect();
+            let ids: Vec<String> = params
+                .list("TransitGatewayRouteTableId")
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             with_state(req, move |state| {
                 let mut items = String::new();
                 for rt in &state.tgw_route_tables {
@@ -801,17 +1035,17 @@ fn simple_tgw_others(req: &Request, op: &str, params: &P) -> Response {
                 }
                 ec2_xml(
                     "DescribeTransitGatewayRouteTablesResponse",
-                    &format!("<transitGatewayRouteTables>{}</transitGatewayRouteTables>", items),
+                    &format!(
+                        "<transitGatewayRouteTables>{}</transitGatewayRouteTables>",
+                        items
+                    ),
                 )
             })
         }
         "DeleteTransitGatewayRouteTable" => {
             let id = params.str("TransitGatewayRouteTableId");
             with_state(req, move |state| {
-                let pos = state
-                    .tgw_route_tables
-                    .iter()
-                    .position(|rt| rt.id == id);
+                let pos = state.tgw_route_tables.iter().position(|rt| rt.id == id);
                 if let Some(pos) = pos {
                     state.tgw_route_tables.remove(pos);
                     return ec2_xml(
@@ -853,7 +1087,6 @@ fn tgw_default_body(op: &str) -> String {
         _ => String::from("<return>true</return>"),
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Local gateway route tables + routes (suite needs create/describe/delete
@@ -903,8 +1136,8 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     i,
                     write!(
                         items,
-                        "<item><localGatewayRouteTableArn>arn:aws:ec2:{}:{}:local-gateway/route-table/</localGatewayRouteTableArn>\u{0}<localGatewayRouteTableId>lgw-rtb-0000000000000000{}</localGatewayRouteTableId><ownerId>{}</ownerId><state>available</state><mode>direct-vpc-routing</mode><outpostArn/><tags>{}</tags></item>",
-                        req.region, req.account, i, req.account, ""
+                        "<item><localGatewayRouteTableArn>arn:aws:ec2:{}:{}:local-gateway/route-table/</localGatewayRouteTableArn>\u{0}<localGatewayRouteTableId>lgw-rtb-0000000000000000{}</localGatewayRouteTableId><ownerId>{}</ownerId><state>available</state><mode>direct-vpc-routing</mode><outpostArn/><tags></tags></item>",
+                        req.region, req.account, i, req.account
                     ),
                 );
             }
