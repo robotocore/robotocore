@@ -25,8 +25,6 @@ pub struct ExecResult {
     pub logs: String,
 }
 
-
-
 const SHIM_PY: &str = r#"#!/usr/bin/env python3
 """robotocore Lambda shim: unpack code, import handler, call it, emit result JSON."""
 import importlib
@@ -187,7 +185,8 @@ fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Rec
 /// Take the drained text, bounded by the absolute `deadline`; on timeout
 /// abandon the drain thread and return nothing.
 fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Instant) -> String {
-    rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())).unwrap_or_default()
+    rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+        .unwrap_or_default()
 }
 
 /// Execute a Python Lambda handler in a subprocess shim.
@@ -572,11 +571,9 @@ mod tests {
             "123456789012",
         );
         assert_eq!(
-            res.function_error,
-            None,
+            res.function_error, None,
             "exec logs: {} | payload: {}",
-            res.logs,
-            res.payload
+            res.logs, res.payload
         );
         assert!(
             res.logs.len() <= OUTPUT_CAP + 8,

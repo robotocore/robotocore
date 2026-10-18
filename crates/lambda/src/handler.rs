@@ -2499,8 +2499,7 @@ mod tests {
 
     /// Build a minimal (python-zipfile) deployment package for handler tests.
     fn make_code_zip(code: &str) -> Vec<u8> {
-        let dir =
-            std::env::temp_dir().join(format!("lam-hzip-{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!("lam-hzip-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let zpath = dir.join("t.zip");
         let snippet = "import io, sys, zipfile\nbuf = io.BytesIO()\nze = zipfile.ZipFile(buf, 'w')\nze.writestr('index.js', sys.argv[2])\nze.close()\nopen(sys.argv[1], 'wb').write(buf.getvalue())\n";
@@ -2559,7 +2558,7 @@ mod tests {
         assert_eq!(tail.len(), 148); // snapped from 149 up to 2-byte alignment
         assert!(tail.chars().all(|c| c == 'é'));
         assert_eq!(tail, &s[52..]); // the final 74 code points (148 bytes)
-        // Short strings pass through whole.
+                                    // Short strings pass through whole.
         assert_eq!(tail_utf8("abc", 10), "abc");
         // ASCII walks back exactly to the cap.
         assert_eq!(tail_utf8(&"x".repeat(10), 4), "xxxx");

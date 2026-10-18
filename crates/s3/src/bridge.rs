@@ -43,11 +43,7 @@ pub fn get_object_body(account: u64, region: &str, bucket: &str, key: &str) -> O
         .clone();
     let bucket = state.get_bucket(bucket)?;
     let objects = bucket.objects.read();
-    objects
-        .get(key)?
-        .versions
-        .first()
-        .map(|v| v.data.clone())
+    objects.get(key)?.versions.first().map(|v| v.data.clone())
 }
 
 #[cfg(test)]
@@ -79,7 +75,10 @@ mod tests {
             get_object_body(777777777777, "us-east-1", "reg-bkt", "k.zip"),
             Some(b"zip-bytes".to_vec())
         );
-        assert_eq!(get_object_body(777777777777, "us-east-1", "reg-bkt", "nope"), None);
+        assert_eq!(
+            get_object_body(777777777777, "us-east-1", "reg-bkt", "nope"),
+            None
+        );
         assert_eq!(get_object_body(1, "us-east-1", "reg-bkt", "k.zip"), None);
     }
 }
