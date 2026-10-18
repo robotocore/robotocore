@@ -15,3 +15,9 @@ parking_lot = "0.12"
 tracing = "0.1"
 http = "1.0"
 base64 = "0.22"
+# Real crypto for Sign/Verify, GenerateMac, key pairs, import wrapping and ECDH
+sha2 = "0.10"
+hmac = "0.12"
+rand = "0.8"
+rsa = { version = "0.9", features = ["sha2", "getrandom"] }
+p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pkcs8", "pem"] }

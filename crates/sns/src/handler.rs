@@ -76,12 +76,21 @@ impl SnsHandler {
             sqs: sqs::DefaultSqsHandler::new(),
         }
     }
+}
+
+impl Default for SnsHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SnsHandler {
 
     fn get_state(&self, account: u64, region: &str) -> SnsState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))
-            .or_insert_with(SnsState::new)
+            .or_default()
             .clone()
     }
 
@@ -158,7 +167,7 @@ impl SnsHandler {
         let attrs = parse_entry_attrs(req);
         let fifo = attrs
             .get("FifoTopic")
-            .map(|v| v.to_ascii_lowercase() == "true")
+            .map(|v| v.eq_ignore_ascii_case("true"))
             .unwrap_or_else(|| name.ends_with(".fifo"));
         if fifo && !name.ends_with(".fifo") {
             return AwsResponse::error(400, "InvalidParameter", "FIFO topic name must end with .fifo");
@@ -322,6 +331,7 @@ impl SnsHandler {
 
     /// Pure JSON-publish entries as pre-parsed lists (not used by the query protocol,
     /// but harmless to support).
+    #[allow(clippy::too_many_arguments)]
     fn publish_common(
         &self,
         state: &SnsState,
@@ -344,7 +354,7 @@ impl SnsHandler {
 
         // MessageStructure=json: select per-protocol message.
         let per_protocol: Option<Map<String, Value>> = match message_structure {
-            Some(s) if s == "json" => {
+            Some("json") => {
                 let parsed: Option<Map<String, Value>> = serde_json::from_str::<Value>(message)
                     .ok()
                     .and_then(|v| v.as_object().cloned());
@@ -426,11 +436,7 @@ impl SnsHandler {
 
         let mut i = 1;
         let mut successful = Vec::new();
-        loop {
-            let id = match pstr(req, &format!("PublishBatchRequestEntries.member.{}.Id", i)) {
-                Some(id) => id,
-                None => break,
-            };
+        while let Some(id) = pstr(req, &format!("PublishBatchRequestEntries.member.{}.Id", i)) {
             let message = pstr(req, &format!("PublishBatchRequestEntries.member.{}.Message", i))
                 .unwrap_or_default();
             let subject = pstr(req, &format!("PublishBatchRequestEntries.member.{}.Subject", i));
@@ -463,6 +469,7 @@ impl SnsHandler {
 
     /// Deliver a notification to one subscription (SQS only; other protocols are no-ops
     /// in-process like the Python truth).
+    #[allow(clippy::too_many_arguments)]
     fn deliver(
         &self,
         sub: &Subscription,
@@ -1050,13 +1057,11 @@ impl SnsHandler {
                 body.push_str("</Attributes>");
                 AwsResponse::query_success("GetEndpointAttributes", body)
             }
-            None => {
-                return AwsResponse::error(
-                    400,
-                    "InvalidParameter",
-                    &format!("Endpoint {} does not exist", arn),
-                )
-            }
+            None => AwsResponse::error(
+                400,
+                "InvalidParameter",
+                &format!("Endpoint {} does not exist", arn),
+            ),
         }
     }
 
