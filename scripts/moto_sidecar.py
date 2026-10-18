@@ -36,6 +36,35 @@ DEFAULT_ACCOUNT_ID = "123456789012"
 logger = logging.getLogger("moto_sidecar")
 
 
+def _error_response(service_name: str, error_code: str, message: str, status_code: int):
+    """Protocol-aware error response, mirroring the Python gateway's moto path.
+
+    JSON-protocol services get `{"__type": code, "message": msg}`; everything
+    else gets the AWS query-protocol XML error document.
+    """
+    import xml.sax.saxutils as _sax
+
+    try:
+        from robotocore.protocols.service_info import get_service_protocol
+
+        protocol = get_service_protocol(service_name) or "query"
+    except Exception:  # noqa: BLE001
+        protocol = "query"
+
+    if protocol in ("json", "rest-json", "smithy-rpc-v2-cbor"):
+        return Response(
+            content=json.dumps({"__type": error_code, "message": message}),
+            status_code=status_code,
+            media_type="application/x-amz-json-1.0",
+        )
+    safe_message = _sax.escape(message)
+    body = (
+        f"<ErrorResponse><Error><Code>{error_code}</Code>"
+        f"<Message>{safe_message}</Message></Error></ErrorResponse>"
+    )
+    return Response(content=body, status_code=status_code, media_type="application/xml")
+
+
 class WerkzeugRawBodyRequest(WerkzeugRequest):
     """Werkzeug request that preserves a raw body for Moto.
 
@@ -115,7 +144,7 @@ def _get_routing_table(service: str, region: str = "us-east-1") -> Map:
             continue
         url_map.add(Rule(url_path, endpoint=handler, strict_slashes=False))
 
-    _routing_cache[service] = url_map
+    _routing_cache[cache_key] = url_map
     return url_map
 
 
@@ -263,6 +292,18 @@ async def moto_handler(request: Request) -> Response:
         except (IndexError, AttributeError):
             pass
 
+    # Extract account id from the auth header (12-digit access key = account ID)
+    auth = request.headers.get("authorization", "")
+    account_id_from_headers = DEFAULT_ACCOUNT_ID
+    if "Credential=" in auth:
+        try:
+            cred_part = auth.split("Credential=")[1].split(",")[0]
+            access_key = cred_part.strip().split("/")[0]
+            if access_key.isdigit() and len(access_key) == 12:
+                account_id_from_headers = access_key
+        except (IndexError, AttributeError):
+            pass
+
     # Build the full URL
     full_url = str(request.url)
 
@@ -270,13 +311,11 @@ async def moto_handler(request: Request) -> Response:
     try:
         routing_map = _get_routing_table(service, region)
     except Exception as e:
-        return Response(
-            content=json.dumps({
-                "__type": "ServiceNotAvailable",
-                "message": f"Moto backend not found for {service}: {e}",
-            }),
-            status_code=501,
-            media_type="application/json",
+        return _error_response(
+            service,
+            "NotImplemented",
+            f"Moto backend not found for {service}: {e}",
+            501,
         )
 
     # Build the Werkzeug environ
@@ -284,11 +323,16 @@ async def moto_handler(request: Request) -> Response:
     path = request.url.path
     query = str(request.url.query)
 
+    headers = dict(request.headers)
+    # Inject Moto's multi-account header so the correct backend is used
+    # (mirrors the Python gateway's moto path).
+    headers["x-moto-account-id"] = account_id_from_headers
+
     environ = EnvironBuilder(
         path=f"{path}?{query}" if query else path,
         method=method,
         data=body,
-        headers=dict(request.headers),
+        headers=headers,
     ).get_environ()
 
     werkzeug_request = WerkzeugRawBodyRequest(environ, body)
@@ -298,60 +342,64 @@ async def moto_handler(request: Request) -> Response:
         binding = routing_map.bind_to_environ(environ)
         endpoint, _args = binding.match()
     except Exception:
-        return Response(
-            content=json.dumps({
-                "__type": "NotFound",
-                "message": f"No Moto handler for {service} {method} {path}",
-            }),
-            status_code=404,
-            media_type="application/json",
+        return _error_response(
+            service,
+            "NotImplemented",
+            f"Service {service} is not yet implemented",
+            501,
         )
 
     # Call the Moto dispatcher with (request, full_url, headers)
+    from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
+
     try:
         result = endpoint(werkzeug_request, full_url, werkzeug_request.headers)
         if not result:
-            return Response(
-                content=json.dumps({
-                    "__type": "NotImplemented",
-                    "message": f"Operation not implemented for {service}",
-                }),
-                status_code=501,
-                media_type="application/json",
+            return _error_response(
+                service,
+                "NotImplemented",
+                f"Operation not implemented for {service}",
+                501,
             )
         status_code, resp_headers, resp_body = result
         if isinstance(resp_body, (str, bytes)) and len(resp_body) == 0:
             resp_body = None
 
-        headers_dict = {}
-        if resp_headers:
-            for k, v in resp_headers.items():
-                if k.lower() not in ("content-length",):
-                    headers_dict[k] = v
-
-        content_type = headers_dict.get(
-            "Content-Type", "application/xml"
-        )
-        if isinstance(resp_body, bytes):
-            resp_body = resp_body.decode("utf-8", errors="replace")
-
+        headers_dict = dict(resp_headers) if resp_headers else {}
+        is_head = method == "HEAD"
+        # For HEAD requests the content-length is object metadata; for other
+        # methods drop it and let Starlette recompute to avoid h11 framing
+        # errors (same approach as the Python gateway).
+        if is_head:
+            clean_headers = headers_dict
+            resp_body = None
+        else:
+            clean_headers = {
+                k: v for k, v in headers_dict.items() if k.lower() != "content-length"
+            }
         return Response(
-            content=resp_body or "",
+            content=resp_body,
             status_code=status_code,
-            media_type=content_type,
-            headers=headers_dict,
+            headers=clean_headers,
         )
-    except Exception as e:
+    except NotImplementedError as e:
         import traceback
+
         traceback.print_exc()
+        return _error_response(service, "NotImplemented", str(e), 501)
+    except WerkzeugHTTPException as e:
+        resp = e.get_response()
+        body_text = resp.get_data(as_text=True) if resp else str(e)
         return Response(
-            content=json.dumps({
-                "__type": "InternalError",
-                "message": str(e),
-            }),
-            status_code=500,
-            media_type="application/json",
+            content=body_text,
+            status_code=e.code or 400,
+            headers={"Content-Type": "application/json"},
         )
+    except Exception as e:  # noqa: BLE001
+        import traceback
+
+        traceback.print_exc()
+        return _error_response(service, "InternalError", str(e), 500)
 
 
 
