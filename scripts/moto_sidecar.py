@@ -11,6 +11,7 @@ The Rust server talks to this over HTTP on localhost.
 """
 
 import argparse
+import io
 import json
 import logging
 import os
@@ -666,7 +667,10 @@ class WerkzeugRawBodyRequest(WerkzeugRequest):
     def __init__(self, environ: dict, body: bytes):
         super().__init__(environ)
         self.body = body
-        self._form_cache: ImmutableMultiDict | None = None
+        # Single parse for the whole request lifetime: .form and .files must
+        # come from the SAME pass (a second parse would read an exhausted
+        # wsgi stream and raise ClientDisconnected).
+        self._parsed: WerkzeugRequest | None = None
 
     @property
     def data(self) -> bytes:
@@ -675,19 +679,26 @@ class WerkzeugRawBodyRequest(WerkzeugRequest):
     def get_data(self, *args, **kwargs) -> bytes:
         return self.body
 
+    def _parsed_request(self) -> WerkzeugRequest | None:
+        if self._parsed is None:
+            mimetype = (self.mimetype or "").split(";")[0].strip()
+            if mimetype in ("application/x-www-form-urlencoded", "multipart/form-data"):
+                self._parsed = WerkzeugRequest(self.environ)
+        return self._parsed
+
     @property
     def form(self):
-        if self._form_cache is None:
-            mimetype = (self.mimetype or "").split(";")[0].strip()
-            if mimetype == "application/x-www-form-urlencoded":
-                try:
-                    pairs = parse_qsl(self.body.decode("utf-8"), keep_blank_values=True)
-                except UnicodeDecodeError:
-                    pairs = []
-            else:
-                pairs = []
-            self._form_cache = ImmutableMultiDict(pairs)
-        return self._form_cache
+        parsed = self._parsed_request()
+        if parsed is not None:
+            return parsed.form
+        return ImmutableMultiDict(())
+
+    @property
+    def files(self):
+        parsed = self._parsed_request()
+        if parsed is not None:
+            return parsed.files
+        return ImmutableMultiDict(())
 
 
 class _RegexConverter(BaseConverter):
@@ -924,6 +935,13 @@ async def moto_handler(request: Request) -> Response:
         headers=headers,
     ).get_environ()
 
+    # The gateway strips Content-Length from forwarded requests; werkzeug's
+    # form parser refuses an unterminated stream (400 Bad Request). Re-bind a
+    # buffered, length-declared input over the already-known body.
+    environ["CONTENT_LENGTH"] = str(len(body))
+    environ["wsgi.input"] = io.BytesIO(body)
+    environ.pop("HTTP_TRANSFER_ENCODING", None)
+
     werkzeug_request = WerkzeugRawBodyRequest(environ, body)
 
     # Query-protocol params for pre-dispatch interception (form + query).
@@ -1049,6 +1067,9 @@ async def moto_handler(request: Request) -> Response:
         traceback.print_exc()
         return _error_response(service, "NotImplemented", str(e), 501)
     except WerkzeugHTTPException as e:
+        import traceback
+        traceback.print_exc()
+        logger.warning("moto raised HTTPException: %r body=%r", e, e.body)
         resp = e.get_response()
         body_text = resp.get_data(as_text=True) if resp else str(e)
         return Response(
