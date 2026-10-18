@@ -12,6 +12,7 @@ use crate::{Request, Response};
 // - cloudformation (stub)
 
 pub mod cognito_idp;
+pub mod databrew;
 pub mod identitystore;
 pub mod ivs;
 pub mod mediapackage;
@@ -27,6 +28,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         return Some(resp);
     }
     if let Some(resp) = cognito_idp::dispatch(req) {
+        return Some(resp);
+    }
+    if let Some(resp) = databrew::dispatch(req) {
         return Some(resp);
     }
     // No other service fully ported yet.
