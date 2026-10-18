@@ -326,14 +326,11 @@ fn render_template(xml: &str) -> (String, HashMap<String, String>) {
         } else {
             out.push_str(token);
         }
-        rest = if end < rest.len() {
-            &rest[start + end + 1..]
-        } else {
-            ""
-        };
+        rest = if end < rest.len() { &rest[start + end + 1..] } else { "" };
     }
-    out.push_str(&rest.replace("{TS}", &super::now_iso()));
-    (out, ids)
+    out.push_str(rest);
+    let _ = ids;
+    (out.replace("{TS}", &super::now_iso()), ids)
 }
 
 /// A placeholder id in moto's shape: `prefix-` + 17 hex (or 8 for short ones).
@@ -357,9 +354,6 @@ pub fn route(req: &Request, params: &P) -> Response {
     // 0) moto-gap ops and the transit gateway family
     if GAP_OPS.contains(op) {
         return gap_ops_response(op);
-    }
-    if TRANSIT_GW_OPS.contains(op) {
-        return tgw_route(req, op, params);
     }
     if LOCAL_GW_OPS.contains(op) {
         return local_gw_route(req, op, params);
@@ -389,6 +383,37 @@ fn simple_family_route(req: &Request, params: &P) -> Response {
 
 fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
     with_state(req, move |state| {
+        let tags = wire_tags(params);
+        let tags_xml_v = super::tags_xml(&tags);
+        let id = next_placeholder_id(fam.id_prefix);
+        // shape-driven first: botocore-exact root + member keys
+        if super::shapes::shape_of(fam.create_op).is_some() {
+            let fills = super::family_fills::create_fills(
+                fam.kind,
+                &id,
+                params,
+                req.account,
+                &req.region,
+                false,
+                &tags_xml_v,
+            );
+            if let Some(xml) = super::shapes::render_response(fam.create_op, &fills, "us-east-1") {
+                let inner = strip_op_root(&xml, fam.create_op);
+                state
+                    .simple
+                    .entry(fam.kind.to_string())
+                    .or_default()
+                    .push(Simple {
+                        id: id.clone(),
+                        kind: fam.kind.to_string(),
+                        item_xml: inner,
+                        tags,
+                        ..Default::default()
+                    });
+                return Response::xml(200, xml.into_bytes());
+            }
+        }
+        // captured-template fallback
         let t = templates::TEMPLATES
             .binary_search_by_key(&fam.create_op, |x| x.0)
             .ok()
@@ -396,43 +421,42 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
         let rendered = match t {
             Some((status, xml)) if status == 200 => {
                 let (body, ids) = render_template(xml);
-                let id = ids
+                let id2 = ids
                     .values()
                     .find(|v| v.starts_with(format!("{}-", fam.id_prefix).as_str()))
                     .cloned()
-                    .unwrap_or_else(|| next_placeholder_id(fam.id_prefix));
-                let mut s = Simple {
-                    id: id.clone(),
-                    kind: fam.kind.to_string(),
-                    item_xml: body.clone(),
-                    ..Default::default()
-                };
-                s.tags = wire_tags(params);
+                    .unwrap_or_else(|| id.clone());
+                let inner = strip_op_root(&body, fam.create_op);
                 state
                     .simple
                     .entry(fam.kind.to_string())
                     .or_default()
-                    .push(s.clone());
+                    .push(Simple {
+                        id: id2.clone(),
+                        kind: fam.kind.to_string(),
+                        item_xml: inner,
+                        tags,
+                        ..Default::default()
+                    });
                 (status, body)
             }
             _ => {
-                // synthesize a moto-style create record for families the
-                // capture never exercised.
-                let id = next_placeholder_id(fam.id_prefix);
-                let item = synth_fields(fam, &id, params, state);
+                // synthesized moto-style create for families the capture
+                // never exercised
+                let id2 = next_placeholder_id(fam.id_prefix);
+                let item = synth_fields(fam, &id2, params, state);
                 let inner = single_root(fam.kind);
-                let mut s = Simple {
-                    id: id.clone(),
-                    kind: fam.kind.to_string(),
-                    item_xml: format!("<item>{}</item>", item.clone()),
-                    ..Default::default()
-                };
-                s.tags = wire_tags(params);
                 state
                     .simple
                     .entry(fam.kind.to_string())
                     .or_default()
-                    .push(s.clone());
+                    .push(Simple {
+                        id: id2.clone(),
+                        kind: fam.kind.to_string(),
+                        item_xml: format!("<item>{}</item>", item.clone()),
+                        tags,
+                        ..Default::default()
+                    });
                 (200, format!("<{}>{}</{}>", inner, item, inner))
             }
         };
@@ -442,70 +466,138 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
     })
 }
 
+/// Strip the `<?xml?>` decl, the op root tags, requestId and metadata,
+/// leaving the item's inner member list.
+fn strip_op_root(xml: &str, op: &str) -> String {
+    let mut s = xml;
+    if let Some(rest) = s.strip_prefix("<?xml") {
+        if let Some(i) = rest.find('>') {
+            s = &rest[i + 1..];
+        }
+    }
+    let open = format!("<{}Response", op);
+    if let Some(i) = s.find(&open) {
+        s = &s[i + open.len()..];
+        if let Some(j) = s.find('>') {
+            s = &s[j + 1..];
+        }
+    }
+    if let Some(k) = s.rfind(&format!("</{}Response>", op)) {
+        s = &s[..k];
+    }
+    let mut out = s.to_string();
+    if let Some(start) = out.find("<requestId>") {
+        if let Some(rel) = out[start..].find("</requestId>") {
+            let end = start + rel + "</requestId>".len();
+            out.replace_range(start..end, "");
+        }
+    }
+    if let Some(start) = out.find("<ResponseMetadata>") {
+        if let Some(rel) = out[start..].find("</ResponseMetadata>") {
+            let end = start + rel + "</ResponseMetadata>".len();
+            out.replace_range(start..end, "");
+        }
+    }
+    out
+}
+
 fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
     with_state(req, move |state| {
-        let t = templates::TEMPLATES
-            .binary_search_by_key(&fam.describe_op, |x| x.0)
-            .ok()
-            .map(|i| (templates::TEMPLATES[i].1, templates::TEMPLATES[i].2));
         let ids: Vec<String> = params
             .list(fam.id_key)
             .iter()
             .map(|s| s.to_string())
             .collect();
+        let items: Vec<String> = state
+            .simple
+            .get(fam.kind)
+            .map(|v| {
+                v.iter()
+                    .filter(|s| ids.is_empty() || ids.contains(&s.id))
+                    .map(|s| s.item_xml.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let has_id_filter = !ids.is_empty();
+        // shape-driven first
+        if let Some(shape) = super::shapes::shape_of(fam.describe_op) {
+            let listkey = list_member_key(shape);
+            if let Some(listkey) = listkey.clone() {
+                let mut fills = super::shapes::Fills::new();
+                if !items.is_empty() {
+                    let concat = items
+                        .iter()
+                        .map(|inner| format!("<item>{}</item>", inner))
+                        .collect::<Vec<_>>()
+                        .concat();
+                    fills.insert(listkey.clone(), super::shapes::Fill::X(concat));
+                } else if !has_id_filter {
+                    // empty family list — emit bare `<listTag/>`
+                    if let Some(xml) =
+                        super::shapes::render_response(fam.describe_op, &fills, "us-east-1")
+                    {
+                        return Response::xml(200, xml.into_bytes());
+                    }
+                }
+                if !fills.is_empty() {
+                    if let Some(xml) =
+                        super::shapes::render_response(fam.describe_op, &fills, "us-east-1")
+                    {
+                        return Response::xml(200, xml.into_bytes());
+                    }
+                }
+            }
+        }
+        // captured-template fallback
+        let t = templates::TEMPLATES
+            .binary_search_by_key(&fam.describe_op, |x| x.0)
+            .ok()
+            .map(|i| (templates::TEMPLATES[i].1, templates::TEMPLATES[i].2));
         let rendered = match t {
             Some((status, xml)) => {
                 let (body, _) = render_template(xml);
-                let items: Vec<String> = state
-                    .simple
-                    .get(fam.kind)
-                    .map(|v| {
-                        v.iter()
-                            .filter(|s| ids.is_empty() || ids.contains(&s.id))
-                            .map(|s| s.item_xml.clone())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                if !items.is_empty() {
+                let body = if items.is_empty() {
+                    body
+                } else {
                     let tag = fam.list_tag;
-                    // splice items into the empty <tag/> (or <tag></tag>) container
                     let probe1 = format!("<{} />", tag);
                     let probe2 = format!("<{}/>", tag);
                     let probe3 = format!("<{}></{}>", tag, tag);
-                    let body2 = if body.contains(&probe1) {
-                        body.replace(&probe1, &format!("<{}>{}</{}>", tag, items.concat(), tag))
+                    let concat = items.concat();
+                    let splice = format!("<{}>{}</{}>", tag, concat, tag);
+                    if body.contains(&probe1) {
+                        body.replace(&probe1, &splice)
                     } else if body.contains(&probe2) {
-                        body.replace(&probe2, &format!("<{}>{}</{}>", tag, items.concat(), tag))
+                        body.replace(&probe2, &splice)
                     } else if body.contains(&probe3) {
-                        body.replace(&probe3, &format!("<{}>{}</{}>", tag, items.concat(), tag))
+                        body.replace(&probe3, &splice)
                     } else {
                         body
-                    };
-                    (status, body2)
-                } else {
-                    (status, body)
-                }
+                    }
+                };
+                (status, body)
             }
-            None => {
-                let items: Vec<String> = state
-                    .simple
-                    .get(fam.kind)
-                    .map(|v| {
-                        v.iter()
-                            .filter(|s| ids.is_empty() || ids.contains(&s.id))
-                            .map(|s| s.item_xml.clone())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                (
-                    200,
-                    format!("<{}>{}</{}>", fam.list_tag, items.concat(), fam.list_tag),
-                )
-            }
+            None => (
+                200,
+                format!("<{}>{}</{}>", fam.list_tag, items.concat(), fam.list_tag),
+            ),
         };
         let (status, body) = rendered;
         Response::xml(status, body.into_bytes())
     })
+}
+
+/// The python key of the first list member in an op's output shape.
+fn list_member_key(shape: &serde_json::Value) -> Option<String> {
+    let members = shape.get("m")?.as_object()?;
+    for (_wire, member) in members {
+        if member.get("t").and_then(|t| t.as_str()) == Some("list") {
+            if let Some(k) = member.get("k").and_then(|k| k.as_str()) {
+                return Some(k.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
@@ -531,6 +623,23 @@ fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 "ResourceNotFound",
                 &format!("Resource {} not found", fam.id_prefix),
             );
+        }
+        // shape-driven delete for known shapes
+        if super::shapes::shape_of(fam.delete_op).is_some() {
+            let tags_xml_v = super::tags_xml(&Vec::new());
+            let id = ids.first().cloned().unwrap_or_default();
+            let fills = super::family_fills::create_fills(
+                fam.kind,
+                &id,
+                params,
+                req.account,
+                &req.region,
+                true,
+                &tags_xml_v,
+            );
+            if let Some(xml) = super::shapes::render_response(fam.delete_op, &fills, "us-east-1") {
+                return Response::xml(200, xml.into_bytes());
+            }
         }
         let body = templates::TEMPLATES
             .binary_search_by_key(&req.operation.as_str(), |x| x.0)
@@ -611,6 +720,7 @@ pub fn gap_ops_response(op: &str) -> Response {
         _ => String::from("<return>true</return>"),
     };
     let root = format!("{}Response", op);
+    let body = body.replace("{TS}", &super::now_iso()).replace("{ID", "<idplaceholder--");
     super::xmlns_xml(&root, Some(super::EC2_NS), &body)
 }
 
@@ -1207,6 +1317,59 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             ec2_xml(
                 "ModifyCapacityReservationResponse",
                 &format!("<return>true</return><capacityReservation><capacityReservationId>{}</capacityReservationId></capacityReservation>", xml_escape(&id)),
+            )
+        }
+        "ProvisionPublicIpv4PoolCidr" => {
+            let cidr = params.str("Cidr");
+            let pool = params.str("PoolId");
+            ec2_xml(
+                "ProvisionPublicIpv4PoolCidrResponse",
+                &format!(
+                    "<poolId>{}</poolId><poolAddressRange><cidr>{}</cidr><ipCount>256</ipCount><addressVersion>Ipv4</addressVersion></poolAddressRange>",
+                    xml_escape(&pool),
+                    xml_escape(&cidr)
+                ),
+            )
+        }
+        "DeprovisionPublicIpv4PoolCidr" => {
+            let cidr = params.str("Cidr");
+            let pool = params.str("PoolId");
+            let media = format!(
+                "<poolId>{}</poolId><deprovisionedAddresses><item><cidr>{}</cidr><totalAddressCount>256</totalAddressCount><totalAvailableAddressCount>0</totalAvailableAddressCount></item></deprovisionedAddresses>",
+                xml_escape(&pool), xml_escape(&cidr)
+            );
+            if cidr.is_empty() {
+                return ec2_error(
+                    400,
+                    "InvalidPublicIpv4PoolCidr",
+                    "CIDR not found",
+                );
+            }
+            ec2_xml("DeprovisionPublicIpv4PoolCidrResponse", &media)
+        }
+        "GetIpamResourceCidrs" => ec2_xml(
+            "GetIpamResourceCidrsResponse",
+            "<ipamResourceCidrs/>",
+        ),
+        "AttachVpnGateway" => {
+            let vpc = params.str("VpcId");
+            let vgw = params.str("VpnGatewayId");
+            ec2_xml(
+                "AttachVpnGatewayResponse",
+                &format!(
+                    "<vpcAttachment><vpcId>{}</vpcId><state>attached</state><vpcAttachmentId>vgw-attach-0000000000000000</vpcAttachmentId></vpcAttachment>",
+                    xml_escape(&vpc)
+                ),
+            )
+        }
+        "DetachVpnGateway" => ec2_xml(
+            "DetachVpnGatewayResponse",
+            "<return>true</return>",
+        ),
+        "AssociateServiceLinkVirtualInterface" | "AttachInternetGatewayExtra" | "AttachClientVpnEndpointExtra" | "AttachCustomerGatewayExtra" => {
+            ec2_xml(
+                &format!("{}Response", op),
+                "<return>true</return>",
             )
         }
         "GetManagedPrefixListEntries" => {

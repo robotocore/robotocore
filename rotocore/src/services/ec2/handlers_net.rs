@@ -805,7 +805,7 @@ fn describe_security_group_rules(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "DescribeSecurityGroupRulesResponse",
-            &format!("<securityGroupRules>{}</securityGroupRules>", body),
+            &format!("<securityGroupRuleSet>{}</securityGroupRuleSet>", body),
         )
     })
 }
@@ -873,10 +873,12 @@ pub fn igw_item_full(igw: &super::state::InternetGateway) -> String {
         );
     }
     format!(
-        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet><ownerId></ownerId>{}<tagSet></tagSet></item>",
+        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet><ownerId>{}</ownerId>{}<tagSet>{}</tagSet></item>",
         xml_escape(&igw.id),
         attachments,
-        ""
+        "",
+        "",
+        tags_xml(&igw.tags)
     )
 }
 

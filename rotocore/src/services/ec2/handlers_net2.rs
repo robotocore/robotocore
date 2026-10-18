@@ -220,6 +220,10 @@ fn require_eni(state: &super::state::Ec2State, id: &str) -> Result<usize, Respon
 }
 
 pub fn eni_item(region: &str, account: u64, e: &Eni) -> String {
+    format!("<item>{}</item>", eni_fields(region, account, e))
+}
+
+pub fn eni_fields(region: &str, account: u64, e: &Eni) -> String {
     let mut groups = String::new();
     for (gid, name) in &e.groups {
         let _ = write!(
@@ -252,7 +256,7 @@ pub fn eni_item(region: &str, account: u64, e: &Eni) -> String {
     }
     let sub_addr = "ip-10-0-0-10.ec2.internal";
     format!(
-        "<item><groupName>default</groupName>{}<description>{}</description><ownerId>{}</ownerId>{}<privateDnsName>ip-{}.ec2.internal</privateDnsName><requesterId>08672-1917129</requesterId><requesterManaged>{}</requesterManaged><macAddress>{}</macAddress><networkInterfaceId>{}</networkInterfaceId>{}<privateIpAddress>{}</privateIpAddress><sourceDestCheck>{}</sourceDestCheck>{}<subnetId>{}</subnetId><vpcId>{}</vpcId>{}</item>",
+        "<groupName>default</groupName>{}<description>{}</description><ownerId>{}</ownerId>{}<privateDnsName>ip-{}.ec2.internal</privateDnsName><requesterId>08672-1917129</requesterId><requesterManaged>{}</requesterManaged><macAddress>{}</macAddress><networkInterfaceId>{}</networkInterfaceId>{}<privateIpAddress>{}</privateIpAddress><sourceDestCheck>{}</sourceDestCheck>{}<subnetId>{}</subnetId><vpcId>{}</vpcId>{}",
         if !e.groups.is_empty() || e.interface_type == "interface" { String::new() } else { String::new() },
         crate::proto::xml_escape(&e.description),
         e.owner_id,
@@ -350,7 +354,7 @@ fn create_eni(req: &Request, params: &P) -> Response {
             "CreateNetworkInterfaceResponse",
             &format!(
                 "<networkInterface>{}</networkInterface>",
-                eni_item(&req.region, req.account, &eni)
+                eni_fields(&req.region, req.account, &eni)
             ),
         )
     })

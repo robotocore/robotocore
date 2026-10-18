@@ -17,7 +17,7 @@ pub enum Fill {
     X(String),
 }
 
-pub type Fills = HashMap<&'static str, Fill>;
+pub type Fills = HashMap<String, Fill>;
 
 static SHAPES: std::sync::LazyLock<Value> = std::sync::LazyLock::new(|| {
     serde_json::from_str(include_str!("shapes.json")).unwrap_or_else(|_| serde_json::json!({}))
@@ -120,7 +120,7 @@ fn render_members(shape: &Value, fills: &Fills) -> String {
             }
             let rendered = if member.get("f").is_some() {
                 // flattened: items appear without a set wrapper
-                match fills.get(pykey.as_str()) {
+                match fills.get(&pykey) {
                     Some(Fill::X(x)) => x.clone(),
                     _ => String::new(),
                 }
@@ -160,6 +160,6 @@ pub fn render_response(op: &str, fills: &Fills, region: &str) -> Option<String> 
         rid = uuid::Uuid::new_v4()
     );
     Some(format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>\n{xml}"#
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{xml}"
     ))
 }

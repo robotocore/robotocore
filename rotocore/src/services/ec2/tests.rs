@@ -229,3 +229,9 @@ fn replace_tags_direct() {
         "{rows:?}"
     );
 }
+
+#[test]
+fn shapes_lookup_smoke() {
+    let s = super::shapes::shape_of("CreateIpam");
+    assert!(s.is_some(), "shapes.json must carry CreateIpam");
+}
