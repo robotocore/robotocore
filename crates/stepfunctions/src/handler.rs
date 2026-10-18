@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub struct StepfunctionsHandler {
     /// Per-(account, region) state, shared process-wide (see `global_states`).
-    state: &'static RwLock<HashMap<(u64, String), StepfunctionsState>>,
+    pub(crate) state: &'static RwLock<HashMap<(u64, String), StepfunctionsState>>,
 }
 
 /// Process-global state registry, shared by every handler instance.
@@ -40,7 +40,7 @@ impl StepfunctionsHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> StepfunctionsState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> StepfunctionsState {
         self.state
             .write()
             .entry((account, region.to_string()))

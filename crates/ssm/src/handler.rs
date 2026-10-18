@@ -13,7 +13,7 @@ use crate::models::{
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct SsmHandler {
-    state: RwLock<BTreeMap<(u64, String), SsmState>>,
+    pub(crate) state: RwLock<BTreeMap<(u64, String), SsmState>>,
 }
 
 impl Default for SsmHandler {
@@ -29,7 +29,7 @@ impl SsmHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> SsmState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> SsmState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

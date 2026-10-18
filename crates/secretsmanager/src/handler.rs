@@ -8,7 +8,7 @@ use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
 pub struct SecretsManagerHandler {
-    state: RwLock<std::collections::HashMap<(u64, String), SmState>>,
+    pub(crate) state: RwLock<std::collections::HashMap<(u64, String), SmState>>,
 }
 
 impl SecretsManagerHandler {
@@ -18,7 +18,7 @@ impl SecretsManagerHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> SmState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> SmState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

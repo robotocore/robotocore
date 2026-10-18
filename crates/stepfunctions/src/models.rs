@@ -1,17 +1,20 @@
 //! Step Functions in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// A state machine definition.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StateMachine {
     pub name: String,
     pub arn: String,
     /// The raw definition string exactly as supplied (mutable via UpdateStateMachine).
+    #[serde(with = "crate::snapshot::rw")]
     pub definition: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub role_arn: RwLock<String>,
     /// STANDARD or EXPRESS.
     pub sm_type: String,
@@ -38,19 +41,25 @@ impl StateMachine {
 }
 
 /// A single state machine execution, mutated by the ASL engine thread.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Execution {
     pub arn: String,
     pub name: String,
     pub sm_arn: String,
     pub input: String,
     pub start_date: f64,
+    #[serde(with = "crate::snapshot::rw")]
     pub status: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub stop_date: RwLock<Option<f64>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub output: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub error: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub cause: RwLock<Option<String>>,
     /// Full GetExecutionHistory event list (chronological).
+    #[serde(with = "crate::snapshot::rw")]
     pub events: RwLock<Vec<Value>>,
 }
 
@@ -163,21 +172,24 @@ impl Execution {
 }
 
 /// A Step Functions activity.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Activity {
     pub name: String,
     pub arn: String,
     pub creation_date: f64,
     /// Payload scheduled but not yet polled by GetActivityTask.
+    #[serde(with = "crate::snapshot::rw")]
     pub scheduled: RwLock<Value>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Alias {
     pub name: String,
     pub arn: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub routing_configuration: RwLock<Vec<Value>>,
     pub creation_date: f64,
+    #[serde(with = "crate::snapshot::rw")]
     pub update_date: RwLock<f64>,
 }
 
@@ -195,21 +207,28 @@ impl Alias {
 }
 
 /// Store for one (account, region).
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct StepfunctionsState {
     /// State machines keyed by ARN.
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub state_machines: Arc<RwLock<HashMap<String, Arc<StateMachine>>>>,
     /// Executions keyed by ARN.
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub executions: Arc<RwLock<HashMap<String, Arc<Execution>>>>,
     /// Activities keyed by ARN.
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub activities: Arc<RwLock<HashMap<String, Arc<Activity>>>>,
     /// Published versions: state machine ARN -> (version number -> creation date).
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub versions: Arc<RwLock<HashMap<String, BTreeMap<u64, f64>>>>,
     /// Aliases keyed by alias ARN.
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub aliases: Arc<RwLock<HashMap<String, Arc<Alias>>>>,
     /// Tags keyed by resource ARN.
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub tags: Arc<RwLock<HashMap<String, Vec<Value>>>>,
     /// Live callback task tokens: task token -> activity ARN.
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub task_tokens: Arc<RwLock<HashMap<String, String>>>,
 }
 

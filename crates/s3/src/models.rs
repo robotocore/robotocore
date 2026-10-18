@@ -2,6 +2,7 @@
 
 use chrono::Utc;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -14,10 +15,11 @@ pub const OWNER_ID: &str = "75aa57f09aa0c8caeab4f8c24e99d10f8e7faeebf76c078efc7c
 pub const OWNER_DISPLAY: &str = "webfile";
 
 /// One stored revision of an object (a version row).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjectVersion {
     pub version_id: String,
     pub seq: u64,
+    #[serde(with = "crate::snapshot::b64")]
     pub data: Vec<u8>,
     pub content_type: String,
     pub metadata: HashMap<String, String>,
@@ -27,6 +29,7 @@ pub struct ObjectVersion {
     pub storage_class: String,
     pub tags: HashMap<String, String>,
     pub legal_hold: Option<String>,
+    #[serde(default)]
     pub retention: Option<(String, String)>,
 }
 
@@ -52,7 +55,7 @@ impl ObjectVersion {
 }
 
 /// A delete marker placeholder created by DeleteObject on versioned buckets.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteMarker {
     pub version_id: String,
     pub seq: u64,
@@ -60,9 +63,11 @@ pub struct DeleteMarker {
 }
 
 /// All revisions of one object key, newest first within each list.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ObjectEntry {
+    #[serde(default)]
     pub versions: Vec<ObjectVersion>,
+    #[serde(default)]
     pub markers: Vec<DeleteMarker>,
 }
 
@@ -88,7 +93,7 @@ impl ObjectEntry {
 }
 
 /// A notification target (queue, topic, or lambda) entry.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TargetConfig {
     pub arn: String,
     pub events: Vec<String>,
@@ -97,20 +102,25 @@ pub struct TargetConfig {
 }
 
 /// Parsed bucket notification configuration, used for event firing.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NotificationConfig {
+    #[serde(default)]
     pub queues: Vec<TargetConfig>,
+    #[serde(default)]
     pub topics: Vec<TargetConfig>,
+    #[serde(default)]
     pub lambdas: Vec<TargetConfig>,
+    #[serde(default)]
     pub eventbridge: bool,
 }
 
 /// A multipart upload in progress.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MultipartUpload {
     pub upload_id: String,
     pub key: String,
     pub initiated: u64,
+    #[serde(with = "crate::snapshot::rw")]
     pub parts: parking_lot::RwLock<std::collections::BTreeMap<u32, MultipartPart>>,
     pub content_type: String,
     pub metadata: HashMap<String, String>,
@@ -130,47 +140,74 @@ impl MultipartUpload {
 }
 
 /// A single part of a multipart upload.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultipartPart {
     pub part_number: u32,
     pub etag: String,
     pub size: usize,
+    #[serde(with = "crate::snapshot::b64")]
     pub data: Vec<u8>,
     pub last_modified: u64,
 }
 
 /// A single S3 bucket with its configurations.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Bucket {
     pub name: String,
     pub region: String,
     pub created: u64,
     pub directory: bool,
+    #[serde(with = "crate::snapshot::rw")]
     pub versioning: RwLock<Option<bool>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub policy: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub cors_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub lifecycle_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub website_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub encryption_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub logging_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub accelerate_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub request_payment_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub ownership_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub public_access_block_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub object_lock_enabled: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub object_lock_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub replication_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub analytics_config: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub metrics_config: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub inventory_config: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub intelligent_tiering: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub metadata_config: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub metadata_table_config: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub notification_xml: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub notification_config: RwLock<Option<NotificationConfig>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub objects: RwLock<HashMap<String, ObjectEntry>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub multipart_uploads: RwLock<HashMap<String, MultipartUpload>>,
+    #[serde(with = "crate::snapshot::atomic_u64")]
     pub seq: AtomicU64,
     pub acl: String,
 }
@@ -231,7 +268,6 @@ impl Bucket {
 pub struct S3State {
     pub buckets: Arc<RwLock<HashMap<String, Arc<Bucket>>>>,
 }
-
 impl S3State {
     pub fn new() -> Self {
         Self {

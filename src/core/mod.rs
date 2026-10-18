@@ -9,6 +9,7 @@
 //! - HTTP server and service routing
 
 pub mod account;
+pub mod apigw_exec;
 pub mod introspection;
 pub mod protocol;
 pub mod proxy;

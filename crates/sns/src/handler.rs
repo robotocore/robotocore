@@ -11,7 +11,7 @@ use sqs::SqsHandler as _;
 
 /// The SNS service handler.
 pub struct SnsHandler {
-    state: RwLock<HashMap<(u64, String), SnsState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), SnsState>>,
     /// SQS handler used for cross-service delivery (shares the in-process SQS store).
     sqs: sqs::DefaultSqsHandler,
 }
@@ -79,7 +79,7 @@ impl Default for SnsHandler {
 }
 
 impl SnsHandler {
-    fn get_state(&self, account: u64, region: &str) -> SnsState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> SnsState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

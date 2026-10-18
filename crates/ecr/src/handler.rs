@@ -15,7 +15,7 @@ use crate::models::{EcrImage, EcrState};
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct EcrHandler {
-    state: RwLock<HashMap<(u64, String), EcrState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), EcrState>>,
 }
 
 impl Default for EcrHandler {
@@ -31,7 +31,7 @@ impl EcrHandler {
         Self::default()
     }
 
-    fn get_state(&self, account: u64, region: &str) -> EcrState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> EcrState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

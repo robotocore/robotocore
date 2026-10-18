@@ -1,11 +1,12 @@
 //! Firehose in-memory state models.
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// One delivery stream with its destination configuration.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DeliveryStream {
     pub name: String,
     pub arn: String,
@@ -19,8 +20,9 @@ pub struct DeliveryStream {
 }
 
 /// The Firehose state store for one (account, region).
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FirehoseState {
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub resources: Arc<RwLock<HashMap<String, DeliveryStream>>>,
 }
 

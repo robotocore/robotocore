@@ -5,6 +5,7 @@
 use clap::Parser;
 use tokio::net::TcpListener;
 
+use robotocore_rust::core::state::SnapshotRegistry;
 use robotocore_rust::core::{build_router, ServiceRegistry};
 
 /// Robotocore Rust - AWS API Mock Server
@@ -49,7 +50,8 @@ async fn main() {
     tracing::info!("Default account: {}", args.account);
 
     // Create service registry
-    let registry = ServiceRegistry::new();
+    let (registry, native_handlers) = ServiceRegistry::new_with_handlers();
+    let snapshots = std::sync::Arc::new(SnapshotRegistry::new(&native_handlers));
 
     // Optionally start Moto proxy
     let native_list = vec![
@@ -92,7 +94,7 @@ async fn main() {
     }
 
     // Build Axum app
-    let app = build_router(registry, moto_proxy);
+    let app = build_router(registry, snapshots, moto_proxy);
 
     // Create listener
     let addr = format!("127.0.0.1:{}", args.port);

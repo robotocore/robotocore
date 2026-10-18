@@ -19,7 +19,7 @@ use crate::protocol::{function_not_found, path_segments, resolve_fn, AwsRequest,
 use crate::runtime;
 
 pub struct LambdaHandler {
-    state: RwLock<HashMap<(u64, String), LambdaState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), LambdaState>>,
 }
 
 impl Default for LambdaHandler {
@@ -35,7 +35,7 @@ impl LambdaHandler {
         }
     }
 
-    fn state_for(&self, account: u64, region: &str) -> LambdaState {
+    pub(crate) fn state_for(&self, account: u64, region: &str) -> LambdaState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

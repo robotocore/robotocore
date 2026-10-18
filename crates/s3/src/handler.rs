@@ -348,7 +348,7 @@ impl IdConfig {
 /// The S3 service handler.
 pub struct S3Handler {
     /// Per (account, region) state.
-    state: RwLock<HashMap<(u64, String), S3State>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), S3State>>,
 }
 
 impl S3Handler {
@@ -358,7 +358,7 @@ impl S3Handler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> S3State {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> S3State {
         let mut states = self.state.write();
         let state = states
             .entry((account, region.to_string()))

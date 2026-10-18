@@ -1,14 +1,17 @@
 //! Lambda in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// Per-function resource policy (statements in insertion order).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FunctionPolicy {
+    #[serde(with = "crate::snapshot::rw")]
     pub revision: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub statements: RwLock<Vec<Value>>,
 }
 
@@ -33,38 +36,60 @@ fn cl<T: Clone>(l: &RwLock<T>) -> T {
 }
 
 /// A Lambda function (a "latest" record or a published-version snapshot).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LambdaFunction {
     pub function_name: String,
     /// Unversioned ARN for the latest record; published snapshots carry `:<N>`
     /// (see `with_version_set`).
     pub function_arn: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub runtime: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub handler: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub role: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub code_size: RwLock<u64>,
+    #[serde(with = "crate::snapshot::rw")]
     pub description: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub timeout: RwLock<u32>,
+    #[serde(with = "crate::snapshot::rw")]
     pub memory_size: RwLock<u32>,
+    #[serde(with = "crate::snapshot::rw")]
     pub last_modified: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub state: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub version: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub code_sha256: RwLock<String>,
     /// Raw zipped deployment package bytes.
+    #[serde(with = "crate::snapshot::rw_b64")]
     pub code_zip: RwLock<Vec<u8>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub environment: RwLock<Option<HashMap<String, String>>>,
     /// Layer attachments as `[{"Arn": ..., "CodeSize": N}, ...]`.
+    #[serde(with = "crate::snapshot::rw")]
     pub layers: RwLock<Vec<Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub reserved_concurrency: RwLock<Option<i64>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub code_or_config_updated: RwLock<bool>,
+    #[serde(with = "crate::snapshot::rw")]
     pub event_invoke_config: RwLock<Option<Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub code_signing_config_arn: RwLock<Option<String>>,
     /// Runtime management config (UpdateRuntimeOn / RuntimeVersionArn).
+    #[serde(with = "crate::snapshot::rw")]
     pub runtime_mgmt_config: RwLock<Option<Value>>,
     /// Recursive loop setting: "Allow" | "Terminate" (default "Terminate").
+    #[serde(with = "crate::snapshot::rw")]
     pub recursion_config: RwLock<String>,
     /// Scaling configs keyed by qualifier.
+    #[serde(with = "crate::snapshot::rw")]
     pub scaling_configs: RwLock<HashMap<String, Value>>,
     pub policy: Arc<FunctionPolicy>,
 }
@@ -134,27 +159,31 @@ impl LambdaFunction {
 }
 
 /// One entry per function name: latest + published versions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionEntry {
     pub latest: Option<Arc<LambdaFunction>>,
     pub versions: Vec<Arc<LambdaFunction>>,
 }
 
 /// A Lambda alias.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LambdaAlias {
     pub name: String,
     /// Alias ARN: `<base function arn>:<alias name>`.
     pub function_arn: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub function_version: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub description: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub modified: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub routing_config: RwLock<Option<Value>>,
     pub revision_id: String,
 }
 
 /// An event source mapping (native store mirroring the Python provider keys).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EventSourceMapping {
     pub uuid: String,
     pub function_arn: String,
@@ -167,7 +196,7 @@ pub struct EventSourceMapping {
 }
 
 /// A single published layer version.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LayerVersion {
     pub layer_arn: String,
     pub layer_name: String,
@@ -179,12 +208,13 @@ pub struct LayerVersion {
     pub compatible_runtimes: Vec<String>,
     pub compatible_architectures: Vec<String>,
     pub license_info: String,
+    #[serde(with = "crate::snapshot::b64")]
     pub code_zip: Vec<u8>,
     pub policy: Arc<FunctionPolicy>,
 }
 
 /// A layer and its published versions.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Layer {
     pub layer_arn: String,
     pub layer_name: String,
@@ -193,7 +223,7 @@ pub struct Layer {
 }
 
 /// A stored code-signing config.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CodeSigningConfig {
     pub arn: String,
     pub description: String,

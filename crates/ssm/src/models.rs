@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -41,7 +42,7 @@ pub fn sha256_hex(input: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// One immutable version of an SSM parameter.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParamVersion {
     pub version: u64,
     /// Stored value (for SecureString this is the `kms:keyid:value` form).
@@ -125,9 +126,10 @@ impl ParamVersion {
 }
 
 /// A parameter with its full version history (ascending by version).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Parameter {
     pub name: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub versions: RwLock<Vec<ParamVersion>>,
 }
 
@@ -175,14 +177,14 @@ impl Parameter {
 // Documents
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountPermission {
     pub account_id: String,
     pub version: String,
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub owner: u64,
     pub name: String,
@@ -372,7 +374,7 @@ fn serde_yaml_from_str(_content: &str) -> Option<Value> {
 // Commands
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Command {
     pub command_id: String,
     pub comment: String,
@@ -443,7 +445,7 @@ impl Command {
 // Maintenance windows
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MwTarget {
     pub window_id: String,
     pub window_target_id: String,
@@ -468,7 +470,7 @@ impl MwTarget {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MwTask {
     pub window_id: String,
     pub window_task_id: String,
@@ -512,7 +514,7 @@ impl MwTask {
 pub type BTreeMapTargetMap = RwLock<std::collections::BTreeMap<String, MwTarget>>;
 pub type BTreeMapTaskMap = RwLock<std::collections::BTreeMap<String, MwTask>>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MaintenanceWindow {
     pub id: String,
     pub name: String,
@@ -524,7 +526,9 @@ pub struct MaintenanceWindow {
     pub schedule_offset: Option<i64>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub targets: BTreeMapTargetMap,
+    #[serde(with = "crate::snapshot::rw")]
     pub tasks: BTreeMapTaskMap,
 }
 
@@ -554,7 +558,7 @@ impl MaintenanceWindow {
 // Patch baselines
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatchBaseline {
     pub id: String,
     pub name: String,
@@ -600,7 +604,7 @@ impl PatchBaseline {
 // Associations
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Association {
     pub association_id: String,
     pub name: String,
@@ -705,7 +709,7 @@ impl Association {
 // ---------------------------------------------------------------------------
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OpsItem {
     pub ops_item_id: String,
     pub title: String,
@@ -720,6 +724,7 @@ pub struct OpsItem {
     pub created_time: DateTime<Utc>,
     pub last_modified_time: DateTime<Utc>,
     pub version: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub related_items: RwLock<Vec<Value>>,
 }
 
@@ -777,7 +782,7 @@ fn iam_root(account: u64) -> String {
 // Activation
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Activation {
     pub activation_id: String,
     pub iam_role: String,
@@ -811,7 +816,7 @@ impl Activation {
 // Resource data sync
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceDataSync {
     pub sync_name: String,
     pub s3_destination: Option<Value>,
@@ -849,7 +854,7 @@ impl ResourceDataSync {
 // Automation executions
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutomationExecution {
     pub automation_execution_id: String,
     pub document_name: String,
@@ -898,11 +903,12 @@ impl AutomationExecution {
 // ---------------------------------------------------------------------------
 
 /// Documents container storing all versions of a document.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Documents {
     pub versions: std::collections::BTreeMap<String, Arc<Document>>,
     pub default_version: String,
     pub latest_version: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub permissions: RwLock<Vec<(String, String, DateTime<Utc>)>>, // (account_id, version, created_at)
 }
 
@@ -1044,11 +1050,13 @@ impl SsmState {
 
 /// Ops metadata container.
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OpsMetadata {
     pub resource_id: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub metadata: RwLock<Value>,
     pub created: DateTime<Utc>,
+    #[serde(with = "crate::snapshot::rw")]
     pub last_modified: RwLock<DateTime<Utc>>,
 }
 

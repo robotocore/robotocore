@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct LogsHandler {
-    state: RwLock<HashMap<(u64, String), LogsState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), LogsState>>,
 }
 
 /// Retention values accepted by AWS.
@@ -105,7 +105,7 @@ impl LogsHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> LogsState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> LogsState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

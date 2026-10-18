@@ -1,6 +1,7 @@
 //! IAM in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,7 +36,7 @@ pub fn now_iso() -> String {
 }
 
 /// An IAM access key.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessKey {
     pub access_key_id: String,
     pub secret_access_key: String,
@@ -57,21 +58,30 @@ impl AccessKey {
 }
 
 /// An IAM user.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub user_id: String,
     pub username: String,
     pub arn: String,
     pub path: String,
     pub created: u64,
+    #[serde(with = "crate::snapshot::rw")]
     pub password: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub access_keys: RwLock<Vec<AccessKey>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub groups: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub policies: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub policy_documents: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attached_policies: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub permissions_boundary: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub signing_certs: RwLock<Vec<SigningCert>>,
 }
 
@@ -101,20 +111,28 @@ impl User {
 }
 
 /// An IAM role.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Role {
     pub role_id: String,
     pub role_name: String,
     pub arn: String,
     pub path: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub assume_role_policy: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub description: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub max_session_duration: RwLock<u32>,
     pub created: u64,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attached_policies: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub inline_policies: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub policy_documents: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub permissions_boundary: RwLock<Option<String>>,
     pub is_service_linked: bool,
 }
@@ -162,18 +180,24 @@ impl Role {
 }
 
 /// An IAM group.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Group {
     pub group_id: String,
     pub group_name: String,
     pub arn: String,
     pub path: String,
     pub created: u64,
+    #[serde(with = "crate::snapshot::rw")]
     pub users: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attached_policies: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub inline_policies: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub policy_documents: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub permissions_boundary: RwLock<Option<String>>,
 }
 
@@ -200,21 +224,29 @@ impl Group {
 }
 
 /// An IAM policy.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Policy {
     pub policy_id: String,
     pub policy_name: String,
     pub arn: String,
     pub path: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub default_version_id: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub description: RwLock<String>,
     pub created: u64,
     pub modified: u64,
+    #[serde(with = "crate::snapshot::rw")]
     pub policy_document: RwLock<String>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub versions: RwLock<Vec<serde_json::Value>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attached_users: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attached_roles: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub attached_groups: RwLock<Vec<String>>,
 }
 
@@ -265,7 +297,7 @@ impl Policy {
 }
 
 /// A signing certificate attached to a user.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SigningCert {
     pub certificate_id: String,
     pub body: String,
@@ -274,7 +306,7 @@ pub struct SigningCert {
 }
 
 /// An SSH public key of a user.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SshKey {
     pub id: String,
     pub fingerprint: String,
@@ -284,7 +316,7 @@ pub struct SshKey {
 }
 
 /// A server certificate.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ServerCert {
     pub name: String,
     pub cert_id: String,
@@ -294,44 +326,53 @@ pub struct ServerCert {
     pub chain: String,
     pub upload_date: String,
     pub expiration: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
 }
 
 /// A virtual MFA device.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualMfa {
     pub serial: String,
     pub base32: String,
     pub qrcode_png: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub assigned_user: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub enable_date: RwLock<Option<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
 }
 
 /// A SAML provider.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SamlProvider {
     pub name: String,
     pub arn: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub metadata: RwLock<String>,
     pub created: String,
     pub valid_until: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
 }
 
 /// An OpenID Connect provider.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OidcProvider {
     pub arn: String,
     pub url: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub thumbprints: RwLock<Vec<String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub client_ids: RwLock<Vec<String>>,
     pub created: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<serde_json::Value>>,
 }
 
 /// A stored login profile.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginProfile {
     pub created: String,
     pub password: String,
@@ -339,7 +380,7 @@ pub struct LoginProfile {
 }
 
 /// A service specific credential.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceSpecificCredential {
     pub id: String,
     pub user: String,
@@ -351,23 +392,39 @@ pub struct ServiceSpecificCredential {
 }
 
 /// The IAM state store (per account, global region).
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IamState {
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub users: Arc<RwLock<HashMap<String, Arc<User>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub roles: Arc<RwLock<HashMap<String, Arc<Role>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub groups: Arc<RwLock<HashMap<String, Arc<Group>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub policies: Arc<RwLock<HashMap<String, Arc<Policy>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub account_alias: Arc<RwLock<Option<String>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub password_policy: Arc<RwLock<Option<serde_json::Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub instance_profiles: Arc<RwLock<HashMap<String, Vec<String>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub instance_profile_tags: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub instance_profile_ids: Arc<RwLock<HashMap<String, String>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub virtual_mfas: Arc<RwLock<HashMap<String, Arc<VirtualMfa>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub saml_providers: Arc<RwLock<HashMap<String, Arc<SamlProvider>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub oidc_providers: Arc<RwLock<HashMap<String, Arc<OidcProvider>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub ssh_keys: Arc<RwLock<HashMap<String, Vec<SshKey>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub server_certs: Arc<RwLock<HashMap<String, Arc<ServerCert>>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub login_profiles: Arc<RwLock<HashMap<String, LoginProfile>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub ssc_creds: Arc<RwLock<HashMap<String, Vec<Value>>>>,
 }
 

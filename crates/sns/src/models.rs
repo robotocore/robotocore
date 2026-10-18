@@ -1,11 +1,12 @@
 //! SNS in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// An SNS subscription.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
     pub subscription_arn: String,
     pub topic_arn: String,
@@ -15,6 +16,7 @@ pub struct Subscription {
     pub confirmed: bool,
     pub created: u64,
     /// User-set subscription attributes (RawMessageDelivery, FilterPolicy, FilterPolicyScope, ...)
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub attributes: Arc<RwLock<HashMap<String, String>>>,
 }
 
@@ -36,7 +38,7 @@ impl Subscription {
 }
 
 /// An SNS topic.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Topic {
     pub name: String,
     pub arn: String,
@@ -46,7 +48,9 @@ pub struct Topic {
     pub fifo: bool,
     /// User-set topic attributes (DisplayName, Policy, FifoTopic, ContentBasedDeduplication,
     /// DeliveryPolicy, DataProtectionPolicy, ...)
+    #[serde(with = "crate::snapshot::rw")]
     pub attributes: RwLock<HashMap<String, String>>,
+    #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<Vec<(String, String)>>,
 }
 
@@ -102,26 +106,28 @@ impl Topic {
 }
 
 /// A platform application (e.g. GCM push app).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PlatformApplication {
     pub arn: String,
     pub name: String,
     pub platform: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub attributes: RwLock<HashMap<String, String>>,
 }
 
 /// A platform endpoint (a device registered with a platform application).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PlatformEndpoint {
     pub arn: String,
     pub application_arn: String,
     pub token: String,
     pub custom_user_data: String,
+    #[serde(with = "crate::snapshot::rw")]
     pub attributes: RwLock<HashMap<String, String>>,
 }
 
 /// An SMS sandbox phone number.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmsSandboxNumber {
     pub phone: String,
     pub verified: bool,

@@ -153,7 +153,7 @@ impl QueueAttributes {
 /// the 5-minute dedup window even after the original message is deleted, so
 /// a re-send with the same dedup id is suppressed (retract-pending) until
 /// the window expires.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DedupEntry {
     pub message_id: String,
     pub md5_of_body: String,
@@ -162,7 +162,7 @@ pub struct DedupEntry {
 }
 
 /// A message move task (DeadLetterQueue redrive reversal).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoveTask {
     pub task_handle: String,
     pub source_arn: String,
@@ -176,7 +176,7 @@ pub struct MoveTask {
 }
 
 /// A queue in SQS (behind RwLock for thread-safe mutation)
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Queue {
     pub name: String,
     pub arn: String,
@@ -187,11 +187,14 @@ pub struct Queue {
     pub last_modified: u64,
     pub attributes: QueueAttributes,
     pub messages: VecDeque<SqsMessage>,
+    #[serde(with = "crate::snapshot::tags_lock")]
     pub tags: parking_lot::RwLock<std::collections::HashMap<String, String>>,
     /// Deduplication IDs seen on this FIFO queue -> original send's record.
     /// Entries live for the 5-minute dedup window from the first send.
+    #[serde(default)]
     pub dedup_ids: std::collections::HashMap<String, DedupEntry>,
     /// Monotonic sequence number counter for FIFO queues.
+    #[serde(default)]
     pub next_sequence_number: u64,
 }
 
@@ -382,9 +385,9 @@ impl Queue {
 
 /// Thread-safe SQS storage for a single account+region
 pub struct SqsStore {
-    queues: Arc<RwLock<HashMap<String, Arc<RwLock<Queue>>>>>,
+    pub(crate) queues: Arc<RwLock<HashMap<String, Arc<RwLock<Queue>>>>>,
     /// Dead-letter queue redrive (message move) tasks by handle.
-    move_tasks: Arc<parking_lot::RwLock<HashMap<String, MoveTask>>>,
+    pub(crate) move_tasks: Arc<parking_lot::RwLock<HashMap<String, MoveTask>>>,
 }
 
 impl SqsStore {

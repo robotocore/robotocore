@@ -8,7 +8,7 @@ use crate::models::{CloudwatchState, DatumStats, MetricDatum};
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct CloudwatchHandler {
-    state: RwLock<HashMap<(u64, String), CloudwatchState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), CloudwatchState>>,
 }
 
 /// Extract a string from a JSON scalar (query protocol places values as strings too).
@@ -422,7 +422,7 @@ impl CloudwatchHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> CloudwatchState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> CloudwatchState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

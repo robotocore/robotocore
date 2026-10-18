@@ -15,7 +15,7 @@ use crate::models::{CustomKeyStore, Grant, Key, KmsState};
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct KmsHandler {
-    state: RwLock<HashMap<(u64, String), KmsState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), KmsState>>,
 }
 
 /// Default key policy (mirrors the Moto default policy shape closely enough
@@ -57,7 +57,7 @@ impl KmsHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> KmsState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> KmsState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

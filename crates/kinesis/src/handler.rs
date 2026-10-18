@@ -12,7 +12,7 @@ use crate::models::{
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct KinesisHandler {
-    state: RwLock<HashMap<(u64, String), KinesisState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), KinesisState>>,
 }
 
 impl KinesisHandler {
@@ -22,7 +22,7 @@ impl KinesisHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> KinesisState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> KinesisState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))

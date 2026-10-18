@@ -1,11 +1,12 @@
 //! CloudWatch Logs in-memory state models.
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// A single log event.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEventItem {
     pub timestamp: i64,
     pub ingestion_time: i64,
@@ -14,7 +15,7 @@ pub struct LogEventItem {
 }
 
 /// A log stream.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LogStreamRec {
     pub name: String,
     /// Full ARN without any ":*" suffix.
@@ -29,7 +30,7 @@ pub struct LogStreamRec {
 }
 
 /// A log group with its nested streams.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogGroupRec {
     pub name: String,
     pub arn: String,
@@ -41,7 +42,7 @@ pub struct LogGroupRec {
 }
 
 /// A subscription filter.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionFilterRec {
     pub log_group_name: String,
     pub filter_name: String,
@@ -52,7 +53,7 @@ pub struct SubscriptionFilterRec {
 }
 
 /// A metric filter definition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricFilterRec {
     pub log_group_name: String,
     pub filter_name: String,
@@ -61,7 +62,7 @@ pub struct MetricFilterRec {
 }
 
 /// A destination for subscription filters.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DestinationRec {
     pub destination_name: String,
     pub arn: String,
@@ -71,7 +72,7 @@ pub struct DestinationRec {
 }
 
 /// A resource-wide log access policy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourcePolicyRec {
     pub policy_name: String,
     pub policy_document: String,
@@ -80,7 +81,7 @@ pub struct ResourcePolicyRec {
 }
 
 /// A CloudWatch Logs export task.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportTaskRec {
     pub task_id: String,
     pub task_name: Option<String>,
@@ -91,7 +92,7 @@ pub struct ExportTaskRec {
 }
 
 /// A saved Insights query definition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryDefinitionRec {
     pub query_definition_id: String,
     pub name: String,
@@ -101,14 +102,14 @@ pub struct QueryDefinitionRec {
 }
 
 /// A started Insights query.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryRec {
     pub query_id: String,
     pub status: String,
 }
 
 /// A log anomaly detector (new API).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnomalyDetectorRec {
     pub arn: String,
     pub log_group_arn_list: serde_json::Value,
@@ -118,7 +119,7 @@ pub struct AnomalyDetectorRec {
 }
 
 /// An account-level policy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountPolicyRec {
     pub policy_name: String,
     pub policy_document: String,
@@ -128,7 +129,7 @@ pub struct AccountPolicyRec {
 }
 
 /// A delivery source (new delivery API).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeliverySourceRec {
     pub name: String,
     pub arn: String,
@@ -138,7 +139,7 @@ pub struct DeliverySourceRec {
 }
 
 /// A delivery destination (new delivery API).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeliveryDestinationRec {
     pub name: String,
     pub arn: String,
@@ -149,7 +150,7 @@ pub struct DeliveryDestinationRec {
 }
 
 /// A delivery linking source and destination.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeliveryRec {
     pub id: String,
     pub arn: String,
@@ -162,24 +163,39 @@ pub struct DeliveryRec {
 type QueryResultStore = BTreeMap<String, (Vec<serde_json::Value>, serde_json::Value)>;
 
 /// The CloudWatch Logs state store (per account+region).
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct LogsState {
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub log_groups: Arc<RwLock<BTreeMap<String, LogGroupRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub subscription_filters: Arc<RwLock<Vec<SubscriptionFilterRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub metric_filters: Arc<RwLock<Vec<MetricFilterRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub destinations: Arc<RwLock<BTreeMap<String, DestinationRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub resource_policies: Arc<RwLock<BTreeMap<String, ResourcePolicyRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub export_tasks: Arc<RwLock<BTreeMap<String, ExportTaskRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub query_definitions: Arc<RwLock<BTreeMap<String, QueryDefinitionRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub queries: Arc<RwLock<BTreeMap<String, QueryRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub anomaly_detectors: Arc<RwLock<BTreeMap<String, AnomalyDetectorRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub account_policies: Arc<RwLock<BTreeMap<String, AccountPolicyRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub delivery_sources: Arc<RwLock<BTreeMap<String, DeliverySourceRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub delivery_destinations: Arc<RwLock<BTreeMap<String, DeliveryDestinationRec>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub deliveries: Arc<RwLock<BTreeMap<String, DeliveryRec>>>,
     /// Stored Insights query results: queryId -> (rows, statistics).
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub query_results: Arc<RwLock<QueryResultStore>>,
     /// Tags keyed by resource ARN (TagResource/UntagResource accept any ARN).
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub arn_tags: Arc<RwLock<BTreeMap<String, BTreeMap<String, String>>>>,
 }
 

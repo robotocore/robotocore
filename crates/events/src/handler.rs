@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 /// Process-global EventBridge state registry, shared by every handler
 /// instance so cross-service publishers (S3, ...) can reach the same rules.
-static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
+pub(crate) static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 fn global_state(account: u64, region: &str) -> EventsState {
@@ -67,7 +67,7 @@ impl EventsHandler {
         Self {}
     }
 
-    fn get_state(&self, account: u64, region: &str) -> EventsState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> EventsState {
         global_state(account, region)
     }
 

@@ -6,11 +6,11 @@ use axum::{
     extract::State,
     http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use http_body_util::BodyExt;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -71,7 +71,7 @@ impl ServiceHandler for StsFunctionHandler {
 /// Adapter that bridges the core `ParsedRequest`/`ParsedResponse` protocol to
 /// the native SQS service crate.
 pub struct SqsServiceHandler {
-    inner: sqs::DefaultSqsHandler,
+    inner: Arc<sqs::DefaultSqsHandler>,
 }
 
 impl SqsServiceHandler {
@@ -116,7 +116,7 @@ impl ServiceHandler for SqsServiceHandler {
 
 /// Adapter that bridges the core protocol to the native S3 service crate.
 pub struct S3ServiceHandler {
-    inner: s3::DefaultS3Handler,
+    inner: Arc<s3::DefaultS3Handler>,
 }
 
 impl S3ServiceHandler {
@@ -220,7 +220,7 @@ impl ServiceHandler for S3ServiceHandler {
 
 /// Adapter that bridges the core protocol to the native DynamoDB service crate.
 pub struct DynamoDbServiceHandler {
-    inner: dynamodb::DefaultDynamoDbHandler,
+    inner: Arc<dynamodb::DefaultDynamoDbHandler>,
 }
 
 impl DynamoDbServiceHandler {
@@ -264,7 +264,7 @@ impl ServiceHandler for DynamoDbServiceHandler {
 
 /// Adapter that bridges the core protocol to the native SNS service crate.
 pub struct SnsServiceHandler {
-    inner: sns::DefaultSnsHandler,
+    inner: Arc<sns::DefaultSnsHandler>,
 }
 
 impl SnsServiceHandler {
@@ -308,7 +308,7 @@ impl ServiceHandler for SnsServiceHandler {
 
 /// Adapter that bridges the core protocol to the native Secrets Manager service crate.
 pub struct SmServiceHandler {
-    inner: secretsmanager::DefaultSecretsManagerHandler,
+    inner: Arc<secretsmanager::DefaultSecretsManagerHandler>,
 }
 
 impl SmServiceHandler {
@@ -352,7 +352,7 @@ impl ServiceHandler for SmServiceHandler {
 
 /// Adapter for KMS service crate.
 pub struct KmsServiceHandler {
-    inner: kms::DefaultKmsHandler,
+    inner: Arc<kms::DefaultKmsHandler>,
 }
 
 impl ServiceHandler for KmsServiceHandler {
@@ -386,7 +386,7 @@ impl ServiceHandler for KmsServiceHandler {
 
 /// Adapter for SSM service crate.
 pub struct SsmServiceHandler {
-    inner: ssm::DefaultSsmHandler,
+    inner: Arc<ssm::DefaultSsmHandler>,
 }
 
 impl ServiceHandler for SsmServiceHandler {
@@ -420,7 +420,7 @@ impl ServiceHandler for SsmServiceHandler {
 
 /// Adapter for IAM service crate.
 pub struct IamServiceHandler {
-    inner: iam::DefaultIamHandler,
+    inner: Arc<iam::DefaultIamHandler>,
 }
 
 impl ServiceHandler for IamServiceHandler {
@@ -455,7 +455,7 @@ impl ServiceHandler for IamServiceHandler {
 
 /// Adapter for Lambda service crate.
 pub struct LambdaServiceHandler {
-    inner: lambda::DefaultLambdaHandler,
+    inner: Arc<lambda::DefaultLambdaHandler>,
 }
 
 impl ServiceHandler for LambdaServiceHandler {
@@ -493,7 +493,7 @@ impl ServiceHandler for LambdaServiceHandler {
 
 /// Adapter for CloudWatch Logs service crate.
 pub struct LogsServiceHandler {
-    inner: cloudwatch_logs::DefaultLogsHandler,
+    inner: Arc<cloudwatch_logs::DefaultLogsHandler>,
 }
 
 impl ServiceHandler for LogsServiceHandler {
@@ -527,7 +527,7 @@ impl ServiceHandler for LogsServiceHandler {
 
 /// Adapter for EventBridge service crate.
 pub struct EventsServiceHandler {
-    inner: events::DefaultEventsHandler,
+    inner: Arc<events::DefaultEventsHandler>,
 }
 
 impl ServiceHandler for EventsServiceHandler {
@@ -561,7 +561,7 @@ impl ServiceHandler for EventsServiceHandler {
 
 /// Adapter for Kinesis service crate.
 pub struct KinesisServiceHandler {
-    inner: kinesis::DefaultKinesisHandler,
+    inner: Arc<kinesis::DefaultKinesisHandler>,
 }
 
 impl ServiceHandler for KinesisServiceHandler {
@@ -595,7 +595,7 @@ impl ServiceHandler for KinesisServiceHandler {
 
 /// Adapter for Firehose.
 pub struct FirehoseServiceHandler {
-    inner: firehose::DefaultFirehoseHandler,
+    inner: Arc<firehose::DefaultFirehoseHandler>,
 }
 impl ServiceHandler for FirehoseServiceHandler {
     fn handle_sync(
@@ -628,7 +628,7 @@ impl ServiceHandler for FirehoseServiceHandler {
 
 /// Adapter for CloudWatch.
 pub struct CloudWatchServiceHandler {
-    inner: cloudwatch::DefaultCloudwatchHandler,
+    inner: Arc<cloudwatch::DefaultCloudwatchHandler>,
 }
 impl ServiceHandler for CloudWatchServiceHandler {
     fn handle_sync(
@@ -661,7 +661,7 @@ impl ServiceHandler for CloudWatchServiceHandler {
 
 /// Adapter for ECR.
 pub struct EcrServiceHandler {
-    inner: ecr::DefaultEcrHandler,
+    inner: Arc<ecr::DefaultEcrHandler>,
 }
 impl ServiceHandler for EcrServiceHandler {
     fn handle_sync(
@@ -694,7 +694,7 @@ impl ServiceHandler for EcrServiceHandler {
 
 /// Adapter for ECS.
 pub struct EcsServiceHandler {
-    inner: ecs::DefaultEcsHandler,
+    inner: Arc<ecs::DefaultEcsHandler>,
 }
 impl ServiceHandler for EcsServiceHandler {
     fn handle_sync(
@@ -727,7 +727,7 @@ impl ServiceHandler for EcsServiceHandler {
 
 /// Adapter for Step Functions.
 pub struct StepFunctionsServiceHandler {
-    inner: stepfunctions::DefaultStepfunctionsHandler,
+    inner: Arc<stepfunctions::DefaultStepfunctionsHandler>,
 }
 impl ServiceHandler for StepFunctionsServiceHandler {
     fn handle_sync(
@@ -758,159 +758,271 @@ impl ServiceHandler for StepFunctionsServiceHandler {
     }
 }
 
+/// Handler instances shared between the wire path and the snapshot registry.
+pub struct NativeHandlers {
+    pub sqs: Arc<sqs::DefaultSqsHandler>,
+    pub s3: Arc<s3::DefaultS3Handler>,
+    pub dynamodb: Arc<dynamodb::DefaultDynamoDbHandler>,
+    pub sns: Arc<sns::DefaultSnsHandler>,
+    pub secretsmanager: Arc<secretsmanager::DefaultSecretsManagerHandler>,
+    pub kms: Arc<kms::DefaultKmsHandler>,
+    pub ssm: Arc<ssm::DefaultSsmHandler>,
+    pub iam: Arc<iam::DefaultIamHandler>,
+    pub lambda: Arc<lambda::DefaultLambdaHandler>,
+    pub logs: Arc<cloudwatch_logs::DefaultLogsHandler>,
+    pub events: Arc<events::DefaultEventsHandler>,
+    pub kinesis: Arc<kinesis::DefaultKinesisHandler>,
+    pub firehose: Arc<firehose::DefaultFirehoseHandler>,
+    pub cloudwatch: Arc<cloudwatch::DefaultCloudwatchHandler>,
+    pub ecr: Arc<ecr::DefaultEcrHandler>,
+    pub ecs: Arc<ecs::DefaultEcsHandler>,
+    pub stepfunctions: Arc<stepfunctions::DefaultStepfunctionsHandler>,
+}
+
+impl NativeHandlers {
+    /// Invoke a lambda function with an API Gateway proxy event and shape the
+    /// wire response (mirrors the python executor's proxy handling).
+    pub fn invoke_lambda(
+        &self,
+        account: u64,
+        region: &str,
+        function_name: &str,
+        payload: &serde_json::Value,
+    ) -> axum::response::Response {
+        use axum::response::IntoResponse;
+
+        let anyhow = ("", 0u16);
+        let _ = anyhow;
+        let req = lambda::protocol::AwsRequest {
+            service: "lambda".to_string(),
+            operation: "Invoke".to_string(),
+            account,
+            region: region.to_string(),
+            params: json!({
+                "FunctionName": function_name,
+                "Qualifier": "$LATEST",
+                "Payload": payload.to_string(),
+            }),
+            body: bytes::Bytes::new(),
+            method: "POST".to_string(),
+            // The lambda handler re-derives the operation from method+path.
+            path: format!("/2015-03-31/functions/{function_name}/invocations"),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+        };
+        let resp = self.lambda.handle(req);
+        let function_error = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k == "x-amz-function-error")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        let body_text = resp.body.clone();
+        let parsed: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
+
+        let (status, out_body) = if resp.status == 200 && function_error.is_empty() {
+            match &parsed {
+                Value::Object(obj) if obj.contains_key("statusCode") => {
+                    let code = obj.get("statusCode").cloned().expect("checked above");
+                    let code = code.as_u64().unwrap_or(200);
+                    let out_body = match obj.get("body") {
+                        Some(Value::String(text)) => text.clone(),
+                        Some(other) => other.to_string(),
+                        None => String::new(),
+                    };
+                    (code as u16, out_body)
+                }
+                _ => (200u16, body_text.clone()),
+            }
+        } else {
+            (500, out500(&body_text))
+        };
+
+        (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            axum::body::Body::from(out_body),
+        )
+            .into_response()
+    }
+}
+
+fn out500(text: &str) -> String {
+    json!({"message": text}).to_string()
+}
+
 /// Registry of service handlers.
 pub struct ServiceRegistry {
     handlers: HashMap<String, Arc<dyn ServiceHandler>>,
+    /// Shared native handler instances (used by the apigateway executor).
+    pub native: NativeHandlers,
 }
 
 impl ServiceRegistry {
-    /// Create a new registry with built-in services.
-    pub fn new() -> Self {
-        let mut handlers: HashMap<String, Arc<dyn ServiceHandler>> = HashMap::new();
+    /// Create a registry with built-in services, returning the shared
+    /// native handler instances for the state-snapshot registry.
+    pub fn new_with_handlers() -> (Self, NativeHandlers) {
+        let handlers: NativeHandlers = NativeHandlers {
+            sqs: Arc::new(sqs::DefaultSqsHandler::new()),
+            s3: Arc::new(s3::DefaultS3Handler::new()),
+            dynamodb: Arc::new(dynamodb::DefaultDynamoDbHandler::new()),
+            sns: Arc::new(sns::DefaultSnsHandler::new()),
+            secretsmanager: Arc::new(secretsmanager::DefaultSecretsManagerHandler::new()),
+            kms: Arc::new(kms::DefaultKmsHandler::new()),
+            ssm: Arc::new(ssm::DefaultSsmHandler::new()),
+            iam: Arc::new(iam::DefaultIamHandler::new()),
+            lambda: Arc::new(lambda::DefaultLambdaHandler::new()),
+            logs: Arc::new(cloudwatch_logs::DefaultLogsHandler::new()),
+            events: Arc::new(events::DefaultEventsHandler::new()),
+            kinesis: Arc::new(kinesis::DefaultKinesisHandler::new()),
+            firehose: Arc::new(firehose::DefaultFirehoseHandler::new()),
+            cloudwatch: Arc::new(cloudwatch::DefaultCloudwatchHandler::new()),
+            ecr: Arc::new(ecr::DefaultEcrHandler::new()),
+            ecs: Arc::new(ecs::DefaultEcsHandler::new()),
+            stepfunctions: Arc::new(stepfunctions::DefaultStepfunctionsHandler::new()),
+        };
+
+        let mut adapters: HashMap<String, Arc<dyn ServiceHandler>> = HashMap::new();
 
         // Register STS handler
-        handlers.insert(
+        adapters.insert(
             "sts".to_string(),
             Arc::new(StsFunctionHandler) as Arc<dyn ServiceHandler>,
         );
 
-        // Register native SQS handler
-        handlers.insert(
+        // Register native handlers (sharing instances with NativeHandlers)
+        adapters.insert(
             "sqs".to_string(),
             Arc::new(SqsServiceHandler {
-                inner: sqs::DefaultSqsHandler::new(),
+                inner: handlers.sqs.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native S3 handler
-        handlers.insert(
+        adapters.insert(
             "s3".to_string(),
             Arc::new(S3ServiceHandler {
-                inner: s3::DefaultS3Handler::new(),
+                inner: handlers.s3.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native DynamoDB handler
-        handlers.insert(
+        adapters.insert(
             "dynamodb".to_string(),
             Arc::new(DynamoDbServiceHandler {
-                inner: dynamodb::DefaultDynamoDbHandler::new(),
+                inner: handlers.dynamodb.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native SNS handler
-        handlers.insert(
+        adapters.insert(
             "sns".to_string(),
             Arc::new(SnsServiceHandler {
-                inner: sns::DefaultSnsHandler::new(),
+                inner: handlers.sns.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native Secrets Manager handler
-        handlers.insert(
+        adapters.insert(
             "secretsmanager".to_string(),
             Arc::new(SmServiceHandler {
-                inner: secretsmanager::DefaultSecretsManagerHandler::new(),
+                inner: handlers.secretsmanager.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native KMS handler
-        handlers.insert(
+        adapters.insert(
             "kms".to_string(),
             Arc::new(KmsServiceHandler {
-                inner: kms::DefaultKmsHandler::new(),
+                inner: handlers.kms.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native SSM handler
-        handlers.insert(
+        adapters.insert(
             "ssm".to_string(),
             Arc::new(SsmServiceHandler {
-                inner: ssm::DefaultSsmHandler::new(),
+                inner: handlers.ssm.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native IAM handler
-        handlers.insert(
+        adapters.insert(
             "iam".to_string(),
             Arc::new(IamServiceHandler {
-                inner: iam::DefaultIamHandler::new(),
+                inner: handlers.iam.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native Lambda handler
-        handlers.insert(
+        adapters.insert(
             "lambda".to_string(),
             Arc::new(LambdaServiceHandler {
-                inner: lambda::DefaultLambdaHandler::new(),
+                inner: handlers.lambda.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native CloudWatch Logs handler
-        handlers.insert(
+        adapters.insert(
             "logs".to_string(),
             Arc::new(LogsServiceHandler {
-                inner: cloudwatch_logs::DefaultLogsHandler::new(),
+                inner: handlers.logs.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native EventBridge handler
-        handlers.insert(
+        adapters.insert(
             "events".to_string(),
             Arc::new(EventsServiceHandler {
-                inner: events::DefaultEventsHandler::new(),
+                inner: handlers.events.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native Kinesis handler
-        handlers.insert(
+        adapters.insert(
             "kinesis".to_string(),
             Arc::new(KinesisServiceHandler {
-                inner: kinesis::DefaultKinesisHandler::new(),
+                inner: handlers.kinesis.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native Firehose handler
-        handlers.insert(
+        adapters.insert(
             "firehose".to_string(),
             Arc::new(FirehoseServiceHandler {
-                inner: firehose::DefaultFirehoseHandler::new(),
+                inner: handlers.firehose.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native CloudWatch handler
-        handlers.insert(
+        adapters.insert(
             "cloudwatch".to_string(),
             Arc::new(CloudWatchServiceHandler {
-                inner: cloudwatch::DefaultCloudwatchHandler::new(),
+                inner: handlers.cloudwatch.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native ECR handler
-        handlers.insert(
+        adapters.insert(
             "ecr".to_string(),
             Arc::new(EcrServiceHandler {
-                inner: ecr::DefaultEcrHandler::new(),
+                inner: handlers.ecr.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native ECS handler
-        handlers.insert(
+        adapters.insert(
             "ecs".to_string(),
             Arc::new(EcsServiceHandler {
-                inner: ecs::DefaultEcsHandler::new(),
+                inner: handlers.ecs.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
-
-        // Register native Step Functions handler
-        handlers.insert(
+        adapters.insert(
             "stepfunctions".to_string(),
             Arc::new(StepFunctionsServiceHandler {
-                inner: stepfunctions::DefaultStepfunctionsHandler::new(),
+                inner: handlers.stepfunctions.clone(),
             }) as Arc<dyn ServiceHandler>,
         );
 
-        Self { handlers }
+        (
+            Self {
+                handlers: adapters,
+                native: NativeHandlers {
+                    sqs: handlers.sqs.clone(),
+                    s3: handlers.s3.clone(),
+                    dynamodb: handlers.dynamodb.clone(),
+                    sns: handlers.sns.clone(),
+                    secretsmanager: handlers.secretsmanager.clone(),
+                    kms: handlers.kms.clone(),
+                    ssm: handlers.ssm.clone(),
+                    iam: handlers.iam.clone(),
+                    lambda: handlers.lambda.clone(),
+                    logs: handlers.logs.clone(),
+                    events: handlers.events.clone(),
+                    kinesis: handlers.kinesis.clone(),
+                    firehose: handlers.firehose.clone(),
+                    cloudwatch: handlers.cloudwatch.clone(),
+                    ecr: handlers.ecr.clone(),
+                    ecs: handlers.ecs.clone(),
+                    stepfunctions: handlers.stepfunctions.clone(),
+                },
+            },
+            handlers,
+        )
+    }
+
+    /// Create a new registry with built-in services.
+    pub fn new() -> Self {
+        Self::new_with_handlers().0
     }
 
     /// Get a service handler by name.
@@ -929,6 +1041,12 @@ impl Default for ServiceRegistry {
 pub struct AppState {
     pub registry: ServiceRegistry,
     pub moto_proxy: Option<crate::core::proxy::MotoProxy>,
+    /// Central (service, snapshot surface) table for the state endpoints.
+    pub snapshots: Arc<crate::core::state::SnapshotRegistry>,
+    /// In-memory named snapshots (`/state/save` without `path`).
+    pub named_snapshots: Arc<crate::core::state::NamedSnapshots>,
+    /// Versioned snapshots (`/state/snapshots/save|load`).
+    pub versioned_snapshots: Arc<crate::core::state::VersionedSnapshots>,
 }
 
 /// Catch-all handler for all AWS API requests.
@@ -961,6 +1079,45 @@ pub async fn catch_all_handler(
             return error_response(StatusCode::BAD_REQUEST, "Invalid body");
         }
     };
+
+    // Deployed-API execution: /restapis/{api}/{stage}/_user_request_/{path}/
+    // (the ground truth serves these with its own executor, not moto routes).
+    if let Some((api_id, stage, proxy_path)) = crate::core::apigw_exec::match_execute(uri.path()) {
+        if let Some(proxy) = &state.moto_proxy {
+            // The audit call below needs the account/region rows that are
+            // computed further down; derive them early here.
+            let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
+            let account_id = account.to_string();
+            let region_for_audit = extract_region_from_request(&headers)
+                .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+                .unwrap_or_else(|| "us-east-1".to_string());
+            let result = crate::core::apigw_exec::execute(
+                proxy,
+                &state.registry.native,
+                &method,
+                crate::core::apigw_exec::ExecuteTarget {
+                    api_id: &api_id,
+                    stage: &stage,
+                    proxy_path: &proxy_path,
+                },
+                account,
+                "us-east-1",
+            )
+            .await;
+            audit_out(
+                Some("apigateway"),
+                None,
+                &req_method,
+                &req_path,
+                result.status().as_u16(),
+                req_start,
+                &account_id,
+                &region_for_audit,
+                None,
+            );
+            return result;
+        }
+    }
 
     // Determine service from URI and headers
     let service = match extract_service(&method, &uri, &headers) {
@@ -1406,11 +1563,15 @@ pub async fn usage_errors_handler() -> impl IntoResponse {
 /// Build the Axum router.
 pub fn build_router(
     registry: ServiceRegistry,
+    snapshots: Arc<crate::core::state::SnapshotRegistry>,
     moto_proxy: Option<crate::core::proxy::MotoProxy>,
 ) -> Router {
     let state = Arc::new(AppState {
         registry,
         moto_proxy,
+        snapshots,
+        named_snapshots: Arc::new(crate::core::state::NamedSnapshots::default()),
+        versioned_snapshots: Arc::new(crate::core::state::VersionedSnapshots::default()),
     });
 
     Router::new()
@@ -1420,8 +1581,380 @@ pub fn build_router(
         .route("/_robotocore/runtimes", get(runtimes_handler))
         .route("/_robotocore/services", get(services_handler))
         .route("/_robotocore/usage/errors", get(usage_errors_handler))
+        // State save/load/reset (Cloud Pods-style snapshots)
+        .route(
+            "/_robotocore/state/save",
+            get(state_save_handler).post(state_save_handler),
+        )
+        .route("/_robotocore/state/load", post(state_load_handler))
+        .route("/_robotocore/state/reset", post(state_reset_handler))
+        .route(
+            "/_robotocore/state/snapshots",
+            get(state_snapshots_list_handler),
+        )
+        .route(
+            "/robotocore/state/snapshots",
+            get(state_snapshots_list_handler),
+        )
+        .route(
+            "/_robotocore/state/snapshots/save",
+            post(state_snapshot_save_handler),
+        )
+        .route(
+            "/_robotocore/state/snapshots/load",
+            post(state_snapshot_load_handler),
+        )
+        .route("/_robotocore/state/export", get(state_export_handler))
+        .route("/_robotocore/state/import", post(state_import_handler))
         .fallback(catch_all_handler)
         .with_state(state)
+}
+
+// ---------------------------------------------------------------------------
+// State save/load endpoints
+// ---------------------------------------------------------------------------
+
+/// Parse the JSON request body for state endpoints ({} for empty bodies).
+/// Small error type so the `Err` variant stays cheap to return inline.
+type StateBodyError = (StatusCode, axum::Json<serde_json::Value>);
+
+fn state_body(body: axum::body::Bytes) -> Result<serde_json::Value, StateBodyError> {
+    if body.is_empty() {
+        return Ok(serde_json::Value::Object(serde_json::Map::new()));
+    }
+    serde_json::from_slice::<serde_json::Value>(&body).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({"error": format!("Invalid JSON: {e}")})),
+        )
+    })
+}
+
+/// Read a string parameter from body or query string.
+fn body_str<'a>(
+    params: &'a serde_json::Value,
+    key: &str,
+    query: Option<&'a str>,
+) -> Option<String> {
+    if let Some(v) = params.get(key) {
+        if let Some(s) = v.as_str() {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    query.and_then(|q| {
+        q.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            if k != key {
+                return None;
+            }
+            let decoded = urlencoding::decode(v).ok()?.into_owned();
+            (!decoded.is_empty()).then_some(decoded)
+        })
+    })
+}
+
+/// `services` filter: JSON array, comma-separated string, or query `?services=a,b`.
+fn services_filter(params: &serde_json::Value, query: Option<&str>) -> Option<Vec<String>> {
+    let from_param = params.get("services").cloned();
+    let from_query = query.and_then(|q| {
+        q.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "services").then_some(v.to_string())
+        })
+    });
+    let parsed = from_param
+        .map(|v| match v {
+            serde_json::Value::Array(items) => items
+                .iter()
+                .filter_map(|i| i.as_str().map(String::from))
+                .collect::<Vec<String>>(),
+            serde_json::Value::String(s) => s
+                .split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect(),
+            _ => Vec::new(),
+        })
+        .or_else(|| {
+            from_query.map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect::<Vec<_>>()
+            })
+        });
+    parsed.filter(|v| !v.is_empty())
+}
+
+/// Save handler: `GET|POST /_robotocore/state/save`.
+pub async fn state_save_handler(
+    State(state): State<Arc<AppState>>,
+    uri: Uri,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let query = uri.query();
+    let path = body_str(&params, "path", query);
+    let name = body_str(&params, "name", query);
+    let services = services_filter(&params, query);
+
+    let (saved_names, state_value) = state.snapshots.snapshot(services.as_deref());
+
+    match path {
+        Some(dir) => {
+            let value = json!({
+                "version": "1.0",
+                "saved_at": crate::core::introspection::epoch_now(),
+                "name": name.clone(),
+                "services": saved_names.clone(),
+                "state": state_value,
+            });
+            match crate::core::state::save_to_path(&dir, name.as_deref(), &value) {
+                Ok(file) => {
+                    let shown_path = match name.as_deref() {
+                        Some(_) => file,
+                        None => dir,
+                    };
+                    (
+                        StatusCode::OK,
+                        axum::Json(json!({
+                            "status": "saved",
+                            "path": shown_path,
+                            "services": saved_names,
+                        })),
+                    )
+                        .into_response()
+                }
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(json!({"error": format!("Could not save state: {e}")})),
+                )
+                    .into_response(),
+            }
+        }
+        None => {
+            // No path: keep an in-memory named snapshot.
+            let snap_name = name.unwrap_or_else(|| "default".to_string());
+            let Some(obj) = state_value.as_object() else {
+                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "snapshot failed");
+            };
+            state
+                .named_snapshots
+                .put(crate::core::state::NamedSnapshot {
+                    name: snap_name.clone(),
+                    created_at: crate::core::introspection::epoch_now(),
+                    services: saved_names.clone(),
+                    state: obj.clone(),
+                });
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "status": "saved",
+                    "path": format!("memory://{snap_name}"),
+                    "services": saved_names,
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Load handler: `POST /_robotocore/state/load`.
+pub async fn state_load_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let path = params
+        .get("path")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .or_else(|| {
+            crate::core::state::resolve_state_dir().map(|d| d.to_string_lossy().into_owned())
+        });
+    let name = params.get("name").and_then(Value::as_str).map(String::from);
+    let services = services_filter(&params, None);
+
+    // Source resolution order: path-based file, then in-memory name, then default.
+    let loaded = match (&path, &name) {
+        (Some(dir), file_name) => {
+            crate::core::state::load_from_path(dir, file_name.as_deref()).map(|v| ("file", v))
+        }
+        (None, Some(n)) => state
+            .named_snapshots
+            .get(n)
+            .map(|snap| ("memory", Value::Object(snap.state))),
+        (None, None) => None,
+    };
+
+    let Some((source, value)) = loaded else {
+        return (
+            StatusCode::OK,
+            axum::Json(json!({
+                "status": "no_state_found",
+                "path": path.clone().map(Value::from).unwrap_or(name.clone().map(Value::from).unwrap_or(Value::Null)),
+            })),
+        )
+            .into_response();
+    };
+
+    state.snapshots.restore(&value, services.as_deref());
+    let shown = match source {
+        "file" => path.unwrap_or_default(),
+        _ => format!("memory://{}", name.unwrap_or_default()),
+    };
+    (
+        StatusCode::OK,
+        axum::Json(json!({"status": "loaded", "path": shown})),
+    )
+        .into_response()
+}
+
+/// Reset handler: `POST /_robotocore/state/reset` clears every service state.
+pub async fn state_reset_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let services = services_filter(&params, None);
+    state.snapshots.reset(services.as_deref());
+    (StatusCode::OK, axum::Json(json!({"status": "reset"}))).into_response()
+}
+
+/// Snapshot listing: `GET /_robotocore/state/snapshots` (both spellings).
+pub async fn state_snapshots_list_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut out: Vec<Value> = Vec::new();
+    for snap in state.named_snapshots.list() {
+        out.push(json!({
+            "name": snap.name,
+            "timestamp": snap.created_at,
+            "saved_at": snap.created_at,
+            "services": snap.services,
+            "native_services": snap.services,
+            "compressed": false,
+        }));
+    }
+    for (name, latest, count) in state.versioned_snapshots.list() {
+        out.push(json!({
+            "name": name,
+            "timestamp": latest.created_at,
+            "saved_at": latest.created_at,
+            "services": latest.services,
+            "native_services": latest.services,
+            "compressed": false,
+            "versions": count,
+        }));
+    }
+    (StatusCode::OK, axum::Json(json!({ "snapshots": out })))
+}
+
+/// Versioned save: `POST /_robotocore/state/snapshots/save`.
+pub async fn state_snapshot_save_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(name) = params.get("name").and_then(Value::as_str).map(String::from) else {
+        return error_response(StatusCode::BAD_REQUEST, "Snapshot name must not be empty");
+    };
+    let services = services_filter(&params, None);
+    let (saved_names, state_value) = state.snapshots.snapshot(services.as_deref());
+    let empty_map = serde_json::Map::new();
+    let state_map = state_value.as_object().unwrap_or(&empty_map);
+    let version = state
+        .versioned_snapshots
+        .save(&name, saved_names.clone(), state_map.clone());
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "status": "saved",
+            "name": name,
+            "version": version,
+            "services": saved_names,
+        })),
+    )
+        .into_response()
+}
+
+/// Versioned load: `POST /_robotocore/state/snapshots/load`.
+pub async fn state_snapshot_load_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(name) = params.get("name").and_then(Value::as_str).map(String::from) else {
+        return error_response(StatusCode::BAD_REQUEST, "Snapshot name must not be empty");
+    };
+    let version = params.get("version").and_then(Value::as_u64);
+    let Some(snap) = state.versioned_snapshots.load(&name, version) else {
+        return (
+            StatusCode::OK,
+            axum::Json(json!({"status": "no_state_found", "name": name})),
+        )
+            .into_response();
+    };
+    state.snapshots.restore(&Value::Object(snap.state), None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "status": "loaded",
+            "name": name,
+            "version": snap.version,
+        })),
+    )
+        .into_response()
+}
+
+/// Export handler: `GET /_robotocore/state/export`.
+pub async fn state_export_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let (_, state_value) = state.snapshots.snapshot(None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "version": "1.0",
+            "exported_at": crate::core::introspection::epoch_now(),
+            "native_state": state_value,
+        })),
+    )
+        .into_response()
+}
+
+/// Import handler: `POST /_robotocore/state/import`.
+pub async fn state_import_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if body.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({"error": "No data provided"})),
+        )
+            .into_response();
+    }
+    let data = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let native_state = data.get("native_state").cloned().unwrap_or(data);
+    state.snapshots.restore(&native_state, None);
+    (StatusCode::OK, axum::Json(json!({"status": "imported"}))).into_response()
 }
 
 /// Extract service name from URI, headers, or body.

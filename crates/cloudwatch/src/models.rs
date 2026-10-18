@@ -1,11 +1,12 @@
 //! CloudWatch in-memory state models.
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Statistic values from PutMetricData (StatisticValues parameter).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DatumStats {
     pub sample_count: f64,
     pub sum: f64,
@@ -14,7 +15,7 @@ pub struct DatumStats {
 }
 
 /// A single datapoint stored by PutMetricData.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricDatum {
     pub namespace: String,
     pub name: String,
@@ -62,16 +63,25 @@ impl MetricDatum {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CloudwatchState {
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub metrics: Arc<RwLock<Vec<MetricDatum>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub alarms: Arc<RwLock<HashMap<String, Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub composite_alarms: Arc<RwLock<HashMap<String, Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub anomaly_detectors: Arc<RwLock<Vec<Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub insight_rules: Arc<RwLock<HashMap<String, Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub metric_streams: Arc<RwLock<HashMap<String, Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub mute_rules: Arc<RwLock<HashMap<String, Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub dashboards: Arc<RwLock<HashMap<String, Value>>>,
+    #[serde(with = "crate::snapshot::arc_rw")]
     pub tags: Arc<RwLock<HashMap<String, Vec<Value>>>>,
 }
 

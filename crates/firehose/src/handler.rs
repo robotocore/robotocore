@@ -9,7 +9,7 @@ use crate::models::{DeliveryStream, FirehoseState};
 use crate::protocol::{AwsRequest, AwsResponse};
 
 pub struct FirehoseHandler {
-    state: RwLock<HashMap<(u64, String), FirehoseState>>,
+    pub(crate) state: RwLock<HashMap<(u64, String), FirehoseState>>,
 }
 
 impl FirehoseHandler {
@@ -19,7 +19,7 @@ impl FirehoseHandler {
         }
     }
 
-    fn get_state(&self, account: u64, region: &str) -> FirehoseState {
+    pub(crate) fn get_state(&self, account: u64, region: &str) -> FirehoseState {
         let mut states = self.state.write();
         states
             .entry((account, region.to_string()))
