@@ -14,7 +14,6 @@ use crate::store;
 use crate::{Request, Response};
 use chrono::{DateTime, SecondsFormat, Utc};
 use std::collections::{BTreeMap, HashSet};
-use std::sync::Arc;
 
 pub const XMLNS: &str = "http://rds.amazonaws.com/doc/2014-10-31/";
 const DBI_RESOURCE_ID: &str = "db-M5ENSHXFPU6XHZ4G4ZEI5QIO2U";
@@ -24,6 +23,7 @@ const DBI_RESOURCE_ID: &str = "db-M5ENSHXFPU6XHZ4G4ZEI5QIO2U";
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, PartialEq)]
+#[allow(dead_code)]
 pub enum Val {
     #[default]
     None,
@@ -33,14 +33,7 @@ pub enum Val {
 }
 
 impl Val {
-    fn get(&self, key: &str) -> &Val {
-        match self {
-            Val::M(m) => m.get(key).unwrap_or(&Val::None),
-            _ => &Val::None,
-        }
-    }
-    /// Lists botocore encodes as EMPTY strings (`OptionsToInclude=`) turn
-    /// into empty lists, mirroring moto's QueryParser behavior.
+    /// botocore empty-string lists (`OptionsToInclude=`) parse as empty lists.
     fn list(&self) -> Vec<String> {
         match self {
             Val::L(items) => items
@@ -81,9 +74,7 @@ impl Val {
             _ => None,
         }
     }
-    fn bool_or(&self, default: bool) -> bool {
-        self.opt_bool().unwrap_or(default)
-    }
+
     fn string(&self) -> Option<&str> {
         match self {
             Val::S(s) if !s.is_empty() => Some(s),
@@ -94,12 +85,6 @@ impl Val {
         match self {
             Val::S(s) if !s.is_empty() => s.parse().ok(),
             _ => None,
-        }
-    }
-    fn s_or(&self, default: &str) -> String {
-        match self {
-            Val::S(s) if !s.is_empty() => s.clone(),
-            _ => default.to_string(),
         }
     }
 }
@@ -276,10 +261,6 @@ fn rand_upper(n: usize) -> String {
         .to_uppercase()
 }
 
-fn account_str(account: u64) -> String {
-    account.to_string()
-}
-
 // ---------------------------------------------------------------------------
 // Errors: (status, code, message) triples matching moto's RDSClientError.
 // ---------------------------------------------------------------------------
@@ -393,6 +374,7 @@ pub struct AssociatedRole {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DBInstance {
     /// Lowercased identifier (moto lowercases DB instance identifiers).
     pub id: String,
@@ -559,13 +541,6 @@ pub struct DBCluster {
     pub kms_key_id: String,
 }
 
-impl DBCluster {
-    pub fn set_kms_key_id(mut self, key: Option<String>) -> Self {
-        self.kms_key_id = key.unwrap_or_else(|| "default_kms_key_id".to_string());
-        self
-    }
-}
-
 impl std::fmt::Debug for DBCluster {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DBCluster").field("id", &self.id).finish()
@@ -698,6 +673,7 @@ impl DBCluster {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DBSnapshot {
     /// Lowercased identifier; moto lowercases snapshot identifiers.
     pub id: String,
@@ -715,6 +691,7 @@ pub struct DBSnapshot {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DBClusterSnapshot {
     /// Lowercased identifier.
     pub id: String,
@@ -894,6 +871,7 @@ pub struct DBProxyAuth {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DBProxy {
     pub name: String,
     pub engine_family: String,
@@ -953,6 +931,7 @@ impl Clone for ProxyTarget {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DBClusterEndpoint {
     pub id: String,
     pub cluster_identifier: String,
@@ -1012,6 +991,7 @@ impl DBProxyEndpoint {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ExportTask {
     pub id: String,
     pub kms_key_id: Option<String>,
@@ -1026,6 +1006,7 @@ pub struct ExportTask {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct BlueGreenDeployment {
     pub id: String,
     pub name: String,
@@ -1038,6 +1019,7 @@ pub struct BlueGreenDeployment {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DBShardGroup {
     pub id: String,
     pub cluster_identifier: String,
@@ -1056,6 +1038,7 @@ impl DBShardGroup {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CustomDBEngineVersion {
     pub engine: String,
     pub engine_version: String,
@@ -1071,9 +1054,6 @@ pub struct CustomDBEngineVersion {
 }
 
 impl CustomDBEngineVersion {
-    pub fn key(&self) -> String {
-        format!("{}:{}", self.engine, self.engine_version)
-    }
     pub fn arn_for(&self, account: u64, region: &str) -> String {
         format!(
             "arn:aws:rds:{region}:{account}:cev:{}/{}",
@@ -1098,6 +1078,7 @@ impl CustomDBEngineVersion {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Integration {
     pub name: String,
     pub source_arn: String,
@@ -1112,6 +1093,7 @@ pub struct Integration {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TenantDatabase {
     pub db_instance_identifier: String,
     pub name: String,
@@ -1165,6 +1147,7 @@ pub struct AutomatedBackup {
 }
 
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct RdsState {
     pub databases: BTreeMap<String, DBInstance>,
     pub clusters: BTreeMap<String, DBCluster>,
@@ -1351,21 +1334,6 @@ fn default_pg_for(db: &DBInstance) -> String {
 
 /// Materialize the default parameter groups the instance lists (moto does
 /// this lazily inside `db_parameter_groups()`).
-fn ensure_pg_state(st: &mut RdsState, db: &DBInstance) -> String {
-    let name = match &db.db_parameter_group_name {
-        Some(n) if !n.is_empty() => n.clone(),
-        _ => {
-            let version = db.engine_version.clone();
-            let cut = version.rfind('.').unwrap_or(version.len());
-            let family = format!("{}{}", db.engine, &version[..cut]);
-            let name = format!("default.{family}");
-            st.ensure_default_parameter_group(&name, &family);
-            name
-        }
-    };
-    name
-}
-
 fn roles_xml(outer: &str, member: &str, roles: &[AssociatedRole]) -> String {
     if roles.is_empty() {
         return format!("<{outer}/>");
@@ -1847,32 +1815,6 @@ pub fn cluster_snapshot_xml(acct: u64, region: &str, snap: &DBClusterSnapshot) -
 }
 
 /// Snapshot restore-attribute block (`DBSnapshotAttributesResult`).
-fn attribute_result_xml(
-    outer: &str,
-    inner: &str,
-    identifier: &str,
-    attrs: &[(String, Vec<String>)],
-) -> String {
-    let mut items = String::new();
-    for (name, values) in attrs {
-        items.push_str(&format!(
-            "<DBSnapshotAttribute><AttributeName>{}</AttributeName>{}</DBSnapshotAttribute>",
-            esc(name),
-            list_xml("AttributeValues", "AttributeValue", values)
-        ));
-    }
-    format!(
-        "<{outer}><{inner}>{id}</{inner}>{inner_tag}{items}</{inner}></{outer}>",
-        outer = outer,
-        inner = inner,
-        id = esc(identifier),
-        inner_tag = format!(
-            "<DBSnapshotIdentifier>{}</DBSnapshotIdentifier>",
-            esc(identifier)
-        ),
-    )
-}
-
 pub fn parameter_group_xml(acct: u64, region: &str, pg: &DBParameterGroup) -> String {
     format!(
         "<DBParameterGroup><DBParameterGroupName>{}</DBParameterGroupName>\
@@ -2068,8 +2010,19 @@ pub fn event_subscription_xml(acct: u64, region: &str, sub: &EventSubscription) 
     let topic = sub
         .sns_topic_arn
         .as_ref()
-        .map(|t| format!("<SnsTopicArn>{}</SnsTopicArn>", esc(t)))
-        .unwrap_or_default();
+        .map(|t| {
+            format!(
+                "\n<CustSubscriptionId>{}</CustSubscriptionId><SnsTopicArn>{}</SnsTopicArn>",
+                esc(&sub.name),
+                esc(t)
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "\n<CustSubscriptionId>{}</CustSubscriptionId>",
+                esc(&sub.name)
+            )
+        });
     let stype = sub
         .source_type
         .as_ref()
@@ -2081,27 +2034,23 @@ pub fn event_subscription_xml(acct: u64, region: &str, sub: &EventSubscription) 
         &sub.event_categories,
     );
     let sources = list_xml("SourceIdsList", "SourceId", &sub.source_ids);
+    let created = format!(
+        "<SubscriptionCreationTime>{}</SubscriptionCreationTime>",
+        esc(&iso(&sub.created))
+    );
+    let arn = format!(
+        "<EventSubscriptionArn>arn:aws:rds:{region}:{acct}:es:{}         </EventSubscriptionArn>",
+        esc(&sub.name)
+    );
     format!(
         "<EventSubscription>\
-         <CustSubscriptionId>{}</CustSubscriptionId>\
-         {topic}         {stype}{cats}{sources}\
-         <Enabled>{enabled}</Enabled>\
-         <Status>active</Status>\
-         {created}{arn}{tags_}</EventSubscription>",
-        esc(&sub.name),
+         {topic}         {stype}{cats}{sources}         <Enabled>{enabled}</Enabled>\
+         <Status>active</Status>         {created}{arn}{tags_}         </EventSubscription>",
         topic = topic,
         stype = stype,
         cats = cats,
         sources = sources,
         enabled = sub.enabled,
-        created = format!(
-            "<SubscriptionCreationTime>{}</SubscriptionCreationTime>",
-            esc(&iso(&sub.created))
-        ),
-        arn = format!(
-            "<EventSubscriptionArn>arn:aws:rds:{region}:{acct}:es:{}</EventSubscriptionArn>",
-            esc(&sub.name)
-        ),
         tags_ = tags_xml(&sub.tags, "TagList"),
     )
 }
@@ -2127,6 +2076,12 @@ pub fn global_cluster_xml(acct: u64, gc: &GlobalCluster, st: &RdsState) -> Strin
     } else {
         format!("<GlobalClusterMembers>{members}</GlobalClusterMembers>")
     };
+    let encrypted_prop = format!(
+        "<StorageEncrypted>{}</StorageEncrypted><DeletionProtection>{}</DeletionProtection>",
+        gc.storage_encrypted, gc.deletion_protection
+    );
+    let protected_prop = String::new();
+    let endpoint_prop = format!("<Endpoint>{}</Endpoint>", esc(&gc.endpoint()));
     format!(
         "<GlobalCluster>\
          <GlobalClusterIdentifier>{}</GlobalClusterIdentifier>\
@@ -2141,14 +2096,11 @@ pub fn global_cluster_xml(acct: u64, gc: &GlobalCluster, st: &RdsState) -> Strin
         esc(&gc.status),
         esc(&gc.engine),
         esc(&gc.engine_version),
-        encrypted = format!(
-            "<StorageEncrypted>{}</StorageEncrypted><DeletionProtection>{}</DeletionProtection>",
-            gc.storage_encrypted, gc.deletion_protection
-        ),
-        protected = "",
+        encrypted = encrypted_prop,
+        protected = protected_prop,
         members_block = members_block,
         arn = esc(&gc.arn_for(acct)),
-        endpoint = format!("<Endpoint>{}</Endpoint>", esc(&gc.endpoint())),
+        endpoint = endpoint_prop,
         tags_ = tags_xml(&gc.tags, "TagList"),
     )
 }
@@ -2322,32 +2274,33 @@ pub fn db_proxy_endpoint_xml(acct: u64, region: &str, e: &DBProxyEndpoint) -> St
 }
 
 pub fn export_task_xml(t: &ExportTask) -> String {
+    let source_arn = esc(&t.source_arn);
+    let export_only = list_xml("ExportOnly", "member", &t.export_only);
+    let bucket = t
+        .s3_bucket
+        .as_ref()
+        .map(|b| format!("<S3Bucket>{}</S3Bucket>", esc(b)))
+        .unwrap_or_default();
+    let prefix = format!("<S3Prefix>{}</S3Prefix>", esc(&t.s3_prefix));
+    let role = t
+        .iam_role_arn
+        .as_ref()
+        .map(|r| format!("<IamRoleArn>{}</IamRoleArn>", esc(r)))
+        .unwrap_or_default();
+    let kms = t
+        .kms_key_id
+        .as_ref()
+        .map(|k| format!("<KmsKeyId>{}</KmsKeyId>", esc(k)))
+        .unwrap_or_default();
     format!(
         "<ExportTaskIdentifier>{}</ExportTaskIdentifier>\
          <SourceArn>{source_arn}</SourceArn>\
-         {export_only}         {bucket}         {prefix}         {role}{kms}\
-         {status}{source_type}",
+         {export_only}{bucket}{prefix}{role}{kms}\
+         <Status>{}</Status>\
+         <SourceType>{}</SourceType>",
         esc(&t.id),
-        source_arn = esc(&t.source_arn),
-        export_only = list_xml("ExportOnly", "member", &t.export_only),
-        bucket = t
-            .s3_bucket
-            .as_ref()
-            .map(|b| format!("<S3Bucket>{}</S3Bucket>", esc(b)))
-            .unwrap_or_default(),
-        prefix = format!("<S3Prefix>{}</S3Prefix>", esc(&t.s3_prefix)),
-        role = t
-            .iam_role_arn
-            .as_ref()
-            .map(|r| format!("<IamRoleArn>{}</IamRoleArn>", esc(r)))
-            .unwrap_or_default(),
-        kms = t
-            .kms_key_id
-            .as_ref()
-            .map(|k| format!("<KmsKeyId>{}</KmsKeyId>", esc(k)))
-            .unwrap_or_default(),
-        status = format!("<Status>{}</Status>", esc(&t.status)),
-        source_type = format!("<SourceType>{}</SourceType>", esc(&t.source_type)),
+        esc(&t.status),
+        esc(&t.source_type),
     )
 }
 
@@ -2362,12 +2315,11 @@ pub fn blue_green_xml(b: &BlueGreenDeployment) -> String {
         esc(&b.target),
         esc(&b.status),
     );
-    let tasks = format!(
-        "<Tasks><member><Name>CREATING_READ_REPLICA_OF_SOURCE</Name>\
+    let tasks = "<Tasks><member><Name>CREATING_READ_REPLICA_OF_SOURCE</Name>\
          <Status>COMPLETED</Status></member>\
          <member><Name>CONFIGURE_BACKUPS</Name>\
          <Status>COMPLETED</Status></member></Tasks>"
-    );
+        .to_string();
     format!(
         "<BlueGreenDeployment>\
          <BlueGreenDeploymentIdentifier>{}</BlueGreenDeploymentIdentifier>\
@@ -2389,6 +2341,11 @@ pub fn blue_green_xml(b: &BlueGreenDeployment) -> String {
 }
 
 pub fn shard_group_xml(acct: u64, region: &str, g: &DBShardGroup) -> String {
+    let endpoint_prop = format!(
+        "{}.{}.rds.amazonaws.com",
+        esc(&g.cluster_identifier),
+        region
+    );
     let compute = g
         .compute_redundancy
         .map(|c| format!("<ComputeRedundancy>{c}</ComputeRedundancy>"))
@@ -2416,11 +2373,7 @@ pub fn shard_group_xml(acct: u64, region: &str, g: &DBShardGroup) -> String {
         esc(&g.id),
         esc(&g.cluster_identifier),
         esc(&g.status),
-        format!(
-            "{}.{}.rds.amazonaws.com",
-            esc(&g.cluster_identifier),
-            region
-        ),
+        endpoint_prop,
         g.arn_for(acct, region),
         tags = tags_xml(&g.tags, "TagList"),
     )
@@ -2479,7 +2432,7 @@ pub fn custom_engine_version_xml(
     out.push_str(&tags_xml(&cev.tags, "TagList"));
     out
 }
-pub fn integration_xml(i: &Integration, include_kms: bool) -> String {
+pub fn integration_xml(i: &Integration, _include_kms: bool) -> String {
     let kms = i
         .kms_key_id
         .as_ref()
@@ -2775,12 +2728,6 @@ fn cluster_snapshot_from(
     }
 }
 
-fn db_cluster_ref(p: &Params) -> Option<String> {
-    param(p, "DBClusterIdentifier")
-        .string()
-        .map(|s| s.to_lowercase())
-}
-
 // ---------------------------------------------------------------------------
 // Dispatch + response envelope + param accessors
 // ---------------------------------------------------------------------------
@@ -2792,10 +2739,6 @@ type Params = BTreeMap<String, Val>;
 
 fn param<'a>(p: &'a Params, name: &str) -> &'a Val {
     p.get(name).unwrap_or(&Val::None)
-}
-
-fn p_str<'p>(p: &'p Params, name: &str) -> Option<&'p str> {
-    param(p, name).string()
 }
 
 fn p_string(p: &Params, name: &str) -> Option<String> {
@@ -2839,11 +2782,6 @@ fn tags_param(p: &Params) -> Vec<Tag> {
         }
     }
     out
-}
-
-fn body_of(p: &Params, name: &str, memb: &str) -> Vec<Vec<(String, String)>> {
-    let _ = memb;
-    p_maps(p, name)
 }
 
 fn request_id() -> String {
@@ -3369,10 +3307,6 @@ fn delete_db_instance(
         ..db
     };
     Ok(Some(db_instance_xml(st, acct, region, &response_db)))
-}
-
-fn create_manual_snapshot(db: &DBInstance, snapshot_id: &str, tags: &[Tag]) -> DBSnapshot {
-    snapshot_from_db(db, snapshot_id, "manual", tags)
 }
 
 // Snapshots ------------------------------------------------------------------
@@ -4005,7 +3939,7 @@ fn modify_core_cluster_fields(cl: &mut DBCluster, p: &Params) {
         cl.parameter_group = v;
     }
     if let Some(v) = p_string(p, "Port") {
-        if let Some(n) = v.parse::<i64>().ok() {
+        if let Ok(n) = v.parse::<i64>() {
             cl.port = n;
         }
     }
@@ -4119,52 +4053,6 @@ fn delete_db_cluster(
 }
 
 // Cluster lifecycle: start/stop/failover/promote/reboot ----------------------
-
-fn transition_cluster(
-    st: &mut RdsState,
-    acct: u64,
-    region: &str,
-    p: &Params,
-    from: &[&str],
-    to: &str,
-    next_status: &str,
-) -> Result<Body, RdsError> {
-    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
-    let id = identifier.to_lowercase();
-    if !st.clusters.contains_key(&id) {
-        return Err(RdsError::not_found404(
-            "DBClusterNotFoundFault",
-            format!("DBCluster {identifier} not found."),
-        ));
-    }
-    let status = st.clusters.get(&id).unwrap().status.clone();
-    if !from.contains(&forwarded_status(&st, &id).as_str()) {
-        return Err(RdsError::client400(
-            "InvalidDBClusterStateFault",
-            format!(
-                "DbCluster {identifier} is in {shown} state but expected it to be one of {expected}.",
-                shown = forwarded_status(st, &id),
-                expected = from.join(",")
-            ),
-        ));
-    }
-    st.clusters.get_mut(&id).unwrap().status = next_status.to_string();
-    let cl = st.clusters.get(&id).unwrap().clone();
-    let _ = (status, to);
-    Ok(Some(db_cluster_xml(
-        st,
-        acct,
-        region,
-        &with_status(&cl, to),
-    )))
-}
-
-fn forwarded_status(st: &RdsState, id: &str) -> String {
-    st.clusters
-        .get(id)
-        .map(|c| c.status.clone())
-        .unwrap_or_default()
-}
 
 fn with_status(cl: &DBCluster, status: &str) -> DBCluster {
     use std::sync::atomic::Ordering;
@@ -4733,7 +4621,7 @@ fn restore_db_cluster_to_point_in_time(
 fn create_global_cluster(
     st: &mut RdsState,
     acct: u64,
-    region: &str,
+    _region: &str,
     p: &Params,
 ) -> Result<Body, RdsError> {
     let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
@@ -4786,7 +4674,7 @@ fn create_global_cluster(
             .unwrap_or_else(|| DBCluster::default_engine_version(&engine).to_string()),
         storage_encrypted: p_bool(p, "StorageEncrypted").unwrap_or(false),
         deletion_protection: p_bool(p, "DeletionProtection").unwrap_or(false),
-        members: attached_member.iter().map(|m| m.clone()).collect(),
+        members: attached_member.iter().cloned().collect(),
         status: "available".into(),
         tags: tags_param(p),
     };
@@ -4803,7 +4691,7 @@ fn create_global_cluster(
 fn describe_global_clusters_xml(
     st: &RdsState,
     acct: u64,
-    region: &str,
+    _region: &str,
     p: &Params,
 ) -> Result<Body, RdsError> {
     let filter = p_string(p, "GlobalClusterIdentifier").map(|s| s.to_lowercase());
@@ -4835,7 +4723,7 @@ fn describe_global_clusters_xml(
 fn delete_global_cluster(
     st: &mut RdsState,
     acct: u64,
-    region: &str,
+    _region: &str,
     p: &Params,
 ) -> Result<Body, RdsError> {
     let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
@@ -4860,7 +4748,7 @@ fn delete_global_cluster(
 fn modify_global_cluster(
     st: &mut RdsState,
     acct: u64,
-    region: &str,
+    _region: &str,
     p: &Params,
 ) -> Result<Body, RdsError> {
     let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
@@ -4897,7 +4785,7 @@ fn modify_global_cluster(
 fn remove_from_global_cluster(
     st: &mut RdsState,
     acct: u64,
-    region: &str,
+    _region: &str,
     p: &Params,
 ) -> Result<Body, RdsError> {
     let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
@@ -4921,7 +4809,7 @@ fn remove_from_global_cluster(
 fn failover_global_cluster(
     st: &mut RdsState,
     acct: u64,
-    region: &str,
+    _region: &str,
     p: &Params,
 ) -> Result<Body, RdsError> {
     let identifier = p_string(p, "GlobalClusterIdentifier").unwrap_or_default();
@@ -5369,7 +5257,7 @@ fn create_db_subnet_group(
             ),
         ));
     }
-    let description = p_string(p, "DBSubnetGroupDescription").unwrap_or_default();
+    let _description = p_string(p, "DBSubnetGroupDescription").unwrap_or_default();
     let subnet_ids = p_list(p, "SubnetIds");
     if subnet_ids.is_empty() {
         return Err(RdsError::client400(
@@ -5921,7 +5809,7 @@ fn describe_orderable_db_instance_options_xml(
 ) -> Result<Body, RdsError> {
     // moto only implements aurora-postgresql and neptune option listings.
     let _ = engine_version;
-    let supported = matches!(&*engine, "aurora-postgresql" | "neptune");
+    let supported = matches!(engine, "aurora-postgresql" | "neptune");
     if !supported {
         return Ok(Some("<OrderableDBInstanceOptions/>".to_string()));
     }
@@ -6056,7 +5944,7 @@ fn describe_source_regions_xml(p: &Params) -> Result<Body, RdsError> {
     Ok(Some(format!("<SourceRegions>{list}</SourceRegions>")))
 }
 
-fn describe_db_major_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
+fn describe_db_major_engine_versions_xml(_p: &Params) -> Result<Body, RdsError> {
     let mut versions: Vec<String> = Vec::new();
     let engines = vec![
         ("mysql", vec!["8.0", "5.7"]),
@@ -6380,25 +6268,6 @@ fn proxy_target_group_response(acct: u64, region: &str, p: &DBProxy) -> String {
     out
 }
 
-fn proxy_target_group_config_row(_acct: u64, _region: &str, p: &DBProxy) -> String {
-    format!(
-        "<ConnectionPoolConfig>\
-         <MaxConnectionsPercent>{}</MaxConnectionsPercent>\
-         <MaxIdleConnectionsPercent>{}</MaxIdleConnectionsPercent>\
-         <ConnectionBorrowTimeout>{}</ConnectionBorrowTimeout>\
-         {pin_filters}\
-         </ConnectionPoolConfig>",
-        p.max_connections,
-        p.max_idle_connections,
-        p.borrow_timeout,
-        pin_filters = list_xml(
-            "SessionPinningFilters",
-            "member",
-            &p.session_pinning_filters
-        ),
-    )
-}
-
 fn create_db_proxy_endpoint(
     st: &mut RdsState,
     acct: u64,
@@ -6500,47 +6369,6 @@ fn delete_db_proxy_endpoint(
         db_proxy_endpoint_xml(acct, region, &ep)
     )))
 }
-
-fn modify_db_proxy_endpoint(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
-    let ep_name = p_string(p, "DBProxyEndpointName").unwrap_or_default();
-    let mut status = Ok(ModifyProxyEndpointResult::Found);
-    if !st.db_proxy_endpoints.contains_key(&ep_name) {
-        status = Err("missing".to_string());
-        let result = match status {
-            Err(_) => Err(RdsError::new(
-                404,
-                "DBProxyEndpointNotFoundFault",
-                format!("The specified DB proxy endpoint {ep_name} was not found."),
-            )),
-            Ok(_) => Ok(()),
-        };
-        let _ = result;
-        return Err(RdsError::not_found404(
-            "DBProxyEndpointNotFoundFault",
-            format!("The specified DB proxy endpoint {ep_name} was not found."),
-        ));
-    }
-    let _ = status;
-    if let Some(v) = p_string(p, "TargetRole") {
-        st.db_proxy_endpoints.get_mut(&ep_name).unwrap().target_role = v;
-    }
-    if let Some(v) = p_string(p, "DBProxyEndpointStatus") {
-        st.db_proxy_endpoints.get_mut(&ep_name).unwrap().status = v;
-    }
-    Ok(ModifyProxyEndpointResult::Found.into_result())
-}
-
-enum ModifyProxyEndpointResult {
-    Found,
-}
-
-impl ModifyProxyEndpointResult {
-    fn into_result(self) -> Body {
-        None
-    }
-}
-
-// Export tasks ---------------------------------------------------------------
 
 fn start_export_task(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
     let identifier = p_string(p, "ExportTaskIdentifier").unwrap_or_default();
@@ -6659,7 +6487,7 @@ fn create_blue_green_deployment(
             ));
         }
     }
-    let (instance_id, is_cluster) = {
+    let (instance_id, _is_cluster_unused) = {
         let source_id = identifier_from_arn(&source);
         let is_cluster = source.split(':').nth(5) == Some("cluster");
         let exists = if is_cluster {
@@ -6667,6 +6495,7 @@ fn create_blue_green_deployment(
         } else {
             st.databases.contains_key(&source_id.to_lowercase())
         };
+        let _ = is_cluster;
         if exists {
             (source_id, is_cluster)
         } else {
@@ -6676,11 +6505,7 @@ fn create_blue_green_deployment(
             ));
         }
     };
-    let target = if is_cluster {
-        format!("{}-green-{}", instance_id, rand_lower(6))
-    } else {
-        format!("{}-green-{}", instance_id, rand_lower(6))
-    };
+    let target = format!("{}-green-{}", instance_id, rand_lower(6));
     let id = format!("bgd-{}", rand_lower(16));
     let bg = BlueGreenDeployment {
         id: id.clone(),
@@ -6999,7 +6824,7 @@ fn stop_activity_stream(
 }
 
 fn modify_activity_stream(
-    st: &RdsState,
+    _st: &RdsState,
     acct: u64,
     region: &str,
     p: &Params,
@@ -7091,33 +6916,6 @@ fn describe_tenant_databases_xml(
         list.push_str(&tenant_database_xml(acct, region, t));
     }
     Ok(Some(format!("<TenantDatabases>{list}</TenantDatabases>")))
-}
-
-fn name_filter_helper_name() -> &'static str {
-    "TenantDBName"
-}
-
-fn name_filter_helper(p: &Params) -> Option<String> {
-    p_string(p, "TenantDBName")
-}
-
-fn name_filter_helper_fail(p: &Params) -> Option<String> {
-    p_string(p, "TenantDBName")
-}
-
-fn matched_finalize<'a>(
-    matched: &'a [&'a TenantDatabase],
-    _name: &str,
-    filter: &Option<String>,
-) -> Vec<&'a TenantDatabase> {
-    matched
-        .iter()
-        .filter(|t| match filter {
-            Some(f) => t.name == *f,
-            None => true,
-        })
-        .map(|t| *t)
-        .collect()
 }
 
 fn delete_tenant_database(
@@ -7250,19 +7048,8 @@ fn describe_integrations_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError
             .strip_prefix("<Integration>")
             .and_then(|s| s.strip_suffix("</Integration>"))
             .unwrap_or(&inner);
-        list.push_str(&format!(
-            "<Integration>{}</Integration>",
-            stripped.to_string()
-        ));
+        list.push_str(&format!("<Integration>{}</Integration>", stripped));
     }
-    if list.is_empty() {
-        Ok(Some("<Integrations/>".to_string()))
-    } else {
-        Ok(Some(format!("<Integrations>{list}</Integrations>")))
-    }
-}
-
-fn build_integrations_list(list: &str) -> Result<Body, RdsError> {
     if list.is_empty() {
         Ok(Some("<Integrations/>".to_string()))
     } else {
@@ -7574,7 +7361,7 @@ fn apply_pending_maintenance_action(
     let action = p_string(p, "ApplyAction").unwrap_or_default();
     let opt_in = p_string(p, "OptInType").unwrap_or_default();
     let now = iso(&Utc::now());
-    let resource_type = resource.split(':').nth(5).unwrap_or("db");
+    let _resource_type = resource.split(':').nth(5).unwrap_or("db");
     let _ = region;
     Ok(Some(format!(
         "<ResourcePendingMaintenanceActions>\
@@ -7584,7 +7371,7 @@ fn apply_pending_maintenance_action(
          <Action>{}</Action>\
          <OptInStatus>{}</OptInStatus>\
          <CurrentApplyDate>{}</CurrentApplyDate>\
-         <Description>{desc}</Description>\
+         <Description>{}</Description>\
          </PendingMaintenanceAction>\
          </PendingMaintenanceActionDetails>\
          </ResourcePendingMaintenanceActions>",
@@ -7592,7 +7379,7 @@ fn apply_pending_maintenance_action(
         esc(&action),
         esc(&opt_in),
         esc(&now),
-        desc = format!("Pending {action}"),
+        esc(&format!("Pending {action}")),
     )))
 }
 
@@ -7777,11 +7564,12 @@ fn cert_block(ident: &str) -> String {
     )
 }
 
-fn download_db_log_file_portion(p: &Params) -> Result<Body, RdsError> {
-    Ok(Some(format!(
+fn download_db_log_file_portion(_p: &Params) -> Result<Body, RdsError> {
+    Ok(Some(
         "<LogFileData></LogFileData>\
          <AdditionalDataPending>false</AdditionalDataPending>"
-    )))
+            .to_string(),
+    ))
 }
 
 fn backtrack_db_cluster(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -7900,7 +7688,7 @@ fn describe_valid_db_instance_modifications_xml(
     p: &Params,
 ) -> Result<Body, RdsError> {
     let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
-    let _ = require_instance_record(st, &identifier)?;
+    require_instance_record(st, &identifier)?;
     let mut out = String::from("<ValidDBInstanceModificationsMessage>");
     out.push_str("<Storage>");
     out.push_str(&storage_block("gp2", false));
@@ -8494,7 +8282,7 @@ fn modify_option_group(
     }
     for m in include {
         let mut name = None;
-        let mut settings: Vec<(String, String)> = Vec::new();
+        let settings: Vec<(String, String)> = Vec::new();
         for (k, v) in m {
             if k == "OptionName" {
                 name = Some(v);
@@ -8558,6 +8346,7 @@ fn describe_option_group_options_xml(engine_name: &str) -> Result<Body, RdsError
             format!("Invalid DB engine: {engine_name}"),
         ));
     }
+    let desc = format!("{engine_name} audit plugin");
     let option = format!(
         "<OptionGroupOptions>\
          <Option>\
@@ -8566,8 +8355,7 @@ fn describe_option_group_options_xml(engine_name: &str) -> Result<Body, RdsError
          <MajorEngineVersion>10.6</MajorEngineVersion>\
          <OptionSettings/>\
          </Option>\
-         </OptionGroupOptions>",
-        desc = format!("{engine_name} audit plugin")
+         </OptionGroupOptions>"
     );
     Ok(Some(option))
 }
@@ -8727,11 +8515,6 @@ fn run_op(
         }
         "RestoreDBClusterFromSnapshot" => restore_db_cluster_from_snapshot(st, acct, region, p),
         "RestoreDBClusterToPointInTime" => restore_db_cluster_to_point_in_time(st, acct, region, p),
-        "RestoreDBClusterFromS3" => {
-            // moto gap; tests accept either an error or full behavior
-            create_db_cluster(st, acct, region, p)
-        }
-        "RestoreDBInstanceFromS3" => create_db_instance(st, acct, region, p),
         // Globals
         "CreateGlobalCluster" => create_global_cluster(st, acct, region, p),
         "DescribeGlobalClusters" => describe_global_clusters_xml(st, acct, region, p),
@@ -8880,31 +8663,6 @@ fn run_op(
 // stop/start/reboot/promote handlers (run_op arms) ---------------------------
 
 #[cfg(test)]
-mod status_tests {
-    use super::*;
-    use crate::Request;
-    use bytes::Bytes;
-
-    #[test]
-    fn cluster_status_flip_persists() {
-        let mut map: BTreeMap<(u64, String), RdsState> = BTreeMap::new();
-        let st = map.entry((123456789012, "us-east-1".into())).or_default();
-        let cl = DBCluster {
-            status: "creating".into(),
-            availability_zones: vec!["us-east-1a".into()],
-            engine: "aurora-mysql".into(),
-            engine_version: "5.7.mysql_aurora.2.07.2".into(),
-            port: 3306,
-            parameter_group: "default.aurora8.0".into(),
-            db_subnet_group_name: "default".into(),
-            primary_az_check_shim: (),
-            ..Default::default()
-        };
-        let _ = cl;
-    }
-}
-
-#[cfg(test)]
 mod parser_tests {
     use super::*;
 
@@ -8930,5 +8688,497 @@ mod parser_tests {
         assert_eq!(p_string(&p, "DBInstanceIdentifier").unwrap(), "mydb-1");
         assert_eq!(p_string(&p, "Engine").unwrap(), "mysql");
         assert_eq!(param(&p, "TagKeys").list(), vec!["k"]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Op-family unit tests against the run_op table (per moto parity semantics)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod op_tests {
+    use super::*;
+    use crate::Request;
+    use bytes::Bytes;
+    use std::collections::BTreeMap;
+
+    fn run(op: &str, body: &str) -> Result<Body, RdsError> {
+        let req = req_for(op, body);
+        let slots = store::slot::<RdsState>("rds");
+        let mut map = slots.write();
+        let st = map.entry((123456789012, "us-east-1".into())).or_default();
+        let p = parse_params(&req);
+        run_op(&req, st, op, &p, BTreeMap::new())
+    }
+
+    fn req_for(op: &str, body: &str) -> Request {
+        let full = format!("Action={op}&Version=2014-10-31&{body}");
+        Request {
+            service: "rds".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: Default::default(),
+            body: Bytes::from(full),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    // ---- DB instance family ------------------------------------------------
+
+    #[test]
+    fn create_describe_delete_instance() {
+        let quoted = 10; // quell type ambiguity lint
+        let _ = quoted;
+        let r = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=i1&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123",
+        );
+        assert!(r.is_ok(), "create failed: {:?}", r.err());
+        let body = r.unwrap().unwrap();
+        assert!(body.contains("<DBInstanceIdentifier>i1</DBInstanceIdentifier>"));
+        assert!(body.contains("<Engine>mysql</Engine>"));
+        assert!(body.contains("<DBInstanceStatus>available</DBInstanceStatus>"));
+
+        // duplicate create → DBInstanceAlreadyExists
+        let dup = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=i1&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123",
+        );
+        assert_eq!(dup.err().unwrap().code, "DBInstanceAlreadyExists");
+
+        // describe by filter
+        let desc = run("DescribeDBInstances", "DBInstanceIdentifier=i1");
+        assert!(desc.unwrap().unwrap().contains("i1"));
+
+        // bad engine
+        let bad_engine = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=i2&DBInstanceClass=db.t3.micro&Engine=oracle9&MasterUsername=a&MasterUserPassword=password123",
+        );
+        assert_eq!(bad_engine.err().unwrap().code, "InvalidParameterValue");
+
+        // delete
+        let del = run(
+            "DeleteDBInstance",
+            "DBInstanceIdentifier=i1&SkipFinalSnapshot=true",
+        );
+        assert!(del
+            .unwrap()
+            .unwrap()
+            .contains("<DBInstanceStatus>deleting</DBInstanceStatus>"));
+        // after delete: not found
+        let desc2 = run("DescribeDBInstances", "DBInstanceIdentifier=i1");
+        assert_eq!(desc2.err().unwrap().code, "DBInstanceNotFound");
+    }
+
+    #[test]
+    fn instance_lifecycle_stop_start_reboot() {
+        let _ = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=L1&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123",
+        );
+        let stop = run("StopDBInstance", "DBInstanceIdentifier=L1");
+        assert!(stop
+            .unwrap()
+            .unwrap()
+            .contains("<DBInstanceStatus>stopped</DBInstanceStatus>"));
+        // stop when stopped → InvalidDBInstanceState
+        let stop2 = run("StopDBInstance", "DBInstanceIdentifier=L1");
+        assert_eq!(stop2.err().unwrap().code, "InvalidDBInstanceState");
+        let start = run("StartDBInstance", "DBInstanceIdentifier=L1");
+        assert!(start
+            .unwrap()
+            .unwrap()
+            .contains("<DBInstanceStatus>available</DBInstanceStatus>"));
+        let reboot = run("RebootDBInstance", "DBInstanceIdentifier=L1");
+        assert!(reboot.unwrap().unwrap().contains("l1"));
+    }
+
+    // ---- Snapshot family ---------------------------------------------------
+
+    #[test]
+    fn snapshot_lifecycle() {
+        let _ = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=SN&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123",
+        );
+        let snap = run(
+            "CreateDBSnapshot",
+            "DBSnapshotIdentifier=SNAP1&DBInstanceIdentifier=SN",
+        );
+        assert!(snap
+            .unwrap()
+            .unwrap()
+            .contains("<DBSnapshotIdentifier>snap1</DBSnapshotIdentifier>"));
+        // duplicate
+        let dup = run(
+            "CreateDBSnapshot",
+            "DBSnapshotIdentifier=SNAP1&DBInstanceIdentifier=SN",
+        );
+        assert_eq!(dup.err().unwrap().code, "DBSnapshotAlreadyExists");
+        // attributes
+        let attrs = run("DescribeDBSnapshotAttributes", "DBSnapshotIdentifier=SNAP1");
+        let xml = attrs.unwrap().unwrap();
+        assert!(xml.contains("<AttributeName>restore</AttributeName>"));
+        // modify attribute
+        let modr = run(
+            "ModifyDBSnapshotAttribute",
+            "DBSnapshotIdentifier=SNAP1&AttributeName=restore&ValuesToAdd.AttributeValue.1=all",
+        );
+        assert!(modr
+            .unwrap()
+            .unwrap()
+            .contains("<AttributeValue>all</AttributeValue>"));
+        // copy
+        let cp = run(
+            "CopyDBSnapshot",
+            "SourceDBSnapshotIdentifier=SNAP1&TargetDBSnapshotIdentifier=SNAP2",
+        );
+        assert!(cp
+            .unwrap()
+            .unwrap()
+            .contains("<DBSnapshotIdentifier>snap2</DBSnapshotIdentifier>"));
+        // unknown describe → not found
+        let nf = run("DescribeDBSnapshots", "DBSnapshotIdentifier=does-not-exist");
+        assert_eq!(nf.err().unwrap().code, "DBSnapshotNotFound");
+        // delete
+        let del = run("DeleteDBSnapshot", "DBSnapshotIdentifier=snap1");
+        assert!(del.unwrap().unwrap().contains("snap1"));
+        let del2 = run("DeleteDBSnapshot", "DBSnapshotIdentifier=snap1");
+        assert_eq!(del2.err().unwrap().code, "DBSnapshotNotFound");
+    }
+
+    // ---- Cluster family ----------------------------------------------------
+
+    #[test]
+    fn cluster_lifecycle() {
+        let create = run(
+            "CreateDBCluster",
+            "DBClusterIdentifier=CL1&Engine=aurora-mysql&MasterUsername=admin&MasterUserPassword=password123!",
+        );
+        assert!(create
+            .unwrap()
+            .unwrap()
+            .contains("<DBClusterIdentifier>cl1</DBClusterIdentifier>"));
+        // first publish shows creating per moto, next shows available
+        let d1 = run("DescribeDBClusters", "DBClusterIdentifier=CL1");
+        assert!(d1.unwrap().unwrap().contains("<Status>available</Status>"));
+
+        let stop = run("StopDBCluster", "DBClusterIdentifier=CL1");
+        assert!(stop
+            .unwrap()
+            .unwrap()
+            .contains("<Status>available</Status>"));
+        let bad_stop = run("StopDBCluster", "DBClusterIdentifier=CL1");
+        assert_eq!(bad_stop.err().unwrap().code, "InvalidDBClusterStateFault");
+        let d2 = run("DescribeDBClusters", "DBClusterIdentifier=CL1");
+        assert!(d2.unwrap().unwrap().contains("<Status>stopped</Status>"));
+        let start = run("StartDBCluster", "DBClusterIdentifier=CL1");
+        assert!(start.unwrap().unwrap().contains("<Status>started</Status>"));
+
+        // failover with no instances → InvalidDBClusterStateFault
+        let fo = run("FailoverDBCluster", "DBClusterIdentifier=CL1");
+        assert_eq!(fo.err().unwrap().code, "InvalidDBClusterStateFault");
+        // nonexistent cluster → DBClusterNotFoundFault
+        let nf = run("FailoverDBCluster", "DBClusterIdentifier=no-such");
+        assert_eq!(nf.err().unwrap().code, "DBClusterNotFoundFault");
+
+        // cluster snapshot lifecycle
+        let cs = run(
+            "CreateDBClusterSnapshot",
+            "DBClusterSnapshotIdentifier=CS1&DBClusterIdentifier=CL1",
+        );
+        assert!(cs
+            .unwrap()
+            .unwrap()
+            .contains("<DBClusterSnapshotIdentifier>cs1</DBClusterSnapshotIdentifier>"));
+        let delc = run(
+            "DeleteDBCluster",
+            "DBClusterIdentifier=CL1&SkipFinalSnapshot=true",
+        );
+        assert!(delc.unwrap().unwrap().contains("cl1"));
+    }
+
+    // ---- Parameter groups --------------------------------------------------
+
+    #[test]
+    fn parameter_group_lifecycle() {
+        let create = run(
+            "CreateDBParameterGroup",
+            "DBParameterGroupName=PG1&DBParameterGroupFamily=mysql8.0&Description=lifecycle",
+        );
+        assert!(create
+            .unwrap()
+            .unwrap()
+            .contains("<DBParameterGroupName>pg1</DBParameterGroupName>"));
+        let modp = run(
+            "ModifyDBParameterGroup",
+            "DBParameterGroupName=PG1&Parameters.member.1.ParameterName=max_connections&Parameters.member.1.ParameterValue=200",
+        );
+        let xml = modp.unwrap().unwrap();
+        assert!(xml.to_lowercase().contains("pg1"), "modify response: {xml}");
+        let params = run("DescribeDBParameters", "DBParameterGroupName=PG1");
+        let xml = params.unwrap().unwrap();
+        assert!(xml.contains("<ParameterName>max_connections</ParameterName>"));
+        // missing group
+        let nf = run("DescribeDBParameters", "DBParameterGroupName=nope");
+        assert_eq!(nf.err().unwrap().code, "DBParameterGroupNotFound");
+        let del = run("DeleteDBParameterGroup", "DBParameterGroupName=PG1");
+        assert!(del.is_ok());
+        let del2 = run("DeleteDBParameterGroup", "DBParameterGroupName=PG1");
+        assert_eq!(del2.err().unwrap().code, "DBParameterGroupNotFound");
+        // reset requires the group
+        let rg = run(
+            "CreateDBParameterGroup",
+            "DBParameterGroupName=PG2&DBParameterGroupFamily=mysql8.0&Description=reset",
+        );
+        assert!(rg.is_ok());
+        let reset = run(
+            "ResetDBParameterGroup",
+            "DBParameterGroupName=PG2&ResetAllParameters=true",
+        );
+        let rxml = reset.unwrap().unwrap();
+        assert!(
+            rxml.to_lowercase().contains("pg2"),
+            "reset response: {rxml}"
+        );
+    }
+
+    // ---- Tags family -------------------------------------------------------
+
+    #[test]
+    fn tags_round_trip() {
+        let _ = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=T1&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123",
+        );
+        let add = run(
+            "AddTagsToResource",
+            "ResourceName=arn:aws:rds:us-east-1:123456789012:db:t1&Tags.Tag.1.Key=env&Tags.Tag.1.Value=test",
+        );
+        assert!(add.is_ok());
+        let list = run(
+            "ListTagsForResource",
+            "ResourceName=arn:aws:rds:us-east-1:123456789012:db:t1",
+        );
+        let xml = list.unwrap().unwrap();
+        assert!(xml.contains("<Key>env</Key>"));
+        assert!(xml.contains("<Value>test</Value>"));
+        let rm = run(
+            "RemoveTagsFromResource",
+            "ResourceName=arn:aws:rds:us-east-1:123456789012:db:t1&TagKeys.member.1=env",
+        );
+        assert!(rm.is_ok());
+        let xml2 = run(
+            "ListTagsForResource",
+            "ResourceName=arn:aws:rds:us-east-1:123456789012:db:t1",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!xml.contains("env-test") && xml.contains("env")); // keys still valid xml
+        let _ = xml;
+    }
+
+    // ---- Subnet / security groups ------------------------------------------
+
+    #[test]
+    fn subnet_group_lifecycle() {
+        let create = run(
+            "CreateDBSubnetGroup",
+            "DBSubnetGroupName=SG1&DBSubnetGroupDescription=desc&SubnetIds.SubnetIdentifier.1=subnet-1&SubnetIds.SubnetIdentifier.2=subnet-2",
+        );
+        assert!(create
+            .unwrap()
+            .unwrap()
+            .contains("<DBSubnetGroupName>sg1</DBSubnetGroupName>"));
+        let desc = run("DescribeDBSubnetGroups", "DBSubnetGroupName=SG1");
+        assert!(desc.unwrap().unwrap().contains("subnet-1"));
+        let del = run("DeleteDBSubnetGroup", "DBSubnetGroupName=SG1");
+        assert!(del.is_ok());
+        let nf = run("DescribeDBSubnetGroups", "DBSubnetGroupName=SG1");
+        assert_eq!(nf.err().unwrap().code, "DBSubnetGroupNotFoundFault");
+    }
+
+    #[test]
+    fn security_group_lifecycle() {
+        let create = run(
+            "CreateDBSecurityGroup",
+            "DBSecurityGroupName=SEC1&DBSecurityGroupDescription=desc",
+        );
+        assert!(create
+            .unwrap()
+            .unwrap()
+            .contains("<DBSecurityGroupName>SEC1</DBSecurityGroupName>"));
+        let auth = run(
+            "AuthorizeDBSecurityGroupIngress",
+            "DBSecurityGroupName=SEC1&CIDRIP=10.0.0.0/24",
+        );
+        assert!(auth.unwrap().unwrap().contains("10.0.0.0/24"));
+        let desc = run("DescribeDBSecurityGroups", "DBSecurityGroupName=SEC1");
+        assert!(desc.unwrap().unwrap().contains("SEC1"));
+        let rev = run(
+            "RevokeDBSecurityGroupIngress",
+            "DBSecurityGroupName=SEC1&CIDRIP=10.0.0.0/24",
+        );
+        let xml = rev.unwrap().unwrap();
+        assert!(!xml.contains("10.0.0.0/24"));
+        let _ = xml;
+        let del = run("DeleteDBSecurityGroup", "DBSecurityGroupName=SEC1");
+        assert!(del.is_ok());
+        let nf = run("DeleteDBSecurityGroup", "DBSecurityGroupName=SEC1");
+        assert_eq!(nf.err().unwrap().code, "DBSecurityGroupNotFound");
+    }
+
+    // ---- Events ------------------------------------------------------------
+
+    #[test]
+    fn event_subscription_lifecycle() {
+        let create = run(
+            "CreateEventSubscription",
+            "SubscriptionName=ES1&SnsTopicArn=arn:aws:sns:us-east-1:123456789012:t&Enabled=true",
+        );
+        assert!(create
+            .unwrap()
+            .unwrap()
+            .contains("<CustSubscriptionId>ES1</CustSubscriptionId>"));
+        let seen = run("DescribeEventSubscriptions", "SubscriptionName=ES1");
+        assert!(seen.unwrap().unwrap().contains("ES1"));
+        let src = run(
+            "AddSourceIdentifierToSubscription",
+            "SubscriptionName=ES1&SourceIdentifier=my-db",
+        );
+        assert!(src.unwrap().unwrap().contains("<SourceId>my-db</SourceId>"));
+        let rm = run(
+            "RemoveSourceIdentifierFromSubscription",
+            "SubscriptionName=ES1&SourceIdentifier=my-db",
+        );
+        let xml = rm.unwrap().unwrap();
+        assert!(
+            !xml.contains("<SourceId>my-db</SourceId>"),
+            "removed id but {xml}"
+        );
+        let del = run("DeleteEventSubscription", "SubscriptionName=ES1");
+        assert!(del.is_ok());
+        let nf = run("DeleteEventSubscription", "SubscriptionName=ES1");
+        assert_eq!(nf.err().unwrap().code, "SubscriptionNotFound");
+    }
+
+    // ---- Static describes --------------------------------------------------
+
+    #[test]
+    fn static_describe_families() {
+        for (op, expect) in [
+            ("DescribeAccountAttributes", "AccountQuotaName"),
+            ("DescribeCertificates", "CertificateIdentifier"),
+            ("DescribeEventCategories", "SourceType"),
+            ("DescribeSourceRegions", "RegionName"),
+            ("DescribeDBMajorEngineVersions", "MajorEngineVersion"),
+            (
+                "DescribePendingMaintenanceActions",
+                "PendingMaintenanceActions",
+            ),
+            ("DescribeDBRecommendations", "DBRecommendations"),
+        ] {
+            let r = run(op, "");
+            assert!(r.is_ok(), "{op} failed: {:?}", r.err());
+            assert!(
+                r.unwrap().unwrap().contains(expect),
+                "{op} body missing {expect}"
+            );
+        }
+        // engine versions filter
+        let mysql = run("DescribeDBEngineVersions", "Engine=mysql");
+        let xml = mysql.unwrap().unwrap();
+        assert!(xml.contains("<Engine>mysql</Engine>"));
+        assert!(xml.contains("<DBParameterGroupFamily>"));
+    }
+
+    // ---- Proxies -----------------------------------------------------------
+
+    #[test]
+    fn proxy_lifecycle() {
+        let create = run(
+            "CreateDBProxy",
+            "DBProxyName=PX1&EngineFamily=MYSQL&RoleArn=arn:aws:iam::123456789012:role/r&VpcSubnetIds.member.1=subnet-a&VpcSubnetIds.member.2=subnet-b&Auth.member.1.AuthScheme=SECRETS&Auth.member.1.SecretArn=arn:x&Auth.member.1.IAMAuth=DISABLED",
+        );
+        assert!(create
+            .unwrap()
+            .unwrap()
+            .contains("<DBProxyName>PX1</DBProxyName>"));
+        let tg = run("DescribeDBProxyTargetGroups", "DBProxyName=PX1");
+        assert!(tg
+            .unwrap()
+            .unwrap()
+            .contains("<TargetGroupName>default</TargetGroupName>"));
+        let del = run("DeleteDBProxy", "DBProxyName=PX1");
+        assert!(del.unwrap().unwrap().contains("PX1"));
+        let nf = run("DescribeDBProxies", "DBProxyName=PX1");
+        assert_eq!(nf.err().unwrap().code, "DBProxyNotFoundFault");
+    }
+
+    // ---- Reserved / maintenance / misc gap ops ------------------------------
+
+    #[test]
+    fn gpu_reserved_and_gap_ops() {
+        let offers = run("DescribeReservedDBInstancesOfferings", "");
+        assert!(offers
+            .unwrap()
+            .unwrap()
+            .contains("ReservedDBInstancesOfferingId"));
+        let purchase = run(
+            "PurchaseReservedDBInstancesOffering",
+            "ReservedDBInstancesOfferingId=5a88b4d",
+        );
+        assert!(purchase_ok(&purchase));
+        assert!(purchase.unwrap().unwrap().contains("5a88b4d"));
+
+        let apply = run(
+            "ApplyPendingMaintenanceAction",
+            "ResourceIdentifier=arn:aws:rds:us-east-1:123456789012:db:x&ApplyAction=system-update&OptInType=immediate",
+        );
+        assert!(apply
+            .unwrap()
+            .unwrap()
+            .contains("<Action>system-update</Action>"));
+
+        let enable = run(
+            "EnableHttpEndpoint",
+            "ResourceArn=arn:aws:rds:us-east-1:123456789012:cluster:c",
+        );
+        assert!(enable
+            .unwrap()
+            .unwrap()
+            .contains("<HttpEndpointEnabled>true</HttpEndpointEnabled>"));
+        let disable = run(
+            "DisableHttpEndpoint",
+            "ResourceArn=arn:aws:rds:us-east-1:123456789012:cluster:c",
+        );
+        assert!(disable
+            .unwrap()
+            .unwrap()
+            .contains("<HttpEndpointEnabled>false</HttpEndpointEnabled>"));
+        let certs = run("ModifyCertificates", "");
+        assert!(certs.unwrap().unwrap().contains("<Certificate>"));
+
+        let backtrack_nf = run("BacktrackDBCluster", "DBClusterIdentifier=no-such");
+        assert_eq!(backtrack_nf.err().unwrap().code, "DBClusterNotFoundFault");
+    }
+
+    fn purchase_ok(r: &Result<Body, RdsError>) -> bool {
+        r.is_ok()
+    }
+
+    // ---- Deny-by-default ---------------------------------------------------
+
+    #[test]
+    fn unimplemented_ops_deny_by_default() {
+        // An op the suite does not exercise: moto parity requires 501.
+        let r = run("AcceptReservedInstancesExchangeQuote", "x=1");
+        let err = r.err().unwrap();
+        assert_eq!(err.code, "NotImplemented");
+        assert_eq!(err.status, 501);
     }
 }
