@@ -27,7 +27,16 @@ pub struct Secret {
     pub tags: RwLock<Vec<Value>>,
     pub description: RwLock<Option<String>>,
     pub deletion_date: RwLock<Option<f64>>,
+    /// Set when the secret is scheduled for deletion (recoverable).
     pub removed: RwLock<bool>,
+    /// Resource policy JSON (PutResourcePolicy / GetResourcePolicy).
+    pub resource_policy: RwLock<Option<String>>,
+    /// Rotation state (RotateSecret / CancelRotateSecret / DescribeSecret).
+    pub rotation_enabled: RwLock<bool>,
+    pub rotation_lambda_arn: RwLock<Option<String>>,
+    pub rotation_rules: RwLock<Option<Value>>,
+    /// Replica region names registered via ReplicateSecretToRegions.
+    pub replicas: RwLock<Vec<String>>,
 }
 
 impl Secret {
@@ -44,11 +53,21 @@ impl Secret {
             description: RwLock::new(None),
             deletion_date: RwLock::new(None),
             removed: RwLock::new(false),
+            resource_policy: RwLock::new(None),
+            rotation_enabled: RwLock::new(false),
+            rotation_lambda_arn: RwLock::new(None),
+            rotation_rules: RwLock::new(None),
+            replicas: RwLock::new(Vec::new()),
         }
     }
 
     pub fn get_version(&self, stage: &str) -> Option<SecretVersion> {
         self.versions.read().values().find(|v| v.stages.iter().any(|s| s == stage)).cloned()
+    }
+
+    /// Version looked up by version id.
+    pub fn get_version_by_id(&self, version_id: &str) -> Option<SecretVersion> {
+        self.versions.read().get(version_id).cloned()
     }
 }
 
@@ -78,7 +97,12 @@ impl SmState {
     }
 
     pub fn list_secrets(&self) -> Vec<Arc<Secret>> {
-        self.secrets.read().values().filter(|s| !*s.removed.read()).cloned().collect()
+        self.secrets
+            .read()
+            .values()
+            .filter(|s| !*s.removed.read())
+            .cloned()
+            .collect()
     }
 }
 
