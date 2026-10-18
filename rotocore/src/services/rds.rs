@@ -3297,10 +3297,7 @@ fn create_db_snapshot(
     let snapshot = snapshot_from_db(&db, &snapshot_id, &snapshot_type, &tags_param(p));
     let response = snapshot.clone();
     st.database_snapshots.insert(snap_id, snapshot);
-    Ok(Some(format!(
-        "<DBSnapshot>{}</DBSnapshot>",
-        db_snapshot_xml(acct, region, &response)
-    )))
+    Ok(Some(db_snapshot_xml(acct, region, &response)))
 }
 
 fn describe_db_snapshots_xml(
@@ -3353,10 +3350,7 @@ fn delete_db_snapshot(
         ));
     }
     let snapshot = st.database_snapshots.remove(&snap_id).unwrap();
-    Ok(Some(format!(
-        "<DBSnapshot>{}</DBSnapshot>",
-        db_snapshot_xml(acct, region, &snapshot)
-    )))
+    Ok(Some(db_snapshot_xml(acct, region, &snapshot)))
 }
 
 fn copy_db_snapshot(
@@ -3396,10 +3390,7 @@ fn copy_db_snapshot(
     }
     let out = snapshot.clone();
     st.database_snapshots.insert(target_id, snapshot);
-    Ok(Some(format!(
-        "<DBSnapshot>{}</DBSnapshot>",
-        db_snapshot_xml(acct, region, &out)
-    )))
+    Ok(Some(db_snapshot_xml(acct, region, &out)))
 }
 
 fn snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> String {
@@ -4257,10 +4248,7 @@ fn create_db_cluster_snapshot(
     let snapshot = cluster_snapshot_from(&cluster, &snapshot_id, &snapshot_type, &tags_param(p));
     let response = snapshot.clone();
     st.cluster_snapshots.insert(snap_id, snapshot);
-    Ok(Some(format!(
-        "<DBClusterSnapshot>{}</DBClusterSnapshot>",
-        cluster_snapshot_xml(acct, region, &response)
-    )))
+    Ok(Some(cluster_snapshot_xml(acct, region, &response)))
 }
 
 fn describe_db_cluster_snapshots_xml(
@@ -4326,10 +4314,7 @@ fn delete_db_cluster_snapshot(
         ));
     }
     let snapshot = st.cluster_snapshots.remove(&snap_id).unwrap();
-    Ok(Some(format!(
-        "<DBClusterSnapshot>{}</DBClusterSnapshot>",
-        cluster_snapshot_xml(acct, region, &snapshot)
-    )))
+    Ok(Some(cluster_snapshot_xml(acct, region, &snapshot)))
 }
 
 fn copy_db_cluster_snapshot(
@@ -4366,10 +4351,7 @@ fn copy_db_cluster_snapshot(
     }
     let out = snapshot.clone();
     st.cluster_snapshots.insert(target_id, snapshot);
-    Ok(Some(format!(
-        "<DBClusterSnapshot>{}</DBClusterSnapshot>",
-        cluster_snapshot_xml(acct, region, &out)
-    )))
+    Ok(Some(cluster_snapshot_xml(acct, region, &out)))
 }
 
 fn cluster_snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)]) -> String {
@@ -4757,10 +4739,7 @@ fn create_global_cluster(
     }
     let response = gc.clone();
     st.global_clusters.insert(lower, gc);
-    Ok(Some(format!(
-        "<GlobalCluster>{}</GlobalCluster>",
-        global_cluster_xml(acct, &response, st)
-    )))
+    Ok(Some(global_cluster_xml(acct, &response, st)))
 }
 
 fn describe_global_clusters_xml(
@@ -4807,10 +4786,7 @@ fn delete_global_cluster(
         ));
     }
     st.global_clusters.remove(&lower);
-    Ok(Some(format!(
-        "<GlobalCluster>{}</GlobalCluster>",
-        global_cluster_xml(acct, &gc, st)
-    )))
+    Ok(Some(global_cluster_xml(acct, &gc, st)))
 }
 
 fn modify_global_cluster(
@@ -4844,10 +4820,7 @@ fn modify_global_cluster(
         renamed_from = new_lower;
     }
     let gc = st.global_clusters.get(&renamed_from).unwrap().clone();
-    Ok(Some(format!(
-        "<GlobalCluster>{}</GlobalCluster>",
-        global_cluster_xml(acct, &gc, st)
-    )))
+    Ok(Some(global_cluster_xml(acct, &gc, st)))
 }
 
 fn remove_from_global_cluster(
@@ -4868,10 +4841,7 @@ fn remove_from_global_cluster(
         }
         if let Some(gc) = st.global_clusters.get(&lower) {
             let gc = gc.clone();
-            return Ok(Some(format!(
-                "<GlobalCluster>{}</GlobalCluster>",
-                global_cluster_xml(acct, &gc, st)
-            )));
+            return Ok(Some(global_cluster_xml(acct, &gc, st)));
         }
     }
     // moto swallows misses and returns an empty RemoveFromGlobalClusterResult
@@ -4898,10 +4868,7 @@ fn failover_global_cluster(
         cl.publicly_accessible = true;
     }
     let gc = st.global_clusters.get(&lower).unwrap().clone();
-    Ok(Some(format!(
-        "<GlobalCluster>{}</GlobalCluster>",
-        global_cluster_xml(acct, &gc, st)
-    )))
+    Ok(Some(global_cluster_xml(acct, &gc, st)))
 }
 
 fn switchover_global_cluster(
@@ -5375,10 +5342,7 @@ fn create_db_subnet_group(
     };
     let response = group.clone();
     st.subnet_groups.insert(lower, group);
-    Ok(Some(format!(
-        "<DBSubnetGroup>{}</DBSubnetGroup>",
-        subnet_group_xml(acct, region, &response)
-    )))
+    Ok(Some(subnet_group_xml(acct, region, &response)))
 }
 
 fn modify_db_subnet_group(
@@ -5420,10 +5384,7 @@ fn modify_db_subnet_group(
     // moto keeps the existing entries when no SubnetIds are provided
     let response = new_group.clone();
     st.subnet_groups.insert(lower, new_group);
-    Ok(Some(format!(
-        "<DBSubnetGroup>{}</DBSubnetGroup>",
-        subnet_group_xml(acct, region, &response)
-    )))
+    Ok(Some(subnet_group_xml(acct, region, &response)))
 }
 
 fn delete_db_subnet_group(
@@ -5441,10 +5402,7 @@ fn delete_db_subnet_group(
         ));
     }
     let group = st.subnet_groups.remove(&lower).unwrap();
-    Ok(Some(format!(
-        "<DBSubnetGroup>{}</DBSubnetGroup>",
-        subnet_group_xml(acct, region, &group)
-    )))
+    Ok(Some(subnet_group_xml(acct, region, &group)))
 }
 
 fn describe_db_subnet_groups_xml(
@@ -5642,10 +5600,7 @@ fn create_event_subscription(
     };
     let response = sub.clone();
     st.event_subscriptions.insert(identifier, sub);
-    Ok(Some(format!(
-        "<EventSubscription>{}</EventSubscription>",
-        event_subscription_xml(acct, region, &response)
-    )))
+    Ok(Some(event_subscription_xml(acct, region, &response)))
 }
 
 fn describe_event_subscriptions_xml(
@@ -5692,10 +5647,7 @@ fn delete_event_subscription(
         ));
     }
     let sub = st.event_subscriptions.remove(&identifier).unwrap();
-    Ok(Some(format!(
-        "<EventSubscription>{}</EventSubscription>",
-        event_subscription_xml(acct, region, &sub)
-    )))
+    Ok(Some(event_subscription_xml(acct, region, &sub)))
 }
 
 fn modify_event_subscription(
@@ -5725,10 +5677,7 @@ fn modify_event_subscription(
         sub.enabled = v;
     }
     let response = sub.clone();
-    Ok(Some(format!(
-        "<EventSubscription>{}</EventSubscription>",
-        event_subscription_xml(acct, region, &response)
-    )))
+    Ok(Some(event_subscription_xml(acct, region, &response)))
 }
 
 fn add_source_identifier_to_subscription(
@@ -5750,10 +5699,7 @@ fn add_source_identifier_to_subscription(
         sub.source_ids.push(source);
     }
     let response = sub.clone();
-    Ok(Some(format!(
-        "<EventSubscription>{}</EventSubscription>",
-        event_subscription_xml(acct, region, &response)
-    )))
+    Ok(Some(event_subscription_xml(acct, region, &response)))
 }
 
 fn remove_source_identifier_from_subscription(
@@ -5773,10 +5719,7 @@ fn remove_source_identifier_from_subscription(
     let sub = st.event_subscriptions.get_mut(&identifier).unwrap();
     sub.source_ids.retain(|s| s != &source);
     let response = sub.clone();
-    Ok(Some(format!(
-        "<EventSubscription>{}</EventSubscription>",
-        event_subscription_xml(acct, region, &response)
-    )))
+    Ok(Some(event_subscription_xml(acct, region, &response)))
 }
 
 fn describe_events_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -6111,10 +6054,7 @@ fn create_db_proxy(
     };
     let response = proxy.clone();
     st.db_proxies.insert(response.name.clone(), proxy);
-    Ok(Some(format!(
-        "<DBProxy>{}</DBProxy>",
-        db_proxy_xml(acct, region, &response)
-    )))
+    Ok(Some(db_proxy_xml(acct, region, &response)))
 }
 
 fn describe_db_proxies_xml(
@@ -6164,10 +6104,7 @@ fn delete_db_proxy(
         ));
     }
     let proxy = st.db_proxies.remove(&identifier).unwrap();
-    Ok(Some(format!(
-        "<DBProxy>{}</DBProxy>",
-        db_proxy_xml(acct, region, &proxy)
-    )))
+    Ok(Some(db_proxy_xml(acct, region, &proxy)))
 }
 
 fn require_proxy<'s>(st: &'s RdsState, name: &str) -> Result<&'s DBProxy, RdsError> {
@@ -6190,10 +6127,7 @@ fn describe_db_proxy_target_groups_xml(
 ) -> Result<Body, RdsError> {
     let name = p_string(p, "DBProxyName").unwrap_or_default();
     let proxy = require_proxy(st, &name)?;
-    Ok(Some(format!(
-        "<TargetGroups>{}</TargetGroups>",
-        proxy_target_groups_xml(acct, region, proxy)
-    )))
+    Ok(Some(proxy_target_groups_xml(acct, region, proxy)))
 }
 
 fn describe_db_proxy_targets_xml(
@@ -6391,10 +6325,7 @@ fn create_db_proxy_endpoint(
     };
     let response = ep.clone();
     st.db_proxy_endpoints.insert(ep_name, ep);
-    Ok(Some(format!(
-        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
-        db_proxy_endpoint_xml(acct, region, &response)
-    )))
+    Ok(Some(db_proxy_endpoint_xml(acct, region, &response)))
 }
 
 fn describe_db_proxy_endpoints_xml(
@@ -6451,10 +6382,7 @@ fn delete_db_proxy_endpoint(
     }
     let mut ep = st.db_proxy_endpoints.remove(&ep_name).unwrap();
     ep.status = "deleting".into();
-    Ok(Some(format!(
-        "<DBProxyEndpoint>{}</DBProxyEndpoint>",
-        db_proxy_endpoint_xml(acct, region, &ep)
-    )))
+    Ok(Some(db_proxy_endpoint_xml(acct, region, &ep)))
 }
 
 fn modify_db_proxy_endpoint(st: &mut RdsState, p: &Params) -> Result<Body, RdsError> {
@@ -6661,10 +6589,7 @@ fn create_blue_green_deployment(
     let response = bg.clone();
     st.blue_green_deployments.insert(id, bg);
     let _ = (acct, region);
-    Ok(Some(format!(
-        "<BlueGreenDeployment>{}</BlueGreenDeployment>",
-        blue_green_xml(&response)
-    )))
+    Ok(Some(blue_green_xml(&response)))
 }
 
 fn describe_blue_green_deployments_xml(
@@ -6736,10 +6661,7 @@ fn delete_blue_green_deployment(
     }
     let mut bg = st.blue_green_deployments.remove(&ident).unwrap();
     bg.status = "DELETING".into();
-    Ok(Some(format!(
-        "<BlueGreenDeployment>{}</BlueGreenDeployment>",
-        blue_green_xml(&bg)
-    )))
+    Ok(Some(blue_green_xml(&bg)))
 }
 
 // Shard groups + activity streams + tenant databases integrations CEVs gap ops
@@ -7040,10 +6962,7 @@ fn create_tenant_database(
     };
     let response = td.clone();
     st.tenant_databases.insert(key, td);
-    Ok(Some(format!(
-        "<TenantDatabase>{}</TenantDatabase>",
-        tenant_database_xml(acct, region, &response)
-    )))
+    Ok(Some(tenant_database_xml(acct, region, &response)))
 }
 
 fn describe_tenant_databases_xml(
@@ -7120,10 +7039,7 @@ fn delete_tenant_database(
     };
     let mut response = td.clone();
     response.status = "deleting".into();
-    Ok(Some(format!(
-        "<TenantDatabase>{}</TenantDatabase>",
-        tenant_database_xml(acct, region, &response)
-    )))
+    Ok(Some(tenant_database_xml(acct, region, &response)))
 }
 
 fn modify_tenant_database(
@@ -7153,10 +7069,7 @@ fn modify_tenant_database(
         None => key,
     };
     let response = st.tenant_databases.get(&lookup).unwrap().clone();
-    Ok(Some(format!(
-        "<TenantDatabase>{}</TenantDatabase>",
-        tenant_database_xml(acct, region, &response)
-    )))
+    Ok(Some(tenant_database_xml(acct, region, &response)))
 }
 
 fn describe_db_snapshot_tenant_databases_xml() -> Result<Body, RdsError> {
@@ -7502,10 +7415,7 @@ fn purchase_reserved_db_instances_offering(
     let reserved = offering;
     let response = reserved.clone();
     st.reserved_db_instances.insert(rid, reserved);
-    Ok(Some(format!(
-        "<ReservedDBInstance>{}</ReservedDBInstance>",
-        reserved_instance_xml(acct, region, &response)
-    )))
+    Ok(Some(reserved_instance_xml(acct, region, &response)))
 }
 
 fn describe_reserved_db_instances_xml(
