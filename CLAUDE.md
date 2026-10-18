@@ -51,27 +51,8 @@ robotocore/
 ├── pyproject.toml             # Project config (uv)
 ├── Dockerfile                 # Single-container build
 ├── docker-compose.yml         # Dev convenience
-├── src/robotocore/
-│   ├── __init__.py
-│   ├── main.py                # Entrypoint
-│   ├── gateway/               # HTTP gateway, request routing
-│   │   ├── __init__.py
-│   │   ├── app.py             # ASGI/WSGI app
-│   │   ├── router.py          # AWS service detection & dispatch
-│   │   └── handler_chain.py   # Request/response handler chain
-│   ├── protocols/             # AWS protocol parsers/serializers
-│   │   ├── __init__.py
-│   │   ├── parser.py          # HTTP → Python objects
-│   │   └── serializer.py      # Python objects → HTTP response
-│   ├── providers/             # Service provider wrappers
-│   │   ├── __init__.py
-│   │   └── moto_bridge.py     # Bridge to forward requests to moto
-│   ├── services/              # Service-specific extensions beyond moto
-│   │   └── __init__.py
-│   ├── stores/                # In-memory state stores
-│   │   └── __init__.py
-│   └── utils/                 # Shared utilities
-│       └── __init__.py
+├── src/
+│   ├── robotocore/            # Python server (see legend below)
 ├── tests/
 │   ├── unit/                  # Fast, no-network tests
 │   ├── integration/           # Tests against running container
@@ -87,6 +68,36 @@ robotocore/
 └── docker/
     └── entrypoint.sh          # Container entrypoint
 ```
+
+### Rust port layout (rust branch)
+
+```
+├── crates/                    # Native Rust service crates (one per service)
+│   ├── sqs/ lambda/ s3/ dynamodb/ sns/ iam/ kms/ ssm/ logs/
+│   ├── cloudwatch/ cloudwatch-logs/ events/ kinesis/ firehose/
+│   ├── sts helpers in src/core/services/  (string-sts lives centrally)
+│   └── <crate>/src/{handler.rs, models.rs, protocol.rs, tests.rs}
+├── src/
+│   ├── bin/robotocore-rust.rs # Rust server binary
+│   ├── core/                  # Rust gateway core
+│   │   ├── server.rs          # Axum router, catch-all handler, admin endpoints
+│   │   ├── proxy.rs           # Moto bridge client (non-native services)
+│   │   ├── protocol.rs        # Wire protocol parsing/serialization (+ form decode)
+│   │   ├── introspection.rs   # audit log, usage errors, uptime/counters
+│   │   ├── service_registry.rs# generated mirror of the Python service registry
+│   │   └── services/sts.rs    # native STS
+│   ├── lib.rs / router.rs / s3_routing.rs  # service routing + S3 vhost detection
+│   └── robotocore/            # Python ground-truth server (parity baseline)
+├── scripts/
+│   ├── moto_sidecar.py        # moto bridge sidecar (cross-service mirroring)
+│   ├── start_parity_servers.sh# three-server dev lane (env-overridable ports)
+│   └── harness/parity.py      # fidelity measurement
+└── tests/compatibility/       # the contract suites (used for parity)
+```
+
+The Rust server is the product on this branch; the Python server (`python -m
+robotocore.main`) stays as the fidelity reference the compat suites compare
+against. See PORT_SUMMARY.md for the verification loop.
 
 ## Development
 
