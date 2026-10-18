@@ -10,6 +10,7 @@ pub mod acm;
 pub mod cloudformation;
 pub mod comprehend;
 pub mod ec2;
+pub mod sagemaker;
 pub mod transcribe;
 
 /// Dispatch a routed request to its service backend, or `None` when the
@@ -17,6 +18,7 @@ pub mod transcribe;
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "comprehend" => Some(comprehend::dispatch(req)),
+        "sagemaker" => Some(sagemaker::dispatch(req)),
         "transcribe" => Some(transcribe::dispatch(req)),
         _ => None,
     }
